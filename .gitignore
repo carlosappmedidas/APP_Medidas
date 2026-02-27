@@ -1,0 +1,81 @@
+# ================================
+#           PYTHON
+# ================================
+
+# Virtual environments
+backend/.venv/
+.venv/
+
+# Cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ================================
+#        ENV / SECRETOS
+# ================================
+
+.env
+backend/.env
+frontend/.env
+*.env
+
+# ================================
+#          BASES DE DATOS
+# ================================
+
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# ================================
+#       DATA GENERADA APP
+# ================================
+
+backend/data/
+backend/data/**
+
+# ================================
+#           FRONTEND
+# ================================
+
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+frontend/out/
+
+# ================================
+#           LOGS
+# ================================
+
+**/*.log
+
+# ================================
+#        SISTEMA / EDITOR
+# ================================
+
+.DS_Store
+**/.AppleDouble
+**/.LSOverride
+**/._*
+
+.vscode/
+!.vscode/settings.json
+
+# ================================
+#     ARCHIVOS TEMP EXCEL
+# ================================
+
+**/~$*.xlsx
+**/~$*.xlsm
+
+# ================================
+#     ARCHIVOS BASURA ACCIDENTALES
+# ================================
+
+backend/13

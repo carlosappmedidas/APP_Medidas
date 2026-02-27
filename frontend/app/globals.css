@@ -1,0 +1,698 @@
+/* app/globals.css */
+@import "tailwindcss";
+
+/* =========================================================
+   1) Base + Design tokens (tema)
+   ========================================================= */
+:root {
+  /* Base */
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* App */
+  --app-bg: #020617;
+  --app-fg: #e5e7eb;
+
+  /* ✅ NUEVO: Main (contenido) */
+  --main-bg: rgba(0, 0, 0, 0); /* por defecto transparente (usa app-bg de fondo) */
+
+  /* Card */
+  --card-bg: #111827;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+
+  /* Text */
+  --text: #e5e7eb;
+  --text-muted: rgba(228, 228, 231, 0.7);
+
+  /* Accent */
+  --primary: #4f46e5;
+  --primary-hover: #6366f1;
+
+  /* Sizing */
+  --radius-card: 16px;
+  --pad-card: 32px;
+
+  /* Typography */
+  --title-page: 24px;
+  --title-card: 14px;
+  --subtitle-card: 10px;
+
+  /* Forms */
+  --field-bg: rgba(0, 0, 0, 0.4);
+  --field-bg-soft: rgba(0, 0, 0, 0.3);
+  --field-border: rgba(255, 255, 255, 0.1);
+  --field-border-hover: rgba(255, 255, 255, 0.16);
+  --field-border-focus: rgba(16, 185, 129, 0.9);
+  --field-text: rgba(228, 228, 231, 0.95);
+  --field-placeholder: rgba(161, 161, 170, 0.9);
+  --field-radius: 12px;
+
+  /* Buttons */
+  --btn-radius: 9999px;
+  --btn-pad-x: 16px;
+  --btn-pad-y: 8px;
+  --btn-font-size: 12px;
+
+  --btn-primary-bg: #059669;
+  --btn-primary-hover: #10b981;
+
+  --btn-secondary-bg: #4f46e5;
+  --btn-secondary-hover: #6366f1;
+
+  --btn-outline-border: rgba(255, 255, 255, 0.3);
+  --btn-outline-hover: rgba(255, 255, 255, 0.08);
+
+  --danger-bg: rgba(239, 68, 68, 0.14);
+  --danger-border: rgba(239, 68, 68, 0.45);
+  --danger-text: rgba(252, 165, 165, 0.95);
+
+  /* Layout / Nav tokens */
+  --sidebar-bg: rgba(0, 0, 0, 0.4);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+
+  --nav-item-bg: rgba(255, 255, 255, 0.05);
+  --nav-item-hover: rgba(255, 255, 255, 0.1);
+  --nav-item-text: rgba(228, 228, 231, 0.95);
+
+  --nav-active-bg: var(--btn-secondary-bg);
+  --nav-active-text: #ffffff;
+
+  --nav-sub-active-bg: var(--btn-secondary-hover);
+
+  /* Surfaces / Table */
+  --surface-1: rgba(0, 0, 0, 0.2);
+  --surface-2: rgba(0, 0, 0, 0.3);
+  --surface-3: rgba(0, 0, 0, 0.6);
+
+  --table-border: rgba(255, 255, 255, 0.05);
+  --table-head-bg: rgba(255, 255, 255, 0.05);
+  --table-head-text: rgba(161, 161, 170, 0.95);
+  --table-row-border: rgba(255, 255, 255, 0.05);
+
+  /* Badges (status) */
+  --badge-neutral-bg: rgba(255, 255, 255, 0.05);
+  --badge-neutral-border: rgba(113, 113, 122, 0.4);
+  --badge-neutral-text: rgba(228, 228, 231, 0.9);
+
+  --badge-ok-bg: rgba(16, 185, 129, 0.1);
+  --badge-ok-border: rgba(16, 185, 129, 0.4);
+  --badge-ok-text: rgba(110, 231, 183, 0.95);
+
+  --badge-warn-bg: rgba(234, 179, 8, 0.1);
+  --badge-warn-border: rgba(234, 179, 8, 0.4);
+  --badge-warn-text: rgba(253, 224, 71, 0.95);
+
+  --badge-err-bg: rgba(239, 68, 68, 0.1);
+  --badge-err-border: rgba(239, 68, 68, 0.4);
+  --badge-err-text: rgba(252, 165, 165, 0.95);
+
+  /* Alerts */
+  --alert-danger-bg: rgba(239, 68, 68, 0.1);
+  --alert-danger-border: rgba(239, 68, 68, 0.3);
+  --alert-danger-text: rgba(252, 165, 165, 0.95);
+
+  /* Minor text tokens */
+  --label-text: rgba(161, 161, 170, 0.95);
+  --help-text: rgba(113, 113, 122, 0.95);
+
+  /* Popover */
+  --popover-bg: #0b1220;
+  --popover-border: rgba(255, 255, 255, 0.1);
+
+  /* Outline variants (info/warn) */
+  --info-border: rgba(59, 130, 246, 0.6);
+  --info-text: rgba(147, 197, 253, 0.95);
+  --info-bg: rgba(59, 130, 246, 0.1);
+
+  --warn-border: rgba(234, 179, 8, 0.6);
+  --warn-text: rgba(253, 224, 71, 0.95);
+  --warn-bg: rgba(234, 179, 8, 0.1);
+
+  /* Shadows */
+  --shadow-popover: 0 20px 40px rgba(0, 0, 0, 0.5);
+
+  /* Ghost button */
+  --ghost-border: rgba(255, 255, 255, 0.12);
+  --ghost-bg: rgba(255, 255, 255, 0.04);
+  --ghost-hover: rgba(255, 255, 255, 0.08);
+}
+
+/* Tema claro */
+:root[data-theme="light"] {
+  --app-bg: #f8fafc;
+  --app-fg: #0f172a;
+
+  /* ✅ NUEVO: main en claro (por defecto transparente también) */
+  --main-bg: rgba(255, 255, 255, 0);
+
+  --card-bg: #ffffff;
+  --card-border: rgba(15, 23, 42, 0.1);
+  --card-shadow: 0 10px 25px rgba(15, 23, 42, 0.1);
+
+  --text: #0f172a;
+  --text-muted: rgba(15, 23, 42, 0.65);
+
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+
+  --field-bg: rgba(255, 255, 255, 0.85);
+  --field-bg-soft: rgba(255, 255, 255, 0.7);
+  --field-border: rgba(15, 23, 42, 0.14);
+  --field-border-hover: rgba(15, 23, 42, 0.22);
+  --field-border-focus: rgba(16, 185, 129, 0.9);
+  --field-text: rgba(15, 23, 42, 0.95);
+  --field-placeholder: rgba(100, 116, 139, 0.9);
+
+  --btn-outline-border: rgba(15, 23, 42, 0.22);
+  --btn-outline-hover: rgba(15, 23, 42, 0.06);
+
+  --sidebar-bg: rgba(255, 255, 255, 0.6);
+  --sidebar-border: rgba(15, 23, 42, 0.1);
+
+  --nav-item-bg: rgba(15, 23, 42, 0.05);
+  --nav-item-hover: rgba(15, 23, 42, 0.08);
+  --nav-item-text: rgba(15, 23, 42, 0.9);
+
+  --table-border: rgba(15, 23, 42, 0.1);
+  --table-head-bg: rgba(15, 23, 42, 0.04);
+  --table-head-text: rgba(100, 116, 139, 0.95);
+  --table-row-border: rgba(15, 23, 42, 0.08);
+
+  --badge-neutral-bg: rgba(15, 23, 42, 0.04);
+  --badge-neutral-border: rgba(100, 116, 139, 0.35);
+  --badge-neutral-text: rgba(15, 23, 42, 0.8);
+
+  --popover-bg: #ffffff;
+  --popover-border: rgba(15, 23, 42, 0.1);
+
+  --ghost-border: rgba(15, 23, 42, 0.12);
+  --ghost-bg: rgba(15, 23, 42, 0.04);
+  --ghost-hover: rgba(15, 23, 42, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+
+    --app-bg: #020617;
+    --app-fg: #e5e7eb;
+
+    /* ✅ NUEVO */
+    --main-bg: rgba(0, 0, 0, 0);
+
+    --card-bg: #111827;
+    --card-border: rgba(255, 255, 255, 0.08);
+    --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+
+    --text: #e5e7eb;
+    --text-muted: rgba(228, 228, 231, 0.7);
+
+    --primary: #4f46e5;
+    --primary-hover: #6366f1;
+
+    --field-bg: rgba(0, 0, 0, 0.4);
+    --field-bg-soft: rgba(0, 0, 0, 0.3);
+    --field-border: rgba(255, 255, 255, 0.1);
+    --field-border-hover: rgba(255, 255, 255, 0.16);
+    --field-border-focus: rgba(16, 185, 129, 0.9);
+    --field-text: rgba(228, 228, 231, 0.95);
+    --field-placeholder: rgba(161, 161, 170, 0.9);
+  }
+}
+
+/* =========================================================
+   3) Tailwind theme mapping
+   ========================================================= */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* =========================================================
+   4) Global body
+   ========================================================= */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* =========================================================
+   5) UI helpers (cards/titles)
+   ========================================================= */
+.ui-page {
+  background: var(--app-bg);
+  color: var(--text);
+}
+
+.ui-card {
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  padding: var(--pad-card);
+  box-shadow: var(--card-shadow);
+  color: var(--text);
+}
+
+.ui-card--border {
+  border: 1px solid var(--card-border);
+}
+
+.ui-card-title {
+  font-size: var(--title-card);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ui-card-subtitle {
+  margin-top: 4px;
+  font-size: var(--subtitle-card);
+  color: var(--text-muted);
+}
+
+.ui-page-title {
+  font-size: var(--title-page);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* =========================================================
+   6) Forms & Buttons
+   ========================================================= */
+.ui-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--label-text);
+}
+
+.ui-help {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--help-text);
+}
+
+.ui-input,
+.ui-select,
+.ui-textarea {
+  width: 100%;
+  border-radius: var(--field-radius);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--field-text);
+  outline: none;
+}
+
+.ui-textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.ui-input::placeholder,
+.ui-textarea::placeholder {
+  color: var(--field-placeholder);
+}
+
+.ui-input:hover,
+.ui-select:hover,
+.ui-textarea:hover {
+  border-color: var(--field-border-hover);
+}
+
+.ui-input:focus,
+.ui-select:focus,
+.ui-textarea:focus {
+  border-color: var(--field-border-focus);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+
+.ui-input:disabled,
+.ui-select:disabled,
+.ui-textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ui-checkbox {
+  height: 14px;
+  width: 14px;
+  border-radius: 6px;
+  border: 1px solid var(--btn-outline-border);
+  background: transparent;
+}
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--btn-radius);
+  padding: var(--btn-pad-y) var(--btn-pad-x);
+  font-size: var(--btn-font-size);
+  font-weight: 600;
+  line-height: 1;
+  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease,
+    transform 150ms ease;
+  user-select: none;
+}
+
+.ui-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ui-btn-primary {
+  background: var(--btn-primary-bg);
+  color: white;
+}
+
+.ui-btn-primary:hover {
+  background: var(--btn-primary-hover);
+}
+
+.ui-btn-secondary {
+  background: var(--btn-secondary-bg);
+  color: white;
+}
+
+.ui-btn-secondary:hover {
+  background: var(--btn-secondary-hover);
+}
+
+.ui-btn-outline {
+  border: 1px solid var(--btn-outline-border);
+  background: transparent;
+  color: var(--nav-item-text);
+}
+
+.ui-btn-outline:hover {
+  background: var(--btn-outline-hover);
+}
+
+.ui-btn-danger {
+  border: 1px solid var(--danger-border);
+  background: transparent;
+  color: var(--danger-text);
+}
+
+.ui-btn-danger:hover {
+  background: var(--danger-bg);
+}
+
+.ui-btn-xs {
+  padding: 6px 12px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.ui-panel {
+  border-radius: 14px;
+  border: 1px solid var(--field-border);
+  background: var(--surface-2);
+  padding: 16px;
+}
+
+/* =========================================================
+   7) File input
+   ========================================================= */
+.ui-file {
+  display: block;
+  width: 100%;
+  font-size: 12px;
+  color: var(--field-text);
+}
+
+.ui-file::file-selector-button {
+  margin-right: 16px;
+  border: 0;
+  border-radius: var(--btn-radius);
+  background: var(--btn-secondary-bg);
+  color: #fff;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease, opacity 150ms ease;
+}
+
+.ui-file:hover::file-selector-button {
+  background: var(--btn-secondary-hover);
+}
+
+.ui-file:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   8) Popover / dropdown panel
+   ========================================================= */
+.ui-popover {
+  position: absolute;
+  right: 0;
+  z-index: 50;
+  margin-top: 8px;
+  width: 224px;
+  border-radius: 12px;
+  border: 1px solid var(--popover-border);
+  background: var(--popover-bg);
+  padding: 8px;
+  box-shadow: var(--shadow-popover);
+}
+
+.ui-divider {
+  border-top: 1px solid var(--field-border);
+}
+
+/* =========================================================
+   9) Button: Ghost
+   ========================================================= */
+.ui-btn-ghost {
+  border: 1px solid var(--ghost-border);
+  background: var(--ghost-bg);
+  color: var(--nav-item-text);
+}
+
+.ui-btn-ghost:hover {
+  background: var(--ghost-hover);
+}
+
+/* =========================================================
+   10) Layout / Sidebar / Nav
+   ========================================================= */
+.ui-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--text);
+}
+
+.ui-sidebar {
+  width: 16rem; /* w-64 */
+  border-right: 1px solid var(--sidebar-border);
+  background: var(--sidebar-bg);
+  padding: 32px 24px; /* px-6 py-8 */
+}
+
+.ui-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px; /* px-10 py-10 */
+
+  /* ✅ NUEVO */
+  background: var(--main-bg);
+}
+
+.ui-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* space-y-3 */
+  font-size: 12px;
+}
+
+.ui-nav-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--table-head-text);
+}
+
+.ui-nav-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 9999px;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  background: var(--nav-item-bg);
+  color: var(--nav-item-text);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.ui-nav-item:hover {
+  background: var(--nav-item-hover);
+}
+
+.ui-nav-item--active {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+}
+
+.ui-nav-sub {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 16px;
+}
+
+.ui-nav-subitem {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 9999px;
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 11px;
+  background: var(--nav-item-bg);
+  color: var(--nav-item-text);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.ui-nav-subitem:hover {
+  background: var(--nav-item-hover);
+}
+
+.ui-nav-subitem--active {
+  background: var(--nav-sub-active-bg);
+  color: var(--nav-active-text);
+}
+
+/* =========================================================
+   11) Tables
+   ========================================================= */
+.ui-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--table-border);
+  background: var(--surface-1);
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ui-thead {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ui-tr {
+  border-top: 1px solid var(--table-row-border);
+}
+
+.ui-td {
+  padding: 8px 16px;
+}
+
+.ui-th {
+  padding: 8px 16px;
+  text-align: left;
+}
+
+.ui-th-right,
+.ui-td-right {
+  text-align: right;
+}
+
+.ui-muted {
+  color: var(--text-muted);
+}
+
+/* =========================================================
+   12) Badges
+   ========================================================= */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.ui-badge--neutral {
+  background: var(--badge-neutral-bg);
+  border-color: var(--badge-neutral-border);
+  color: var(--badge-neutral-text);
+}
+
+.ui-badge--ok {
+  background: var(--badge-ok-bg);
+  border-color: var(--badge-ok-border);
+  color: var(--badge-ok-text);
+}
+
+.ui-badge--warn {
+  background: var(--badge-warn-bg);
+  border-color: var(--badge-warn-border);
+  color: var(--badge-warn-text);
+}
+
+.ui-badge--err {
+  background: var(--badge-err-bg);
+  border-color: var(--badge-err-border);
+  color: var(--badge-err-text);
+}
+
+/* =========================================================
+   13) Alerts
+   ========================================================= */
+.ui-alert {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 12px 16px;
+  font-size: 11px;
+}
+
+.ui-alert--danger {
+  background: var(--alert-danger-bg);
+  border-color: var(--alert-danger-border);
+  color: var(--alert-danger-text);
+}
+
+/* =========================================================
+   14) Outline variants (info/warn)
+   ========================================================= */
+.ui-btn-outline-info {
+  border: 1px solid var(--info-border);
+  background: transparent;
+  color: var(--info-text);
+}
+
+.ui-btn-outline-info:hover {
+  background: var(--info-bg);
+}
+
+.ui-btn-outline-warn {
+  border: 1px solid var(--warn-border);
+  background: transparent;
+  color: var(--warn-text);
+}
+
+.ui-btn-outline-warn:hover {
+  background: var(--warn-bg);
+}
