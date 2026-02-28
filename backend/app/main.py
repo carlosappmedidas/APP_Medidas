@@ -25,21 +25,25 @@ settings = get_settings()
 app = FastAPI(title=settings.APP_NAME)
 
 # ---------- STATIC: Plantillas (globales) ----------
-# Ruta esperada en el repo: app/static/plantillas/
 BASE_DIR = Path(__file__).resolve().parent
 PLANTILLAS_DIR = BASE_DIR / "static" / "plantillas"
 PLANTILLAS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Disponibles en:
-#   GET /plantillas/<nombre_fichero>
 app.mount("/plantillas", StaticFiles(directory=str(PLANTILLAS_DIR)), name="plantillas")
 
 # ---------- CORS ----------
-# Permitimos el frontend en http://localhost:3000
-origins = [
+default_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://100.106.206.66:3000",
 ]
+
+cors_env = (getattr(settings, "CORS_ORIGINS", None) or "").strip()
+origins = (
+    [o.strip() for o in cors_env.split(",") if o.strip()]
+    if cors_env
+    else default_origins
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,21 +54,14 @@ app.add_middleware(
 )
 
 # ---------- Healthcheck ----------
-
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
-    """
-    Endpoint sencillo para comprobar que:
-    - La API arranca.
-    - La conexión a la base de datos funciona (SELECT 1).
-    """
     db.execute(text("SELECT 1"))
     return {"status": "ok"}
 
 
-# ---------- Routers de la aplicación ----------
-
+# ---------- Routers ----------
 app.include_router(auth_router)
 app.include_router(empresas_router)
 app.include_router(ingestion_router)
-app.include_router(medidas_router)  # 👈 AÑADIDO
+app.include_router(medidas_router)
