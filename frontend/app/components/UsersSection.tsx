@@ -15,6 +15,9 @@ export default function UsersSection({ token }: UsersSectionProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ estado “pro”: distinguir nunca-cargado vs sin-resultados
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
   // formulario nuevo usuario (tenant actual)
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -35,7 +38,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   // --------- HELPERS ---------
-
   const toggleId = (arr: number[], id: number) =>
     arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id];
 
@@ -55,9 +57,9 @@ export default function UsersSection({ token }: UsersSectionProps) {
   };
 
   // --------- CARGA ---------
-
   const loadUsers = async () => {
     if (!canCallApi) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -66,10 +68,13 @@ export default function UsersSection({ token }: UsersSectionProps) {
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const json = await res.json();
-      setUsers(json);
+      setUsers(Array.isArray(json) ? json : []);
+      setHasLoadedOnce(true);
     } catch (err) {
       console.error("Error cargando usuarios:", err);
-      setError("No se pudieron cargar los usuarios del tenant.");
+      setUsers([]);
+      setHasLoadedOnce(true);
+      setError("No se pudieron cargar los usuarios del cliente.");
     } finally {
       setLoading(false);
     }
@@ -77,34 +82,47 @@ export default function UsersSection({ token }: UsersSectionProps) {
 
   const loadEmpresas = async () => {
     if (!canCallApi) return;
+
     try {
       const res = await fetch(`${API_BASE_URL}/empresas/?solo_activas=true`, {
         headers: getAuthHeaders(token),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const json = await res.json();
-      setEmpresas(json);
+      setEmpresas(Array.isArray(json) ? json : []);
     } catch (err) {
       console.error("Error cargando empresas:", err);
-      // no bloquea toda la pantalla, pero avisamos
-      setError((prev) => prev ?? "No se pudieron cargar las empresas del tenant.");
+      setError((prev) => prev ?? "No se pudieron cargar las empresas del cliente.");
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!canCallApi) return;
+    setError(null);
+    setLoading(true);
+    try {
+      // en paralelo para que sea más ágil
+      await Promise.all([loadEmpresas(), loadUsers()]);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     if (token) {
-      loadEmpresas();
-      loadUsers();
+      // autocarga al iniciar sesión (aunque esté plegado)
+      void handleRefresh();
     } else {
       setUsers([]);
       setEmpresas([]);
       setEditingUserId(null);
+      setHasLoadedOnce(false);
+      setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // --------- ACCIONES TENANT ACTUAL ---------
-
   const handleCreateUser = async () => {
     if (!canCallApi) return;
     if (!newEmail || !newPassword) {
@@ -178,7 +196,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
   };
 
   // --------- EDICIÓN & BORRADO ---------
-
   const handleStartEdit = (u: User) => {
     setEditingUserId(u.id);
     setEditRol(u.rol || "user");
@@ -277,32 +294,45 @@ export default function UsersSection({ token }: UsersSectionProps) {
       <header
         className="mb-3 flex cursor-pointer flex-col gap-2 md:flex-row md:items-center md:justify-between"
         onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
       >
         <div>
-          <h4 className="ui-card-title">Usuarios cliente</h4>
+          <h4 className="ui-card-title">Usuarios (Cliente)</h4>
           <p className="ui-card-subtitle">
-            Controla qué empresas ve cada usuario (si no seleccionas ninguna → ve todas).
+            Gestiona usuarios del cliente y define el acceso por empresas.
           </p>
         </div>
 
-        <span className="text-[11px] ui-muted">{isOpen ? "Ocultar ▲" : "Mostrar ▼"}</span>
+        {/* ✅ Flecha unificada (igual que Sistema/Ajustes): ▾ + rotación */}
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-[11px] ui-muted">{isOpen ? "Ocultar" : "Mostrar"}</span>
+          <span
+            className={[
+              "inline-flex items-center justify-center text-[13px] ui-muted transition-transform",
+              isOpen ? "rotate-180" : "rotate-0",
+            ].join(" ")}
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        </div>
       </header>
 
       {/* ERRORES */}
-      {error && isOpen && <p className="mb-3 text-[11px] text-red-400">{error}</p>}
+      {error && isOpen && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
-      {/* CONTENIDO DESPLEGABLE */}
+      {/* CONTENIDO */}
       {isOpen && (
         <>
           {!token && (
-            <p className="mb-4 text-xs text-yellow-400">
-              Haz login para poder ver y gestionar usuarios.
+            <p className="mb-4 text-xs opacity-85">
+              Inicia sesión para ver y gestionar usuarios.
             </p>
           )}
 
           {/* FORMULARIO NUEVO USUARIO */}
           <div className="mb-6 ui-panel text-[11px]">
-            <h5 className="mb-2 text-xs font-semibold">Crear nuevo usuario</h5>
+            <h5 className="mb-2 text-xs font-semibold">Crear usuario</h5>
 
             <div className="grid gap-3 md:grid-cols-[2fr,2fr,1fr,auto,auto]">
               <div>
@@ -369,14 +399,11 @@ export default function UsersSection({ token }: UsersSectionProps) {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    loadEmpresas();
-                    loadUsers();
-                  }}
+                  onClick={handleRefresh}
                   disabled={loading || !canCallApi}
                   className="ui-btn ui-btn-secondary"
                 >
-                  {loading ? "Actualizando..." : "Recargar"}
+                  {loading ? "Actualizando..." : "Actualizar"}
                 </button>
               </div>
             </div>
@@ -385,7 +412,7 @@ export default function UsersSection({ token }: UsersSectionProps) {
             <div className="mt-4 rounded-xl border border-[var(--field-border)] bg-[var(--field-bg-soft)] p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[10px] font-semibold" style={{ color: "var(--text)" }}>
-                  Empresas visibles para este usuario
+                  Acceso por empresas
                 </div>
 
                 <button
@@ -393,7 +420,7 @@ export default function UsersSection({ token }: UsersSectionProps) {
                   className="ui-btn ui-btn-outline ui-btn-xs"
                   onClick={() => setNewEmpresaIds([])}
                   disabled={!canCallApi}
-                  title="Dejar sin filtro extra (ver todas)"
+                  title="Dejar sin filtro (ver todas)"
                 >
                   Ver todas
                 </button>
@@ -401,12 +428,16 @@ export default function UsersSection({ token }: UsersSectionProps) {
 
               <div className="mt-1 text-[10px] ui-muted">
                 Seleccionadas:{" "}
-                <span style={{ color: "var(--text)" }}>{renderEmpresasLabel(newEmpresaIds)}</span>
+                <span style={{ color: "var(--text)" }}>
+                  {renderEmpresasLabel(newEmpresaIds)}
+                </span>
               </div>
 
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {empresas.length === 0 ? (
-                  <div className="text-[10px] ui-muted">No hay empresas (o no se pudieron cargar).</div>
+                  <div className="text-[10px] ui-muted">
+                    No hay empresas (o no se pudieron cargar).
+                  </div>
                 ) : (
                   empresas.map((e) => (
                     <label
@@ -422,7 +453,9 @@ export default function UsersSection({ token }: UsersSectionProps) {
                         disabled={!canCallApi}
                       />
                       <span className="truncate">{e.nombre}</span>
-                      {!e.activo && <span className="text-[10px] text-yellow-300">(inactiva)</span>}
+                      {!e.activo && (
+                        <span className="text-[10px] text-yellow-300">(inactiva)</span>
+                      )}
                     </label>
                   ))
                 )}
@@ -445,13 +478,30 @@ export default function UsersSection({ token }: UsersSectionProps) {
               </thead>
 
               <tbody>
-                {users.length === 0 ? (
+                {/* Skeleton */}
+                {loading &&
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`sk-${i}`} className="ui-tr">
+                      {Array.from({ length: 6 }).map((__, j) => (
+                        <td key={`sk-${i}-${j}`} className="ui-td">
+                          <span
+                            className="inline-block h-3 w-full rounded-md"
+                            style={{ background: "var(--field-bg-soft)", opacity: 0.6 }}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+
+                {!loading && hasLoadedOnce && users.length === 0 && (
                   <tr className="ui-tr">
                     <td colSpan={6} className="ui-td text-center ui-muted">
-                      No hay usuarios en este tenant.
+                      No hay usuarios en este cliente.
                     </td>
                   </tr>
-                ) : (
+                )}
+
+                {!loading &&
                   users.map((u) => {
                     const isEditing = editingUserId === u.id;
 
@@ -508,7 +558,7 @@ export default function UsersSection({ token }: UsersSectionProps) {
                                   type="button"
                                   className="ui-btn ui-btn-outline ui-btn-xs"
                                   onClick={() => setEditEmpresaIds([])}
-                                  title="Ver todas (sin filtro extra)"
+                                  title="Ver todas (sin filtro)"
                                   disabled={!canCallApi}
                                 >
                                   Ver todas
@@ -545,7 +595,9 @@ export default function UsersSection({ token }: UsersSectionProps) {
 
                         {/* Creado */}
                         <td className="ui-td">
-                          {u.created_at ? new Date(u.created_at).toLocaleDateString("es-ES") : "-"}
+                          {u.created_at
+                            ? new Date(u.created_at).toLocaleDateString("es-ES")
+                            : "-"}
                         </td>
 
                         {/* Acciones */}
@@ -612,10 +664,17 @@ export default function UsersSection({ token }: UsersSectionProps) {
                         </td>
                       </tr>
                     );
-                  })
-                )}
+                  })}
               </tbody>
             </table>
+
+            {/* Mensaje “nunca cargado” (por si falla token/estado raro) */}
+            {!loading && !hasLoadedOnce && token && (
+              <div className="mt-3 text-[11px] ui-muted">
+                Aún no se han cargado datos. Pulsa{" "}
+                <span style={{ color: "var(--text)" }}>Actualizar</span>.
+              </div>
+            )}
           </div>
         </>
       )}

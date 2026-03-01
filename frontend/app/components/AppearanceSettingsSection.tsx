@@ -1,22 +1,19 @@
-// app/components/AppearanceSettingsSection.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
+import AccordionCard from "./ui/AccordionCard";
 
 /**
  * Ajustes de aspecto (colores) vía CSS variables.
  * - Aplica overrides con document.documentElement.style.setProperty(...)
  * - Persiste en localStorage
- * - Reset limpia overrides y vuelve a los valores del CSS (globals.css)
+ * - Reset global: lo dispara el padre con el evento "ui-theme-reset"
  *
  * + Presets (guardar/cargar) + export/import (JSON)
- *
- * + NUEVO (BD):
- * - Si recibes `token`, además de localStorage guarda/carga en backend (users.ui_theme_overrides)
- * - Guardado “debounced” para no spamear la API mientras arrastras sliders
- *
- * No toca lógica de negocio: solo UI/estilos.
+ * + BD:
+ *   - Si recibes `token`, además de localStorage guarda/carga en backend (users.ui_theme_overrides)
+ *   - Guardado “debounced” para no spamear la API mientras arrastras sliders
  */
 
 type VarKey =
@@ -63,7 +60,6 @@ function normalizeHexColor(input: string): string | null {
 function normalizeRgbColor(input: string): string | null {
   const v = (input || "").trim();
 
-  // rgb(0,0,0) / rgba(0,0,0,0.5)
   const m = v.match(
     /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([\d.]+))?\s*\)$/i
   );
@@ -198,7 +194,6 @@ function sanitizePresetObject(obj: unknown, vars: VarKey[]): ThemeOverrides | nu
 }
 
 type Props = {
-  /** ✅ Pásalo desde page.tsx para habilitar guardado/carga en BD */
   token?: string | null;
 };
 
@@ -229,7 +224,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   const [overrides, setOverrides] = useState<ThemeOverrides>({});
   const [mounted, setMounted] = useState(false);
 
-  // Presets (local)
   const [presets, setPresets] = useState<Record<string, ThemeOverrides>>({});
   const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PRESET_ID);
 
@@ -250,7 +244,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     saveTimerRef.current = window.setTimeout(async () => {
       try {
         await fetch(`${API_BASE_URL}/auth/ui-theme`, {
-          // ✅ backend que tienes: PUT /auth/ui-theme
           method: "PUT",
           headers: {
             ...getAuthHeaders(token),
@@ -266,54 +259,20 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     }, 450);
   };
 
-  // Inputs editables por variable
   const [draftHex, setDraftHex] = useState<Record<VarKey, string>>(() => {
     const out = {} as Record<VarKey, string>;
-    for (const v of [
-      "--app-bg",
-      "--main-bg",
-      "--card-bg",
-      "--card-border",
-      "--text",
-      "--text-muted",
-      "--btn-primary-bg",
-      "--btn-secondary-bg",
-      "--sidebar-bg",
-      "--sidebar-border",
-      "--nav-item-bg",
-      "--nav-item-hover",
-      "--nav-item-text",
-      "--nav-active-bg",
-      "--nav-active-text",
-      "--nav-sub-active-bg",
-    ] as VarKey[]) {
-      out[v] = "";
-    }
+    for (const v of vars) out[v] = "";
     return out;
   });
 
-  // Alpha sliders
   const alphaEnabled = useMemo<Set<VarKey>>(
-    () =>
-      new Set<VarKey>([
-        "--card-border",
-        "--sidebar-bg",
-        "--sidebar-border",
-        "--nav-item-bg",
-        "--nav-item-hover",
-      ]),
+    () => new Set<VarKey>(["--card-border", "--sidebar-bg", "--sidebar-border", "--nav-item-bg", "--nav-item-hover"]),
     []
   );
 
   const [draftAlpha, setDraftAlpha] = useState<Record<VarKey, number>>(() => {
     const out = {} as Record<VarKey, number>;
-    for (const v of [
-      "--card-border",
-      "--sidebar-bg",
-      "--sidebar-border",
-      "--nav-item-bg",
-      "--nav-item-hover",
-    ] as VarKey[]) {
+    for (const v of ["--card-border", "--sidebar-bg", "--sidebar-border", "--nav-item-bg", "--nav-item-hover"] as VarKey[]) {
       out[v] = 100;
     }
     return out;
@@ -357,15 +316,10 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     });
   };
 
-  const syncDraftsFromValues = (
-    values: ThemeOverrides,
-    cssFallback?: Record<VarKey, string> | null
-  ) => {
+  const syncDraftsFromValues = (values: ThemeOverrides, cssFallback?: Record<VarKey, string> | null) => {
     setDraftHex((prev) => {
       const next = { ...prev };
-      for (const v of vars) {
-        next[v] = values[v] ?? cssFallback?.[v] ?? next[v] ?? "";
-      }
+      for (const v of vars) next[v] = values[v] ?? cssFallback?.[v] ?? next[v] ?? "";
       return next;
     });
 
@@ -395,12 +349,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       // ignore
     }
 
-    // ✅ limpiar en backend: DELETE /auth/ui-theme (tu router lo tiene)
     if (token) {
       try {
-        // evitamos que el useEffect de overrides vuelva a intentar guardar "vacío" inmediatamente
         skipNextBackendSaveRef.current = true;
-
         await fetch(`${API_BASE_URL}/auth/ui-theme`, {
           method: "DELETE",
           headers: getAuthHeaders(token),
@@ -543,9 +494,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   };
 
   const importPresets = () => {
-    const raw = window.prompt(
-      'Pega el JSON de presets (formato: { "Nombre": {"--var": "..."} })'
-    );
+    const raw = window.prompt('Pega el JSON de presets (formato: { "Nombre": {"--var": "..."} })');
     if (!raw) return;
 
     try {
@@ -559,8 +508,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       for (const [name, presetObj] of Object.entries(parsed as Record<string, unknown>)) {
         const clean = sanitizePresetObject(presetObj, vars);
         if (!clean) continue;
-        if (!name || typeof name !== "string") continue;
-        const key = name.trim();
+        const key = (name || "").trim();
         if (!key) continue;
         incoming[key] = clean;
       }
@@ -573,14 +521,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     }
   };
 
-  // Montaje: leer defaults, cargar overrides, aplicar + inicializar drafts + presets.
   useEffect(() => {
     setMounted(true);
 
     const d = readDefaultsFromCss(vars);
     setDefaults(d);
 
-    // presets
     try {
       const rawPresets = window.localStorage.getItem(PRESETS_KEY);
       if (rawPresets) {
@@ -601,7 +547,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       // ignore
     }
 
-    // active preset
     try {
       const ap = window.localStorage.getItem(ACTIVE_PRESET_KEY);
       if (ap && ap.trim()) setActivePresetId(ap.trim());
@@ -609,7 +554,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       // ignore
     }
 
-    // overrides actuales (localStorage)
     let loaded: ThemeOverrides = {};
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -640,7 +584,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       return next;
     });
 
-    // Reset global desde page.tsx
+    // Reset global desde page.tsx (NO hay botón aquí)
     const onReset = () => {
       setActivePresetId(DEFAULT_PRESET_ID);
       try {
@@ -659,7 +603,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persistir overrides (localStorage) + backend (debounced)
   useEffect(() => {
     if (!mounted) return;
 
@@ -673,10 +616,8 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overrides, mounted]);
 
-  // Helpers de UI: actualiza draft + aplica si válido
   const onHexChange = (key: VarKey, value: string) => {
     setDraftHex((prev) => ({ ...prev, [key]: value }));
-
     const norm = normalizeAnyColor(value);
     if (norm) setVar(key, norm);
   };
@@ -688,7 +629,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       setVar(key, norm);
       return;
     }
-
     const fallback = currentValue(key);
     setDraftHex((prev) => ({ ...prev, [key]: fallback }));
   };
@@ -722,7 +662,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
 
     const a = clamped / 100;
     const rgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.round(a * 1000) / 1000})`;
-
     setDraftHex((prev) => ({ ...prev, [key]: rgba }));
     setVar(key, rgba);
   };
@@ -784,25 +723,87 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     </div>
   );
 
-  const presetOptions = useMemo(() => {
-    const names = Object.keys(presets).sort((a, b) => a.localeCompare(b));
-    return names;
-  }, [presets]);
+  const presetOptions = useMemo(() => Object.keys(presets).sort((a, b) => a.localeCompare(b)), [presets]);
+
+  // -----------------------------
+  // Mini-accordion interno (cerrado por defecto)
+  // -----------------------------
+  const MiniAccordion = ({
+    title,
+    subtitle,
+    open,
+    setOpen,
+    children,
+  }: {
+    title: string;
+    subtitle?: string;
+    open: boolean;
+    setOpen: (v: boolean) => void;
+    children: React.ReactNode;
+  }) => (
+    <div className="rounded-xl border bg-black/20" style={{ borderColor: "var(--card-border)" }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+      >
+        <div className="min-w-0">
+          <div className="text-xs font-semibold" style={{ color: "var(--text)" }}>
+            {title}
+          </div>
+          {subtitle ? (
+            <div className="mt-0.5 text-[10px]" style={{ color: "var(--text-muted)" }}>
+              {subtitle}
+            </div>
+          ) : null}
+        </div>
+
+        <span className="text-[11px] ui-muted">{open ? "Ocultar ▲" : "Mostrar ▼"}</span>
+      </button>
+
+      {open && (
+        <div className="border-t px-4 py-3" style={{ borderColor: "var(--card-border)" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+
+  const [openPresets, setOpenPresets] = useState(false);
+  const [openFondo, setOpenFondo] = useState(false);
+  const [openTarjetas, setOpenTarjetas] = useState(false);
+  const [openTexto, setOpenTexto] = useState(false);
+  const [openBotones, setOpenBotones] = useState(false);
+  const [openSidebar, setOpenSidebar] = useState(false);
+  const [openNav, setOpenNav] = useState(false);
 
   return (
-    <section className="ui-card ui-card--border text-sm">
-      <header className="mb-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <AccordionCard
+      title="Configuración · Apariencia"
+      subtitle="Preferencias y ajustes del panel."
+      defaultOpen={false} // ✅ cerrado por defecto, como pediste
+    >
+      <div className="ui-panel space-y-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <h3 className="text-base font-semibold">Ajustes · Aspecto</h3>
             <p className="mt-1 text-xs ui-muted">
-              Personaliza colores del panel (se guarda en este navegador). Usa “Reset” para volver a
-              los valores por defecto.
+              Personaliza colores del panel. Se aplica al momento y se guarda (local y, si hay token, también en BD).
             </p>
           </div>
 
-          {/* Presets (local) */}
-          <div className="flex flex-col gap-2 md:items-end">
+          <div className="text-[10px] ui-muted">
+            {token ? "✅ Guardando también en BD (admin/owner)." : "ℹ️ Guardado solo local."}
+          </div>
+        </div>
+
+        <MiniAccordion
+          title="Presets"
+          subtitle="Guarda combinaciones de colores y cámbialas rápido."
+          open={openPresets}
+          setOpen={setOpenPresets}
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-[10px] ui-muted">Preset</label>
               <select
@@ -822,11 +823,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             </div>
 
             <div className="flex flex-wrap gap-2 md:justify-end">
-              <button
-                type="button"
-                className="ui-btn ui-btn-outline ui-btn-xs"
-                onClick={savePresetAs}
-              >
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={savePresetAs}>
                 Guardar como…
               </button>
 
@@ -835,11 +832,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                 className="ui-btn ui-btn-outline ui-btn-xs"
                 onClick={overwritePreset}
                 disabled={activePresetId === DEFAULT_PRESET_ID || !presets[activePresetId]}
-                title={
-                  activePresetId === DEFAULT_PRESET_ID
-                    ? "Selecciona un preset guardado para sobrescribir"
-                    : "Sobrescribe el preset actual"
-                }
               >
                 Sobrescribir
               </button>
@@ -849,305 +841,201 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                 className="ui-btn ui-btn-outline ui-btn-xs"
                 onClick={deletePreset}
                 disabled={activePresetId === DEFAULT_PRESET_ID || !presets[activePresetId]}
-                title="Borra el preset seleccionado"
               >
                 Borrar
               </button>
 
-              <button
-                type="button"
-                className="ui-btn ui-btn-outline ui-btn-xs"
-                onClick={exportPresets}
-              >
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={exportPresets}>
                 Exportar
               </button>
 
-              <button
-                type="button"
-                className="ui-btn ui-btn-outline ui-btn-xs"
-                onClick={importPresets}
-              >
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={importPresets}>
                 Importar
               </button>
             </div>
-
-            {token ? (
-              <div className="text-[10px] ui-muted">✅ Guardando también en BD (admin/owner).</div>
-            ) : (
-              <div className="text-[10px] ui-muted">ℹ️ Solo local (no hay token en el componente).</div>
-            )}
           </div>
-        </div>
-      </header>
+        </MiniAccordion>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Fondo */}
-        <div className="ui-panel">
-          <div className="mb-2 text-xs font-semibold">Fondo</div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <MiniAccordion
+            title="Fondo"
+            subtitle='Tip: “app” es el fondo global; “main” es el fondo del área central.'
+            open={openFondo}
+            setOpen={setOpenFondo}
+          >
+            <ColorRow varKey="--app-bg" label="fondo general (app)" placeholder="#020617" aria="Color fondo general" />
+            <div className="mt-3">
+              <ColorRow
+                varKey="--main-bg"
+                label="fondo del contenido (main)"
+                placeholder="rgba(...) o #rrggbbaa"
+                aria="Color fondo main"
+              />
+            </div>
+          </MiniAccordion>
 
-          <ColorRow
-            varKey="--app-bg"
-            label="fondo general (app)"
-            placeholder="#020617"
-            aria="Color fondo general"
-          />
+          <MiniAccordion title="Tarjetas" subtitle="Fondo y borde de tarjetas." open={openTarjetas} setOpen={setOpenTarjetas}>
+            <ColorRow varKey="--card-bg" label="fondo de tarjetas" placeholder="#111827" aria="Color fondo tarjetas" />
+            <div className="mt-3">
+              <ColorRow
+                varKey="--card-border"
+                label="borde de tarjetas"
+                placeholder="rgba(...) o #rrggbbaa"
+                aria="Color borde tarjetas"
+                showAlpha
+              />
+            </div>
+          </MiniAccordion>
 
-          <div className="mt-3">
+          <MiniAccordion title="Texto" subtitle="Texto principal y secundario." open={openTexto} setOpen={setOpenTexto}>
+            <ColorRow varKey="--text" label="texto principal" placeholder="#e5e7eb" aria="Color texto principal" />
+            <div className="mt-3">
+              <ColorRow
+                varKey="--text-muted"
+                label="texto secundario"
+                placeholder="rgba(...) o #rrggbbaa"
+                aria="Color texto secundario"
+              />
+            </div>
+          </MiniAccordion>
+
+          <MiniAccordion title="Botones" subtitle="Primario y secundario." open={openBotones} setOpen={setOpenBotones}>
             <ColorRow
-              varKey="--main-bg"
-              label="fondo del contenido (main)"
-              placeholder="rgba(...) o #rrggbbaa"
-              aria="Color fondo main"
+              varKey="--btn-primary-bg"
+              label="botón primario"
+              placeholder="#059669"
+              aria="Color botón primario"
             />
-          </div>
+            <div className="mt-3">
+              <ColorRow
+                varKey="--btn-secondary-bg"
+                label="botón secundario"
+                placeholder="#4f46e5"
+                aria="Color botón secundario"
+              />
+            </div>
 
-          <p className="mt-3 text-[10px] ui-muted">
-            Tip: “app” es el fondo global; “main” es el fondo del área central.
-          </p>
-        </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" className="ui-btn ui-btn-primary" disabled>
+                Primario
+              </button>
+              <button type="button" className="ui-btn ui-btn-secondary" disabled>
+                Secundario
+              </button>
+              <button type="button" className="ui-btn ui-btn-outline" disabled>
+                Outline
+              </button>
+            </div>
+          </MiniAccordion>
 
-        {/* Tarjetas */}
-        <div className="ui-panel">
-          <div className="mb-2 text-xs font-semibold">Tarjetas</div>
-
-          <ColorRow
-            varKey="--card-bg"
-            label="fondo de tarjetas"
-            placeholder="#111827"
-            aria="Color fondo tarjetas"
-          />
-
-          <div className="mt-3">
+          <MiniAccordion title="Sidebar" subtitle="Fondo y borde de la barra lateral." open={openSidebar} setOpen={setOpenSidebar}>
             <ColorRow
-              varKey="--card-border"
-              label="borde de tarjetas"
+              varKey="--sidebar-bg"
+              label="fondo sidebar"
               placeholder="rgba(...) o #rrggbbaa"
-              aria="Color borde tarjetas"
+              aria="Color fondo sidebar"
               showAlpha
             />
-          </div>
-        </div>
+            <div className="mt-3">
+              <ColorRow
+                varKey="--sidebar-border"
+                label="borde sidebar"
+                placeholder="rgba(...) o #rrggbbaa"
+                aria="Color borde sidebar"
+                showAlpha
+              />
+            </div>
+          </MiniAccordion>
 
-        {/* Texto */}
-        <div className="ui-panel">
-          <div className="mb-2 text-xs font-semibold">Texto</div>
-
-          <ColorRow
-            varKey="--text"
-            label="texto principal"
-            placeholder="#e5e7eb"
-            aria="Color texto principal"
-          />
-
-          <div className="mt-3">
+          <MiniAccordion title="Navegación" subtitle="Items, hover, activo y preview." open={openNav} setOpen={setOpenNav}>
             <ColorRow
-              varKey="--text-muted"
-              label="texto secundario"
+              varKey="--nav-item-bg"
+              label="fondo item (normal)"
               placeholder="rgba(...) o #rrggbbaa"
-              aria="Color texto secundario"
-            />
-          </div>
-        </div>
-
-        {/* Botones */}
-        <div className="ui-panel">
-          <div className="mb-2 text-xs font-semibold">Botones</div>
-
-          <ColorRow
-            varKey="--btn-primary-bg"
-            label="botón primario"
-            placeholder="#059669"
-            aria="Color botón primario"
-          />
-
-          <div className="mt-3">
-            <ColorRow
-              varKey="--btn-secondary-bg"
-              label="botón secundario"
-              placeholder="#4f46e5"
-              aria="Color botón secundario"
-            />
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className="ui-btn ui-btn-primary" disabled>
-              Primario
-            </button>
-            <button type="button" className="ui-btn ui-btn-secondary" disabled>
-              Secundario
-            </button>
-            <button type="button" className="ui-btn ui-btn-outline" disabled>
-              Outline
-            </button>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="ui-panel">
-          <div className="mb-2 text-xs font-semibold">Sidebar</div>
-
-          <ColorRow
-            varKey="--sidebar-bg"
-            label="fondo sidebar"
-            placeholder="rgba(...) o #rrggbbaa"
-            aria="Color fondo sidebar"
-            showAlpha
-          />
-
-          <div className="mt-3">
-            <ColorRow
-              varKey="--sidebar-border"
-              label="borde sidebar"
-              placeholder="rgba(...) o #rrggbbaa"
-              aria="Color borde sidebar"
+              aria="Color item normal"
               showAlpha
             />
-          </div>
-        </div>
+            <div className="mt-3">
+              <ColorRow
+                varKey="--nav-item-hover"
+                label="fondo item (hover)"
+                placeholder="rgba(...) o #rrggbbaa"
+                aria="Color item hover"
+                showAlpha
+              />
+            </div>
+            <div className="mt-3">
+              <ColorRow varKey="--nav-item-text" label="texto item" placeholder="rgba(...) o #rrggbbaa" aria="Color texto item" />
+            </div>
+            <div className="mt-3">
+              <ColorRow varKey="--nav-active-bg" label="fondo item activo" placeholder="#4f46e5" aria="Color fondo activo" />
+            </div>
+            <div className="mt-3">
+              <ColorRow varKey="--nav-active-text" label="texto activo" placeholder="#ffffff" aria="Color texto activo" />
+            </div>
+            <div className="mt-3">
+              <ColorRow
+                varKey="--nav-sub-active-bg"
+                label="fondo sub-item activo"
+                placeholder="#6366f1"
+                aria="Color fondo sub activo"
+              />
+            </div>
 
-        {/* Navegación + Preview */}
-        <div className="ui-panel">
-          <div className="mb-2 text-xs font-semibold">Navegación</div>
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="mb-2 text-[11px] ui-muted">Preview sidebar</div>
 
-          <ColorRow
-            varKey="--nav-item-bg"
-            label="fondo item (normal)"
-            placeholder="rgba(...) o #rrggbbaa"
-            aria="Color item normal"
-            showAlpha
-          />
-
-          <div className="mt-3">
-            <ColorRow
-              varKey="--nav-item-hover"
-              label="fondo item (hover)"
-              placeholder="rgba(...) o #rrggbbaa"
-              aria="Color item hover"
-              showAlpha
-            />
-          </div>
-
-          <div className="mt-3">
-            <ColorRow
-              varKey="--nav-item-text"
-              label="texto item"
-              placeholder="rgba(...) o #rrggbbaa"
-              aria="Color texto item"
-            />
-          </div>
-
-          <div className="mt-3">
-            <ColorRow
-              varKey="--nav-active-bg"
-              label="fondo item activo"
-              placeholder="#4f46e5"
-              aria="Color fondo activo"
-            />
-          </div>
-
-          <div className="mt-3">
-            <ColorRow
-              varKey="--nav-active-text"
-              label="texto activo"
-              placeholder="#ffffff"
-              aria="Color texto activo"
-            />
-          </div>
-
-          <div className="mt-3">
-            <ColorRow
-              varKey="--nav-sub-active-bg"
-              label="fondo sub-item activo"
-              placeholder="#6366f1"
-              aria="Color fondo sub activo"
-            />
-          </div>
-
-          {/* Preview Sidebar */}
-          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
-            <div className="mb-2 text-[11px] ui-muted">Preview sidebar</div>
-
-            <div
-              className="rounded-xl border"
-              style={{
-                borderColor: "var(--sidebar-border)",
-                background: "var(--sidebar-bg)",
-              }}
-            >
-              <div className="p-3">
-                <div className="text-[11px] font-semibold" style={{ color: "var(--nav-item-text)" }}>
-                  APP Medidas
-                </div>
-                <div className="mt-2 space-y-2">
-                  <div
-                    className="rounded-full px-3 py-2 text-[11px]"
-                    style={{
-                      background: "var(--nav-item-bg)",
-                      color: "var(--nav-item-text)",
-                    }}
-                  >
-                    Item normal
+              <div
+                className="rounded-xl border"
+                style={{
+                  borderColor: "var(--sidebar-border)",
+                  background: "var(--sidebar-bg)",
+                }}
+              >
+                <div className="p-3">
+                  <div className="text-[11px] font-semibold" style={{ color: "var(--nav-item-text)" }}>
+                    APP Medidas
                   </div>
-                  <div
-                    className="rounded-full px-3 py-2 text-[11px]"
-                    style={{
-                      background: "var(--nav-item-hover)",
-                      color: "var(--nav-item-text)",
-                    }}
-                  >
-                    Item hover (simulado)
-                  </div>
-                  <div
-                    className="rounded-full px-3 py-2 text-[11px]"
-                    style={{
-                      background: "var(--nav-active-bg)",
-                      color: "var(--nav-active-text)",
-                    }}
-                  >
-                    Item activo
-                  </div>
-                  <div className="pl-4">
+                  <div className="mt-2 space-y-2">
                     <div
                       className="rounded-full px-3 py-2 text-[11px]"
-                      style={{
-                        background: "var(--nav-sub-active-bg)",
-                        color: "var(--nav-active-text)",
-                      }}
+                      style={{ background: "var(--nav-item-bg)", color: "var(--nav-item-text)" }}
                     >
-                      Sub-item activo
+                      Item normal
+                    </div>
+                    <div
+                      className="rounded-full px-3 py-2 text-[11px]"
+                      style={{ background: "var(--nav-item-hover)", color: "var(--nav-item-text)" }}
+                    >
+                      Item hover (simulado)
+                    </div>
+                    <div
+                      className="rounded-full px-3 py-2 text-[11px]"
+                      style={{ background: "var(--nav-active-bg)", color: "var(--nav-active-text)" }}
+                    >
+                      Item activo
+                    </div>
+                    <div className="pl-4">
+                      <div
+                        className="rounded-full px-3 py-2 text-[11px]"
+                        style={{ background: "var(--nav-sub-active-bg)", color: "var(--nav-active-text)" }}
+                      >
+                        Sub-item activo
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-2 text-[10px] ui-muted">
-              Esto no cambia nada: solo sirve para ver cómo quedan tus colores.
+              <div className="mt-2 text-[10px] ui-muted">
+                Esto no cambia nada: solo sirve para ver cómo quedan tus colores.
+              </div>
             </div>
-          </div>
+          </MiniAccordion>
         </div>
-      </div>
 
-      <div className="mt-5 flex items-center justify-between">
         <div className="text-[10px] ui-muted">Se aplica al momento (variables CSS en :root).</div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActivePresetId(DEFAULT_PRESET_ID);
-            try {
-              window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
-            } catch {
-              // ignore
-            }
-            void resetAll();
-          }}
-          className="ui-btn ui-btn-outline ui-btn-xs"
-          title="Volver a los colores por defecto"
-        >
-          Reset
-        </button>
       </div>
-    </section>
+    </AccordionCard>
   );
 }

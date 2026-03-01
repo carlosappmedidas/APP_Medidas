@@ -12,19 +12,27 @@ type LoginProps = {
   currentUser: User | null;
 };
 
-export default function LoginSection({
-  token,
-  setToken,
-  currentUser,
-}: LoginProps) {
-  const [email, setEmail] = useState("carlos@example.com");
-  const [password, setPassword] = useState("changeme123");
+function friendlyLoginError(status?: number) {
+  if (!status) return "No se pudo conectar con la API. Revisa red/URL.";
+  if (status === 401) return "Credenciales incorrectas (usuario o contraseña).";
+  if (status === 403) return "Acceso denegado.";
+  if (status >= 500) return "Error del servidor. Inténtalo de nuevo en unos segundos.";
+  return `Acceso fallido (HTTP ${status}).`;
+}
+
+export default function LoginSection({ token, setToken, currentUser }: LoginProps) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isLogged = !!token;
 
   const handleLogin = async () => {
     setLoading(true);
     setError(null);
+
     try {
       const body = new URLSearchParams();
       body.append("username", email);
@@ -32,24 +40,37 @@ export default function LoginSection({
 
       const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
       });
 
       if (!res.ok) {
-        throw new Error(`Login failed: ${res.status}`);
+        let detail: string | null = null;
+        try {
+          const maybeJson = await res.json();
+          if (maybeJson && typeof maybeJson === "object") {
+            const d = (maybeJson as any).detail;
+            if (typeof d === "string") detail = d;
+          }
+        } catch {}
+
+        setError(
+          detail
+            ? `${friendlyLoginError(res.status)} (${detail})`
+            : friendlyLoginError(res.status)
+        );
+        setToken(null);
+        return;
       }
 
       const json = await res.json();
       const accessToken = json.access_token as string;
 
-      // Guardamos el token arriba (page.tsx se encargará de llamar a /auth/me)
       setToken(accessToken);
+      setError(null);
     } catch (err: any) {
       console.error("Error login:", err);
-      setError("Login fallido. Revisa el usuario/contraseña o la API.");
+      setError("No se pudo conectar con la API. Revisa la URL o que el backend esté levantado.");
       setToken(null);
     } finally {
       setLoading(false);
@@ -57,142 +78,134 @@ export default function LoginSection({
   };
 
   const handleLogout = () => {
-    // Logout local (tu backend es stateless con JWT; no hay sesión que “cerrar”)
     setError(null);
     setToken(null);
+    // opcional: limpiar campos
+    setPassword("");
   };
 
   return (
     <section className="ui-card text-sm">
-      {/* Header: título + desplegable arriba derecha */}
-      <div className="mb-4 flex items-start justify-between gap-3">
+      {/* HEADER (NO desplegable) */}
+      <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="ui-card-title">Login</h3>
+          <h3 className="ui-card-title">Acceso</h3>
           <p className="ui-card-subtitle">
-            Inicia sesión para acceder a las secciones y gestionar datos.
+            Inicia sesión para acceder al panel y gestionar la información.
           </p>
         </div>
 
-        {/* Desplegable (sin librerías, robusto y simple) */}
-        <details className="relative">
-          <summary className="ui-btn ui-btn-outline cursor-pointer list-none select-none">
-            Acciones <span className="ml-1 opacity-70">▾</span>
-          </summary>
+        <div className="flex items-center gap-2">
+          <span className={["ui-btn ui-btn-xs", isLogged ? "ui-btn-outline" : "ui-btn-danger"].join(" ")}>
+            {isLogged ? "Con sesión" : "Sin sesión"}
+          </span>
 
-          <div className="ui-popover">
-            <button
-              type="button"
-              onClick={handleLogin}
-              disabled={loading}
-              className="ui-btn ui-btn-secondary w-full justify-start rounded-lg"
-            >
-              {loading ? "Entrando..." : "Entrar"}
-            </button>
-
+          {isLogged ? (
             <button
               type="button"
               onClick={handleLogout}
-              disabled={!token}
-              className="ui-btn ui-btn-outline mt-2 w-full justify-start rounded-lg"
-              title={!token ? "No hay sesión activa" : "Cerrar sesión"}
+              className="ui-btn ui-btn-outline rounded-lg"
+              title="Cerrar sesión"
             >
               Cerrar sesión
             </button>
+          ) : null}
+        </div>
+      </header>
 
-            <div className="mt-2 ui-divider pt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
-              {token ? "Sesión activa" : "Sin sesión"}
-            </div>
-          </div>
-        </details>
-      </div>
+      {/* Error */}
+      {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
 
-      {/* Inputs (ya sin el botón Entrar aquí) */}
+      {/* Form */}
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="ui-label">Email / usuario</label>
+          <label className="ui-label">Usuario (email)</label>
           <input
             className="ui-input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="test@example.com"
+            placeholder="usuario@empresa.com"
+            autoComplete="username"
+            disabled={isLogged}
           />
+          {isLogged && <p className="ui-help">Ya hay una sesión activa.</p>}
         </div>
 
         <div>
-          <label className="ui-label">Password</label>
+          <label className="ui-label">Contraseña</label>
           <input
             type="password"
             className="ui-input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            placeholder="Introduce tu contraseña"
+            autoComplete="current-password"
+            disabled={isLogged}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !isLogged && !loading) {
+                e.preventDefault();
+                handleLogin();
+              }
+            }}
           />
         </div>
       </div>
 
-      {error && (
-        <p className="mt-3 text-xs" style={{ color: "var(--danger-text)" }}>
-          {error}
-        </p>
+      {!isLogged && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={handleLogin}
+            disabled={loading}
+            className="ui-btn ui-btn-secondary w-full justify-center rounded-lg"
+          >
+            {loading ? "Accediendo..." : "Entrar"}
+          </button>
+        </div>
       )}
 
-      <div className="mt-4 space-y-1 text-xs" style={{ color: "var(--text-muted)" }}>
+      {/* Info técnica + perfil */}
+      <div className="mt-4 space-y-1 text-xs ui-muted">
         <div>
-          API:{" "}
-          <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
-            {API_BASE_URL}
-          </span>
+          Servidor API:{" "}
+          <span className="font-mono text-[11px] ui-muted">{API_BASE_URL}</span>
         </div>
 
-        {/* Token oculto */}
         <div>
-          Token:{" "}
-          {token ? (
-            <span
-              className="font-mono text-[11px]"
-              style={{ color: "var(--field-border-focus)" }}
-            >
+          Estado de sesión:{" "}
+          {isLogged ? (
+            <span className="font-mono text-[11px]" style={{ color: "var(--field-border-focus)" }}>
               OK
             </span>
           ) : (
-            <span style={{ color: "var(--danger-text)" }}>no hay token</span>
+            <span style={{ color: "var(--danger-text)" }}>no iniciada</span>
           )}
         </div>
 
-        {/* Info del usuario actual (viene de props) */}
         <div className="mt-2 ui-divider pt-2">
-          <div className="mb-1 text-[11px] font-semibold" style={{ color: "var(--text-muted)" }}>
-            Usuario actual
-          </div>
+          <div className="mb-1 text-[11px] font-semibold ui-muted">Perfil actual</div>
 
           {currentUser ? (
             <div className="space-y-0.5 text-[11px]" style={{ color: "var(--text)" }}>
               <div>
-                Email:{" "}
-                <span className="font-mono text-[11px]">{currentUser.email}</span>
+                Email: <span className="font-mono text-[11px]">{currentUser.email}</span>
               </div>
               <div>
-                Tenant ID:{" "}
-                <span className="font-mono text-[11px]">{currentUser.tenant_id}</span>
+                Tenant ID: <span className="font-mono text-[11px]">{currentUser.tenant_id}</span>
               </div>
               <div>
-                Rol:{" "}
-                <span className="font-mono text-[11px]">{currentUser.rol}</span>
+                Rol: <span className="font-mono text-[11px]">{currentUser.rol}</span>
               </div>
               <div>
                 Activo:{" "}
-                <span className="font-mono text-[11px]">
-                  {currentUser.is_active ? "Sí" : "No"}
-                </span>
+                <span className="font-mono text-[11px]">{currentUser.is_active ? "Sí" : "No"}</span>
               </div>
               <div>
                 Superusuario:{" "}
                 <span
                   className="font-mono text-[11px]"
                   style={{
-                    color: currentUser.is_superuser
-                      ? "var(--field-border-focus)"
-                      : "var(--text-muted)",
+                    color: currentUser.is_superuser ? "var(--field-border-focus)" : "var(--text-muted)",
                   }}
                 >
                   {currentUser.is_superuser ? "Sí ✅" : "No"}
@@ -200,9 +213,7 @@ export default function LoginSection({
               </div>
             </div>
           ) : (
-            <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              Aún no se han cargado los datos de usuario.
-            </div>
+            <div className="text-[11px] ui-muted">Aún no se han cargado los datos del usuario.</div>
           )}
         </div>
       </div>

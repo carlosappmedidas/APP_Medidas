@@ -1,7 +1,7 @@
 // app/components/MedidasPsSection.tsx
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
 import type { MedidaPS } from "../types";
 
@@ -381,6 +381,9 @@ export default function MedidasPsSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ “ya intenté cargar al menos una vez”
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
   // Filtros
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
   const [filtroAnio, setFiltroAnio] = useState<string>("");
@@ -417,10 +420,11 @@ export default function MedidasPsSection({
   }, [safeColumnOrder, defaultOrder]);
 
   const handleLoadMedidas = async () => {
-    if (!token) return; // ✅ NO cargar sin token
+    if (!token) return;
 
     setLoading(true);
     setError(null);
+
     try {
       const endpoint = scope === "all" ? "/medidas/ps/all" : "/medidas/ps/";
 
@@ -428,26 +432,60 @@ export default function MedidasPsSection({
         headers: getAuthHeaders(token),
       });
 
-      if (!res.ok) {
-        throw new Error(`Error ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Error ${res.status}`);
 
       const json = await res.json();
       setData(Array.isArray(json) ? json : []);
       setPage(0);
-    } catch (err: any) {
+      setHasLoadedOnce(true);
+    } catch (err) {
       console.error("Error cargando medidas_ps:", err);
       setError("Error cargando medidas PS. Revisa la API y el token.");
       setData([]);
+      setHasLoadedOnce(true);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ AUTO-CARGA SIEMPRE al tener token (y cuando cambie scope)
+  // - Evita doble llamada en StrictMode con un guard por clave (token+scope)
+  const lastAutoKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (!token) {
+      lastAutoKeyRef.current = "";
+      setHasLoadedOnce(false);
+      setData([]);
+      setError(null);
+      return;
+    }
+
+    const key = `${token}::${scope}`;
+    if (lastAutoKeyRef.current === key) return;
+
+    lastAutoKeyRef.current = key;
+    void handleLoadMedidas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, scope]);
+
   // reset página cuando cambian filtros/pageSize
   useEffect(() => {
     setPage(0);
   }, [filtroEmpresa, filtroAnio, filtroMes, filtroTarifa, pageSize]);
+
+  const filtrosActivosCount =
+    (filtroEmpresa ? 1 : 0) +
+    (filtroAnio ? 1 : 0) +
+    (filtroMes ? 1 : 0) +
+    (filtroTarifa ? 1 : 0);
+
+  const clearFilters = () => {
+    setFiltroEmpresa("");
+    setFiltroAnio("");
+    setFiltroMes("");
+    setFiltroTarifa("");
+    setPage(0);
+  };
 
   // mapa id -> columna
   const columnasPorId = useMemo(() => {
@@ -725,23 +763,57 @@ export default function MedidasPsSection({
       <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h4 className="ui-card-title">
-            Medidas PS{scope === "all" ? " (Sistema)" : ""}
+            Medidas (PS){scope === "all" ? " · Sistema" : ""}
           </h4>
           <p className="ui-card-subtitle">
-            Medidas agregadas por empresa y mes de los ficheros PS_*.
+            Resumen mensual de PS por empresa, tarifa y tipo.
           </p>
         </div>
 
-        <button
-          onClick={handleLoadMedidas}
-          disabled={loading || !token} // ✅ NO cargar sin token
-          className="ui-btn ui-btn-primary"
-        >
-          {loading ? "Cargando..." : "Cargar medidas PS"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleLoadMedidas}
+            disabled={loading || !token}
+            className="ui-btn ui-btn-primary"
+            type="button"
+          >
+            {loading ? "Actualizando..." : "Actualizar"}
+          </button>
+
+          {filtrosActivosCount > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={loading}
+              className="ui-btn ui-btn-outline"
+              title="Limpiar filtros"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
       </header>
 
-      {error && <p className="mb-4 text-[11px] text-red-400">{error}</p>}
+      {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
+
+      {/* META FILTROS */}
+      <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
+        <div className="ui-muted">
+          Filtros activos:{" "}
+          <span className="font-medium" style={{ color: "var(--text)" }}>
+            {filtrosActivosCount}
+          </span>
+        </div>
+
+        {hasLoadedOnce && (
+          <div className="ui-muted">
+            Filas cargadas:{" "}
+            <span className="font-medium" style={{ color: "var(--text)" }}>
+              {data.length}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* FILTROS */}
       <div className="mb-4 grid gap-3 md:grid-cols-4">
@@ -751,6 +823,7 @@ export default function MedidasPsSection({
             className="ui-select"
             value={filtroEmpresa}
             onChange={(e) => setFiltroEmpresa(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todas</option>
             {opcionesEmpresa.map((cod) => (
@@ -767,6 +840,7 @@ export default function MedidasPsSection({
             className="ui-select"
             value={filtroAnio}
             onChange={(e) => setFiltroAnio(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todos</option>
             {opcionesAnio.map((anio) => (
@@ -783,6 +857,7 @@ export default function MedidasPsSection({
             className="ui-select"
             value={filtroMes}
             onChange={(e) => setFiltroMes(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todos</option>
             {opcionesMes.map((mes) => (
@@ -799,6 +874,7 @@ export default function MedidasPsSection({
             className="ui-select"
             value={filtroTarifa}
             onChange={(e) => setFiltroTarifa(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todas</option>
             {opcionesTarifa.map((t) => (
@@ -896,7 +972,26 @@ export default function MedidasPsSection({
           </thead>
 
           <tbody>
-            {totalFilas === 0 ? (
+            {/* Skeleton loading (sin salto visual) */}
+            {loading &&
+              Array.from({ length: 8 }).map((_, i) => (
+                <tr key={`sk-${i}`} className="ui-tr">
+                  {Array.from({ length: totalColumnas }).map((__, j) => (
+                    <td key={`sk-${i}-${j}`} className="ui-td">
+                      <span
+                        className="inline-block h-3 w-full rounded-md"
+                        style={{
+                          background: "var(--field-bg-soft)",
+                          border: "1px solid var(--field-border)",
+                          opacity: 0.6,
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+
+            {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
                 <td
                   colSpan={totalColumnas}
@@ -905,12 +1000,11 @@ export default function MedidasPsSection({
                   No hay medidas PS que cumplan los filtros.
                 </td>
               </tr>
-            ) : (
+            )}
+
+            {!loading &&
               filasPaginadas.map((m) => (
-                <tr
-                  key={`${m.empresa_id}-${m.anio}-${m.mes}`}
-                  className="ui-tr"
-                >
+                <tr key={`${m.empresa_id}-${m.anio}-${m.mes}`} className="ui-tr">
                   {columnasOrdenadas.map((col) => (
                     <td
                       key={col.id}
@@ -923,13 +1017,12 @@ export default function MedidasPsSection({
                     </td>
                   ))}
                 </tr>
-              ))
-            )}
+              ))}
           </tbody>
         </table>
 
         {/* FOOTER PAGINACIÓN */}
-        {totalFilas > 0 && (
+        {!loading && hasLoadedOnce && totalFilas > 0 && (
           <div className="flex flex-col gap-2 border-t border-[var(--card-border)] px-4 py-3 text-[11px] ui-muted md:flex-row md:items-center md:justify-between">
             <div>
               Mostrando{" "}

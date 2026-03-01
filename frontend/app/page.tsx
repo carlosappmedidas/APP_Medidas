@@ -121,15 +121,62 @@ function applyUiThemeOverrides(overrides: Record<string, unknown>) {
 
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<MainTab>("login");
-  const [tablasOpen, setTablasOpen] = useState<boolean>(false);
+
+  // ✅ (opcional) restaurar pestaña en client para suavizar UX
+  const [activeTab, setActiveTab] = useState<MainTab>(() => {
+    if (typeof window === "undefined") return "login";
+    try {
+      const raw = window.localStorage.getItem("ui_active_tab");
+      const v = raw as MainTab | null;
+      if (!v) return "login";
+      return v;
+    } catch {
+      return "login";
+    }
+  });
+
+  const [tablasOpen, setTablasOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = window.localStorage.getItem("ui_tablas_open");
+      return raw === "1";
+    } catch {
+      return false;
+    }
+  });
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Submenú interno de “Ajustes”
   const [ajustesSubTab, setAjustesSubTab] = useState<AjustesSubTab>("aspecto");
 
-  // ✅ Desplegable de la tarjeta Ajustes (solo UI)
-  const [ajustesOpen, setAjustesOpen] = useState<boolean>(true);
+  // ✅ Desplegable de la tarjeta Ajustes (solo UI) — CERRADO POR DEFECTO
+  const [ajustesOpen, setAjustesOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = window.localStorage.getItem("ui_ajustes_open");
+      return raw === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  /* =========================================================
+     ✅ Aplicar overrides guardados ANTES (reduce “flash/transición”)
+     ========================================================= */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(UI_THEME_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        applyUiThemeOverrides(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   /* =========================================================
      Column persistence (localStorage)
@@ -222,6 +269,24 @@ export default function HomePage() {
   }, [psHiddenColumns]);
 
   /* =========================================================
+     ✅ Persistencia UI: activeTab / tablasOpen / ajustesOpen
+     ========================================================= */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("ui_active_tab", activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("ui_tablas_open", tablasOpen ? "1" : "0");
+  }, [tablasOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("ui_ajustes_open", ajustesOpen ? "1" : "0");
+  }, [ajustesOpen]);
+
+  /* =========================================================
      Load /auth/me
      ========================================================= */
   useEffect(() => {
@@ -235,10 +300,17 @@ export default function HomePage() {
         const res = await fetch(`${API_BASE_URL}/auth/me`, {
           headers: getAuthHeaders(token),
         });
+
         if (!res.ok) {
           setCurrentUser(null);
+
+          if (res.status === 401 || res.status === 403) {
+            setToken(null);
+            setActiveTab("login");
+          }
           return;
         }
+
         const json = (await res.json()) as User;
         setCurrentUser(json);
       } catch (err) {
@@ -250,15 +322,64 @@ export default function HomePage() {
     loadMe();
   }, [token]);
 
+  /* =========================================================
+     ✅ Session ping
+     ========================================================= */
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+
+    const ping = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/me`, {
+          headers: getAuthHeaders(token),
+        });
+
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            if (cancelled) return;
+            setCurrentUser(null);
+            setToken(null);
+            setActiveTab("login");
+          }
+          return;
+        }
+
+        const json = (await res.json()) as User;
+        if (!cancelled) setCurrentUser(json);
+      } catch (err) {
+        console.error("Error ping /auth/me:", err);
+      }
+    };
+
+    const intervalMs = 60_000;
+
+    ping();
+    const id = window.setInterval(ping, intervalMs);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [token]);
+
   const canManageUsers = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
-  const canSeeAjustes = !!canManageUsers; // ✅ Ajustes solo admin/owner
+  const canSeeAjustes = !!canManageUsers;
 
   const isSuperuser = !!currentUser?.is_superuser;
   const isTablasActive = activeTab === "tablas-general" || activeTab === "tablas-ps";
 
   /* =========================================================
+     ✅ Mantener “Tablas” abierto cuando estés en tablas
+     ========================================================= */
+  useEffect(() => {
+    if (isTablasActive && !tablasOpen) setTablasOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTablasActive]);
+
+  /* =========================================================
      ✅ Load UI theme from backend (admin/owner)
-     - Lo guardamos también en localStorage para que el componente lo use.
      ========================================================= */
   useEffect(() => {
     if (!token) return;
@@ -313,7 +434,6 @@ export default function HomePage() {
     }
   }, [activeTab, isSuperuser]);
 
-  // ✅ Ajustes solo admin/owner
   useEffect(() => {
     if (activeTab === "ajustes" && !canSeeAjustes) {
       setActiveTab("login");
@@ -337,7 +457,7 @@ export default function HomePage() {
       <aside className="ui-sidebar">
         <div className="mb-8">
           <h1 className="text-lg font-semibold">APP Medidas</h1>
-          <p className="mt-1 text-xs ui-muted">Panel de pruebas (frontend)</p>
+          <p className="mt-1 text-xs ui-muted">Plataforma de gestión</p>
         </div>
 
         <nav className="ui-nav">
@@ -348,7 +468,7 @@ export default function HomePage() {
             onClick={() => setActiveTab("login")}
             className={["ui-nav-item", activeTab === "login" ? "ui-nav-item--active" : ""].join(" ")}
           >
-            <span>Login</span>
+            <span>Acceso</span>
           </button>
 
           <button
@@ -375,7 +495,7 @@ export default function HomePage() {
               onClick={() => setActiveTab("clientes")}
               className={["ui-nav-item", activeTab === "clientes" ? "ui-nav-item--active" : ""].join(" ")}
             >
-              <span>Clientes / Usuarios</span>
+              <span>Clientes</span>
             </button>
           )}
 
@@ -409,10 +529,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setActiveTab("tablas-ps")}
-                  className={[
-                    "ui-nav-subitem",
-                    activeTab === "tablas-ps" ? "ui-nav-subitem--active" : "",
-                  ].join(" ")}
+                  className={["ui-nav-subitem", activeTab === "tablas-ps" ? "ui-nav-subitem--active" : ""].join(" ")}
                 >
                   <span>Medidas PS</span>
                 </button>
@@ -425,17 +542,16 @@ export default function HomePage() {
             onClick={() => setActiveTab("carga")}
             className={["ui-nav-item", activeTab === "carga" ? "ui-nav-item--active" : ""].join(" ")}
           >
-            <span>Carga</span>
+            <span>Carga de datos</span>
           </button>
 
-          {/* ✅ Ajustes solo admin/owner */}
           {canSeeAjustes && (
             <button
               type="button"
               onClick={() => setActiveTab("ajustes")}
               className={["ui-nav-item", activeTab === "ajustes" ? "ui-nav-item--active" : ""].join(" ")}
             >
-              <span>Ajustes</span>
+              <span>Configuración</span>
             </button>
           )}
 
@@ -453,7 +569,7 @@ export default function HomePage() {
 
       {/* MAIN */}
       <main className="ui-main">
-        <h2 className="mb-8 ui-page-title">APP Medidas – Panel de pruebas</h2>
+        <h2 className="mb-8 ui-page-title">APP Medidas</h2>
 
         {activeTab === "login" && (
           <div className="space-y-8">
@@ -473,9 +589,7 @@ export default function HomePage() {
             {canManageUsers ? (
               <UsersSection token={token} />
             ) : (
-              <section className="ui-card ui-card--border text-red-300 text-sm">
-                No tienes permisos para gestionar usuarios.
-              </section>
+              <section className="ui-card ui-card--border text-red-300 text-sm">No tienes permisos para gestionar usuarios.</section>
             )}
           </div>
         )}
@@ -485,9 +599,7 @@ export default function HomePage() {
             {isSuperuser ? (
               <ClientesSection token={token} currentUser={currentUser} />
             ) : (
-              <section className="ui-card ui-card--border text-red-300 text-sm">
-                Solo disponible para superusuarios.
-              </section>
+              <section className="ui-card ui-card--border text-red-300 text-sm">Solo disponible para superusuarios.</section>
             )}
           </div>
         )}
@@ -516,20 +628,31 @@ export default function HomePage() {
 
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="ui-card ui-card--border text-sm">
-            {/* ✅ Cabecera clicable (desplegable) */}
+            {/* ✅ Cabecera clicable (desplegable) — con Mostrar/Ocultar */}
             <button
               type="button"
               onClick={() => setAjustesOpen((prev) => !prev)}
-              className="mb-4 flex w-full items-start justify-between gap-4 text-left"
+              className="mb-4 flex w-full items-center justify-between gap-6 rounded-2xl px-1 py-1 text-left"
               aria-expanded={ajustesOpen}
               aria-controls="ajustes-content"
             >
-              <div>
-                <h3 className="text-base font-semibold">Ajustes</h3>
-                <p className="text-xs ui-muted">Configuración del panel.</p>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold">Configuración</h3>
+                <p className="text-xs ui-muted">Preferencias y ajustes del panel.</p>
               </div>
 
-              <div className="mt-1 text-[12px] ui-muted">{ajustesOpen ? "▾" : "▸"}</div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-[11px] ui-muted">{ajustesOpen ? "Ocultar" : "Mostrar"}</span>
+                <span
+                  className={[
+                    "inline-flex items-center justify-center text-[13px] ui-muted transition-transform",
+                    ajustesOpen ? "rotate-180" : "rotate-0",
+                  ].join(" ")}
+                  aria-hidden="true"
+                >
+                  ▾
+                </span>
+              </div>
             </button>
 
             {/* ✅ Contenido desplegable */}
@@ -540,12 +663,9 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => setAjustesSubTab("aspecto")}
-                    className={[
-                      "ui-btn",
-                      ajustesSubTab === "aspecto" ? "ui-btn-secondary" : "ui-btn-outline",
-                    ].join(" ")}
+                    className={["ui-btn", ajustesSubTab === "aspecto" ? "ui-btn-secondary" : "ui-btn-outline"].join(" ")}
                   >
-                    Aspecto
+                    Apariencia
                   </button>
 
                   <button
@@ -554,11 +674,10 @@ export default function HomePage() {
                     className="ui-btn ui-btn-outline"
                     title="Restaurar colores por defecto"
                   >
-                    Reset colores
+                    Restaurar colores
                   </button>
                 </div>
 
-                {/* ✅ AQUÍ ESTÁ EL CAMBIO IMPORTANTE */}
                 {ajustesSubTab === "aspecto" && <AppearanceSettingsSection token={token} />}
               </div>
             )}
@@ -570,9 +689,7 @@ export default function HomePage() {
             {isSuperuser ? (
               <SistemaSection token={token} />
             ) : (
-              <section className="ui-card ui-card--border text-red-300 text-sm">
-                Solo disponible para superusuarios.
-              </section>
+              <section className="ui-card ui-card--border text-red-300 text-sm">Solo disponible para superusuarios.</section>
             )}
           </div>
         )}

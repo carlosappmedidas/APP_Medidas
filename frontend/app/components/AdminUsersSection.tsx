@@ -1,13 +1,19 @@
-// app/components/AdminUsersSection.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { User } from "../types";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
+import AccordionCard from "./ui/AccordionCard";
 
 type AdminUsersSectionProps = {
   token: string | null;
   currentUser: User | null;
+};
+
+type TenantLite = {
+  id?: number;
+  nombre?: string | null;
+  name?: string | null;
 };
 
 const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
@@ -15,67 +21,56 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
   currentUser,
 }) => {
   const isSuperuser = !!currentUser?.is_superuser;
+  const canUse = !!token && isSuperuser;
 
-  // USUARIOS GLOBALES (solo superusuario)
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
   const [errorAdmin, setErrorAdmin] = useState<string | null>(null);
 
-  // ✅ TENANTS (para el desplegable de Tenant ID)
-  const [clientes, setClientes] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<TenantLite[]>([]);
 
-  // estado de edición para usuarios globales
-  const [editingAdminUserId, setEditingAdminUserId] = useState<number | null>(
-    null
-  );
-  const [editAdminRol, setEditAdminRol] = useState("user");
+  const [editingAdminUserId, setEditingAdminUserId] = useState<number | null>(null);
+  const [editAdminRol, setEditAdminRol] = useState<"user" | "admin" | "owner">("user");
   const [editAdminActive, setEditAdminActive] = useState(true);
   const [editAdminPassword, setEditAdminPassword] = useState("");
 
-  // estado de creación de usuario global
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [newAdminPassword, setNewAdminPassword] = useState("");
-  const [newAdminRol, setNewAdminRol] = useState("user");
+  const [newAdminRol, setNewAdminRol] = useState<"user" | "admin" | "owner">("user");
   const [newAdminActive, setNewAdminActive] = useState(true);
   const [newAdminIsSuperuser, setNewAdminIsSuperuser] = useState(false);
   const [newAdminTenantId, setNewAdminTenantId] = useState<string>("");
 
-  // desplegable (tarjeta abierta/cerrada)
-  const [isOpen, setIsOpen] = useState(false);
-
-  const canUse = !!token && isSuperuser;
-
-  // ----------------------------------------------------
-  // USUARIOS GLOBALES
-  // ----------------------------------------------------
+  // ---------------- LOAD ----------------
 
   const loadAdminUsers = async () => {
     if (!token || !isSuperuser) return;
 
     setLoadingAdmin(true);
     setErrorAdmin(null);
+
     try {
       const res = await fetch(`${API_BASE_URL}/auth/admin/users`, {
         headers: getAuthHeaders(token),
       });
 
       if (!res.ok) {
+        const text = await res.text();
+        console.error("Error cargando usuarios:", res.status, text);
         throw new Error(`Error ${res.status}`);
       }
 
       const json = (await res.json()) as User[];
-      setAdminUsers(json);
+      setAdminUsers(Array.isArray(json) ? json : []);
     } catch (err) {
-      console.error("Error cargando usuarios admin:", err);
-      setErrorAdmin(
-        "No se pudieron cargar los usuarios globales (solo superusuario)."
-      );
+      console.error("Error cargando usuarios:", err);
+      setErrorAdmin("No se pudieron cargar los usuarios globales.");
+      setAdminUsers([]);
     } finally {
       setLoadingAdmin(false);
     }
   };
 
-  // ✅ cargar tenants para el select (mismo endpoint/patrón que Empresas general)
   const loadTenantsForUsers = async () => {
     if (!token || !isSuperuser) return;
 
@@ -84,32 +79,35 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
         headers: getAuthHeaders(token),
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("Error cargando clientes para Usuarios:", res.status, text);
-        return;
-      }
+      if (!res.ok) return;
 
-      const json = await res.json();
-      setClientes(json);
+      const json = (await res.json()) as TenantLite[];
+      setClientes(Array.isArray(json) ? json : []);
     } catch (err) {
-      console.error("Error cargando clientes para Usuarios:", err);
+      console.error("Error cargando clientes:", err);
     }
   };
 
+  // ---------------- CREATE ----------------
+
   const handleCreateAdminUser = async () => {
     if (!token || !isSuperuser) return;
-    if (!newAdminEmail || !newAdminPassword) {
+
+    const email = newAdminEmail.trim();
+    const password = newAdminPassword;
+
+    if (!email || !password) {
       setErrorAdmin("Email y contraseña son obligatorios.");
       return;
     }
 
     setLoadingAdmin(true);
     setErrorAdmin(null);
+
     try {
       const body: any = {
-        email: newAdminEmail,
-        password: newAdminPassword,
+        email,
+        password,
         rol: newAdminRol,
         is_active: newAdminActive,
         is_superuser: newAdminIsSuperuser,
@@ -131,8 +129,8 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
 
       if (!res.ok) {
         const text = await res.text();
-        console.error("Respuesta backend create global user:", text);
-        throw new Error(`Error creando usuario global: ${res.status}`);
+        console.error("Error creando usuario:", res.status, text);
+        throw new Error(`Error ${res.status}`);
       }
 
       setNewAdminEmail("");
@@ -144,20 +142,21 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
 
       await loadAdminUsers();
     } catch (err) {
-      console.error("Error creando usuario global:", err);
-      setErrorAdmin(
-        "No se pudo crear el usuario global. Revisa que el email no exista y que el token tenga permisos."
-      );
+      console.error("Error creando usuario:", err);
+      setErrorAdmin("No se pudo crear el usuario.");
     } finally {
       setLoadingAdmin(false);
     }
   };
 
+  // ---------------- EDIT ----------------
+
   const handleStartEditAdminUser = (u: User) => {
     setEditingAdminUserId(u.id);
-    setEditAdminRol(u.rol || "user");
-    setEditAdminActive(u.is_active);
+    setEditAdminRol((u.rol as any) || "user");
+    setEditAdminActive(!!u.is_active);
     setEditAdminPassword("");
+    setErrorAdmin(null);
   };
 
   const handleCancelEditAdminUser = () => {
@@ -167,6 +166,9 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
 
   const handleSaveEditAdminUser = async () => {
     if (!token || !isSuperuser || editingAdminUserId === null) return;
+
+    setLoadingAdmin(true);
+    setErrorAdmin(null);
 
     try {
       const body: any = {
@@ -178,32 +180,29 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
         body.password = editAdminPassword;
       }
 
-      const res = await fetch(
-        `${API_BASE_URL}/auth/users/${editingAdminUserId}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeaders(token),
-          },
-          body: JSON.stringify(body),
-        }
-      );
+      const res = await fetch(`${API_BASE_URL}/auth/users/${editingAdminUserId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(token),
+        },
+        body: JSON.stringify(body),
+      });
 
       if (!res.ok) {
         const text = await res.text();
-        console.error("Respuesta backend PATCH global:", text);
-        throw new Error(`Error actualizando usuario global: ${res.status}`);
+        console.error("Error actualizando usuario:", res.status, text);
+        throw new Error(`Error ${res.status}`);
       }
 
       setEditingAdminUserId(null);
       setEditAdminPassword("");
       await loadAdminUsers();
     } catch (err) {
-      console.error("Error actualizando usuario global:", err);
-      setErrorAdmin(
-        "No se pudo actualizar el usuario global. Revisa permisos y datos enviados."
-      );
+      console.error("Error actualizando usuario:", err);
+      setErrorAdmin("No se pudo actualizar el usuario.");
+    } finally {
+      setLoadingAdmin(false);
     }
   };
 
@@ -211,346 +210,341 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
     if (!token || !isSuperuser) return;
 
     const ok = window.confirm(
-      "⚠️ Esta acción borrará el usuario de forma permanente (global). ¿Continuar?"
+      "⚠️ Esta acción eliminará el usuario de forma permanente. ¿Continuar?"
     );
     if (!ok) return;
 
+    setLoadingAdmin(true);
+    setErrorAdmin(null);
+
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/auth/users/${userId}/hard-delete`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(token),
-        }
-      );
+      const res = await fetch(`${API_BASE_URL}/auth/users/${userId}/hard-delete`, {
+        method: "DELETE",
+        headers: getAuthHeaders(token),
+      });
 
       if (!res.ok && res.status !== 204) {
         const text = await res.text();
-        console.error("Respuesta backend hard-delete global:", text);
+        console.error("Error eliminando usuario:", res.status, text);
         throw new Error(`Error ${res.status}`);
       }
 
-      if (editingAdminUserId === userId) {
-        setEditingAdminUserId(null);
-        setEditAdminPassword("");
-      }
-
+      if (editingAdminUserId === userId) handleCancelEditAdminUser();
       await loadAdminUsers();
     } catch (err) {
-      console.error("Error eliminando usuario global:", err);
-      setErrorAdmin("No se pudo eliminar el usuario global.");
+      console.error("Error eliminando usuario:", err);
+      setErrorAdmin("No se pudo eliminar el usuario.");
+    } finally {
+      setLoadingAdmin(false);
     }
   };
 
-  // limpiar cuando perdemos token o superuser
+  // ---------------- EFFECTS ----------------
+
   useEffect(() => {
     if (!token || !isSuperuser) {
       setAdminUsers([]);
-      setErrorAdmin(null);
+      setClientes([]);
       setLoadingAdmin(false);
+      setErrorAdmin(null);
+
       setEditingAdminUserId(null);
       setEditAdminPassword("");
+
       setNewAdminEmail("");
       setNewAdminPassword("");
       setNewAdminRol("user");
       setNewAdminActive(true);
       setNewAdminIsSuperuser(false);
       setNewAdminTenantId("");
-      setClientes([]); // ✅
     }
   }, [token, isSuperuser]);
 
-  // ✅ cargar tenants al tener token + superuser (igual que Empresas general)
   useEffect(() => {
     if (token && isSuperuser) {
       loadTenantsForUsers();
+      loadAdminUsers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isSuperuser]);
 
+  // ---------------- UI helpers ----------------
+
+  const tenantLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of clientes) {
+      if (typeof c?.id !== "number") continue;
+      const name = (c.nombre ?? c.name ?? `Cliente ${c.id}`).toString();
+      map.set(c.id, `${name} (ID ${c.id})`);
+    }
+    return (tenantId?: number | null) => {
+      if (typeof tenantId !== "number") return "—";
+      return map.get(tenantId) ?? `Cliente (ID ${tenantId})`;
+    };
+  }, [clientes]);
+
+  // ---------------- RENDER ----------------
+
   return (
-    <section className="ui-card text-sm">
-      {/* HEADER DESPLEGABLE */}
-      <header
-        className="mb-3 flex cursor-pointer flex-col gap-2 md:flex-row md:items-center md:justify-between"
-        onClick={() => setIsOpen((prev) => !prev)}
-      >
-        <div>
-          <h4 className="ui-card-title">Usuarios general</h4>
-          <p className="ui-card-subtitle"></p>
-        </div>
+    <AccordionCard
+      title="Usuarios"
+      subtitle="Gestión global de usuarios. Requiere superusuario."
+      defaultOpen={false}
+    >
+      {errorAdmin && <div className="ui-alert ui-alert--danger mb-4">{errorAdmin}</div>}
 
-        <span className="text-[11px] opacity-70">
-          {isOpen ? "Ocultar ▲" : "Mostrar ▼"}
-        </span>
-      </header>
-
-      {errorAdmin && (
-        <p className="mb-3 text-[11px]" style={{ color: "var(--danger-text)" }}>
-          {errorAdmin}
+      {!canUse && (
+        <p className="mb-4 text-xs ui-muted">
+          Necesitas iniciar sesión como superusuario para gestionar usuarios.
         </p>
       )}
 
-      {/* CONTENIDO DESPLEGABLE */}
-      {isOpen && (
-        <>
-          {(!token || !isSuperuser) && (
-            <p className="mb-4 text-xs opacity-85">
-              Necesitas iniciar sesión como superusuario para gestionar usuarios
-              globales.
-            </p>
-          )}
+      {/* Crear */}
+      <div className="ui-panel mb-4 text-[11px]">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h5 className="text-xs font-semibold">Crear usuario</h5>
+          <span className="text-[10px] ui-muted">{loadingAdmin ? "Cargando…" : ""}</span>
+        </div>
 
-          {/* Formulario creación usuario global */}
-          <div className="ui-panel mb-4 text-[11px]">
-            <h5 className="mb-2 text-xs font-semibold">Crear usuario global</h5>
+        <div className="grid gap-3 md:grid-cols-[2fr,2fr,1fr,1fr,auto]">
+          <div>
+            <label className="ui-label">Email</label>
+            <input
+              type="email"
+              value={newAdminEmail}
+              onChange={(e) => setNewAdminEmail(e.target.value)}
+              className="ui-input"
+              placeholder="usuario@cliente.com"
+              disabled={!canUse}
+            />
 
-            <div className="grid gap-3 md:grid-cols-[2fr,2fr,1fr,1fr,auto]">
-              <div>
-                <label className="ui-label">Email</label>
-                <input
-                  type="email"
-                  value={newAdminEmail}
-                  onChange={(e) => setNewAdminEmail(e.target.value)}
-                  className="ui-input"
-                  placeholder="usuario@cliente.com"
-                  disabled={!canUse}
-                />
-              </div>
+            <label className="mt-2 inline-flex items-center gap-2 text-[10px] ui-muted">
+              <input
+                type="checkbox"
+                checked={newAdminActive}
+                onChange={(e) => setNewAdminActive(e.target.checked)}
+                disabled={!canUse}
+                className="ui-checkbox"
+              />
+              <span>Activo</span>
+            </label>
 
-              <div>
-                <label className="ui-label">Contraseña</label>
-                <input
-                  type="password"
-                  value={newAdminPassword}
-                  onChange={(e) => setNewAdminPassword(e.target.value)}
-                  className="ui-input"
-                  placeholder="••••••••"
-                  disabled={!canUse}
-                />
-              </div>
-
-              <div>
-                <label className="ui-label">Rol</label>
-                <select
-                  value={newAdminRol}
-                  onChange={(e) => setNewAdminRol(e.target.value)}
-                  className="ui-select"
-                  disabled={!canUse}
-                >
-                  <option value="user">user</option>
-                  <option value="admin">admin</option>
-                  <option value="owner">owner</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="ui-label">Tenant ID</label>
-                <select
-                  value={newAdminTenantId}
-                  onChange={(e) => setNewAdminTenantId(e.target.value)}
-                  className="ui-select"
-                  disabled={!canUse}
-                >
-                  <option value="">(opcional)</option>
-                  {clientes.map((c) => (
-                    <option key={c.id} value={String(c.id)}>
-                      {c.nombre ?? c.name ?? `Cliente ${c.id}`} (ID {c.id})
-                    </option>
-                  ))}
-                </select>
-
-                <div className="mt-2 flex flex-col gap-1 text-[10px] opacity-90">
-                  <label className="inline-flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={newAdminActive}
-                      onChange={(e) => setNewAdminActive(e.target.checked)}
-                      className="ui-checkbox"
-                      disabled={!canUse}
-                    />
-                    <span>Activo</span>
-                  </label>
-                  <label className="inline-flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={newAdminIsSuperuser}
-                      onChange={(e) => setNewAdminIsSuperuser(e.target.checked)}
-                      className="ui-checkbox"
-                      disabled={!canUse}
-                    />
-                    <span>Superuser</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex items-end justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleCreateAdminUser}
-                  disabled={loadingAdmin || !token || !isSuperuser}
-                  className="ui-btn ui-btn-primary"
-                >
-                  Crear
-                </button>
-                <button
-                  type="button"
-                  onClick={loadAdminUsers}
-                  disabled={loadingAdmin || !token || !isSuperuser}
-                  className="ui-btn ui-btn-secondary"
-                >
-                  Recargar
-                </button>
-              </div>
-            </div>
+            <label className="mt-2 inline-flex items-center gap-2 text-[10px] ui-muted">
+              <input
+                type="checkbox"
+                checked={newAdminIsSuperuser}
+                onChange={(e) => setNewAdminIsSuperuser(e.target.checked)}
+                disabled={!canUse}
+                className="ui-checkbox"
+              />
+              <span>Superusuario</span>
+            </label>
           </div>
 
-          <div
-            className="overflow-x-auto rounded-xl border bg-black/20"
-            style={{ borderColor: "var(--card-border)" }}
-          >
-            <table className="min-w-full border-collapse text-[11px]">
-              <thead className="bg-white/5 text-[10px] uppercase tracking-wide opacity-70">
-                <tr>
-                  <th className="px-4 py-2 text-left">Tenant ID</th>
-                  <th className="px-4 py-2 text-left">Email</th>
-                  <th className="px-4 py-2 text-left">Rol</th>
-                  <th className="px-4 py-2 text-left">Activo</th>
-                  <th className="px-4 py-2 text-left">Superuser</th>
-                  <th className="px-4 py-2 text-left">Creado</th>
-                  <th className="px-4 py-2 text-right">Acciones</th>
-                </tr>
-              </thead>
+          <div>
+            <label className="ui-label">Contraseña</label>
+            <input
+              type="password"
+              value={newAdminPassword}
+              onChange={(e) => setNewAdminPassword(e.target.value)}
+              className="ui-input"
+              placeholder="••••••••"
+              disabled={!canUse}
+            />
+            <p className="ui-help">Se guarda tal cual en backend (según tu endpoint).</p>
+          </div>
 
-              <tbody>
-                {adminUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-4 text-center opacity-70">
-                      No hay usuarios o aún no has cargado la vista global.
+          <div>
+            <label className="ui-label">Rol</label>
+            <select
+              value={newAdminRol}
+              onChange={(e) => setNewAdminRol(e.target.value as any)}
+              className="ui-select"
+              disabled={!canUse}
+            >
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+              <option value="owner">owner</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="ui-label">Cliente</label>
+            <select
+              value={newAdminTenantId}
+              onChange={(e) => setNewAdminTenantId(e.target.value)}
+              className="ui-select"
+              disabled={!canUse}
+            >
+              <option value="">(opcional)</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.nombre ?? c.name ?? `Cliente ${c.id}`} (ID {c.id})
+                </option>
+              ))}
+            </select>
+
+            <p className="ui-help">Si lo dejas vacío, se crea sin tenant asignado.</p>
+          </div>
+
+          <div className="flex items-end justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleCreateAdminUser}
+              disabled={loadingAdmin || !canUse}
+              className="ui-btn ui-btn-primary"
+            >
+              Crear
+            </button>
+            <button
+              type="button"
+              onClick={loadAdminUsers}
+              disabled={loadingAdmin || !canUse}
+              className="ui-btn ui-btn-secondary"
+            >
+              Recargar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabla */}
+      <div className="ui-table-wrap">
+        <table className="ui-table text-[11px]">
+          <thead className="ui-thead">
+            <tr>
+              <th className="ui-th">Cliente</th>
+              <th className="ui-th">Email</th>
+              <th className="ui-th">Rol</th>
+              <th className="ui-th">Activo</th>
+              <th className="ui-th">Superusuario</th>
+              <th className="ui-th">Creado</th>
+              <th className="ui-th ui-th-right">Acciones</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {adminUsers.length === 0 ? (
+              <tr className="ui-tr">
+                <td colSpan={7} className="ui-td text-center ui-muted">
+                  {loadingAdmin ? "Cargando usuarios..." : "No hay usuarios para mostrar."}
+                </td>
+              </tr>
+            ) : (
+              adminUsers.map((u) => {
+                const isEditing = editingAdminUserId === u.id;
+
+                return (
+                  <tr key={u.id} className="ui-tr align-top">
+                    <td className="ui-td">{tenantLabelById((u as any).tenant_id ?? u.tenant_id)}</td>
+
+                    <td className="ui-td">{u.email}</td>
+
+                    <td className="ui-td">
+                      {isEditing ? (
+                        <select
+                          value={editAdminRol}
+                          onChange={(e) => setEditAdminRol(e.target.value as any)}
+                          className="ui-select"
+                          disabled={!canUse}
+                        >
+                          <option value="user">user</option>
+                          <option value="admin">admin</option>
+                          <option value="owner">owner</option>
+                        </select>
+                      ) : (
+                        u.rol ?? "-"
+                      )}
+                    </td>
+
+                    <td className="ui-td">
+                      {isEditing ? (
+                        <label className="inline-flex items-center gap-2 text-[11px]">
+                          <input
+                            type="checkbox"
+                            checked={editAdminActive}
+                            onChange={(e) => setEditAdminActive(e.target.checked)}
+                            disabled={!canUse}
+                            className="ui-checkbox"
+                          />
+                          <span>{editAdminActive ? "Sí" : "No"}</span>
+                        </label>
+                      ) : u.is_active ? (
+                        "Sí"
+                      ) : (
+                        "No"
+                      )}
+                    </td>
+
+                    <td className="ui-td">{u.is_superuser ? "Sí" : "No"}</td>
+
+                    <td className="ui-td">
+                      {u.created_at ? new Date(u.created_at).toLocaleDateString("es-ES") : "-"}
+                    </td>
+
+                    <td className="ui-td ui-td-right">
+                      {isEditing ? (
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="w-[220px]">
+                            <label className="ui-label">Nueva contraseña (opcional)</label>
+                            <input
+                              type="password"
+                              value={editAdminPassword}
+                              onChange={(e) => setEditAdminPassword(e.target.value)}
+                              className="ui-input"
+                              placeholder="••••••••"
+                              disabled={!canUse}
+                            />
+                          </div>
+
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={handleSaveEditAdminUser}
+                              disabled={loadingAdmin || !canUse}
+                              className="ui-btn ui-btn-primary ui-btn-xs"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelEditAdminUser}
+                              disabled={loadingAdmin}
+                              className="ui-btn ui-btn-outline ui-btn-xs"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditAdminUser(u)}
+                            disabled={loadingAdmin || !canUse}
+                            className="ui-btn ui-btn-outline ui-btn-xs"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAdminUser(u.id)}
+                            disabled={loadingAdmin || !canUse}
+                            className="ui-btn ui-btn-danger ui-btn-xs"
+                          >
+                            Borrar
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
-                ) : (
-                  adminUsers.map((u) => {
-                    const isEditing = editingAdminUserId === u.id;
-                    return (
-                      <tr
-                        key={u.id}
-                        className="border-t"
-                        style={{ borderColor: "var(--card-border)" }}
-                      >
-                        <td className="px-4 py-2">{u.tenant_id}</td>
-                        <td className="px-4 py-2">{u.email}</td>
-
-                        <td className="px-4 py-2">
-                          {isEditing ? (
-                            <select
-                              value={editAdminRol}
-                              onChange={(e) => setEditAdminRol(e.target.value)}
-                              className="ui-select px-2 py-1 text-[11px]"
-                              disabled={!canUse}
-                            >
-                              <option value="user">user</option>
-                              <option value="admin">admin</option>
-                              <option value="owner">owner</option>
-                            </select>
-                          ) : (
-                            u.rol
-                          )}
-                        </td>
-
-                        <td className="px-4 py-2">
-                          {isEditing ? (
-                            <label className="inline-flex items-center gap-2 text-[11px]">
-                              <input
-                                type="checkbox"
-                                checked={editAdminActive}
-                                onChange={(e) =>
-                                  setEditAdminActive(e.target.checked)
-                                }
-                                className="ui-checkbox"
-                                disabled={!canUse}
-                              />
-                              <span>{editAdminActive ? "Sí" : "No"}</span>
-                            </label>
-                          ) : u.is_active ? (
-                            "Sí"
-                          ) : (
-                            "No"
-                          )}
-                        </td>
-
-                        <td className="px-4 py-2">
-                          {u.is_superuser ? "Sí" : "No"}
-                        </td>
-
-                        <td className="px-4 py-2">
-                          {u.created_at
-                            ? new Date(u.created_at).toLocaleDateString("es-ES")
-                            : "-"}
-                        </td>
-
-                        <td className="px-4 py-2 text-right">
-                          {isEditing ? (
-                            <div className="flex flex-col items-end gap-1">
-                              <input
-                                type="password"
-                                placeholder="Nueva contraseña (opcional)"
-                                value={editAdminPassword}
-                                onChange={(e) =>
-                                  setEditAdminPassword(e.target.value)
-                                }
-                                className="ui-input w-48 px-2 py-1 text-[10px]"
-                                disabled={!canUse}
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={handleSaveEditAdminUser}
-                                  disabled={!canUse}
-                                  className="ui-btn ui-btn-primary ui-btn-xs"
-                                >
-                                  Guardar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleCancelEditAdminUser}
-                                  className="ui-btn ui-btn-outline ui-btn-xs"
-                                >
-                                  Cancelar
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleStartEditAdminUser(u)}
-                                disabled={!canUse}
-                                className="ui-btn ui-btn-outline ui-btn-xs"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteAdminUser(u.id)}
-                                disabled={!canUse}
-                                className="ui-btn ui-btn-danger ui-btn-xs"
-                              >
-                                Borrar
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </section>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AccordionCard>
   );
 };
 

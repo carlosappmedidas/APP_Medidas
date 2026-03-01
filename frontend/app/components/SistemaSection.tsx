@@ -1,7 +1,7 @@
 // app/components/SistemaSection.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
 import type { MedidaGeneral } from "../types";
 import MedidasPsSection from "./MedidasPsSection";
@@ -37,18 +37,13 @@ type ColumnDefGeneral = {
 const ALL_COLUMNS_GENERAL_SISTEMA: ColumnDefGeneral[] = [
   {
     id: "tenant_id",
-    label: "Tenant",
+    label: "Cliente",
     align: "left",
     render: (m) => m.tenant_id ?? "-",
   },
 
   // Identificación
-  {
-    id: "empresa_id",
-    label: "Empresa ID",
-    align: "left",
-    render: (m) => m.empresa_id,
-  },
+  { id: "empresa_id", label: "Empresa ID", align: "left", render: (m) => m.empresa_id },
   {
     id: "empresa_codigo",
     label: "Código empresa",
@@ -120,6 +115,9 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ estado “pro”
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
   // filtros
   const [filtroTenant, setFiltroTenant] = useState<string>("");
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
@@ -135,6 +133,7 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
 
     setLoading(true);
     setError(null);
+
     try {
       const res = await fetch(`${API_BASE_URL}/medidas/general/all`, {
         headers: getAuthHeaders(token),
@@ -149,45 +148,75 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
       const json = (await res.json()) as MedidaGeneral[];
       setData(Array.isArray(json) ? json : []);
       setPage(0);
+      setHasLoadedOnce(true);
     } catch (e) {
       console.error("Error cargando medidas_general/all:", e);
-      setError("No se pudieron cargar las medidas general (all).");
+      setError("No se pudieron cargar las medidas generales (Sistema).");
       setData([]);
+      setHasLoadedOnce(true);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ auto-carga con guard (evita doble fetch en StrictMode)
+  const lastAutoKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (!token) {
+      lastAutoKeyRef.current = "";
+      setHasLoadedOnce(false);
+      setData([]);
+      setError(null);
+      return;
+    }
+
+    const key = `${token}::general_all`;
+    if (lastAutoKeyRef.current === key) return;
+
+    lastAutoKeyRef.current = key;
+    void handleLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   useEffect(() => {
     setPage(0);
   }, [filtroTenant, filtroEmpresa, filtroAnio, filtroMes, pageSize]);
 
-  const { opcionesTenant, opcionesEmpresa, opcionesAnio, opcionesMes } =
-    useMemo(() => {
-      const tenants = new Set<number>();
-      const empresas = new Set<string>();
-      const anios = new Set<number>();
-      const meses = new Set<number>();
+  const filtrosActivosCount =
+    (filtroTenant ? 1 : 0) +
+    (filtroEmpresa ? 1 : 0) +
+    (filtroAnio ? 1 : 0) +
+    (filtroMes ? 1 : 0);
 
-      for (const m of data) {
-        if (typeof (m as any).tenant_id === "number") {
-          tenants.add((m as any).tenant_id);
-        }
-        const cod = (m as any).empresa_codigo as string | undefined;
-        if (cod) empresas.add(cod);
-        if (typeof m.anio === "number") anios.add(m.anio);
-        if (typeof m.mes === "number") meses.add(m.mes);
-      }
+  const clearFilters = () => {
+    setFiltroTenant("");
+    setFiltroEmpresa("");
+    setFiltroAnio("");
+    setFiltroMes("");
+    setPage(0);
+  };
 
-      return {
-        opcionesTenant: Array.from(tenants)
-          .sort((a, b) => a - b)
-          .map(String),
-        opcionesEmpresa: Array.from(empresas).sort(),
-        opcionesAnio: Array.from(anios).sort((a, b) => a - b),
-        opcionesMes: Array.from(meses).sort((a, b) => a - b),
-      };
-    }, [data]);
+  const { opcionesTenant, opcionesEmpresa, opcionesAnio, opcionesMes } = useMemo(() => {
+    const tenants = new Set<number>();
+    const empresas = new Set<string>();
+    const anios = new Set<number>();
+    const meses = new Set<number>();
+
+    for (const m of data) {
+      if (typeof (m as any).tenant_id === "number") tenants.add((m as any).tenant_id);
+      const cod = (m as any).empresa_codigo as string | undefined;
+      if (cod) empresas.add(cod);
+      if (typeof m.anio === "number") anios.add(m.anio);
+      if (typeof m.mes === "number") meses.add(m.mes);
+    }
+
+    return {
+      opcionesTenant: Array.from(tenants).sort((a, b) => a - b).map(String),
+      opcionesEmpresa: Array.from(empresas).sort(),
+      opcionesAnio: Array.from(anios).sort((a, b) => a - b),
+      opcionesMes: Array.from(meses).sort((a, b) => a - b),
+    };
+  }, [data]);
 
   const filasVisibles = useMemo(() => {
     const filtradas = data.filter((m) => {
@@ -196,8 +225,7 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
 
       const matchTenant = !filtroTenant || tenantId === filtroTenant;
       const matchEmpresa = !filtroEmpresa || empresaCodigo === filtroEmpresa;
-      const matchAnio =
-        !filtroAnio || m.anio === Number.parseInt(filtroAnio, 10);
+      const matchAnio = !filtroAnio || m.anio === Number.parseInt(filtroAnio, 10);
       const matchMes = !filtroMes || m.mes === Number.parseInt(filtroMes, 10);
 
       return matchTenant && matchEmpresa && matchAnio && matchMes;
@@ -223,38 +251,71 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
   const currentPage = Math.min(page, totalPages - 1);
   const startIndex = currentPage * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalFilas);
-  const filasPaginadas =
-    totalFilas === 0 ? [] : filasVisibles.slice(startIndex, endIndex);
+  const filasPaginadas = totalFilas === 0 ? [] : filasVisibles.slice(startIndex, endIndex);
 
   return (
     <section className="ui-card ui-card--border text-sm">
       <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h4 className="ui-card-title">Medidas general (Sistema)</h4>
+          <h4 className="ui-card-title">Medidas (General) · Sistema</h4>
           <p className="ui-card-subtitle">
-            Vista global (todos los tenants). Requiere superusuario.
+            Vista global para todos los clientes. Requiere superusuario.
           </p>
         </div>
 
-        <button
-          onClick={handleLoad}
-          disabled={loading || !token}
-          className="ui-btn ui-btn-primary"
-        >
-          {loading ? "Cargando..." : "Cargar medidas general"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleLoad}
+            disabled={loading || !token}
+            className="ui-btn ui-btn-primary"
+            type="button"
+          >
+            {loading ? "Actualizando..." : "Actualizar"}
+          </button>
+
+          {filtrosActivosCount > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={loading}
+              className="ui-btn ui-btn-outline"
+              title="Limpiar filtros"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
       </header>
 
-      {error && <p className="mb-4 text-[11px] text-red-400">{error}</p>}
+      {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
 
       {/* Filtros */}
+      <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
+        <div className="ui-muted">
+          Filtros activos:{" "}
+          <span className="font-medium" style={{ color: "var(--text)" }}>
+            {filtrosActivosCount}
+          </span>
+        </div>
+
+        {hasLoadedOnce && (
+          <div className="ui-muted">
+            Filas cargadas:{" "}
+            <span className="font-medium" style={{ color: "var(--text)" }}>
+              {data.length}
+            </span>
+          </div>
+        )}
+      </div>
+
       <div className="mb-4 grid gap-3 md:grid-cols-4">
         <div>
-          <label className="ui-label">Tenant</label>
+          <label className="ui-label">Cliente</label>
           <select
             className="ui-select"
             value={filtroTenant}
             onChange={(e) => setFiltroTenant(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todos</option>
             {opcionesTenant.map((t) => (
@@ -271,6 +332,7 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
             className="ui-select"
             value={filtroEmpresa}
             onChange={(e) => setFiltroEmpresa(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todas</option>
             {opcionesEmpresa.map((cod) => (
@@ -287,6 +349,7 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
             className="ui-select"
             value={filtroAnio}
             onChange={(e) => setFiltroAnio(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todos</option>
             {opcionesAnio.map((anio) => (
@@ -303,6 +366,7 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
             className="ui-select"
             value={filtroMes}
             onChange={(e) => setFiltroMes(e.target.value)}
+            disabled={!hasLoadedOnce || loading}
           >
             <option value="">Todos</option>
             {opcionesMes.map((mes) => (
@@ -322,10 +386,7 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
               {ALL_COLUMNS_GENERAL_SISTEMA.map((col) => (
                 <th
                   key={col.id}
-                  className={[
-                    "ui-th",
-                    col.align === "right" ? "ui-th-right" : "",
-                  ].join(" ")}
+                  className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
                 >
                   {col.label}
                 </th>
@@ -334,16 +395,37 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
           </thead>
 
           <tbody>
-            {totalFilas === 0 ? (
+            {/* Skeleton */}
+            {loading &&
+              Array.from({ length: 8 }).map((_, i) => (
+                <tr key={`sk-${i}`} className="ui-tr">
+                  {Array.from({ length: ALL_COLUMNS_GENERAL_SISTEMA.length }).map((__, j) => (
+                    <td key={`sk-${i}-${j}`} className="ui-td">
+                      <span
+                        className="inline-block h-3 w-full rounded-md"
+                        style={{
+                          background: "var(--field-bg-soft)",
+                          border: "1px solid var(--field-border)",
+                          opacity: 0.6,
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+
+            {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
                 <td
                   colSpan={ALL_COLUMNS_GENERAL_SISTEMA.length}
                   className="ui-td text-center ui-muted"
                 >
-                  No hay medidas general que cumplan los filtros.
+                  No hay medidas generales que cumplan los filtros.
                 </td>
               </tr>
-            ) : (
+            )}
+
+            {!loading &&
               filasPaginadas.map((m: any) => (
                 <tr
                   key={`${m.tenant_id}-${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}`}
@@ -352,21 +434,17 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
                   {ALL_COLUMNS_GENERAL_SISTEMA.map((col) => (
                     <td
                       key={col.id}
-                      className={[
-                        "ui-td",
-                        col.align === "right" ? "ui-td-right" : "",
-                      ].join(" ")}
+                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
                     >
                       {col.render(m)}
                     </td>
                   ))}
                 </tr>
-              ))
-            )}
+              ))}
           </tbody>
         </table>
 
-        {totalFilas > 0 && (
+        {!loading && hasLoadedOnce && totalFilas > 0 && (
           <div className="flex flex-col gap-2 border-t border-[var(--card-border)] px-4 py-3 text-[11px] ui-muted md:flex-row md:items-center md:justify-between">
             <div>
               Mostrando{" "}
@@ -418,9 +496,7 @@ function MedidasGeneralAllSection({ token }: { token: string | null }) {
                 </span>
                 <button
                   type="button"
-                  onClick={() =>
-                    setPage((p) => Math.min(totalPages - 1, p + 1))
-                  }
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={currentPage >= totalPages - 1}
                   className="ui-btn ui-btn-outline ui-btn-xs"
                 >
@@ -455,6 +531,7 @@ function SistemaAccordion({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between gap-6 rounded-2xl px-6 py-5 text-left"
+        aria-expanded={open}
       >
         <div className="min-w-0">
           <div className="ui-card-title">{title}</div>
@@ -462,9 +539,7 @@ function SistemaAccordion({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-[11px] ui-muted">
-            {open ? "Ocultar" : "Mostrar"}
-          </span>
+          <span className="text-[11px] ui-muted">{open ? "Ocultar" : "Mostrar"}</span>
           <span
             className={[
               "inline-flex items-center justify-center text-[13px] ui-muted transition-transform",
@@ -477,7 +552,8 @@ function SistemaAccordion({
         </div>
       </button>
 
-      {open && <div className="px-4 pb-4">{children}</div>}
+      {/* ✅ Importante: mantener montado (solo ocultar) para que autocargue */}
+      <div className={open ? "px-4 pb-4" : "px-4 pb-4 hidden"}>{children}</div>
     </div>
   );
 }
@@ -486,16 +562,16 @@ export default function SistemaSection({ token }: Props) {
   return (
     <div className="space-y-6">
       <SistemaAccordion
-        title="Medidas PS (Sistema)"
-        subtitle="Vista global (todos los tenants). Requiere superusuario."
+        title="Medidas (PS) · Sistema"
+        subtitle="Vista global para todos los clientes. Requiere superusuario."
         defaultOpen={false}
       >
         <MedidasPsSection token={token} scope="all" />
       </SistemaAccordion>
 
       <SistemaAccordion
-        title="Medidas general (Sistema)"
-        subtitle="Vista global (todos los tenants). Requiere superusuario."
+        title="Medidas (General) · Sistema"
+        subtitle="Vista global para todos los clientes. Requiere superusuario."
         defaultOpen={false}
       >
         <MedidasGeneralAllSection token={token} />

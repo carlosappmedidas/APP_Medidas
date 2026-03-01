@@ -1,7 +1,7 @@
 // app/components/CargaSection.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
 import type { Empresa } from "../types";
 
@@ -100,38 +100,61 @@ function fmtDateMadrid(value?: string | null) {
   }).format(d);
 }
 
-function statusBadgeStyle(status: string): React.CSSProperties {
+function statusBadgeClass(status: string) {
   const s = (status || "").toLowerCase();
+  if (s === "ok") return "ui-badge ui-badge--ok";
+  if (s === "error") return "ui-badge ui-badge--err";
+  if (s === "processing") return "ui-badge ui-badge--warn";
+  return "ui-badge ui-badge--neutral";
+}
 
-  if (s === "ok") {
-    return {
-      borderColor: "rgba(16, 185, 129, 0.40)",
-      color: "rgba(110, 231, 183, 0.95)",
-      background: "rgba(16, 185, 129, 0.10)",
-    };
-  }
+// ✅ Acordeón inline (misma flecha ▾ + rotación)
+function InlineAccordion({
+  title,
+  subtitle,
+  open,
+  setOpen,
+  children,
+  contentId,
+}: {
+  title: string;
+  subtitle?: string;
+  open: boolean;
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  children: React.ReactNode;
+  contentId: string;
+}) {
+  return (
+    <section className="ui-card ui-card--border text-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mb-4 flex w-full items-center justify-between gap-6 rounded-2xl px-1 py-1 text-left"
+        aria-expanded={open}
+        aria-controls={contentId}
+      >
+        <div className="min-w-0">
+          <div className="text-base font-semibold">{title}</div>
+          {subtitle ? <div className="mt-1 text-xs ui-muted">{subtitle}</div> : null}
+        </div>
 
-  if (s === "error") {
-    return {
-      borderColor: "var(--danger-border)",
-      color: "var(--danger-text)",
-      background: "var(--danger-bg)",
-    };
-  }
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-[11px] ui-muted">{open ? "Ocultar" : "Mostrar"}</span>
+          <span
+            className={[
+              "inline-flex items-center justify-center text-[13px] ui-muted transition-transform",
+              open ? "rotate-180" : "rotate-0",
+            ].join(" ")}
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        </div>
+      </button>
 
-  if (s === "processing") {
-    return {
-      borderColor: "rgba(234, 179, 8, 0.40)",
-      color: "rgba(253, 224, 71, 0.95)",
-      background: "rgba(234, 179, 8, 0.10)",
-    };
-  }
-
-  return {
-    borderColor: "rgba(161, 161, 170, 0.35)",
-    color: "rgba(228, 228, 231, 0.90)",
-    background: "rgba(255, 255, 255, 0.05)",
-  };
+      {open && <div id={contentId}>{children}</div>}
+    </section>
+  );
 }
 
 export default function CargaSection({ token }: Props) {
@@ -153,12 +176,14 @@ export default function CargaSection({ token }: Props) {
   const [histAnio, setHistAnio] = useState<number | "">("");
   const [histMes, setHistMes] = useState<number | "">("");
 
-  // ✅ desplegables (cerrados por defecto)
-  const [isCargaOpen, setIsCargaOpen] = useState(false);
-  const [isHistoricoOpen, setIsHistoricoOpen] = useState(false);
-
   // ✅ selector de plantillas
   const [plantillaSel, setPlantillaSel] = useState<string>("");
+
+  const canUse = !!token;
+
+  // ✅ estado acordeones (por defecto cerrados como tu AccordionCard)
+  const [cargaOpen, setCargaOpen] = useState<boolean>(false);
+  const [historyOpen, setHistoryOpen] = useState<boolean>(false);
 
   // Cargar empresas para seleccionar empresa_id
   useEffect(() => {
@@ -171,9 +196,7 @@ export default function CargaSection({ token }: Props) {
         if (!res.ok) return;
         const json = (await res.json()) as Empresa[];
         setEmpresas(json);
-        if (json.length > 0 && empresaId === null) {
-          setEmpresaId(json[0].id);
-        }
+        if (json.length > 0 && empresaId === null) setEmpresaId(json[0].id);
       } catch (err) {
         console.error("Error cargando empresas en CargaSection:", err);
       }
@@ -224,9 +247,7 @@ export default function CargaSection({ token }: Props) {
           continue;
         }
 
-        appendLog(
-          `→ Subiendo fichero "${file.name}" como tipo ${tipo} (empresa ${empresaId})...`
-        );
+        appendLog(`→ Subiendo fichero "${file.name}" como tipo ${tipo} (empresa ${empresaId})...`);
 
         const formData = new FormData();
         formData.append("empresa_id", String(empresaId));
@@ -240,39 +261,31 @@ export default function CargaSection({ token }: Props) {
         });
 
         if (!res.ok) {
-          appendLog(
-            `❌ Error subiendo "${file.name}": ${res.status} ${res.statusText}`
-          );
+          appendLog(`❌ Error subiendo "${file.name}": ${res.status} ${res.statusText}`);
           continue;
         }
 
         const json = (await res.json()) as IngestionFile;
         uploaded.push(json);
         appendLog(
-          `✅ Subido "${file.name}" (id ingestion=${json.id}, periodo=${json.anio}${String(
-            json.mes
-          ).padStart(2, "0")}, tipo=${json.tipo}).`
+          `✅ Subido "${file.name}" (id ingestion=${json.id}, periodo=${json.anio}${String(json.mes).padStart(
+            2,
+            "0"
+          )}, tipo=${json.tipo}).`
         );
       }
 
       // 2) PROCESAR FICHEROS SUBIDOS
       for (const ing of uploaded) {
-        appendLog(
-          `⚙ Procesando fichero id=${ing.id} (${ing.filename}, tipo=${ing.tipo})...`
-        );
+        appendLog(`⚙ Procesando fichero id=${ing.id} (${ing.filename}, tipo=${ing.tipo})...`);
 
-        const res = await fetch(
-          `${API_BASE_URL}/ingestion/files/${ing.id}/process`,
-          {
-            method: "POST",
-            headers: getAuthHeaders(token),
-          }
-        );
+        const res = await fetch(`${API_BASE_URL}/ingestion/files/${ing.id}/process`, {
+          method: "POST",
+          headers: getAuthHeaders(token),
+        });
 
         if (!res.ok) {
-          appendLog(
-            `❌ Error procesando id=${ing.id}: ${res.status} ${res.statusText}`
-          );
+          appendLog(`❌ Error procesando id=${ing.id}: ${res.status} ${res.statusText}`);
           continue;
         }
 
@@ -281,9 +294,7 @@ export default function CargaSection({ token }: Props) {
         const filasOk = json.rows_ok ?? 0;
         const filasError = json.rows_error ?? 0;
 
-        appendLog(
-          `✅ Procesado id=${json.id} (status=${json.status}, filas OK=${filasOk}, filas error=${filasError}).`
-        );
+        appendLog(`✅ Procesado id=${json.id} (status=${json.status}, filas OK=${filasOk}, filas error=${filasError}).`);
       }
 
       appendLog("✔ Carga y procesado de ficheros finalizados.");
@@ -339,9 +350,7 @@ export default function CargaSection({ token }: Props) {
       if (histAnio !== "") params.set("anio", String(histAnio));
       if (histMes !== "") params.set("mes", String(histMes));
 
-      const url = `${API_BASE_URL}/ingestion/files${
-        params.toString() ? `?${params}` : ""
-      }`;
+      const url = `${API_BASE_URL}/ingestion/files${params.toString() ? `?${params}` : ""}`;
 
       const res = await fetch(url, {
         headers: getAuthHeaders(token),
@@ -380,383 +389,286 @@ export default function CargaSection({ token }: Props) {
 
   return (
     <div className="space-y-8">
-      {/* TARJETA 1: Carga (desplegable, cerrada por defecto) */}
-      <section className="ui-card text-sm">
-        <header
-          className="mb-3 flex cursor-pointer flex-col gap-2 md:flex-row md:items-center md:justify-between"
-          onClick={() => setIsCargaOpen((prev) => !prev)}
-        >
+      {/* ✅ TARJETA 1: Carga */}
+      <InlineAccordion
+        title="Carga de ficheros"
+        subtitle="Sube ficheros BALD, M1, ACUM*, PS_*, etc. El tipo se infiere del nombre."
+        open={cargaOpen}
+        setOpen={setCargaOpen}
+        contentId="carga-content"
+      >
+        {!canUse && (
+          <div className="ui-alert ui-alert--danger mb-4">
+            Necesitas iniciar sesión para cargar ficheros.
+          </div>
+        )}
+
+        {/* Layout con columna derecha para “Plantillas” */}
+        <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
+          {/* Columna izquierda: Empresa */}
           <div>
-            <h3 className="ui-card-title">Carga de ficheros</h3>
-            <p className="ui-card-subtitle">
-              Sube ficheros BALD, M1, ACUM*, PS_*, etc. El tipo se infiere del
-              nombre de fichero.
-            </p>
+            <label className="ui-label">Empresa</label>
+            <select
+              className="ui-select"
+              value={empresaId ?? ""}
+              disabled={!canUse || loading}
+              onChange={(e) => setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null)}
+            >
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.id} – {e.nombre}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <span
-            className="text-[11px]"
-            style={{ color: "var(--text-muted)" }}
+          {/* Columna derecha: Plantillas */}
+          <div>
+            <label className="ui-label">Plantillas</label>
+            <select
+              className="ui-select"
+              value={plantillaSel}
+              disabled={!canUse}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPlantillaSel(v);
+                if (v) {
+                  handleDownloadPlantilla(v);
+                  setTimeout(() => setPlantillaSel(""), 0);
+                }
+              }}
+            >
+              <option value="">Selecciona una plantilla…</option>
+              {PLANTILLAS.map((p) => (
+                <option key={p.file} value={p.file}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+
+            <p className="mt-1 text-[10px] ui-muted">Se abrirá en otra pestaña.</p>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="ui-label">Ficheros (puedes seleccionar varios)</label>
+          <input type="file" multiple onChange={handleFileChange} className="ui-file" disabled={!canUse || loading} />
+          {files && files.length > 0 && (
+            <p className="mt-1 text-[10px] ui-muted">
+              Seleccionados: {Array.from(files).map((f) => f.name).join(", ")}
+            </p>
+          )}
+        </div>
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" onClick={handleProcess} disabled={!canUse || loading} className="ui-btn ui-btn-primary">
+            {loading ? "Procesando..." : "Subir y procesar ficheros"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setLogLines([])}
+            disabled={logLines.length === 0}
+            className="ui-btn ui-btn-outline"
+            title="Limpiar logs"
           >
-            {isCargaOpen ? "Ocultar ▲" : "Mostrar ▼"}
-          </span>
-        </header>
+            Limpiar logs
+          </button>
+        </div>
 
-        {isCargaOpen && (
-          <>
-            {/* Layout con columna derecha para “Plantillas” */}
-            <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
-              {/* Columna izquierda: Empresa */}
-              <div>
-                <label className="ui-label">Empresa ID</label>
-                <select
-                  className="ui-select"
-                  value={empresaId ?? ""}
-                  onChange={(e) =>
-                    setEmpresaId(
-                      e.target.value
-                        ? Number.parseInt(e.target.value, 10)
-                        : null
-                    )
-                  }
-                >
-                  {empresas.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.id} – {e.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <h4 className="text-xs font-semibold">Logs sesión actual</h4>
+            <span className="text-[10px] ui-muted">{loading ? "Trabajando…" : ""}</span>
+          </div>
 
-              {/* Columna derecha: Plantillas */}
-              <div>
-                <label className="ui-label">Plantillas</label>
-                <select
-                  className="ui-select"
-                  value={plantillaSel}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setPlantillaSel(v);
-                    if (v) {
-                      handleDownloadPlantilla(v);
-                      setTimeout(() => setPlantillaSel(""), 0);
-                    }
-                  }}
-                >
-                  <option value="">Selecciona una plantilla…</option>
-                  {PLANTILLAS.map((p) => (
-                    <option key={p.file} value={p.file}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
+          <div
+            className="max-h-48 overflow-y-auto rounded-lg border px-3 py-2 text-[10px] font-mono"
+            style={{
+              borderColor: "var(--field-border)",
+              background: "var(--field-bg)",
+              color: "var(--field-text)",
+            }}
+          >
+            {logLines.length === 0 ? (
+              <div className="ui-muted">Aquí aparecerán los logs de subida y procesado.</div>
+            ) : (
+              <ul className="space-y-0.5">
+                {logLines.map((line, idx) => (
+                  <li key={idx}>• {line}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </InlineAccordion>
 
-                <p
-                  className="mt-1 text-[10px]"
-                  style={{ color: "var(--text-muted)" }}
-                ></p>
-              </div>
-            </div>
+      {/* ✅ TARJETA 2: Histórico */}
+      <InlineAccordion
+        title="Histórico de cargas"
+        subtitle="Listado de cargas (ingestion_files) del tenant. Fechas en horario de Madrid."
+        open={historyOpen}
+        setOpen={setHistoryOpen}
+        contentId="history-content"
+      >
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={handleClearHistoryFilters} className="ui-btn ui-btn-outline">
+              Limpiar filtros
+            </button>
 
-            <div className="mb-4">
-              <label className="ui-label">
-                Ficheros (puedes seleccionar varios)
-              </label>
-              <input
-                type="file"
-                multiple
-                onChange={handleFileChange}
-                className="ui-file"
-              />
-              {files && files.length > 0 && (
-                <p
-                  className="mt-1 text-[10px]"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Seleccionados:{" "}
-                  {Array.from(files)
-                    .map((f) => f.name)
-                    .join(", ")}
-                </p>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={handleLoadHistory}
+              disabled={!canUse || historyLoading}
+              className="ui-btn ui-btn-secondary"
+            >
+              {historyLoading ? "Cargando..." : "Cargar histórico"}
+            </button>
+          </div>
 
-            <div className="mb-4">
-              <button
-                type="button"
-                onClick={handleProcess}
-                disabled={loading}
-                className="ui-btn ui-btn-primary"
+          <div className="text-[10px] ui-muted">Tip: filtra y vuelve a “Cargar histórico”.</div>
+        </div>
+
+        <div className="ui-panel mb-4 text-[11px]">
+          <div className="grid gap-3 md:grid-cols-5">
+            <div>
+              <label className="ui-label">Empresa</label>
+              <select
+                className="ui-select"
+                value={histEmpresaId}
+                disabled={!canUse || historyLoading}
+                onChange={(e) => setHistEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : "")}
               >
-                {loading ? "Procesando..." : "Subir y procesar ficheros"}
-              </button>
+                <option value="">(todas)</option>
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.id} – {e.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <h4 className="mb-1 text-xs font-semibold">Logs sesión actual</h4>
-              <div
-                className="max-h-48 overflow-y-auto rounded-lg border px-3 py-2 text-[10px] font-mono"
-                style={{
-                  borderColor: "var(--field-border)",
-                  background: "var(--field-bg)",
-                  color: "var(--field-text)",
-                }}
+              <label className="ui-label">Tipo</label>
+              <select
+                className="ui-select"
+                value={histTipo}
+                disabled={!canUse || historyLoading}
+                onChange={(e) => setHistTipo(e.target.value)}
               >
-                {logLines.length === 0 ? (
-                  <p style={{ color: "var(--text-muted)" }}>
-                    Aquí aparecerán los logs de subida y procesado.
-                  </p>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {logLines.map((line, idx) => (
-                      <li key={idx}>• {line}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+                <option value="">(todos)</option>
+                {histTiposDisponibles.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
             </div>
-          </>
-        )}
-      </section>
 
-      {/* TARJETA 2: Histórico con filtros (desplegable, cerrada por defecto) */}
-      <section className="ui-card text-sm">
-        <header
-          className="mb-3 flex cursor-pointer flex-col gap-2 md:flex-row md:items-center md:justify-between"
-          onClick={() => setIsHistoricoOpen((prev) => !prev)}
-        >
-          <div>
-            <h3 className="ui-card-title">Histórico de logs</h3>
-            <p className="ui-card-subtitle">
-              Listado de cargas (ingestion_files) del tenant. Fechas en horario
-              de Madrid.
-            </p>
+            <div>
+              <label className="ui-label">Estado</label>
+              <select
+                className="ui-select"
+                value={histStatus}
+                disabled={!canUse || historyLoading}
+                onChange={(e) => setHistStatus(e.target.value)}
+              >
+                <option value="">(todos)</option>
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="ui-label">Año</label>
+              <select
+                className="ui-select"
+                value={histAnio}
+                disabled={!canUse || historyLoading}
+                onChange={(e) => setHistAnio(e.target.value ? Number.parseInt(e.target.value, 10) : "")}
+              >
+                <option value="">(todos)</option>
+                {histAniosDisponibles.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="ui-label">Mes</label>
+              <select
+                className="ui-select"
+                value={histMes}
+                disabled={!canUse || historyLoading}
+                onChange={(e) => setHistMes(e.target.value ? Number.parseInt(e.target.value, 10) : "")}
+              >
+                <option value="">(todos)</option>
+                {histMesesDisponibles.map((m) => (
+                  <option key={m} value={m}>
+                    {String(m).padStart(2, "0")}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+        </div>
 
-          <span
-            className="text-[11px]"
-            style={{ color: "var(--text-muted)" }}
-          >
-            {isHistoricoOpen ? "Ocultar ▲" : "Mostrar ▼"}
-          </span>
-        </header>
+        {historyError && <div className="ui-alert ui-alert--danger mb-4">{historyError}</div>}
 
-        {isHistoricoOpen && (
-          <>
-            <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleClearHistoryFilters}
-                  className="ui-btn ui-btn-outline"
-                >
-                  Limpiar filtros
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLoadHistory}
-                  disabled={historyLoading}
-                  className="ui-btn ui-btn-secondary"
-                >
-                  {historyLoading ? "Cargando..." : "Cargar histórico"}
-                </button>
-              </div>
-            </div>
+        <div className="ui-table-wrap">
+          <table className="ui-table text-[11px]">
+            <thead className="ui-thead">
+              <tr>
+                <th className="ui-th">ID</th>
+                <th className="ui-th">Empresa</th>
+                <th className="ui-th">Tipo</th>
+                <th className="ui-th">Periodo</th>
+                <th className="ui-th">Fichero</th>
+                <th className="ui-th">Estado</th>
+                <th className="ui-th ui-th-right">OK</th>
+                <th className="ui-th ui-th-right">Error</th>
+                <th className="ui-th">Subido</th>
+                <th className="ui-th">Procesado</th>
+              </tr>
+            </thead>
 
-            <div className="ui-panel mb-4 text-[11px]">
-              <div className="grid gap-3 md:grid-cols-5">
-                <div>
-                  <label className="ui-label">Empresa</label>
-                  <select
-                    className="ui-select"
-                    value={histEmpresaId}
-                    onChange={(e) =>
-                      setHistEmpresaId(
-                        e.target.value
-                          ? Number.parseInt(e.target.value, 10)
-                          : ""
-                      )
-                    }
-                  >
-                    <option value="">(todas)</option>
-                    {empresas.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.id} – {e.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="ui-label">Tipo</label>
-                  <select
-                    className="ui-select"
-                    value={histTipo}
-                    onChange={(e) => setHistTipo(e.target.value)}
-                  >
-                    <option value="">(todos)</option>
-                    {histTiposDisponibles.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="ui-label">Estado</label>
-                  <select
-                    className="ui-select"
-                    value={histStatus}
-                    onChange={(e) => setHistStatus(e.target.value)}
-                  >
-                    <option value="">(todos)</option>
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="ui-label">Año</label>
-                  <select
-                    className="ui-select"
-                    value={histAnio}
-                    onChange={(e) =>
-                      setHistAnio(
-                        e.target.value
-                          ? Number.parseInt(e.target.value, 10)
-                          : ""
-                      )
-                    }
-                  >
-                    <option value="">(todos)</option>
-                    {histAniosDisponibles.map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="ui-label">Mes</label>
-                  <select
-                    className="ui-select"
-                    value={histMes}
-                    onChange={(e) =>
-                      setHistMes(
-                        e.target.value
-                          ? Number.parseInt(e.target.value, 10)
-                          : ""
-                      )
-                    }
-                  >
-                    <option value="">(todos)</option>
-                    {histMesesDisponibles.map((m) => (
-                      <option key={m} value={m}>
-                        {String(m).padStart(2, "0")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <p
-                className="mt-2 text-[10px]"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Tip: primero pulsa “Cargar histórico” para traer datos; luego
-                filtra y vuelve a cargar.
-              </p>
-            </div>
-
-            {historyError && (
-              <p className="mb-3 text-[11px]" style={{ color: "var(--danger-text)" }}>
-                {historyError}
-              </p>
-            )}
-
-            <div
-              className="overflow-x-auto rounded-xl border bg-black/20"
-              style={{ borderColor: "var(--card-border)" }}
-            >
-              <table className="min-w-full border-collapse text-[11px]">
-                <thead className="bg-white/5 text-[10px] uppercase tracking-wide">
-                  <tr style={{ color: "var(--text-muted)" }}>
-                    <th className="px-4 py-2 text-left">ID</th>
-                    <th className="px-4 py-2 text-left">Empresa</th>
-                    <th className="px-4 py-2 text-left">Tipo</th>
-                    <th className="px-4 py-2 text-left">Periodo</th>
-                    <th className="px-4 py-2 text-left">Fichero</th>
-                    <th className="px-4 py-2 text-left">Estado</th>
-                    <th className="px-4 py-2 text-right">OK</th>
-                    <th className="px-4 py-2 text-right">Error</th>
-                    <th className="px-4 py-2 text-left">Subido</th>
-                    <th className="px-4 py-2 text-left">Procesado</th>
+            <tbody>
+              {history.length === 0 ? (
+                <tr className="ui-tr">
+                  <td colSpan={10} className="ui-td text-center ui-muted">
+                    {historyLoading
+                      ? "Cargando histórico..."
+                      : "Aún no has cargado el histórico o no hay registros con esos filtros."}
+                  </td>
+                </tr>
+              ) : (
+                history.map((h) => (
+                  <tr key={h.id} className="ui-tr">
+                    <td className="ui-td font-mono">{h.id}</td>
+                    <td className="ui-td">{empresaLabelById(h.empresa_id)}</td>
+                    <td className="ui-td font-mono">{h.tipo}</td>
+                    <td className="ui-td font-mono">{fmtPeriodo(h.anio, h.mes)}</td>
+                    <td className="ui-td">{h.filename}</td>
+                    <td className="ui-td">
+                      <span className={statusBadgeClass(h.status)}>{h.status}</span>
+                    </td>
+                    <td className="ui-td ui-td-right font-mono">{h.rows_ok ?? 0}</td>
+                    <td className="ui-td ui-td-right font-mono">{h.rows_error ?? 0}</td>
+                    <td className="ui-td">{fmtDateMadrid(h.created_at)}</td>
+                    <td className="ui-td">{fmtDateMadrid(h.processed_at)}</td>
                   </tr>
-                </thead>
-
-                <tbody>
-                  {history.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={10}
-                        className="px-4 py-4 text-center"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {historyLoading
-                          ? "Cargando histórico..."
-                          : "Aún no has cargado el histórico o no hay registros con esos filtros."}
-                      </td>
-                    </tr>
-                  ) : (
-                    history.map((h) => (
-                      <tr
-                        key={h.id}
-                        className="border-t"
-                        style={{ borderColor: "var(--card-border)" }}
-                      >
-                        <td className="px-4 py-2 font-mono">{h.id}</td>
-                        <td className="px-4 py-2">
-                          {empresaLabelById(h.empresa_id)}
-                        </td>
-                        <td className="px-4 py-2 font-mono">{h.tipo}</td>
-                        <td className="px-4 py-2 font-mono">
-                          {fmtPeriodo(h.anio, h.mes)}
-                        </td>
-                        <td className="px-4 py-2">{h.filename}</td>
-                        <td className="px-4 py-2">
-                          <span
-                            className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px]"
-                            style={statusBadgeStyle(h.status)}
-                          >
-                            {h.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono">
-                          {h.rows_ok ?? 0}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono">
-                          {h.rows_error ?? 0}
-                        </td>
-                        <td className="px-4 py-2">
-                          {fmtDateMadrid(h.created_at)}
-                        </td>
-                        <td className="px-4 py-2">
-                          {fmtDateMadrid(h.processed_at)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </section>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </InlineAccordion>
     </div>
   );
 }

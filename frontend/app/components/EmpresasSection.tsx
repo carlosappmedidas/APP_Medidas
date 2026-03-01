@@ -16,13 +16,14 @@ export default function EmpresasSection({ token }: EmpresasProps) {
 
   const handleLoadEmpresas = async () => {
     if (!token) {
-      setError("Haz login para poder cargar empresas.");
+      setError("Debes iniciar sesión para consultar las empresas.");
       setEmpresas([]);
       return;
     }
 
     setLoading(true);
     setError(null);
+
     try {
       const res = await fetch(`${API_BASE_URL}/empresas/`, {
         headers: getAuthHeaders(token),
@@ -36,7 +37,7 @@ export default function EmpresasSection({ token }: EmpresasProps) {
       setEmpresas(json);
     } catch (err: any) {
       console.error("Error cargando empresas:", err);
-      setError("Error cargando empresas. Revisa la API y el token.");
+      setError("No se pudieron cargar las empresas. Verifica la API o el token.");
     } finally {
       setLoading(false);
     }
@@ -48,7 +49,7 @@ export default function EmpresasSection({ token }: EmpresasProps) {
         <div>
           <h2 className="ui-card-title">Empresas</h2>
           <p className="ui-card-subtitle">
-            Lista de empresas del tenant actual.
+            Listado de empresas del cliente actual.
           </p>
         </div>
 
@@ -58,7 +59,7 @@ export default function EmpresasSection({ token }: EmpresasProps) {
           disabled={loading || !token}
           className="ui-btn ui-btn-primary"
         >
-          {loading ? "Cargando..." : "Cargar empresas"}
+          {loading ? "Cargando..." : "Recargar"}
         </button>
       </header>
 
@@ -70,26 +71,19 @@ export default function EmpresasSection({ token }: EmpresasProps) {
             background: "var(--danger-bg)",
           }}
         >
-          <p
-            className="text-[11px]"
-            style={{ color: "var(--danger-text)" }}
-          >
+          <p className="text-[11px]" style={{ color: "var(--danger-text)" }}>
             {error}
           </p>
         </div>
       )}
 
-      <div className="ui-panel overflow-x-auto">
-        <table className="min-w-full border-collapse text-xs">
-          <thead
-            className="text-[10px] uppercase tracking-wide"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <tr
-              style={{
-                background: "rgba(255,255,255,0.05)",
-              }}
-            >
+      <div
+        className="overflow-x-auto rounded-xl border bg-black/20"
+        style={{ borderColor: "var(--card-border)" }}
+      >
+        <table className="min-w-full border-collapse text-[11px]">
+          <thead className="bg-white/5 text-[10px] uppercase tracking-wide opacity-70">
+            <tr>
               <th className="px-4 py-2 text-left">ID</th>
               <th className="px-4 py-2 text-left">Nombre</th>
               <th className="px-4 py-2 text-left">Código REE</th>
@@ -101,12 +95,8 @@ export default function EmpresasSection({ token }: EmpresasProps) {
           <tbody>
             {empresas.length === 0 ? (
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-4 py-4 text-center"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  No hay empresas cargadas todavía.
+                <td colSpan={5} className="px-4 py-4 text-center opacity-70">
+                  No hay empresas para mostrar.
                 </td>
               </tr>
             ) : (
@@ -126,15 +116,16 @@ export default function EmpresasSection({ token }: EmpresasProps) {
             )}
           </tbody>
         </table>
+      </div>
 
+      {!token && (
         <p
           className="mt-3 text-[10px]"
           style={{ color: "var(--text-muted)" }}
         >
-          Tip: si no tienes sesión, el botón queda deshabilitado y no se
-          consultará la API.
+          Inicia sesión para consultar el listado de empresas.
         </p>
-      </div>
+      )}
     </section>
   );
 }
