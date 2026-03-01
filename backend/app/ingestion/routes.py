@@ -23,6 +23,7 @@ from sqlalchemy import select
 
 from app.core.db import get_db
 from app.core.auth import get_current_user
+from app.core.config import get_settings  # ✅ NUEVO (configurable por .env)
 from app.ingestion.models import IngestionFile
 from app.ingestion.schemas import (
     IngestionFileCreate,
@@ -106,6 +107,26 @@ def _find_existing_ingestion_file(
     )
 
 
+# ---------------------------------------------------------
+# ✅ NUEVO: helpers de borrado físico (sin afectar lógica)
+# ---------------------------------------------------------
+def _safe_unlink(storage_key: str | None) -> None:
+    """
+    Borra el fichero físico si existe.
+    - Nunca lanza excepción (para no romper flujo).
+    - Solo toca disco; no cambia estados ni DB.
+    """
+    if not storage_key:
+        return
+    try:
+        p = Path(storage_key)
+        if p.exists() and p.is_file():
+            p.unlink()
+    except Exception:
+        # Silencioso: el borrado es best-effort
+        return
+
+
 @router.post(
     "/files/upload",
     response_model=IngestionFileRead,
@@ -176,6 +197,9 @@ async def upload_file(
     storage_key = str(dest_path)
 
     if existing:
+        # ✅ NUEVO: guardamos el storage_key anterior para limpiar “duplicados”
+        old_storage_key = cast(str, getattr(existing, "storage_key", None) or "")
+
         ex = cast(Any, existing)
         ex.filename = file.filename
         ex.storage_key = storage_key
@@ -192,6 +216,11 @@ async def upload_file(
 
         db.commit()
         db.refresh(existing)
+
+        # ✅ NUEVO: si el fichero anterior era distinto, lo borramos del disco
+        if old_storage_key and old_storage_key != storage_key:
+          _safe_unlink(old_storage_key)
+
         return existing
 
     ingestion_data: dict[str, Any] = {
@@ -419,6 +448,9 @@ def process_file(
     db.commit()
     db.refresh(ingestion)
 
+    # ✅ Guardamos storage_key para borrado posterior (si procede)
+    storage_key_for_cleanup = cast(str, ing.storage_key)
+
     try:
         tipo = (ing.tipo or "").upper()
 
@@ -521,5 +553,15 @@ def process_file(
         ing.processed_at = datetime.utcnow()
         db.commit()
         db.refresh(ingestion)
+
+        # ✅ NUEVO: borrar fichero si terminó OK y está habilitado por config
+        try:
+            settings = get_settings()
+            delete_after_ok = bool(getattr(settings, "INGESTION_DELETE_AFTER_OK", True))
+        except Exception:
+            delete_after_ok = True  # fallback seguro
+
+        if delete_after_ok and cast(str, ing.status) == IngestionFile.STATUS_OK:
+            _safe_unlink(storage_key_for_cleanup)
 
     return ingestion

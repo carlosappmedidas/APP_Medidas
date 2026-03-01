@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # dev: 60 ok | prod: recomendado 15–30
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
+    # ✅ NUEVO: borrado de ficheros de ingestion tras procesar OK
+    # Por defecto: True (modo “servidor”: no acumular ficheros)
+    INGESTION_DELETE_AFTER_OK: bool = True
+
     # Leer variables de entorno desde .env
     model_config = SettingsConfigDict(
         env_file=".env",

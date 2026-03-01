@@ -1,3 +1,5 @@
+// frontend/app/components/AdminUsersSection.tsx
+
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -180,7 +182,8 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
         body.password = editAdminPassword;
       }
 
-      const res = await fetch(`${API_BASE_URL}/auth/users/${editingAdminUserId}`, {
+      // ✅ FIX: endpoint de superuser (no el del panel cliente)
+      const res = await fetch(`${API_BASE_URL}/auth/admin/users/${editingAdminUserId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -218,7 +221,8 @@ const AdminUsersSection: React.FC<AdminUsersSectionProps> = ({
     setErrorAdmin(null);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/users/${userId}/hard-delete`, {
+      // ✅ FIX: endpoint de superuser (no el del panel cliente)
+      const res = await fetch(`${API_BASE_URL}/auth/admin/users/${userId}/hard-delete`, {
         method: "DELETE",
         headers: getAuthHeaders(token),
       });

@@ -34,7 +34,9 @@ from app.empresas.models import Empresa
 settings = get_settings()
 
 # Usuario “blindado”
-PROTECTED_USER_EMAIL = "carlos@example.com"
+# ✅ DESACTIVADO: no queremos blindaje. Mantenemos la variable y los checks
+# (para no “desaparecer nada”), pero al estar vacío no aplica.
+PROTECTED_USER_EMAIL = ""
 
 # Roles que SÍ se pueden usar desde el panel del cliente
 ALLOWED_TENANT_ROLES: Sequence[str] = ("user", "admin")
@@ -614,6 +616,121 @@ def create_user_as_superuser(
     db.commit()
     db.refresh(user)
     return user
+
+
+# ✅ NUEVO: actualizar usuario como superuser (panel global)
+@router.patch("/admin/users/{user_id}", response_model=UserRead)
+def update_user_as_superuser(
+    user_id: int,
+    user_in: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    """
+    Actualiza un usuario globalmente como superusuario.
+
+    - Permite editar usuarios con rol 'owner' (a diferencia del panel cliente).
+    - Mantiene protecciones básicas (no desactivar/eliminar tu propio usuario).
+    - Mantiene el check del usuario protegido, pero está desactivado si PROTECTED_USER_EMAIL="".
+    """
+    user = (
+        db.query(User)
+        .options(joinedload(User.empresas_permitidas))
+        .filter(User.id == user_id)
+        .first()
+    )
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
+    if _u_email(user) == PROTECTED_USER_EMAIL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este usuario solo puede ser gestionado por plataforma",
+        )
+
+    # Evitar autodesactivarse desde aquí
+    if _u_id(user) == _u_id(current_user) and user_in.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes desactivar tu propio usuario",
+        )
+
+    u = _as_any(user)
+
+    # Rol (superuser puede poner user/admin/owner según tu modelo)
+    if user_in.rol is not None:
+        u.rol = user_in.rol
+
+    # Activo
+    if user_in.is_active is not None:
+        u.is_active = user_in.is_active
+
+    # Password
+    if user_in.password is not None and user_in.password != "":
+        u.password_hash = get_password_hash(user_in.password)
+
+    # Empresas permitidas:
+    # - Respetamos el tenant del usuario objetivo para no mezclar empresas de otros tenants.
+    if user_in.empresa_ids_permitidas is not None:
+        if len(user_in.empresa_ids_permitidas) == 0:
+            u.empresas_permitidas = []
+        else:
+            tenant_id_target = cast(int, getattr(user, "tenant_id"))
+            empresas = (
+                db.query(Empresa)
+                .filter(
+                    Empresa.id.in_(user_in.empresa_ids_permitidas),
+                    Empresa.tenant_id == tenant_id_target,
+                )
+                .all()
+            )
+            u.empresas_permitidas = empresas
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+# ✅ NUEVO: hard-delete usuario como superuser (panel global)
+@router.delete("/admin/users/{user_id}/hard-delete", status_code=status.HTTP_204_NO_CONTENT)
+def hard_delete_user_as_superuser(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    """
+    Elimina físicamente un usuario globalmente como superusuario.
+
+    - Permite borrar usuarios con rol 'owner'.
+    - No permite borrar tu propio usuario (evitar quedarte sin acceso).
+    - Mantiene el check del usuario protegido, pero está desactivado si PROTECTED_USER_EMAIL="".
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
+    if _u_email(user) == PROTECTED_USER_EMAIL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este usuario solo puede ser gestionado por plataforma",
+        )
+
+    if _u_id(user) == _u_id(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes eliminar tu propio usuario",
+        )
+
+    db.delete(user)
+    db.commit()
+    return None
 
 
 @router.get("/admin/tenants", response_model=List[TenantRead])
