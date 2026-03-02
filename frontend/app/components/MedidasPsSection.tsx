@@ -7,13 +7,8 @@ import type { MedidaPS } from "../types";
 
 type MedidasPsProps = {
   token: string | null;
-
-  // ✅ mismo componente para Sistema
-  // tenant -> /medidas/ps/
-  // all    -> /medidas/ps/all   (solo superuser)
   scope?: "tenant" | "all";
 
-  // ajustes columnas (pueden venir undefined en SistemaSection)
   columnOrder?: string[];
   setColumnOrder?: (order: string[]) => void;
 
@@ -21,7 +16,28 @@ type MedidasPsProps = {
   setHiddenColumns?: (cols: string[]) => void;
 };
 
-// Formateo numérico en formato español: 1.234.567,89
+type EmpresaFilterOption = {
+  id: number;
+  codigo?: string | null;
+  tenant_id?: number | null; // solo scope=all
+};
+
+type PsFiltersResponse = {
+  empresas: EmpresaFilterOption[];
+  anios: number[];
+  meses: number[];
+  tarifas: string[];
+};
+
+type PaginatedResponse = {
+  items: MedidaPS[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+};
+
+// Formateo numérico
 const formatNumberEs = (
   v: number | null | undefined,
   decimals: number = 2
@@ -42,9 +58,7 @@ export type ColumnDefPs = {
   render: (m: MedidaPS | any) => any;
 };
 
-// 🔹 Definimos TODAS las columnas PS (esta es la “tabla real”)
 const ALL_COLUMNS_PS: ColumnDefPs[] = [
-  // Identificación
   {
     id: "empresa_id",
     label: "Empresa ID",
@@ -74,7 +88,6 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => m.mes.toString().padStart(2, "0"),
   },
 
-  // Energía por tipo PS
   {
     id: "energia_ps_tipo_1_kwh",
     label: "E PS tipo 1",
@@ -118,7 +131,6 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => formatNumberEs(m.energia_ps_total_kwh),
   },
 
-  // CUPS por tipo
   {
     id: "cups_tipo_1",
     label: "CUPS tipo 1",
@@ -162,7 +174,6 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => m.cups_total ?? "-",
   },
 
-  // Importes por tipo
   {
     id: "importe_tipo_1_eur",
     label: "Importe tipo 1",
@@ -206,7 +217,6 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => formatNumberEs(m.importe_total_eur),
   },
 
-  // ✅ Tarifas
   {
     id: "energia_tarifa_20td_kwh",
     label: "E 2.0TD",
@@ -362,7 +372,6 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
   },
 ];
 
-// 👉 Meta simple para Ajustes
 export const COLUMNS_PS_META = ALL_COLUMNS_PS.map((c) => ({
   id: c.id,
   label: c.label,
@@ -381,24 +390,32 @@ export default function MedidasPsSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ “ya intenté cargar al menos una vez”
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  // Filtros
-  const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
+  // filtros
+  const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("");
   const [filtroAnio, setFiltroAnio] = useState<string>("");
   const [filtroMes, setFiltroMes] = useState<string>("");
   const [filtroTarifa, setFiltroTarifa] = useState<string>("");
 
-  // Paginación
+  // opciones PRO (backend)
+  const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>(
+    []
+  );
+  const [opcionesAnio, setOpcionesAnio] = useState<number[]>([]);
+  const [opcionesMes, setOpcionesMes] = useState<number[]>([]);
+  const [opcionesTarifa, setOpcionesTarifa] = useState<string[]>([]);
+
+  // paginación real
   const [pageSize, setPageSize] = useState<number>(50);
   const [page, setPage] = useState<number>(0);
+  const [totalFilas, setTotalFilas] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
 
-  // Ajustes columnas
+  // ajustes columnas
   const [showAdjust, setShowAdjust] = useState<boolean>(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  // ✅ defaults seguros
   const defaultOrder = useMemo(() => ALL_COLUMNS_PS.map((c) => c.id), []);
 
   const safeColumnOrder = useMemo(() => {
@@ -413,11 +430,47 @@ export default function MedidasPsSection({
 
   const canEditAdjustments = !!setColumnOrder && !!setHiddenColumns;
 
-  // ✅ para incluir columnas nuevas si columnOrder viejo
   const orderForAdjustments = useMemo(() => {
     const missing = defaultOrder.filter((id) => !safeColumnOrder.includes(id));
     return [...safeColumnOrder, ...missing];
   }, [safeColumnOrder, defaultOrder]);
+
+  const filtrosActivosCount =
+    (filtroEmpresaId ? 1 : 0) +
+    (filtroAnio ? 1 : 0) +
+    (filtroMes ? 1 : 0) +
+    (filtroTarifa ? 1 : 0);
+
+  const clearFilters = () => {
+    setFiltroEmpresaId("");
+    setFiltroAnio("");
+    setFiltroMes("");
+    setFiltroTarifa("");
+    setPage(0);
+  };
+
+  const loadFilters = async () => {
+    if (!token) return;
+
+    try {
+      const endpoint =
+        scope === "all" ? "/medidas/ps/all/filters" : "/medidas/ps/filters";
+
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok) return;
+
+      const json = (await res.json()) as PsFiltersResponse;
+
+      setOpcionesEmpresa(Array.isArray(json?.empresas) ? json.empresas : []);
+      setOpcionesAnio(Array.isArray(json?.anios) ? json.anios : []);
+      setOpcionesMes(Array.isArray(json?.meses) ? json.meses : []);
+      setOpcionesTarifa(Array.isArray(json?.tarifas) ? json.tarifas : []);
+    } catch (e) {
+      console.error("Error cargando filtros PS:", e);
+    }
+  };
 
   const handleLoadMedidas = async () => {
     if (!token) return;
@@ -426,75 +479,107 @@ export default function MedidasPsSection({
     setError(null);
 
     try {
-      const endpoint = scope === "all" ? "/medidas/ps/all" : "/medidas/ps/";
+      const endpoint =
+        scope === "all" ? "/medidas/ps/all/page" : "/medidas/ps/page";
 
-      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("page_size", String(pageSize));
+
+      if (filtroEmpresaId) params.set("empresa_id", filtroEmpresaId);
+      if (filtroAnio) params.set("anio", filtroAnio);
+      if (filtroMes) params.set("mes", filtroMes);
+      if (filtroTarifa) params.set("tarifa", filtroTarifa);
+
+      const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
         headers: getAuthHeaders(token),
       });
 
       if (!res.ok) throw new Error(`Error ${res.status}`);
 
-      const json = await res.json();
-      setData(Array.isArray(json) ? json : []);
-      setPage(0);
+      const json = (await res.json()) as PaginatedResponse;
+
+      setData(Array.isArray(json?.items) ? json.items : []);
+      setTotalFilas(typeof json?.total === "number" ? json.total : 0);
+      setTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
+
       setHasLoadedOnce(true);
     } catch (err) {
-      console.error("Error cargando medidas_ps:", err);
+      console.error("Error cargando medidas_ps paginadas:", err);
       setError("Error cargando medidas PS. Revisa la API y el token.");
       setData([]);
+      setTotalFilas(0);
+      setTotalPages(1);
       setHasLoadedOnce(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ AUTO-CARGA SIEMPRE al tener token (y cuando cambie scope)
-  // - Evita doble llamada en StrictMode con un guard por clave (token+scope)
-  const lastAutoKeyRef = useRef<string>("");
+  // boot: token/scope
+  const bootKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) {
-      lastAutoKeyRef.current = "";
+      bootKeyRef.current = "";
       setHasLoadedOnce(false);
-      setData([]);
       setError(null);
+      setData([]);
+
+      setOpcionesEmpresa([]);
+      setOpcionesAnio([]);
+      setOpcionesMes([]);
+      setOpcionesTarifa([]);
+
+      setPage(0);
+      setTotalFilas(0);
+      setTotalPages(1);
       return;
     }
 
     const key = `${token}::${scope}`;
-    if (lastAutoKeyRef.current === key) return;
+    if (bootKeyRef.current === key) return;
+    bootKeyRef.current = key;
 
-    lastAutoKeyRef.current = key;
-    void handleLoadMedidas();
+    setPage(0);
+    void loadFilters().then(() => {
+      void handleLoadMedidas();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, scope]);
 
-  // reset página cuando cambian filtros/pageSize
+  // filtros/pageSize -> reset page 0 + reload
+  const filterKeyRef = useRef<string>("");
   useEffect(() => {
+    if (!token) return;
+
+    const key = `${scope}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}::${filtroTarifa}::${pageSize}`;
+    if (filterKeyRef.current === key) return;
+    filterKeyRef.current = key;
+
     setPage(0);
-  }, [filtroEmpresa, filtroAnio, filtroMes, filtroTarifa, pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void handleLoadMedidas();
+  }, [token, scope, filtroEmpresaId, filtroAnio, filtroMes, filtroTarifa, pageSize]);
 
-  const filtrosActivosCount =
-    (filtroEmpresa ? 1 : 0) +
-    (filtroAnio ? 1 : 0) +
-    (filtroMes ? 1 : 0) +
-    (filtroTarifa ? 1 : 0);
+  // page -> reload
+  const pageKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (!token) return;
 
-  const clearFilters = () => {
-    setFiltroEmpresa("");
-    setFiltroAnio("");
-    setFiltroMes("");
-    setFiltroTarifa("");
-    setPage(0);
-  };
+    const key = `${scope}::${page}::${pageSize}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}::${filtroTarifa}`;
+    if (pageKeyRef.current === key) return;
+    pageKeyRef.current = key;
 
-  // mapa id -> columna
+    void handleLoadMedidas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, page]);
+
   const columnasPorId = useMemo(() => {
     const map = new Map<string, ColumnDefPs>();
     for (const c of ALL_COLUMNS_PS) map.set(c.id, c);
     return map;
   }, []);
 
-  // columnas ordenadas + ocultas
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefPs[] = [];
 
@@ -514,158 +599,12 @@ export default function MedidasPsSection({
 
   const totalColumnas = columnasOrdenadas.length || 1;
 
-  // valores únicos para filtros
-  const { opcionesEmpresa, opcionesAnio, opcionesMes, opcionesTarifa } =
-    useMemo(() => {
-      const empresas = new Set<string>();
-      const anios = new Set<number>();
-      const meses = new Set<number>();
-      const tarifas = new Set<string>();
-
-      for (const m of data) {
-        if (m.empresa_codigo) empresas.add(m.empresa_codigo);
-        if (typeof m.anio === "number") anios.add(m.anio);
-        if (typeof m.mes === "number") meses.add(m.mes);
-
-        const has20 =
-          m.energia_tarifa_20td_kwh != null ||
-          m.cups_tarifa_20td != null ||
-          m.importe_tarifa_20td_eur != null;
-        if (has20) tarifas.add("20td");
-
-        const has30 =
-          m.energia_tarifa_30td_kwh != null ||
-          m.cups_tarifa_30td != null ||
-          m.importe_tarifa_30td_eur != null;
-        if (has30) tarifas.add("30td");
-
-        const has30ve =
-          m.energia_tarifa_30tdve_kwh != null ||
-          m.cups_tarifa_30tdve != null ||
-          m.importe_tarifa_30tdve_eur != null;
-        if (has30ve) tarifas.add("30tdve");
-
-        const has61 =
-          m.energia_tarifa_61td_kwh != null ||
-          m.cups_tarifa_61td != null ||
-          m.importe_tarifa_61td_eur != null;
-        if (has61) tarifas.add("61td");
-
-        const has62 =
-          m.energia_tarifa_62td_kwh != null ||
-          m.cups_tarifa_62td != null ||
-          m.importe_tarifa_62td_eur != null;
-        if (has62) tarifas.add("62td");
-
-        const has63 =
-          m.energia_tarifa_63td_kwh != null ||
-          m.cups_tarifa_63td != null ||
-          m.importe_tarifa_63td_eur != null;
-        if (has63) tarifas.add("63td");
-
-        const has64 =
-          m.energia_tarifa_64td_kwh != null ||
-          m.cups_tarifa_64td != null ||
-          m.importe_tarifa_64td_eur != null;
-        if (has64) tarifas.add("64td");
-      }
-
-      const ordenTarifas = [
-        "20td",
-        "30td",
-        "30tdve",
-        "61td",
-        "62td",
-        "63td",
-        "64td",
-      ];
-      const opcionesTarifa = ordenTarifas.filter((t) => tarifas.has(t));
-
-      return {
-        opcionesEmpresa: Array.from(empresas).sort(),
-        opcionesAnio: Array.from(anios).sort((a, b) => a - b),
-        opcionesMes: Array.from(meses).sort((a, b) => a - b),
-        opcionesTarifa,
-      };
-    }, [data]);
-
-  // aplicar filtros + ordenar por empresa -> año -> mes
-  const filasVisibles = useMemo(() => {
-    const filtradas = data.filter((m) => {
-      const empresaCodigo = m.empresa_codigo ?? undefined;
-
-      const matchEmpresa = !filtroEmpresa || empresaCodigo === filtroEmpresa;
-      const matchAnio =
-        !filtroAnio || m.anio === Number.parseInt(filtroAnio, 10);
-      const matchMes = !filtroMes || m.mes === Number.parseInt(filtroMes, 10);
-
-      let matchTarifa = true;
-      if (filtroTarifa) {
-        const hasTarifa =
-          filtroTarifa === "20td"
-            ? m.energia_tarifa_20td_kwh != null ||
-              m.cups_tarifa_20td != null ||
-              m.importe_tarifa_20td_eur != null
-            : filtroTarifa === "30td"
-            ? m.energia_tarifa_30td_kwh != null ||
-              m.cups_tarifa_30td != null ||
-              m.importe_tarifa_30td_eur != null
-            : filtroTarifa === "30tdve"
-            ? m.energia_tarifa_30tdve_kwh != null ||
-              m.cups_tarifa_30tdve != null ||
-              m.importe_tarifa_30tdve_eur != null
-            : filtroTarifa === "61td"
-            ? m.energia_tarifa_61td_kwh != null ||
-              m.cups_tarifa_61td != null ||
-              m.importe_tarifa_61td_eur != null
-            : filtroTarifa === "62td"
-            ? m.energia_tarifa_62td_kwh != null ||
-              m.cups_tarifa_62td != null ||
-              m.importe_tarifa_62td_eur != null
-            : filtroTarifa === "63td"
-            ? m.energia_tarifa_63td_kwh != null ||
-              m.cups_tarifa_63td != null ||
-              m.importe_tarifa_63td_eur != null
-            : filtroTarifa === "64td"
-            ? m.energia_tarifa_64td_kwh != null ||
-              m.cups_tarifa_64td != null ||
-              m.importe_tarifa_64td_eur != null
-            : true;
-
-        matchTarifa = !!hasTarifa;
-      }
-
-      return matchEmpresa && matchAnio && matchMes && matchTarifa;
-    });
-
-    return [...filtradas].sort((a, b) => {
-      const codA = (a.empresa_codigo ?? "") as string;
-      const codB = (b.empresa_codigo ?? "") as string;
-
-      const cmpCod = codA.localeCompare(codB);
-      if (cmpCod !== 0) return cmpCod;
-
-      if (a.anio !== b.anio) return a.anio - b.anio;
-      return a.mes - b.mes;
-    });
-  }, [data, filtroEmpresa, filtroAnio, filtroMes, filtroTarifa]);
-
-  // paginación
-  const totalFilas = filasVisibles.length;
-  const totalPages = Math.max(1, Math.ceil(totalFilas / pageSize));
-  const currentPage = Math.min(page, totalPages - 1);
-
-  const startIndex = currentPage * pageSize;
+  const currentPage = Math.min(page, Math.max(0, totalPages - 1));
+  const startIndex = totalFilas === 0 ? 0 : currentPage * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalFilas);
-  const filasPaginadas =
-    totalFilas === 0 ? [] : filasVisibles.slice(startIndex, endIndex);
 
-  // ---- ajustes columnas: drag & drop + checks ----
   const handleDragStart = (index: number) => setDragIndex(index);
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-  };
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
   const handleDrop = (index: number) => {
     if (!canEditAdjustments) return;
@@ -700,7 +639,6 @@ export default function MedidasPsSection({
     setHiddenColumns?.(defaultOrder);
   };
 
-  // 3 columnas en ajustes
   const third = Math.ceil(orderForAdjustments.length / 3) || 1;
   const firstIds = orderForAdjustments.slice(0, third);
   const secondIds = orderForAdjustments.slice(third, 2 * third);
@@ -759,20 +697,17 @@ export default function MedidasPsSection({
 
   return (
     <section className="ui-card text-sm">
-      {/* HEADER */}
       <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h4 className="ui-card-title">
             Medidas (PS){scope === "all" ? " · Sistema" : ""}
           </h4>
-          <p className="ui-card-subtitle">
-            Resumen mensual de PS por empresa, tarifa y tipo.
-          </p>
+          <p className="ui-card-subtitle">Resumen mensual de PS por empresa, tarifa y tipo.</p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleLoadMedidas}
+            onClick={() => void handleLoadMedidas()}
             disabled={loading || !token}
             className="ui-btn ui-btn-primary"
             type="button"
@@ -796,7 +731,6 @@ export default function MedidasPsSection({
 
       {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
 
-      {/* META FILTROS */}
       <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
         <div className="ui-muted">
           Filtros activos:{" "}
@@ -807,28 +741,30 @@ export default function MedidasPsSection({
 
         {hasLoadedOnce && (
           <div className="ui-muted">
-            Filas cargadas:{" "}
+            Total filas:{" "}
             <span className="font-medium" style={{ color: "var(--text)" }}>
-              {data.length}
+              {totalFilas}
             </span>
           </div>
         )}
       </div>
 
-      {/* FILTROS */}
       <div className="mb-4 grid gap-3 md:grid-cols-4">
         <div>
-          <label className="ui-label">Código empresa</label>
+          <label className="ui-label">Empresa</label>
           <select
             className="ui-select"
-            value={filtroEmpresa}
-            onChange={(e) => setFiltroEmpresa(e.target.value)}
-            disabled={!hasLoadedOnce || loading}
+            value={filtroEmpresaId}
+            onChange={(e) => setFiltroEmpresaId(e.target.value)}
+            disabled={!token || loading}
           >
             <option value="">Todas</option>
-            {opcionesEmpresa.map((cod) => (
-              <option key={cod} value={cod}>
-                {cod}
+            {opcionesEmpresa.map((e) => (
+              <option key={e.id} value={String(e.id)}>
+                {(e.codigo ?? `Empresa ${e.id}`) + ` (ID ${e.id})`}
+                {scope === "all" && typeof e.tenant_id === "number"
+                  ? ` · T${e.tenant_id}`
+                  : ""}
               </option>
             ))}
           </select>
@@ -840,11 +776,11 @@ export default function MedidasPsSection({
             className="ui-select"
             value={filtroAnio}
             onChange={(e) => setFiltroAnio(e.target.value)}
-            disabled={!hasLoadedOnce || loading}
+            disabled={!token || loading}
           >
             <option value="">Todos</option>
             {opcionesAnio.map((anio) => (
-              <option key={anio} value={anio}>
+              <option key={anio} value={String(anio)}>
                 {anio}
               </option>
             ))}
@@ -857,11 +793,11 @@ export default function MedidasPsSection({
             className="ui-select"
             value={filtroMes}
             onChange={(e) => setFiltroMes(e.target.value)}
-            disabled={!hasLoadedOnce || loading}
+            disabled={!token || loading}
           >
             <option value="">Todos</option>
             {opcionesMes.map((mes) => (
-              <option key={mes} value={mes}>
+              <option key={mes} value={String(mes)}>
                 {mes.toString().padStart(2, "0")}
               </option>
             ))}
@@ -874,7 +810,7 @@ export default function MedidasPsSection({
             className="ui-select"
             value={filtroTarifa}
             onChange={(e) => setFiltroTarifa(e.target.value)}
-            disabled={!hasLoadedOnce || loading}
+            disabled={!token || loading}
           >
             <option value="">Todas</option>
             {opcionesTarifa.map((t) => (
@@ -886,31 +822,21 @@ export default function MedidasPsSection({
         </div>
       </div>
 
-      {/* AJUSTES DE COLUMNAS (solo si hay setters) */}
       {canEditAdjustments && (
         <div className="mb-4 rounded-xl border border-[var(--card-border)] bg-[var(--field-bg-soft)]">
           <div className="flex items-center justify-between px-4 py-3">
             <div>
               <h5 className="text-xs font-semibold">Ajustes de columnas</h5>
               <p className="mt-1 text-[10px] ui-muted">
-                Marca las columnas que quieres ver y arrástralas para cambiar el
-                orden.
+                Marca las columnas que quieres ver y arrástralas para cambiar el orden.
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={hideAllColumns}
-                className="ui-btn ui-btn-outline ui-btn-xs"
-              >
+              <button type="button" onClick={hideAllColumns} className="ui-btn ui-btn-outline ui-btn-xs">
                 Quitar todo
               </button>
-              <button
-                type="button"
-                onClick={resetOrder}
-                className="ui-btn ui-btn-outline ui-btn-xs"
-              >
+              <button type="button" onClick={resetOrder} className="ui-btn ui-btn-outline ui-btn-xs">
                 Reset
               </button>
               <button
@@ -924,27 +850,16 @@ export default function MedidasPsSection({
           </div>
 
           {showAdjust && (
-            <div
-              className="border-t border-[var(--card-border)] px-4 py-3 text-[11px]"
-              onDragOver={handleDragOver}
-            >
-              <div className="mb-2 text-[10px] ui-muted">
-                ☰ = arrastrar para reordenar · ✓ = mostrar columna en la tabla.
-              </div>
+            <div className="border-t border-[var(--card-border)] px-4 py-3 text-[11px]" onDragOver={handleDragOver}>
+              <div className="mb-2 text-[10px] ui-muted">☰ = arrastrar · ✓ = mostrar</div>
 
               <div className="flex gap-3">
+                <div className="flex-1 space-y-1">{firstIds.map((id, idx) => renderAdjustItem(id, idx))}</div>
                 <div className="flex-1 space-y-1">
-                  {firstIds.map((id, idx) => renderAdjustItem(id, idx))}
+                  {secondIds.map((id, idx) => renderAdjustItem(id, third + idx))}
                 </div>
                 <div className="flex-1 space-y-1">
-                  {secondIds.map((id, idx) =>
-                    renderAdjustItem(id, third + idx)
-                  )}
-                </div>
-                <div className="flex-1 space-y-1">
-                  {thirdIds.map((id, idx) =>
-                    renderAdjustItem(id, 2 * third + idx)
-                  )}
+                  {thirdIds.map((id, idx) => renderAdjustItem(id, 2 * third + idx))}
                 </div>
               </div>
             </div>
@@ -952,7 +867,6 @@ export default function MedidasPsSection({
         </div>
       )}
 
-      {/* TABLA */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]">
           <thead className="ui-thead">
@@ -960,10 +874,7 @@ export default function MedidasPsSection({
               {columnasOrdenadas.map((col) => (
                 <th
                   key={col.id}
-                  className={[
-                    "ui-th",
-                    col.align === "right" ? "ui-th-right" : "",
-                  ].join(" ")}
+                  className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
                 >
                   {col.label}
                 </th>
@@ -972,7 +883,6 @@ export default function MedidasPsSection({
           </thead>
 
           <tbody>
-            {/* Skeleton loading (sin salto visual) */}
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={`sk-${i}`} className="ui-tr">
@@ -993,25 +903,19 @@ export default function MedidasPsSection({
 
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
-                <td
-                  colSpan={totalColumnas}
-                  className="ui-td text-center ui-muted"
-                >
+                <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
                   No hay medidas PS que cumplan los filtros.
                 </td>
               </tr>
             )}
 
             {!loading &&
-              filasPaginadas.map((m) => (
+              data.map((m) => (
                 <tr key={`${m.empresa_id}-${m.anio}-${m.mes}`} className="ui-tr">
                   {columnasOrdenadas.map((col) => (
                     <td
                       key={col.id}
-                      className={[
-                        "ui-td",
-                        col.align === "right" ? "ui-td-right" : "",
-                      ].join(" ")}
+                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
                     >
                       {col.render(m)}
                     </td>
@@ -1021,7 +925,6 @@ export default function MedidasPsSection({
           </tbody>
         </table>
 
-        {/* FOOTER PAGINACIÓN */}
         {!loading && hasLoadedOnce && totalFilas > 0 && (
           <div className="flex flex-col gap-2 border-t border-[var(--card-border)] px-4 py-3 text-[11px] ui-muted md:flex-row md:items-center md:justify-between">
             <div>
@@ -1077,9 +980,7 @@ export default function MedidasPsSection({
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setPage((p) => Math.min(totalPages - 1, p + 1))
-                  }
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={currentPage >= totalPages - 1}
                   className="ui-btn ui-btn-outline ui-btn-xs"
                 >

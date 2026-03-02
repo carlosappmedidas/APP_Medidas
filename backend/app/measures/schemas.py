@@ -1,5 +1,8 @@
 # app/measures/schemas.py
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Any
 from pydantic import BaseModel, ConfigDict  # type: ignore[reportMissingImports]
 
 
@@ -86,8 +89,7 @@ class MedidaGeneralRead(MedidaGeneralBase):
     created_at: datetime
     updated_at: datetime | None = None
 
-    # No está en la tabla medidas_general,
-    # lo añadimos desde el JOIN con Empresa
+    # No está en la tabla medidas_general (lo añadimos desde JOIN)
     empresa_codigo: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -107,7 +109,6 @@ class MedidaPSBase(BaseModel):
 class MedidaPSRead(MedidaPSBase):
     id: int
 
-    # --- ENERGÍA POR TIPO DE PS (poliza 1..5) ---
     energia_ps_tipo_1_kwh: float | None = None
     energia_ps_tipo_2_kwh: float | None = None
     energia_ps_tipo_3_kwh: float | None = None
@@ -115,7 +116,6 @@ class MedidaPSRead(MedidaPSBase):
     energia_ps_tipo_5_kwh: float | None = None
     energia_ps_total_kwh: float | None = None
 
-    # --- CUPS POR TIPO DE PS ---
     cups_tipo_1: int | None = None
     cups_tipo_2: int | None = None
     cups_tipo_3: int | None = None
@@ -123,7 +123,6 @@ class MedidaPSRead(MedidaPSBase):
     cups_tipo_5: int | None = None
     cups_total: int | None = None
 
-    # --- IMPORTE POR TIPO DE PS ---
     importe_tipo_1_eur: float | None = None
     importe_tipo_2_eur: float | None = None
     importe_tipo_3_eur: float | None = None
@@ -131,38 +130,30 @@ class MedidaPSRead(MedidaPSBase):
     importe_tipo_5_eur: float | None = None
     importe_total_eur: float | None = None
 
-    # --- BLOQUES POR TARIFA (energía, cups, importe) ---
-    # 2.0TD
     energia_tarifa_20td_kwh: float | None = None
     cups_tarifa_20td: int | None = None
     importe_tarifa_20td_eur: float | None = None
 
-    # 3.0TD
     energia_tarifa_30td_kwh: float | None = None
     cups_tarifa_30td: int | None = None
     importe_tarifa_30td_eur: float | None = None
 
-    # 3.0TDVE
     energia_tarifa_30tdve_kwh: float | None = None
     cups_tarifa_30tdve: int | None = None
     importe_tarifa_30tdve_eur: float | None = None
 
-    # 6.1TD
     energia_tarifa_61td_kwh: float | None = None
     cups_tarifa_61td: int | None = None
     importe_tarifa_61td_eur: float | None = None
 
-    # 6.2TD
     energia_tarifa_62td_kwh: float | None = None
     cups_tarifa_62td: int | None = None
     importe_tarifa_62td_eur: float | None = None
 
-    # 6.3TD
     energia_tarifa_63td_kwh: float | None = None
     cups_tarifa_63td: int | None = None
     importe_tarifa_63td_eur: float | None = None
 
-    # 6.4TD
     energia_tarifa_64td_kwh: float | None = None
     cups_tarifa_64td: int | None = None
     importe_tarifa_64td_eur: float | None = None
@@ -171,7 +162,37 @@ class MedidaPSRead(MedidaPSBase):
     created_at: datetime
     updated_at: datetime | None = None
 
-    # añadido desde el JOIN con Empresa
     empresa_codigo: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================================
+# ✅ NUEVO (PRO): modelos auxiliares (no rompen nada)
+# ==========================================================
+
+class EmpresaFilterOption(BaseModel):
+    id: int
+    codigo: str | None = None
+    tenant_id: int | None = None  # solo se usa en endpoints /all/filters
+
+
+class MedidasGeneralFilters(BaseModel):
+    empresas: list[EmpresaFilterOption] = []
+    anios: list[int] = []
+    meses: list[int] = []
+
+
+class MedidasPsFilters(BaseModel):
+    empresas: list[EmpresaFilterOption] = []
+    anios: list[int] = []
+    meses: list[int] = []
+    tarifas: list[str] = []
+
+
+class PaginatedResponse(BaseModel):
+    items: list[dict[str, Any]]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int

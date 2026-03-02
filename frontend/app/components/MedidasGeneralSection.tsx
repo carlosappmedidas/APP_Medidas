@@ -8,16 +8,34 @@ import type { MedidaGeneral } from "../types";
 type MedidasProps = {
   token: string | null;
 
-  // ✅ mismo componente para Sistema
-  // tenant -> /medidas/general/
-  // all    -> /medidas/general/all   (solo superuser)
+  // tenant -> /medidas/general/*
+  // all    -> /medidas/general/all/*   (solo superuser)
   scope?: "tenant" | "all";
 
-  // ✅ ajustes columnas (pueden venir undefined si lo usas “solo lectura” en Sistema)
   columnOrder?: string[];
   setColumnOrder?: (order: string[]) => void;
   hiddenColumns?: string[];
   setHiddenColumns?: (cols: string[]) => void;
+};
+
+type EmpresaFilterOption = {
+  id: number;
+  codigo?: string | null;
+  tenant_id?: number | null; // solo para scope=all (no es obligatorio)
+};
+
+type GeneralFiltersResponse = {
+  empresas: EmpresaFilterOption[];
+  anios: number[];
+  meses: number[];
+};
+
+type PaginatedResponse = {
+  items: MedidaGeneral[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
 };
 
 // Formateo numérico
@@ -48,7 +66,6 @@ export type ColumnDefGeneral = {
 
 // TODAS las columnas de la tabla
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
-  // Identificación
   {
     id: "empresa_id",
     label: "Empresa ID",
@@ -85,7 +102,6 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
     render: (m) => m.mes.toString().padStart(2, "0"),
   },
 
-  // Bloque general
   {
     id: "energia_bruta_facturada",
     label: "E bruta facturada",
@@ -376,7 +392,6 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   },
 ];
 
-// 👉 Meta simple para Ajustes
 export const COLUMNS_GENERAL_META = ALL_COLUMNS_GENERAL.map((c) => ({
   id: c.id,
   label: c.label,
@@ -395,23 +410,30 @@ export default function MedidasGeneralSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ “ya intenté cargar al menos una vez” (sirve para mensajes/UX)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   // filtros
-  const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
+  const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("");
   const [filtroAnio, setFiltroAnio] = useState<string>("");
   const [filtroMes, setFiltroMes] = useState<string>("");
 
-  // paginación
+  // opciones filtros (PRO, desde backend)
+  const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>(
+    []
+  );
+  const [opcionesAnio, setOpcionesAnio] = useState<number[]>([]);
+  const [opcionesMes, setOpcionesMes] = useState<number[]>([]);
+
+  // paginación real (backend)
   const [pageSize, setPageSize] = useState<number>(50);
   const [page, setPage] = useState<number>(0);
+  const [totalFilas, setTotalFilas] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
 
   // ajustes columnas
   const [showAdjust, setShowAdjust] = useState<boolean>(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  // ✅ defaults seguros
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
 
   const safeColumnOrder = useMemo(() => {
@@ -426,11 +448,44 @@ export default function MedidasGeneralSection({
 
   const canEditAdjustments = !!setColumnOrder && !!setHiddenColumns;
 
-  // ✅ para incluir columnas nuevas si columnOrder viejo
   const orderForAdjustments = useMemo(() => {
     const missing = defaultOrder.filter((id) => !safeColumnOrder.includes(id));
     return [...safeColumnOrder, ...missing];
   }, [safeColumnOrder, defaultOrder]);
+
+  const filtrosActivosCount =
+    (filtroEmpresaId ? 1 : 0) + (filtroAnio ? 1 : 0) + (filtroMes ? 1 : 0);
+
+  const clearFilters = () => {
+    setFiltroEmpresaId("");
+    setFiltroAnio("");
+    setFiltroMes("");
+    setPage(0);
+  };
+
+  const loadFilters = async () => {
+    if (!token) return;
+
+    try {
+      const endpoint =
+        scope === "all"
+          ? "/medidas/general/all/filters"
+          : "/medidas/general/filters";
+
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok) return;
+
+      const json = (await res.json()) as GeneralFiltersResponse;
+      setOpcionesEmpresa(Array.isArray(json?.empresas) ? json.empresas : []);
+      setOpcionesAnio(Array.isArray(json?.anios) ? json.anios : []);
+      setOpcionesMes(Array.isArray(json?.meses) ? json.meses : []);
+    } catch (e) {
+      // silencioso: no rompemos UX por filtros
+      console.error("Error cargando filtros general:", e);
+    }
+  };
 
   const handleLoadMedidas = async () => {
     if (!token) return;
@@ -440,71 +495,101 @@ export default function MedidasGeneralSection({
 
     try {
       const endpoint =
-        scope === "all" ? "/medidas/general/all" : "/medidas/general/";
+        scope === "all" ? "/medidas/general/all/page" : "/medidas/general/page";
 
-      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("page_size", String(pageSize));
+
+      if (filtroEmpresaId) params.set("empresa_id", filtroEmpresaId);
+      if (filtroAnio) params.set("anio", filtroAnio);
+      if (filtroMes) params.set("mes", filtroMes);
+
+      const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
         headers: getAuthHeaders(token),
       });
 
       if (!res.ok) throw new Error(`Error ${res.status}`);
 
-      const json = await res.json();
-      setData(Array.isArray(json) ? json : []);
-      setPage(0);
+      const json = (await res.json()) as PaginatedResponse;
+
+      setData(Array.isArray(json?.items) ? json.items : []);
+      setTotalFilas(typeof json?.total === "number" ? json.total : 0);
+      setTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
+
       setHasLoadedOnce(true);
     } catch (err) {
-      console.error("Error cargando medidas_general:", err);
+      console.error("Error cargando medidas_general paginadas:", err);
       setError("Error cargando medidas. Revisa la API y el token.");
       setData([]);
+      setTotalFilas(0);
+      setTotalPages(1);
       setHasLoadedOnce(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ AUTO-CARGA SIEMPRE al tener token (y cuando cambie scope)
-  // - Evita doble llamada en StrictMode con un guard
-  const lastAutoKeyRef = useRef<string>("");
+  // AUTO: cuando cambia token/scope, recarga filtros y la primera página
+  const bootKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) {
-      lastAutoKeyRef.current = "";
+      bootKeyRef.current = "";
       setHasLoadedOnce(false);
-      setData([]);
       setError(null);
+      setData([]);
+      setOpcionesEmpresa([]);
+      setOpcionesAnio([]);
+      setOpcionesMes([]);
+      setPage(0);
+      setTotalFilas(0);
+      setTotalPages(1);
       return;
     }
 
     const key = `${token}::${scope}`;
-    if (lastAutoKeyRef.current === key) return;
+    if (bootKeyRef.current === key) return;
+    bootKeyRef.current = key;
 
-    lastAutoKeyRef.current = key;
-    void handleLoadMedidas();
+    setPage(0);
+    void loadFilters().then(() => {
+      void handleLoadMedidas();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, scope]);
 
-  // reset página cuando cambian filtros/pageSize
+  // cuando cambian filtros o pageSize: reset a página 0 y recarga
+  const filterKeyRef = useRef<string>("");
   useEffect(() => {
+    if (!token) return;
+
+    const key = `${scope}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}::${pageSize}`;
+    if (filterKeyRef.current === key) return;
+    filterKeyRef.current = key;
+
     setPage(0);
-  }, [filtroEmpresa, filtroAnio, filtroMes, pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void handleLoadMedidas();
+  }, [token, scope, filtroEmpresaId, filtroAnio, filtroMes, pageSize]);
 
-  const filtrosActivosCount =
-    (filtroEmpresa ? 1 : 0) + (filtroAnio ? 1 : 0) + (filtroMes ? 1 : 0);
+  // cuando cambia page: recarga
+  const pageKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (!token) return;
+    const key = `${scope}::${page}::${pageSize}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}`;
+    if (pageKeyRef.current === key) return;
+    pageKeyRef.current = key;
 
-  const clearFilters = () => {
-    setFiltroEmpresa("");
-    setFiltroAnio("");
-    setFiltroMes("");
-    setPage(0);
-  };
+    void handleLoadMedidas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, page]);
 
-  // mapa id -> columna
   const columnasPorId = useMemo(() => {
     const map = new Map<string, ColumnDefGeneral>();
     for (const c of ALL_COLUMNS_GENERAL) map.set(c.id, c);
     return map;
   }, []);
 
-  // columnas ordenadas + ocultas
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefGeneral[] = [];
 
@@ -524,67 +609,13 @@ export default function MedidasGeneralSection({
 
   const totalColumnas = columnasOrdenadas.length || 1;
 
-  // valores para filtros
-  const { opcionesEmpresa, opcionesAnio, opcionesMes } = useMemo(() => {
-    const empresas = new Set<string>();
-    const anios = new Set<number>();
-    const meses = new Set<number>();
-
-    for (const m of data) {
-      const cod = (m as any).empresa_codigo as string | undefined;
-      if (cod) empresas.add(cod);
-      if (typeof m.anio === "number") anios.add(m.anio);
-      if (typeof m.mes === "number") meses.add(m.mes);
-    }
-
-    return {
-      opcionesEmpresa: Array.from(empresas).sort(),
-      opcionesAnio: Array.from(anios).sort((a, b) => a - b),
-      opcionesMes: Array.from(meses).sort((a, b) => a - b),
-    };
-  }, [data]);
-
-  // aplicar filtros + ordenar
-  const filasVisibles = useMemo(() => {
-    const filtradas = data.filter((m) => {
-      const empresaCodigo = (m as any).empresa_codigo as string | undefined;
-
-      const matchEmpresa = !filtroEmpresa || empresaCodigo === filtroEmpresa;
-      const matchAnio =
-        !filtroAnio || m.anio === Number.parseInt(filtroAnio, 10);
-      const matchMes = !filtroMes || m.mes === Number.parseInt(filtroMes, 10);
-
-      return matchEmpresa && matchAnio && matchMes;
-    });
-
-    return [...filtradas].sort((a, b) => {
-      const codA = ((a as any).empresa_codigo ?? "") as string;
-      const codB = ((b as any).empresa_codigo ?? "") as string;
-
-      const cmpCod = codA.localeCompare(codB);
-      if (cmpCod !== 0) return cmpCod;
-
-      if (a.anio !== b.anio) return a.anio - b.anio;
-      return a.mes - b.mes;
-    });
-  }, [data, filtroEmpresa, filtroAnio, filtroMes]);
-
-  // paginación
-  const totalFilas = filasVisibles.length;
-  const totalPages = Math.max(1, Math.ceil(totalFilas / pageSize));
-  const currentPage = Math.min(page, totalPages - 1);
-
-  const startIndex = currentPage * pageSize;
+  const currentPage = Math.min(page, Math.max(0, totalPages - 1));
+  const startIndex = totalFilas === 0 ? 0 : currentPage * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalFilas);
-  const filasPaginadas =
-    totalFilas === 0 ? [] : filasVisibles.slice(startIndex, endIndex);
 
   // ---- ajustes columnas: drag & drop + checks ----
   const handleDragStart = (index: number) => setDragIndex(index);
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-  };
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
   const handleDrop = (index: number) => {
     if (!canEditAdjustments) return;
@@ -619,7 +650,6 @@ export default function MedidasGeneralSection({
     setHiddenColumns?.(defaultOrder);
   };
 
-  // 3 columnas en ajustes (sobre el order “real” de ajustes)
   const third = Math.ceil(orderForAdjustments.length / 3) || 1;
   const firstIds = orderForAdjustments.slice(0, third);
   const secondIds = orderForAdjustments.slice(third, 2 * third);
@@ -667,20 +697,17 @@ export default function MedidasGeneralSection({
 
   return (
     <section className="ui-card text-sm">
-      {/* HEADER */}
       <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h4 className="ui-card-title">
             Medidas (General){scope === "all" ? " · Sistema" : ""}
           </h4>
-          <p className="ui-card-subtitle">
-            Resumen mensual de energía por empresa.
-          </p>
+          <p className="ui-card-subtitle">Resumen mensual de energía por empresa.</p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleLoadMedidas}
+            onClick={() => void handleLoadMedidas()}
             disabled={loading || !token}
             className="ui-btn ui-btn-primary"
             type="button"
@@ -704,7 +731,6 @@ export default function MedidasGeneralSection({
 
       {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
 
-      {/* FILTROS */}
       <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
         <div className="ui-muted">
           Filtros activos:{" "}
@@ -715,9 +741,9 @@ export default function MedidasGeneralSection({
 
         {hasLoadedOnce && (
           <div className="ui-muted">
-            Filas cargadas:{" "}
+            Total filas:{" "}
             <span className="font-medium" style={{ color: "var(--text)" }}>
-              {data.length}
+              {totalFilas}
             </span>
           </div>
         )}
@@ -725,17 +751,20 @@ export default function MedidasGeneralSection({
 
       <div className="mb-4 grid gap-3 md:grid-cols-3">
         <div>
-          <label className="ui-label">Código empresa</label>
+          <label className="ui-label">Empresa</label>
           <select
             className="ui-select"
-            value={filtroEmpresa}
-            onChange={(e) => setFiltroEmpresa(e.target.value)}
-            disabled={!hasLoadedOnce || loading}
+            value={filtroEmpresaId}
+            onChange={(e) => setFiltroEmpresaId(e.target.value)}
+            disabled={!token || loading}
           >
             <option value="">Todas</option>
-            {opcionesEmpresa.map((cod) => (
-              <option key={cod} value={cod}>
-                {cod}
+            {opcionesEmpresa.map((e) => (
+              <option key={e.id} value={String(e.id)}>
+                {(e.codigo ?? `Empresa ${e.id}`) + ` (ID ${e.id})`}
+                {scope === "all" && typeof e.tenant_id === "number"
+                  ? ` · T${e.tenant_id}`
+                  : ""}
               </option>
             ))}
           </select>
@@ -747,11 +776,11 @@ export default function MedidasGeneralSection({
             className="ui-select"
             value={filtroAnio}
             onChange={(e) => setFiltroAnio(e.target.value)}
-            disabled={!hasLoadedOnce || loading}
+            disabled={!token || loading}
           >
             <option value="">Todos</option>
             {opcionesAnio.map((anio) => (
-              <option key={anio} value={anio}>
+              <option key={anio} value={String(anio)}>
                 {anio}
               </option>
             ))}
@@ -764,11 +793,11 @@ export default function MedidasGeneralSection({
             className="ui-select"
             value={filtroMes}
             onChange={(e) => setFiltroMes(e.target.value)}
-            disabled={!hasLoadedOnce || loading}
+            disabled={!token || loading}
           >
             <option value="">Todos</option>
             {opcionesMes.map((mes) => (
-              <option key={mes} value={mes}>
+              <option key={mes} value={String(mes)}>
                 {mes.toString().padStart(2, "0")}
               </option>
             ))}
@@ -776,31 +805,21 @@ export default function MedidasGeneralSection({
         </div>
       </div>
 
-      {/* AJUSTES DE COLUMNAS (solo si hay setters) */}
       {canEditAdjustments && (
         <div className="mb-4 rounded-xl border border-[var(--card-border)] bg-[var(--field-bg-soft)]">
           <div className="flex items-center justify-between px-4 py-3">
             <div>
               <h5 className="text-xs font-semibold">Ajustes de columnas</h5>
               <p className="mt-1 text-[10px] ui-muted">
-                Marca las columnas que quieres ver y arrástralas para cambiar el
-                orden.
+                Marca las columnas que quieres ver y arrástralas para cambiar el orden.
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={hideAllColumns}
-                className="ui-btn ui-btn-outline ui-btn-xs"
-              >
+              <button type="button" onClick={hideAllColumns} className="ui-btn ui-btn-outline ui-btn-xs">
                 Quitar todo
               </button>
-              <button
-                type="button"
-                onClick={resetOrder}
-                className="ui-btn ui-btn-outline ui-btn-xs"
-              >
+              <button type="button" onClick={resetOrder} className="ui-btn ui-btn-outline ui-btn-xs">
                 Reset
               </button>
               <button
@@ -814,27 +833,16 @@ export default function MedidasGeneralSection({
           </div>
 
           {showAdjust && (
-            <div
-              className="border-t border-[var(--card-border)] px-4 py-3 text-[11px]"
-              onDragOver={handleDragOver}
-            >
-              <div className="mb-2 text-[10px] ui-muted">
-                ☰ = arrastrar para reordenar · ✓ = mostrar columna en la tabla.
-              </div>
+            <div className="border-t border-[var(--card-border)] px-4 py-3 text-[11px]" onDragOver={handleDragOver}>
+              <div className="mb-2 text-[10px] ui-muted">☰ = arrastrar · ✓ = mostrar</div>
 
               <div className="flex gap-3">
+                <div className="flex-1 space-y-1">{firstIds.map((id, idx) => renderAdjustItem(id, idx))}</div>
                 <div className="flex-1 space-y-1">
-                  {firstIds.map((id, idx) => renderAdjustItem(id, idx))}
+                  {secondIds.map((id, idx) => renderAdjustItem(id, third + idx))}
                 </div>
                 <div className="flex-1 space-y-1">
-                  {secondIds.map((id, idx) =>
-                    renderAdjustItem(id, third + idx)
-                  )}
-                </div>
-                <div className="flex-1 space-y-1">
-                  {thirdIds.map((id, idx) =>
-                    renderAdjustItem(id, 2 * third + idx)
-                  )}
+                  {thirdIds.map((id, idx) => renderAdjustItem(id, 2 * third + idx))}
                 </div>
               </div>
             </div>
@@ -842,7 +850,6 @@ export default function MedidasGeneralSection({
         </div>
       )}
 
-      {/* TABLA */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]">
           <thead className="ui-thead">
@@ -850,10 +857,7 @@ export default function MedidasGeneralSection({
               {columnasOrdenadas.map((col) => (
                 <th
                   key={col.id}
-                  className={[
-                    "ui-th",
-                    col.align === "right" ? "ui-th-right" : "",
-                  ].join(" ")}
+                  className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
                 >
                   {col.label}
                 </th>
@@ -862,7 +866,6 @@ export default function MedidasGeneralSection({
           </thead>
 
           <tbody>
-            {/* Skeleton loading: así no “salta” la tabla */}
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={`sk-${i}`} className="ui-tr">
@@ -883,28 +886,19 @@ export default function MedidasGeneralSection({
 
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
-                <td
-                  colSpan={totalColumnas}
-                  className="ui-td text-center ui-muted"
-                >
+                <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
                   No hay medidas que cumplan los filtros.
                 </td>
               </tr>
             )}
 
             {!loading &&
-              filasPaginadas.map((m) => (
-                <tr
-                  key={`${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}`}
-                  className="ui-tr"
-                >
+              data.map((m) => (
+                <tr key={`${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}`} className="ui-tr">
                   {columnasOrdenadas.map((col) => (
                     <td
                       key={col.id}
-                      className={[
-                        "ui-td",
-                        col.align === "right" ? "ui-td-right" : "",
-                      ].join(" ")}
+                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
                     >
                       {col.render(m)}
                     </td>
@@ -914,7 +908,6 @@ export default function MedidasGeneralSection({
           </tbody>
         </table>
 
-        {/* FOOTER PAGINACIÓN */}
         {!loading && hasLoadedOnce && totalFilas > 0 && (
           <div className="flex flex-col gap-2 border-t border-[var(--card-border)] px-4 py-3 text-[11px] ui-muted md:flex-row md:items-center md:justify-between">
             <div>
@@ -970,9 +963,7 @@ export default function MedidasGeneralSection({
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setPage((p) => Math.min(totalPages - 1, p + 1))
-                  }
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={currentPage >= totalPages - 1}
                   className="ui-btn ui-btn-outline ui-btn-xs"
                 >
