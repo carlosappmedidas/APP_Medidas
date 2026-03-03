@@ -295,6 +295,11 @@ export default function CargaSection({ token }: Props) {
         const filasError = json.rows_error ?? 0;
 
         appendLog(`✅ Procesado id=${json.id} (status=${json.status}, filas OK=${filasOk}, filas error=${filasError}).`);
+
+        // ✅ NUEVO: mostrar motivo real si el backend devolvió error_message
+        if ((json.status || "").toLowerCase() === "error") {
+          appendLog(`↳ Motivo: ${json.error_message ?? "(sin detalle en error_message)"}`);
+        }
       }
 
       appendLog("✔ Carga y procesado de ficheros finalizados.");

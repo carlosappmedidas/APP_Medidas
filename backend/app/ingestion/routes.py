@@ -93,8 +93,15 @@ def _find_existing_ingestion_file(
     tipo: str,
     anio: int,
     mes: int,
+    filename: str | None = None,  # ✅ NUEVO: solo se usa para BALD
 ) -> IngestionFile | None:
-    return (
+    """
+    - Para la mayoría de tipos: seguimos la lógica actual (1 fichero por tipo/periodo/empresa/tenant).
+    - Para BALD: permitimos varios ficheros en el mismo periodo, por lo que buscamos también por filename
+      (si viene informado). Así cada BALD distinto genera un ingestion_id distinto, y solo se "reusa"
+      si subes el mismo filename.
+    """
+    q = (
         db.query(IngestionFile)
         .filter(
             IngestionFile.tenant_id == tenant_id,
@@ -103,8 +110,12 @@ def _find_existing_ingestion_file(
             IngestionFile.anio == anio,
             IngestionFile.mes == mes,
         )
-        .first()
     )
+
+    if (tipo or "").upper() == "BALD" and filename:
+        q = q.filter(IngestionFile.filename == filename)
+
+    return q.first()
 
 
 # ---------------------------------------------------------
@@ -172,6 +183,9 @@ async def upload_file(
             detail=str(e),
         )
 
+    # ✅ FIX BALD:
+    # Para BALD buscamos "existente" por (tenant,empresa,tipo,periodo,filename) para permitir varios
+    # BALD en el mismo mes (cada uno con su ingestion_id).
     existing = _find_existing_ingestion_file(
         db,
         tenant_id=tenant_id_int,  # ✅ aquí estaba el warning (Column[int] -> int)
@@ -179,6 +193,7 @@ async def upload_file(
         tipo=tipo_norm,
         anio=anio,
         mes=mes,
+        filename=file.filename if tipo_norm == "BALD" else None,
     )
 
     dest_dir = (
@@ -219,7 +234,7 @@ async def upload_file(
 
         # ✅ NUEVO: si el fichero anterior era distinto, lo borramos del disco
         if old_storage_key and old_storage_key != storage_key:
-          _safe_unlink(old_storage_key)
+            _safe_unlink(old_storage_key)
 
         return existing
 

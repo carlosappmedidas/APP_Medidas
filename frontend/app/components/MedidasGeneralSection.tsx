@@ -38,13 +38,9 @@ type PaginatedResponse = {
   total_pages: number;
 };
 
-// Formateo numérico
-const formatNumberEs = (
-  v: number | null | undefined,
-  decimals: number = 2
-): string => {
+// ---------- Helpers ----------
+const formatNumberEs = (v: number | null | undefined, decimals: number = 2): string => {
   if (v == null || Number.isNaN(v)) return "-";
-
   return new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -64,7 +60,7 @@ export type ColumnDefGeneral = {
   render: (m: MedidaGeneral | any) => any;
 };
 
-// TODAS las columnas de la tabla
+// TODAS las columnas base (tenant view)
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   {
     id: "empresa_id",
@@ -398,6 +394,58 @@ export const COLUMNS_GENERAL_META = ALL_COLUMNS_GENERAL.map((c) => ({
   group: c.group,
 }));
 
+// ---------- Modal simple (inline) ----------
+function ConfirmDeleteModalInline({
+  open,
+  title,
+  subtitle,
+  confirmText = "Borrar",
+  cancelText = "Cancelar",
+  busy,
+  error,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  subtitle?: string;
+  confirmText?: string;
+  cancelText?: string;
+  busy?: boolean;
+  error?: string | null;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" role="dialog" aria-modal="true">
+      <div
+        className="absolute inset-0"
+        style={{ background: "rgba(0,0,0,0.55)" }}
+        onClick={() => !busy && onClose()}
+      />
+      <div className="relative w-full max-w-lg ui-card ui-card--border">
+        <div className="mb-2">
+          <div className="ui-card-title">{title}</div>
+          {subtitle ? <div className="ui-card-subtitle">{subtitle}</div> : null}
+        </div>
+
+        {error ? <div className="ui-alert ui-alert--danger mb-3">{error}</div> : null}
+
+        <div className="flex items-center justify-end gap-2">
+          <button type="button" className="ui-btn ui-btn-outline" onClick={onClose} disabled={!!busy}>
+            {cancelText}
+          </button>
+          <button type="button" className="ui-btn ui-btn-danger" onClick={onConfirm} disabled={!!busy}>
+            {busy ? "Borrando..." : confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MedidasGeneralSection({
   token,
   scope = "tenant",
@@ -406,6 +454,8 @@ export default function MedidasGeneralSection({
   hiddenColumns,
   setHiddenColumns,
 }: MedidasProps) {
+  const isSistema = scope === "all";
+
   const [data, setData] = useState<MedidaGeneral[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -413,14 +463,13 @@ export default function MedidasGeneralSection({
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   // filtros
+  const [filtroTenant, setFiltroTenant] = useState<string>(""); // solo Sistema
   const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("");
   const [filtroAnio, setFiltroAnio] = useState<string>("");
   const [filtroMes, setFiltroMes] = useState<string>("");
 
   // opciones filtros (PRO, desde backend)
-  const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>(
-    []
-  );
+  const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>([]);
   const [opcionesAnio, setOpcionesAnio] = useState<number[]>([]);
   const [opcionesMes, setOpcionesMes] = useState<number[]>([]);
 
@@ -434,10 +483,34 @@ export default function MedidasGeneralSection({
   const [showAdjust, setShowAdjust] = useState<boolean>(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
+  // ✅ selección + borrar (solo Sistema)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
+
+  // columnas: en Sistema añadimos tenant_id al inicio (sin tocar el resto)
+  const systemTenantColumn: ColumnDefGeneral = useMemo(
+    () => ({
+      id: "tenant_id",
+      label: "Cliente",
+      align: "left",
+      group: "Identificación",
+      render: (m) => (m as any).tenant_id ?? "-",
+    }),
+    []
+  );
+
+  const baseColumns = useMemo(() => {
+    return isSistema ? [systemTenantColumn, ...ALL_COLUMNS_GENERAL] : ALL_COLUMNS_GENERAL;
+  }, [isSistema, systemTenantColumn]);
 
   const safeColumnOrder = useMemo(() => {
     if (Array.isArray(columnOrder) && columnOrder.length > 0) return columnOrder;
+    // si es sistema, el defaultOrder no incluye tenant_id, así que no lo forzamos en orden persistido;
+    // simplemente se añade por delante en columnas renderizadas.
     return defaultOrder;
   }, [columnOrder, defaultOrder]);
 
@@ -454,9 +527,10 @@ export default function MedidasGeneralSection({
   }, [safeColumnOrder, defaultOrder]);
 
   const filtrosActivosCount =
-    (filtroEmpresaId ? 1 : 0) + (filtroAnio ? 1 : 0) + (filtroMes ? 1 : 0);
+    (isSistema && filtroTenant ? 1 : 0) + (filtroEmpresaId ? 1 : 0) + (filtroAnio ? 1 : 0) + (filtroMes ? 1 : 0);
 
   const clearFilters = () => {
+    setFiltroTenant("");
     setFiltroEmpresaId("");
     setFiltroAnio("");
     setFiltroMes("");
@@ -467,10 +541,7 @@ export default function MedidasGeneralSection({
     if (!token) return;
 
     try {
-      const endpoint =
-        scope === "all"
-          ? "/medidas/general/all/filters"
-          : "/medidas/general/filters";
+      const endpoint = isSistema ? "/medidas/general/all/filters" : "/medidas/general/filters";
 
       const res = await fetch(`${API_BASE_URL}${endpoint}`, {
         headers: getAuthHeaders(token),
@@ -482,25 +553,26 @@ export default function MedidasGeneralSection({
       setOpcionesAnio(Array.isArray(json?.anios) ? json.anios : []);
       setOpcionesMes(Array.isArray(json?.meses) ? json.meses : []);
     } catch (e) {
-      // silencioso: no rompemos UX por filtros
       console.error("Error cargando filtros general:", e);
     }
   };
 
-  const handleLoadMedidas = async () => {
+  const handleLoadMedidas = async (nextPage?: number) => {
     if (!token) return;
+
+    const effectivePage = typeof nextPage === "number" ? nextPage : page;
 
     setLoading(true);
     setError(null);
 
     try {
-      const endpoint =
-        scope === "all" ? "/medidas/general/all/page" : "/medidas/general/page";
+      const endpoint = isSistema ? "/medidas/general/all/page" : "/medidas/general/page";
 
       const params = new URLSearchParams();
-      params.set("page", String(page));
+      params.set("page", String(effectivePage));
       params.set("page_size", String(pageSize));
 
+      if (isSistema && filtroTenant) params.set("tenant_id", filtroTenant);
       if (filtroEmpresaId) params.set("empresa_id", filtroEmpresaId);
       if (filtroAnio) params.set("anio", filtroAnio);
       if (filtroMes) params.set("mes", filtroMes);
@@ -518,6 +590,9 @@ export default function MedidasGeneralSection({
       setTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
 
       setHasLoadedOnce(true);
+
+      // ✅ en Sistema: limpiar selección cuando cambia dataset/página
+      if (isSistema) setSelectedIds(new Set());
     } catch (err) {
       console.error("Error cargando medidas_general paginadas:", err);
       setError("Error cargando medidas. Revisa la API y el token.");
@@ -525,6 +600,7 @@ export default function MedidasGeneralSection({
       setTotalFilas(0);
       setTotalPages(1);
       setHasLoadedOnce(true);
+      if (isSistema) setSelectedIds(new Set());
     } finally {
       setLoading(false);
     }
@@ -537,13 +613,22 @@ export default function MedidasGeneralSection({
       bootKeyRef.current = "";
       setHasLoadedOnce(false);
       setError(null);
+
       setData([]);
       setOpcionesEmpresa([]);
       setOpcionesAnio([]);
       setOpcionesMes([]);
+
+      setFiltroTenant("");
+      setFiltroEmpresaId("");
+      setFiltroAnio("");
+      setFiltroMes("");
+
       setPage(0);
       setTotalFilas(0);
       setTotalPages(1);
+
+      setSelectedIds(new Set());
       return;
     }
 
@@ -552,60 +637,86 @@ export default function MedidasGeneralSection({
     bootKeyRef.current = key;
 
     setPage(0);
-    void loadFilters().then(() => {
-      void handleLoadMedidas();
-    });
+    void loadFilters().then(() => void handleLoadMedidas(0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, scope]);
 
-  // cuando cambian filtros o pageSize: reset a página 0 y recarga
+  // filtros/pageSize -> reset a 0 y reload
   const filterKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) return;
 
-    const key = `${scope}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}::${pageSize}`;
+    const key = `${scope}::${filtroTenant}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}::${pageSize}`;
     if (filterKeyRef.current === key) return;
     filterKeyRef.current = key;
 
     setPage(0);
+    void handleLoadMedidas(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    void handleLoadMedidas();
-  }, [token, scope, filtroEmpresaId, filtroAnio, filtroMes, pageSize]);
+  }, [token, scope, filtroTenant, filtroEmpresaId, filtroAnio, filtroMes, pageSize]);
 
-  // cuando cambia page: recarga
+  // page -> reload
   const pageKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) return;
-    const key = `${scope}::${page}::${pageSize}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}`;
+
+    const key = `${scope}::${page}`;
     if (pageKeyRef.current === key) return;
     pageKeyRef.current = key;
 
-    void handleLoadMedidas();
+    void handleLoadMedidas(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, page]);
 
+  // opciones tenant (solo Sistema)
+  const opcionesTenant = useMemo(() => {
+    if (!isSistema) return [];
+    const tenants = new Set<number>();
+    for (const e of opcionesEmpresa) {
+      if (typeof e?.tenant_id === "number") tenants.add(e.tenant_id);
+    }
+    return Array.from(tenants).sort((a, b) => a - b).map(String);
+  }, [isSistema, opcionesEmpresa]);
+
+  // empresas filtradas por tenant (solo UX)
+  const opcionesEmpresaFiltradas = useMemo(() => {
+    if (!isSistema) return opcionesEmpresa;
+    if (!filtroTenant) return opcionesEmpresa;
+    const t = Number.parseInt(filtroTenant, 10);
+    if (Number.isNaN(t)) return opcionesEmpresa;
+    return opcionesEmpresa.filter((e) => e.tenant_id === t);
+  }, [isSistema, opcionesEmpresa, filtroTenant]);
+
   const columnasPorId = useMemo(() => {
     const map = new Map<string, ColumnDefGeneral>();
-    for (const c of ALL_COLUMNS_GENERAL) map.set(c.id, c);
+    for (const c of baseColumns) map.set(c.id, c);
     return map;
-  }, []);
+  }, [baseColumns]);
 
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefGeneral[] = [];
 
-    for (const id of safeColumnOrder) {
-      const col = columnasPorId.get(id);
-      if (col) base.push(col);
+    // En Sistema: tenant_id siempre delante (no editable)
+    if (isSistema) {
+      const tcol = columnasPorId.get("tenant_id");
+      if (tcol) base.push(tcol);
     }
 
-    const faltantes = ALL_COLUMNS_GENERAL.filter(
-      (c) => !safeColumnOrder.includes(c.id)
-    );
-    const full = [...base, ...faltantes];
+    // resto: orden/hide como siempre (solo sobre columnas de ALL_COLUMNS_GENERAL)
+    for (const id of safeColumnOrder) {
+      const col = columnasPorId.get(id);
+      if (col && col.id !== "tenant_id") base.push(col);
+    }
+
+    const faltantes = ALL_COLUMNS_GENERAL.filter((c) => !safeColumnOrder.includes(c.id));
+    const full = [
+      ...base,
+      ...faltantes.filter((c) => !base.some((b) => b.id === c.id)),
+    ];
 
     if (!safeHiddenColumns || safeHiddenColumns.length === 0) return full;
     return full.filter((c) => !safeHiddenColumns.includes(c.id));
-  }, [safeColumnOrder, columnasPorId, safeHiddenColumns]);
+  }, [isSistema, safeColumnOrder, columnasPorId, safeHiddenColumns]);
 
   const totalColumnas = columnasOrdenadas.length || 1;
 
@@ -632,11 +743,8 @@ export default function MedidasGeneralSection({
   const toggleVisible = (id: string) => {
     if (!canEditAdjustments) return;
 
-    if (safeHiddenColumns.includes(id)) {
-      setHiddenColumns?.(safeHiddenColumns.filter((c) => c !== id));
-    } else {
-      setHiddenColumns?.([...safeHiddenColumns, id]);
-    }
+    if (safeHiddenColumns.includes(id)) setHiddenColumns?.(safeHiddenColumns.filter((c) => c !== id));
+    else setHiddenColumns?.([...safeHiddenColumns, id]);
   };
 
   const resetOrder = () => {
@@ -695,25 +803,123 @@ export default function MedidasGeneralSection({
     );
   };
 
+  // ✅ selección (solo Sistema, página actual)
+  const currentPageIds = useMemo(() => {
+    if (!isSistema) return [];
+    const ids: number[] = [];
+    for (const r of data as any[]) if (typeof r?.id === "number") ids.push(r.id);
+    return ids;
+  }, [isSistema, data]);
+
+  const selectedCount = selectedIds.size;
+
+  const allCurrentSelected =
+    isSistema && currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectAllCurrent = () => {
+    if (!isSistema) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allCurrentSelected) {
+        for (const id of currentPageIds) next.delete(id);
+      } else {
+        for (const id of currentPageIds) next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleRow = (rowId: number) => {
+    if (!isSistema) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  };
+
+  const openDelete = () => {
+    setDeleteError(null);
+    setDeleteOpen(true);
+  };
+
+  const closeDelete = () => {
+    if (deleteBusy) return;
+    setDeleteOpen(false);
+    setDeleteError(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!token) return;
+    if (!isSistema) return;
+    if (selectedIds.size === 0) return;
+
+    setDeleteBusy(true);
+    setDeleteError(null);
+
+    try {
+      // Mantengo tu endpoint actual:
+      // DELETE /medidas/general/all/ids  body: { ids: number[] }
+      const res = await fetch(`${API_BASE_URL}/medidas/general/all/ids`, {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeaders(token),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Error ${res.status}`);
+      }
+
+      setDeleteOpen(false);
+      setSelectedIds(new Set());
+      await handleLoadMedidas(page);
+    } catch (e) {
+      console.error("Error borrando medidas_general (Sistema):", e);
+      setDeleteError("No se pudieron borrar las medidas. Revisa el endpoint y permisos (superuser).");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   return (
     <section className="ui-card text-sm">
       <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h4 className="ui-card-title">
-            Medidas (General){scope === "all" ? " · Sistema" : ""}
-          </h4>
+          <h4 className="ui-card-title">Medidas (General){isSistema ? " · Sistema" : ""}</h4>
           <p className="ui-card-subtitle">Resumen mensual de energía por empresa.</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => void handleLoadMedidas()}
+            onClick={() => void handleLoadMedidas(page)}
             disabled={loading || !token}
             className="ui-btn ui-btn-primary"
             type="button"
           >
             {loading ? "Actualizando..." : "Actualizar"}
           </button>
+
+          {isSistema && (
+            <button
+              onClick={openDelete}
+              disabled={loading || !token || selectedCount === 0}
+              className="ui-btn ui-btn-danger"
+              type="button"
+              title={selectedCount === 0 ? "Selecciona filas para borrar" : "Borrar filas seleccionadas"}
+            >
+              Borrar…
+              {selectedCount > 0 ? (
+                <span className="ui-badge ui-badge--neutral" style={{ marginLeft: 6 }}>
+                  {selectedCount}
+                </span>
+              ) : null}
+            </button>
+          )}
 
           {filtrosActivosCount > 0 && (
             <button
@@ -749,7 +955,27 @@ export default function MedidasGeneralSection({
         )}
       </div>
 
-      <div className="mb-4 grid gap-3 md:grid-cols-3">
+      {/* Filtros */}
+      <div className={isSistema ? "mb-4 grid gap-3 md:grid-cols-4" : "mb-4 grid gap-3 md:grid-cols-3"}>
+        {isSistema && (
+          <div>
+            <label className="ui-label">Cliente</label>
+            <select
+              className="ui-select"
+              value={filtroTenant}
+              onChange={(e) => setFiltroTenant(e.target.value)}
+              disabled={!token || loading}
+            >
+              <option value="">Todos</option>
+              {opcionesTenant.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div>
           <label className="ui-label">Empresa</label>
           <select
@@ -759,12 +985,10 @@ export default function MedidasGeneralSection({
             disabled={!token || loading}
           >
             <option value="">Todas</option>
-            {opcionesEmpresa.map((e) => (
-              <option key={e.id} value={String(e.id)}>
+            {(isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa).map((e) => (
+              <option key={`${e.tenant_id ?? "x"}-${e.id}`} value={String(e.id)}>
                 {(e.codigo ?? `Empresa ${e.id}`) + ` (ID ${e.id})`}
-                {scope === "all" && typeof e.tenant_id === "number"
-                  ? ` · T${e.tenant_id}`
-                  : ""}
+                {isSistema && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""}
               </option>
             ))}
           </select>
@@ -850,10 +1074,25 @@ export default function MedidasGeneralSection({
         </div>
       )}
 
+      {/* Tabla */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]">
           <thead className="ui-thead">
             <tr>
+              {/* ✅ Selección solo Sistema */}
+              {isSistema && (
+                <th className="ui-th" style={{ width: 44 }}>
+                  <input
+                    type="checkbox"
+                    className="ui-checkbox"
+                    checked={allCurrentSelected}
+                    onChange={toggleSelectAllCurrent}
+                    disabled={loading || !hasLoadedOnce || currentPageIds.length === 0}
+                    title="Seleccionar todo (página actual)"
+                  />
+                </th>
+              )}
+
               {columnasOrdenadas.map((col) => (
                 <th
                   key={col.id}
@@ -869,6 +1108,19 @@ export default function MedidasGeneralSection({
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={`sk-${i}`} className="ui-tr">
+                  {isSistema && (
+                    <td className="ui-td">
+                      <span
+                        className="inline-block h-3 w-4 rounded-md"
+                        style={{
+                          background: "var(--field-bg-soft)",
+                          border: "1px solid var(--field-border)",
+                          opacity: 0.6,
+                        }}
+                      />
+                    </td>
+                  )}
+
                   {Array.from({ length: totalColumnas }).map((__, j) => (
                     <td key={`sk-${i}-${j}`} className="ui-td">
                       <span
@@ -886,25 +1138,43 @@ export default function MedidasGeneralSection({
 
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
-                <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
+                <td colSpan={totalColumnas + (isSistema ? 1 : 0)} className="ui-td text-center ui-muted">
                   No hay medidas que cumplan los filtros.
                 </td>
               </tr>
             )}
 
             {!loading &&
-              data.map((m) => (
-                <tr key={`${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}`} className="ui-tr">
-                  {columnasOrdenadas.map((col) => (
-                    <td
-                      key={col.id}
-                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
-                    >
-                      {col.render(m)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              data.map((m: any) => {
+                const rowId = typeof m?.id === "number" ? (m.id as number) : null;
+                const checked = rowId != null ? selectedIds.has(rowId) : false;
+
+                return (
+                  <tr key={`${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`} className="ui-tr">
+                    {isSistema && (
+                      <td className="ui-td">
+                        <input
+                          type="checkbox"
+                          className="ui-checkbox"
+                          checked={checked}
+                          disabled={rowId == null}
+                          onChange={() => rowId != null && toggleRow(rowId)}
+                          title={rowId == null ? "Fila sin id (no seleccionable)" : "Seleccionar fila"}
+                        />
+                      </td>
+                    )}
+
+                    {columnasOrdenadas.map((col) => (
+                      <td
+                        key={col.id}
+                        className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
+                      >
+                        {col.render(m)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
 
@@ -974,6 +1244,18 @@ export default function MedidasGeneralSection({
           </div>
         )}
       </div>
+
+      {/* ✅ Confirmación borrado (solo Sistema) */}
+      <ConfirmDeleteModalInline
+        open={deleteOpen}
+        title="Borrar medidas (General) · Sistema"
+        subtitle={`Vas a borrar ${selectedCount} fila(s) seleccionada(s) (página actual). Esta acción no se puede deshacer.`}
+        busy={deleteBusy}
+        error={deleteError}
+        confirmText="Borrar definitivamente"
+        onConfirm={confirmDelete}
+        onClose={closeDelete}
+      />
     </section>
   );
 }

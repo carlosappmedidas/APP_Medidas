@@ -8,6 +8,8 @@ from datetime import datetime, date
 import re
 import math
 
+import pandas as pd  # ✅ para detectar NaT/NaN de Excel
+
 from sqlalchemy.orm import Session
 
 from app.measures.models import MedidaGeneral, MedidaPS
@@ -22,17 +24,64 @@ def _to_date(value: Any) -> date:
 
     Acepta:
       - date
-      - datetime
+      - datetime (incluye pandas.Timestamp)
       - str en formatos tipo '2024-02-01' o '2024/02/01'
+
+    ✅ IMPORTANTE:
+      - Si viene NaT/NaN/None/vacío -> ValueError
     """
+    # ✅ corta NaT/NaN/None al principio (pandas)
+    if value is None:
+        raise ValueError("Fecha_final es None")
+
+    # ✅ OJO: no podemos meter el raise dentro de un try/except que lo trague
+    try:
+        is_na = pd.isna(value)
+    except Exception:
+        is_na = False
+
+    if is_na:
+        # cubre pandas.NaT, numpy.nan, etc.
+        raise ValueError("Fecha_final es NaT/NaN")
+
     # OJO: datetime es subclass de date, por eso lo comprobamos primero
     if isinstance(value, datetime):
-        return value.date()
+        d = value.date()
+
+        # por si algo raro devuelve NaT-like
+        try:
+            is_na_d = pd.isna(d)
+        except Exception:
+            is_na_d = False
+
+        if is_na_d:
+            raise ValueError("Fecha_final.date() es NaT/NaN")
+
+        return d
+
     if isinstance(value, date):
         return value
+
     if isinstance(value, str):
-        value_norm = value.replace("/", "-")
+        s = value.strip()
+        if not s:
+            raise ValueError("Fecha_final es cadena vacía")
+        if s.upper() == "NAT":
+            raise ValueError("Fecha_final es NaT (string)")
+        value_norm = s.replace("/", "-")
         return datetime.fromisoformat(value_norm).date()
+
+    # fallback típico de algunos objetos
+    if hasattr(value, "to_pydatetime"):
+        try:
+            dt = value.to_pydatetime()
+            if isinstance(dt, datetime):
+                return dt.date()
+            if isinstance(dt, date):
+                return dt
+        except Exception:
+            pass
+
     raise ValueError(f"No puedo interpretar la fecha: {value!r}")
 
 
@@ -41,10 +90,21 @@ def _obtener_periodo_desde_fechas(
 ) -> Tuple[int, int]:
     """
     A partir de las filas (con campo Fecha_final):
-    - Toma la última Fecha_final.
+    - Toma la última Fecha_final válida.
     - Devuelve (anio, mes) de esa fecha.
+
+    ✅ Fix: ignora filas con Fecha_final inválida (NaT/NaN/None/vacías)
     """
-    fechas = [_to_date(f["Fecha_final"]) for f in filas]
+    fechas: list[date] = []
+    for f in filas:
+        try:
+            fechas.append(_to_date(f["Fecha_final"]))
+        except Exception:
+            continue
+
+    if not fechas:
+        raise ValueError("No hay ninguna Fecha_final válida (todas son NaT/NaN/None/vacías)")
+
     ultima = max(fechas)
     return ultima.year, ultima.month
 
@@ -94,11 +154,6 @@ def _recalcular_energia_neta_y_perdidas(mg: MedidaGeneral) -> None:
       - perdidas_e_facturada_pct
     y sus versiones por ventana BALD (m2, m7, m11, art15).
     """
-
-    # NOTA PYLANCE:
-    # En modelos SQLAlchemy sin typing 2.0, Pylance suele inferir atributos como Column[...].
-    # En runtime aquí son valores del instance (float/None). Hacemos cast explícito para evitar warnings.
-
     energia_bruta = cast(float | None, mg.energia_bruta_facturada) or 0.0
     energia_auto = cast(float | None, mg.energia_autoconsumo_kwh) or 0.0
     energia_pf_final = cast(float | None, mg.energia_pf_final_kwh) or 0.0
@@ -117,19 +172,11 @@ def _recalcular_energia_neta_y_perdidas(mg: MedidaGeneral) -> None:
         mg.perdidas_e_facturada_pct = None  # type: ignore[assignment]
 
     for sufijo in ("m2", "m7", "m11", "art15"):
-        energia_publicada = cast(
-            float | None, getattr(mg, f"energia_publicada_{sufijo}_kwh", 0.0)
-        ) or 0.0
-        energia_autoconsumo = cast(
-            float | None, getattr(mg, f"energia_autoconsumo_{sufijo}_kwh", 0.0)
-        ) or 0.0
+        energia_publicada = cast(float | None, getattr(mg, f"energia_publicada_{sufijo}_kwh", 0.0)) or 0.0
+        energia_autoconsumo = cast(float | None, getattr(mg, f"energia_autoconsumo_{sufijo}_kwh", 0.0)) or 0.0
         energia_pf = cast(float | None, getattr(mg, f"energia_pf_{sufijo}_kwh", 0.0)) or 0.0
-        energia_gen = cast(
-            float | None, getattr(mg, f"energia_generada_{sufijo}_kwh", 0.0)
-        ) or 0.0
-        energia_frontera_dd_win = cast(
-            float | None, getattr(mg, f"energia_frontera_dd_{sufijo}_kwh", 0.0)
-        ) or 0.0
+        energia_gen = cast(float | None, getattr(mg, f"energia_generada_{sufijo}_kwh", 0.0)) or 0.0
+        energia_frontera_dd_win = cast(float | None, getattr(mg, f"energia_frontera_dd_{sufijo}_kwh", 0.0)) or 0.0
 
         energia_neta_win = energia_publicada - energia_autoconsumo
         setattr(mg, f"energia_neta_facturada_{sufijo}_kwh", energia_neta_win)
@@ -185,15 +232,18 @@ def procesar_m1(
     except KeyError as exc:
         raise ValueError("Falta la columna 'Fecha_final' en las filas M1") from exc
 
-    filas_mes = [
-        f
-        for f in filas
-        if _to_date(f["Fecha_final"]).year == anio
-        and _to_date(f["Fecha_final"]).month == mes
-    ]
+    # ✅ Fix: ignorar filas con Fecha_final inválida en el filtro de mes
+    filas_mes: list[Dict[str, Any]] = []
+    for f in filas:
+        try:
+            d = _to_date(f["Fecha_final"])
+        except Exception:
+            continue
+        if d.year == anio and d.month == mes:
+            filas_mes.append(f)
 
     if not filas_mes:
-        raise ValueError("No hay filas del mes detectado en el fichero M1")
+        raise ValueError("No hay filas del mes detectado en el fichero M1 (o todas tienen Fecha_final inválida)")
 
     try:
         energia_total = sum(_to_float(f.get("Energia_Kwh", 0.0)) for f in filas_mes)
@@ -256,9 +306,7 @@ def procesar_m1_autoconsumo(
     nombre = str(filename)
     m = re.search(r"_(\d{4})(\d{2})_", nombre)
     if not m:
-        raise ValueError(
-            f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}"
-        )
+        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
     anio = int(m.group(1))
     mes = int(m.group(2))
 
@@ -323,17 +371,13 @@ def procesar_acumcil_generacion(
             for f in filas_as
         )
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUMCIL"
-        ) from exc
+        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUMCIL") from exc
 
     filename = getattr(fichero, "filename", "") or ""
     nombre = str(filename)
     m = re.search(r"_(\d{4})(\d{2})_", nombre)
     if not m:
-        raise ValueError(
-            f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}"
-        )
+        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
     anio = int(m.group(1))
     mes = int(m.group(2))
 
@@ -393,17 +437,13 @@ def procesar_acum_h2_grd_generacion(
             for f in filas_as
         )
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 GRD"
-        ) from exc
+        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 GRD") from exc
 
     filename = getattr(fichero, "filename", "") or ""
     nombre = str(filename)
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
-        raise ValueError(
-            f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}"
-        )
+        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
     anio = int(m.group(1))
     mes = int(m.group(2))
 
@@ -477,14 +517,11 @@ def procesar_acum_h2_rdd_frontera_dd(
     magnitud_objetivo_norm = str(magnitud_objetivo).strip().upper()
 
     filas_filtradas = [
-        f
-        for f in filas
+        f for f in filas
         if str(f.get("Magnitud", "")).strip().upper() == magnitud_objetivo_norm
     ]
     if not filas_filtradas:
-        raise ValueError(
-            f"No hay filas con Magnitud '{magnitud_objetivo_norm}' en el fichero ACUM H2 RDD"
-        )
+        raise ValueError(f"No hay filas con Magnitud '{magnitud_objetivo_norm}' en el fichero ACUM H2 RDD")
 
     try:
         energia_total = sum(
@@ -492,17 +529,13 @@ def procesar_acum_h2_rdd_frontera_dd(
             for f in filas_filtradas
         )
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 RDD"
-        ) from exc
+        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 RDD") from exc
 
     filename = getattr(fichero, "filename", "") or ""
     nombre = str(filename)
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
-        raise ValueError(
-            f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}"
-        )
+        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
     anio = int(m.group(1))
     mes = int(m.group(2))
 
@@ -562,17 +595,13 @@ def procesar_acum_h2_rdd_pf_kwh(
             for f in filas_ae
         )
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 RDD (PF)"
-        ) from exc
+        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 RDD (PF)") from exc
 
     filename = getattr(fichero, "filename", "") or ""
     nombre = str(filename)
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
-        raise ValueError(
-            f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}"
-        )
+        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
     anio = int(m.group(1))
     mes = int(m.group(2))
 
@@ -632,17 +661,13 @@ def procesar_acum_h2_trd_pf_kwh(
             for f in filas_ae
         )
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 TRD (PF)"
-        ) from exc
+        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 TRD (PF)") from exc
 
     filename = getattr(fichero, "filename", "") or ""
     nombre = str(filename)
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
-        raise ValueError(
-            f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}"
-        )
+        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
     anio = int(m.group(1))
     mes = int(m.group(2))
 
@@ -692,7 +717,6 @@ def procesar_bald_medidas_general(
     if periodo_bald_norm not in {"M2", "M7", "M11", "ART15"}:
         raise ValueError(f"Periodo BALD no reconocido: {periodo_bald}")
 
-    # Pylance a veces tipa anio/mes como Column[int] (por el modelo). Forzamos cast.
     anio = cast(int, fichero.anio)
     mes = cast(int, fichero.mes)
 
@@ -725,7 +749,7 @@ def procesar_bald_medidas_general(
     cil = _to_float(fila.get("CIL"))
     energia_generada = ed + cil
 
-    sufijo = periodo_bald_norm.lower()  # "m2", "m7", "m11", "art15"
+    sufijo = periodo_bald_norm.lower()
 
     def _set(attr_base: str, valor: float) -> None:
         attr = f"{attr_base}_{sufijo}_kwh"
