@@ -53,7 +53,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
     )
-    op.create_index("ix_empresas_tenant_id", "empresas", ["tenant_id"])
     op.create_index("ix_empresas_codigo_ree", "empresas", ["codigo_ree"])
     op.create_index("ix_empresas_codigo_cnmc", "empresas", ["codigo_cnmc"])
 
