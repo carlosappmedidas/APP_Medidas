@@ -39,7 +39,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
     )
     op.execute("CREATE INDEX IF NOT EXISTS ix_ingestion_files_tenant_id ON ingestion_files (tenant_id)")
-    op.create_index("ix_ingestion_files_empresa_id", "ingestion_files", ["empresa_id"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_ingestion_files_empresa_id ON ingestion_files (empresa_id)")
 
     # medidas_general
     op.create_table(
