@@ -102,8 +102,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
     )
-    op.create_index("ix_medidas_general_tenant_id", "medidas_general", ["tenant_id"])
-    op.create_index("ix_medidas_general_empresa_id", "medidas_general", ["empresa_id"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_medidas_general_tenant_id ON medidas_general (tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_medidas_general_empresa_id ON medidas_general (empresa_id)")
+
 
     # medidas_ps
     op.create_table(
@@ -169,8 +170,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
     )
-    op.create_index("ix_medidas_ps_tenant_id", "medidas_ps", ["tenant_id"])
-    op.create_index("ix_medidas_ps_empresa_id", "medidas_ps", ["empresa_id"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_medidas_ps_tenant_id ON medidas_ps (tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_medidas_ps_empresa_id ON medidas_ps (empresa_id)")
 
     # medidas_micro
     op.create_table(
@@ -191,8 +192,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
     )
-    op.create_index("ix_medidas_micro_tenant_id", "medidas_micro", ["tenant_id"])
-    op.create_index("ix_medidas_micro_empresa_id", "medidas_micro", ["empresa_id"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_medidas_micro_tenant_id ON medidas_micro (tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_medidas_micro_empresa_id ON medidas_micro (empresa_id)")
 
 
 def downgrade() -> None:

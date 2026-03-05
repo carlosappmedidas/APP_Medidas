@@ -53,8 +53,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
     )
-    op.create_index("ix_empresas_codigo_ree", "empresas", ["codigo_ree"])
-    op.create_index("ix_empresas_codigo_cnmc", "empresas", ["codigo_cnmc"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_empresas_codigo_ree ON empresas (codigo_ree)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_empresas_codigo_cnmc ON empresas (codigo_cnmc)")
 
     # === user_empresas (m2m) ===
     op.create_table(
