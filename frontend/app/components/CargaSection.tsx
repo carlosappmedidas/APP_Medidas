@@ -9,6 +9,20 @@ type Props = {
   token: string | null;
 };
 
+// ✅ Extendemos el tipo para soportar avisos del backend SIN romper nada si no existen.
+// (Si el backend aún no los envía, simplemente no se muestran.)
+type IngestionWarningItem =
+  | string
+  | {
+      code?: string;
+      message?: string;
+      anio?: number;
+      mes?: number;
+      energia_kwh?: number;
+      fecha_final?: string;
+      [k: string]: unknown;
+    };
+
 type IngestionFile = {
   id: number;
   empresa_id: number;
@@ -25,6 +39,13 @@ type IngestionFile = {
   updated_at?: string | null;
   processed_at?: string | null;
   error_message?: string | null;
+
+  // ✅ NUEVO (opcional): avisos/no bloqueante (si el backend los devuelve como arrays)
+  warnings?: IngestionWarningItem[];
+  notices?: IngestionWarningItem[];
+
+  // ✅ NUEVO (opcional): avisos como string (si el backend los guarda/expone así)
+  warnings_message?: string | null;
 };
 
 const EXPECTED_TYPES = [
@@ -108,6 +129,28 @@ function statusBadgeClass(status: string) {
   return "ui-badge ui-badge--neutral";
 }
 
+// ✅ helper: formatea avisos (string u objeto) a texto legible
+function formatWarningItem(item: IngestionWarningItem): string {
+  if (typeof item === "string") return item;
+
+  const msg = (item.message || "").toString().trim();
+  const code = (item.code || "").toString().trim();
+
+  const parts: string[] = [];
+  if (code) parts.push(`[${code}]`);
+  if (msg) parts.push(msg);
+
+  const hasPeriodo = typeof item.anio === "number" && typeof item.mes === "number";
+  if (hasPeriodo) parts.push(`(periodo ${item.anio}-${String(item.mes).padStart(2, "0")})`);
+
+  if (typeof item.energia_kwh === "number") parts.push(`energia=${item.energia_kwh}`);
+
+  if (item.fecha_final) parts.push(`fecha_final=${item.fecha_final}`);
+
+  const out = parts.join(" ").trim();
+  return out || JSON.stringify(item);
+}
+
 // ✅ Acordeón inline (misma flecha ▾ + rotación)
 function InlineAccordion({
   title,
@@ -168,6 +211,9 @@ export default function CargaSection({ token }: Props) {
   const [history, setHistory] = useState<IngestionFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+
+  // ✅ NUEVO: registro seleccionado (detalle debajo)
+  const [selectedHistory, setSelectedHistory] = useState<IngestionFile | null>(null);
 
   // --- Filtros histórico ---
   const [histEmpresaId, setHistEmpresaId] = useState<number | "">("");
@@ -296,6 +342,25 @@ export default function CargaSection({ token }: Props) {
 
         appendLog(`✅ Procesado id=${json.id} (status=${json.status}, filas OK=${filasOk}, filas error=${filasError}).`);
 
+        // ✅ NUEVO: avisos NO bloqueantes (refacturas, periodos fuera de ventana, etc.)
+        const warnings = Array.isArray(json.warnings) ? json.warnings : [];
+        const notices = Array.isArray(json.notices) ? json.notices : [];
+
+        if (warnings.length > 0) {
+          appendLog(`⚠ Avisos (${warnings.length}) detectados en el procesado:`);
+          for (const w of warnings) appendLog(`↳ ⚠ ${formatWarningItem(w)}`);
+        }
+
+        if (notices.length > 0) {
+          appendLog(`ℹ️ Notas (${notices.length}) del procesado:`);
+          for (const n of notices) appendLog(`↳ ℹ️ ${formatWarningItem(n)}`);
+        }
+
+        // ✅ NUEVO: avisos como string (si backend los manda así)
+        if (json.warnings_message) {
+          appendLog(`⚠ Avisos: ${json.warnings_message}`);
+        }
+
         // ✅ NUEVO: mostrar motivo real si el backend devolvió error_message
         if ((json.status || "").toLowerCase() === "error") {
           appendLog(`↳ Motivo: ${json.error_message ?? "(sin detalle en error_message)"}`);
@@ -340,6 +405,7 @@ export default function CargaSection({ token }: Props) {
     if (!token) {
       setHistoryError("Haz login para poder cargar el histórico.");
       setHistory([]);
+      setSelectedHistory(null);
       return;
     }
 
@@ -368,11 +434,28 @@ export default function CargaSection({ token }: Props) {
       }
 
       const json = (await res.json()) as IngestionFile[];
-      setHistory(Array.isArray(json) ? json : []);
+      const arr = Array.isArray(json) ? json : [];
+
+      // ✅ NUEVO: ordenar por fecha real de subida (created_at) DESC (más reciente arriba)
+      arr.sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      });
+
+      setHistory(arr);
+
+      // ✅ Mantener seleccionado si sigue existiendo; si no, limpiar
+      setSelectedHistory((prev) => {
+        if (!prev) return null;
+        const still = arr.find((x) => x.id === prev.id);
+        return still ?? null;
+      });
     } catch (err) {
       console.error("Error cargando histórico de ingestion:", err);
       setHistoryError("No se pudo cargar el histórico de cargas.");
       setHistory([]);
+      setSelectedHistory(null);
     } finally {
       setHistoryLoading(false);
     }
@@ -392,6 +475,25 @@ export default function CargaSection({ token }: Props) {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  // ✅ contador de avisos (para tabla histórico, si backend lo añade en el futuro)
+  const countAvisos = (h: IngestionFile) => {
+    const w = Array.isArray(h.warnings) ? h.warnings.length : 0;
+    const n = Array.isArray(h.notices) ? h.notices.length : 0;
+    const wm = h.warnings_message ? 1 : 0;
+    return w + n + wm;
+  };
+
+  // ✅ helpers detalle
+  const selectedWarnings = useMemo(() => {
+    if (!selectedHistory) return [];
+    return Array.isArray(selectedHistory.warnings) ? selectedHistory.warnings : [];
+  }, [selectedHistory]);
+
+  const selectedNotices = useMemo(() => {
+    if (!selectedHistory) return [];
+    return Array.isArray(selectedHistory.notices) ? selectedHistory.notices : [];
+  }, [selectedHistory]);
+
   return (
     <div className="space-y-8">
       {/* ✅ TARJETA 1: Carga */}
@@ -402,11 +504,7 @@ export default function CargaSection({ token }: Props) {
         setOpen={setCargaOpen}
         contentId="carga-content"
       >
-        {!canUse && (
-          <div className="ui-alert ui-alert--danger mb-4">
-            Necesitas iniciar sesión para cargar ficheros.
-          </div>
-        )}
+        {!canUse && <div className="ui-alert ui-alert--danger mb-4">Necesitas iniciar sesión para cargar ficheros.</div>}
 
         {/* Layout con columna derecha para “Plantillas” */}
         <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
@@ -505,6 +603,12 @@ export default function CargaSection({ token }: Props) {
               </ul>
             )}
           </div>
+
+          {/* ✅ Nota informativa (no cambia lógica) */}
+          <div className="mt-2 text-[10px] ui-muted">
+            Con la normativa (±3 días + refacturas), aquí verás avisos tipo “mes no existente” o “refactura detectada”,
+            pero la carga NO se bloqueará.
+          </div>
         </div>
       </InlineAccordion>
 
@@ -529,6 +633,17 @@ export default function CargaSection({ token }: Props) {
               className="ui-btn ui-btn-secondary"
             >
               {historyLoading ? "Cargando..." : "Cargar histórico"}
+            </button>
+
+            {/* ✅ NUEVO: limpiar selección */}
+            <button
+              type="button"
+              onClick={() => setSelectedHistory(null)}
+              disabled={!selectedHistory}
+              className="ui-btn ui-btn-outline"
+              title="Cerrar detalle"
+            >
+              Cerrar detalle
             </button>
           </div>
 
@@ -640,39 +755,160 @@ export default function CargaSection({ token }: Props) {
                 <th className="ui-th ui-th-right">Error</th>
                 <th className="ui-th">Subido</th>
                 <th className="ui-th">Procesado</th>
+                {/* ✅ NUEVO (no rompe nada si backend no envía warnings): */}
+                <th className="ui-th ui-th-right">Avisos</th>
+                {/* ✅ NUEVO: acción detalle */}
+                <th className="ui-th">Detalle</th>
               </tr>
             </thead>
 
             <tbody>
               {history.length === 0 ? (
                 <tr className="ui-tr">
-                  <td colSpan={10} className="ui-td text-center ui-muted">
+                  <td colSpan={12} className="ui-td text-center ui-muted">
                     {historyLoading
                       ? "Cargando histórico..."
                       : "Aún no has cargado el histórico o no hay registros con esos filtros."}
                   </td>
                 </tr>
               ) : (
-                history.map((h) => (
-                  <tr key={h.id} className="ui-tr">
-                    <td className="ui-td font-mono">{h.id}</td>
-                    <td className="ui-td">{empresaLabelById(h.empresa_id)}</td>
-                    <td className="ui-td font-mono">{h.tipo}</td>
-                    <td className="ui-td font-mono">{fmtPeriodo(h.anio, h.mes)}</td>
-                    <td className="ui-td">{h.filename}</td>
-                    <td className="ui-td">
-                      <span className={statusBadgeClass(h.status)}>{h.status}</span>
-                    </td>
-                    <td className="ui-td ui-td-right font-mono">{h.rows_ok ?? 0}</td>
-                    <td className="ui-td ui-td-right font-mono">{h.rows_error ?? 0}</td>
-                    <td className="ui-td">{fmtDateMadrid(h.created_at)}</td>
-                    <td className="ui-td">{fmtDateMadrid(h.processed_at)}</td>
-                  </tr>
-                ))
+                history.map((h) => {
+                  const avisos = countAvisos(h);
+                  const isSelected = selectedHistory?.id === h.id;
+
+                  return (
+                    <tr key={h.id} className="ui-tr">
+                      <td className="ui-td font-mono">{h.id}</td>
+                      <td className="ui-td">{empresaLabelById(h.empresa_id)}</td>
+                      <td className="ui-td font-mono">{h.tipo}</td>
+                      <td className="ui-td font-mono">{fmtPeriodo(h.anio, h.mes)}</td>
+                      <td className="ui-td">{h.filename}</td>
+                      <td className="ui-td">
+                        <span className={statusBadgeClass(h.status)}>{h.status}</span>
+                      </td>
+                      <td className="ui-td ui-td-right font-mono">{h.rows_ok ?? 0}</td>
+                      <td className="ui-td ui-td-right font-mono">{h.rows_error ?? 0}</td>
+                      <td className="ui-td">{fmtDateMadrid(h.created_at)}</td>
+                      <td className="ui-td">{fmtDateMadrid(h.processed_at)}</td>
+                      <td className="ui-td ui-td-right font-mono" title={avisos ? "Hay avisos/notas" : "Sin avisos"}>
+                        {avisos}
+                      </td>
+                      <td className="ui-td">
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn-outline"
+                          onClick={() => setSelectedHistory(h)}
+                          title="Ver detalle"
+                        >
+                          {isSelected ? "Abierto" : "Detalle"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        {/* ✅ NUEVO: Tarjeta detalle debajo del histórico */}
+        {selectedHistory && (
+          <div className="mt-4 ui-card ui-card--border">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">Detalle de carga #{selectedHistory.id}</div>
+                <div className="mt-1 text-[11px] ui-muted">
+                  {empresaLabelById(selectedHistory.empresa_id)} ·{" "}
+                  <span className="font-mono">{selectedHistory.tipo}</span> ·{" "}
+                  <span className="font-mono">{fmtPeriodo(selectedHistory.anio, selectedHistory.mes)}</span>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={statusBadgeClass(selectedHistory.status)}>{selectedHistory.status}</span>
+                <button type="button" className="ui-btn ui-btn-outline" onClick={() => setSelectedHistory(null)}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+
+            <div className="ui-panel text-[11px]">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div>
+                  <div className="ui-muted text-[10px]">Fichero</div>
+                  <div className="mt-0.5">{selectedHistory.filename}</div>
+                </div>
+                <div>
+                  <div className="ui-muted text-[10px]">Subido</div>
+                  <div className="mt-0.5">{fmtDateMadrid(selectedHistory.created_at)}</div>
+                </div>
+                <div>
+                  <div className="ui-muted text-[10px]">Procesado</div>
+                  <div className="mt-0.5">{fmtDateMadrid(selectedHistory.processed_at)}</div>
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div>
+                  <div className="ui-muted text-[10px]">Filas OK</div>
+                  <div className="mt-0.5 font-mono">{selectedHistory.rows_ok ?? 0}</div>
+                </div>
+                <div>
+                  <div className="ui-muted text-[10px]">Filas Error</div>
+                  <div className="mt-0.5 font-mono">{selectedHistory.rows_error ?? 0}</div>
+                </div>
+                <div>
+                  <div className="ui-muted text-[10px]">Error (si aplica)</div>
+                  <div className="mt-0.5">
+                    {selectedHistory.error_message ? (
+                      <span className="ui-text-danger">{selectedHistory.error_message}</span>
+                    ) : (
+                      <span className="ui-muted">-</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Avisos / notas */}
+              <div className="mt-4">
+                <div className="text-xs font-semibold">Avisos / notas</div>
+
+                {/* warnings_message (si existe) */}
+                {selectedHistory.warnings_message ? (
+                  <div className="mt-2 ui-alert ui-alert--warning text-[11px]">{selectedHistory.warnings_message}</div>
+                ) : null}
+
+                {selectedWarnings.length === 0 && selectedNotices.length === 0 && !selectedHistory.warnings_message ? (
+                  <div className="mt-2 ui-muted text-[11px]">Sin avisos.</div>
+                ) : (
+                  <div className="mt-2 space-y-3">
+                    {selectedWarnings.length > 0 && (
+                      <div>
+                        <div className="ui-muted text-[10px] mb-1">Warnings ({selectedWarnings.length})</div>
+                        <ul className="list-disc pl-5 text-[11px] space-y-1">
+                          {selectedWarnings.map((w, idx) => (
+                            <li key={`w-${idx}`}>{formatWarningItem(w)}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {selectedNotices.length > 0 && (
+                      <div>
+                        <div className="ui-muted text-[10px] mb-1">Notas ({selectedNotices.length})</div>
+                        <ul className="list-disc pl-5 text-[11px] space-y-1">
+                          {selectedNotices.map((n, idx) => (
+                            <li key={`n-${idx}`}>{formatWarningItem(n)}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </InlineAccordion>
     </div>
   );

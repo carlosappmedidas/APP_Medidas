@@ -8,6 +8,7 @@ from typing import Any, cast
 from pathlib import Path
 import shutil
 import re
+import json
 
 from fastapi import (
     APIRouter,
@@ -138,6 +139,20 @@ def _safe_unlink(storage_key: str | None) -> None:
         return
 
 
+def _extract_ingestion_warnings(obj: Any) -> list[Any]:
+    """
+    Lee warnings "en memoria" (p.ej. mg._ingestion_warnings) y normaliza a lista.
+    """
+    try:
+        w = getattr(obj, "_ingestion_warnings", None)
+    except Exception:
+        w = None
+
+    if isinstance(w, list):
+        return w
+    return []
+
+
 @router.post(
     "/files/upload",
     response_model=IngestionFileRead,
@@ -184,11 +199,9 @@ async def upload_file(
         )
 
     # ✅ FIX BALD:
-    # Para BALD buscamos "existente" por (tenant,empresa,tipo,periodo,filename) para permitir varios
-    # BALD en el mismo mes (cada uno con su ingestion_id).
     existing = _find_existing_ingestion_file(
         db,
-        tenant_id=tenant_id_int,  # ✅ aquí estaba el warning (Column[int] -> int)
+        tenant_id=tenant_id_int,
         empresa_id=empresa_id,
         tipo=tipo_norm,
         anio=anio,
@@ -212,7 +225,6 @@ async def upload_file(
     storage_key = str(dest_path)
 
     if existing:
-        # ✅ NUEVO: guardamos el storage_key anterior para limpiar “duplicados”
         old_storage_key = cast(str, getattr(existing, "storage_key", None) or "")
 
         ex = cast(Any, existing)
@@ -229,10 +241,12 @@ async def upload_file(
         ex.processed_at = None
         ex.updated_at = datetime.utcnow()
 
+        # ✅ NUEVO: reset avisos
+        ex.warnings_json = None
+
         db.commit()
         db.refresh(existing)
 
-        # ✅ NUEVO: si el fichero anterior era distinto, lo borramos del disco
         if old_storage_key and old_storage_key != storage_key:
             _safe_unlink(old_storage_key)
 
@@ -248,6 +262,8 @@ async def upload_file(
         "storage_key": storage_key,
         "status": IngestionFile.STATUS_PENDING,
         "uploaded_by": cast(int, current_user.id),
+        # ✅ NUEVO: sin avisos al crear
+        "warnings_json": None,
     }
 
     ingestion = IngestionFile(**ingestion_data)  # type: ignore[arg-type]
@@ -293,6 +309,8 @@ def register_file(
         "storage_key": data.storage_key,
         "status": IngestionFile.STATUS_PENDING,
         "uploaded_by": cast(int, current_user.id),
+        # ✅ NUEVO
+        "warnings_json": None,
     }
 
     ingestion = IngestionFile(**ingestion_data)  # type: ignore[arg-type]
@@ -459,20 +477,23 @@ def process_file(
             detail="El fichero no tiene storage_key; no se puede procesar",
         )
 
+    # ✅ Reset avisos al re-procesar
+    ing.warnings_json = None
+
     ing.status = IngestionFile.STATUS_PROCESSING
     db.commit()
     db.refresh(ingestion)
 
-    # ✅ Guardamos storage_key para borrado posterior (si procede)
     storage_key_for_cleanup = cast(str, ing.storage_key)
 
     try:
         tipo = (ing.tipo or "").upper()
 
-        # ✅ Solo tipado estático (sin cambiar lógica/runtime)
         tenant_id = cast(int, ing.tenant_id)
         empresa_id = cast(int, ing.empresa_id)
         storage_key = cast(str, ing.storage_key)
+
+        m1_result_obj: Any | None = None
 
         if tipo == "BALD":
             procesar_fichero_bald(
@@ -483,7 +504,8 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "M1":
-            procesar_fichero_m1_desde_csv(
+            # ✅ capturamos retorno para extraer warnings
+            m1_result_obj = procesar_fichero_m1_desde_csv(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -556,25 +578,32 @@ def process_file(
         else:
             raise ValueError(f"Tipo de fichero no soportado para procesado: {tipo}")
 
+        # ✅ Persistimos warnings si los hay (solo M1 de momento)
+        if m1_result_obj is not None:
+            warnings_list = _extract_ingestion_warnings(m1_result_obj)
+            if warnings_list:
+                ing.warnings_json = json.dumps(warnings_list, ensure_ascii=False)
+
         ing.status = IngestionFile.STATUS_OK
         ing.rows_ok = int(ing.rows_ok or 0) + 1
         ing.rows_error = int(ing.rows_error or 0)
         ing.error_message = None
+
     except Exception as exc:
         ing.status = IngestionFile.STATUS_ERROR
         ing.rows_error = int(ing.rows_error or 0) + 1
         ing.error_message = str(exc)
+
     finally:
         ing.processed_at = datetime.utcnow()
         db.commit()
         db.refresh(ingestion)
 
-        # ✅ NUEVO: borrar fichero si terminó OK y está habilitado por config
         try:
             settings = get_settings()
             delete_after_ok = bool(getattr(settings, "INGESTION_DELETE_AFTER_OK", True))
         except Exception:
-            delete_after_ok = True  # fallback seguro
+            delete_after_ok = True
 
         if delete_after_ok and cast(str, ing.status) == IngestionFile.STATUS_OK:
             _safe_unlink(storage_key_for_cleanup)

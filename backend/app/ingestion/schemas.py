@@ -1,7 +1,12 @@
+# app/ingestion/schemas.py
 # pyright: reportMissingImports=false
 
+from __future__ import annotations
+
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, field_validator
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 
 
 class IngestionFileBase(BaseModel):
@@ -44,6 +49,12 @@ class IngestionFileRead(IngestionFileBase):
     rows_ok: int | None = None
     rows_error: int | None = None
     error_message: str | None = None
+
+    # ✅ NUEVO (opcional): avisos/no bloqueante (lista de items)
+    # Se alimenta desde IngestionFile.warnings @property
+    # ✅ FIX Pydantic v2: default_factory (evita lista compartida)
+    warnings: list[Any] = Field(default_factory=list)
+
     created_at: datetime
     updated_at: datetime | None = None
     processed_at: datetime | None = None

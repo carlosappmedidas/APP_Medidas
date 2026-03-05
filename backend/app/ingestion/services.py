@@ -97,6 +97,40 @@ BALD_COLUMNS = [
 
 
 # ---------------------------------------------------------------------------
+# Helpers internos (warnings M1)
+# ---------------------------------------------------------------------------
+
+
+def _try_attach_ingestion_warnings(fichero: IngestionFile, warnings: Any) -> None:
+    """
+    Adjunta warnings al objeto IngestionFile en memoria (sin romper DB).
+
+    Nota: más adelante, cuando añadamos columna JSON en IngestionFile,
+    esta función será el punto central para persistirlos en BD.
+    """
+    if not warnings:
+        return
+    try:
+        setattr(fichero, "_ingestion_warnings", warnings)
+    except Exception:
+        pass
+
+
+def _try_copy_warnings_from_result(fichero: IngestionFile, result: Any) -> None:
+    """
+    Si el procesador de medidas adjunta warnings en el resultado (p.ej. procesar_m1),
+    los copiamos a IngestionFile para poder exponerlos después en routes.
+    """
+    try:
+        warnings = getattr(result, "_ingestion_warnings", None)
+    except Exception:
+        warnings = None
+
+    if warnings:
+        _try_attach_ingestion_warnings(fichero, warnings)
+
+
+# ---------------------------------------------------------------------------
 # M1 (facturación y autoconsumo)
 #   -> aquí soportamos tanto Excel (.xlsm, .xlsx, .xls) como CSV ';'
 # ---------------------------------------------------------------------------
@@ -150,13 +184,17 @@ def procesar_fichero_m1(
     Envuelve el procesado del fichero M1 de facturación
     cuando ya tenemos filas parseadas.
     """
-    return procesar_m1(
+    res = procesar_m1(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
         filas_raw=filas_raw,
     )
+
+    # ✅ Captura warnings “en memoria” (refacturas / meses creados / fuera de ventana)
+    _try_copy_warnings_from_result(fichero, res)
+    return res
 
 
 def procesar_fichero_m1_autoconsumo(
@@ -201,13 +239,17 @@ def procesar_fichero_m1_desde_csv(  # mantenemos el nombre para no tocar routes.
     """
     filas_local = _leer_fichero_m1_desde_excel_o_csv(file_path=file_path)
 
-    return procesar_m1(
+    res = procesar_m1(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
         filas_raw=filas_local,
     )
+
+    # ✅ Captura warnings “en memoria”
+    _try_copy_warnings_from_result(fichero, res)
+    return res
 
 
 def procesar_fichero_m1_autoconsumo_desde_csv(

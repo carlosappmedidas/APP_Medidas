@@ -155,3 +155,45 @@ export type User = {
   // (opcional legacy; no lo usa esta UI)
   empresas_permitidas?: Empresa[];
 };
+
+// ------------------------------------------------------------
+// ✅ NUEVO: Tipos para ingestion warnings (NO rompe nada)
+// ------------------------------------------------------------
+export type IngestionWarningItem =
+  | string
+  | {
+      code?: string;
+      message?: string;
+      anio?: number;
+      mes?: number;
+      energia_kwh?: number;
+      fecha_final?: string;
+      [k: string]: unknown;
+    };
+
+export type IngestionFile = {
+  id: number;
+  empresa_id: number;
+  tipo: string;
+  anio: number;
+  mes: number;
+  filename: string;
+  status: string;
+
+  rows_ok?: number;
+  rows_error?: number;
+
+  created_at?: string;
+  updated_at?: string | null;
+  processed_at?: string | null;
+  error_message?: string | null;
+
+  // ✅ avisos/no bloqueante
+  warnings?: IngestionWarningItem[];
+
+  // (compat legacy por si un día lo mandas con otro nombre)
+  notices?: IngestionWarningItem[];
+
+  // (compat legacy por si lo mandas como string)
+  warnings_message?: string | null;
+};

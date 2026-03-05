@@ -194,3 +194,7 @@ class MedidaPS(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+
+
+# ✅ Import “side-effect” para registrar el modelo de contribuciones M1 en metadata
+from app.measures.m1_models import M1PeriodContribution  # noqa: F401,E402
