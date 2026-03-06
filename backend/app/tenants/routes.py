@@ -50,42 +50,42 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _as_any(obj: Any) -> Any:
-    """Convierte a Any a ojos del tipador (runtime no cambia nada)."""
-    return cast(Any, obj)
+  """Convierte a Any a ojos del tipador (runtime no cambia nada)."""
+  return cast(Any, obj)
 
 
 def _u_id(u: User) -> int:
-    return cast(int, getattr(u, "id"))
+  return cast(int, getattr(u, "id"))
 
 
 def _u_tenant_id(u: User) -> int:
-    return cast(int, getattr(u, "tenant_id"))
+  return cast(int, getattr(u, "tenant_id"))
 
 
 def _u_email(u: User) -> str:
-    return str(getattr(u, "email"))
+  return str(getattr(u, "email"))
 
 
 def _u_rol(u: User) -> str:
-    return str(getattr(u, "rol"))
+  return str(getattr(u, "rol"))
 
 
 def _u_is_active(u: User) -> bool:
-    return bool(cast(bool, getattr(u, "is_active")))
+  return bool(cast(bool, getattr(u, "is_active")))
 
 
 def _u_is_superuser(u: User) -> bool:
-    return bool(cast(bool, getattr(u, "is_superuser")))
+  return bool(cast(bool, getattr(u, "is_superuser")))
 
 
 def _can_manage_ui_settings(u: User) -> bool:
-    """
-    ✅ Permiso para gestionar ajustes UI persistidos (tema).
-    Requisito: admin/owner del tenant o superuser de plataforma.
-    """
-    if _u_is_superuser(u):
-        return True
-    return _u_rol(u) in ("admin", "owner")
+  """
+  ✅ Permiso para gestionar ajustes UI persistidos (tema).
+  Requisito: admin/owner del tenant o superuser de plataforma.
+  """
+  if _u_is_superuser(u):
+      return True
+  return _u_rol(u) in ("admin", "owner")
 
 
 # ---------------------------------------------------------
@@ -95,42 +95,42 @@ def _can_manage_ui_settings(u: User) -> bool:
 
 @router.post("/login", response_model=Token)
 def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
+  form_data: OAuth2PasswordRequestForm = Depends(),
+  db: Session = Depends(get_db),
 ):
-    """
-    Login vía email + contraseña.
-    - Recibe form-data con username (email) y password.
-    - Devuelve un JWT con user_id y tenant_id.
-    """
-    user = db.query(User).filter(User.email == form_data.username).first()
+  """
+  Login vía email + contraseña.
+  - Recibe form-data con username (email) y password.
+  - Devuelve un JWT con user_id y tenant_id.
+  """
+  user = db.query(User).filter(User.email == form_data.username).first()
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales incorrectas",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+  if user is None:
+      raise HTTPException(
+          status_code=status.HTTP_401_UNAUTHORIZED,
+          detail="Credenciales incorrectas",
+          headers={"WWW-Authenticate": "Bearer"},
+      )
 
-    if not verify_password(form_data.password, str(getattr(user, "password_hash"))):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales incorrectas",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+  if not verify_password(form_data.password, str(getattr(user, "password_hash"))):
+      raise HTTPException(
+          status_code=status.HTTP_401_UNAUTHORIZED,
+          detail="Credenciales incorrectas",
+          headers={"WWW-Authenticate": "Bearer"},
+      )
 
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+  access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
-    access_token = create_access_token(
-        data={
-            "sub": str(_u_id(user)),
-            "tenant_id": _u_tenant_id(user),
-            "email": _u_email(user),
-        },
-        expires_delta=access_token_expires,
-    )
+  access_token = create_access_token(
+      data={
+          "sub": str(_u_id(user)),
+          "tenant_id": _u_tenant_id(user),
+          "email": _u_email(user),
+      },
+      expires_delta=access_token_expires,
+  )
 
-    return Token(access_token=access_token, token_type="bearer")
+  return Token(access_token=access_token, token_type="bearer")
 
 
 # ---------------------------------------------------------
@@ -140,12 +140,64 @@ def login(
 
 @router.get("/me", response_model=UserRead)
 def read_current_user(
-    current_user: User = Depends(get_current_user),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Devuelve los datos del usuario actual (id, email, rol, tenant, etc.).
-    """
-    return current_user
+  """
+  Devuelve los datos del usuario actual (id, email, rol, tenant, etc.).
+
+  Construimos el esquema UserRead a mano para evitar errores de
+  serialización si hay datos “raros” (por ejemplo en ui_theme_overrides).
+  """
+
+  # Campos básicos
+  data: Dict[str, Any] = {
+      "id": _u_id(current_user),
+      "tenant_id": _u_tenant_id(current_user),
+      "email": _u_email(current_user),
+      "rol": _u_rol(current_user),
+      "is_active": _u_is_active(current_user),
+      "is_superuser": _u_is_superuser(current_user),
+      "created_at": getattr(current_user, "created_at", None),
+      "updated_at": getattr(current_user, "updated_at", None),
+      # defaults seguros
+      "empresa_ids_permitidas": [],
+      "ui_theme_overrides": None,
+  }
+
+  # empresa_ids_permitidas: usamos la relación empresas_permitidas si existe
+  try:
+      empresas_rel = getattr(current_user, "empresas_permitidas", None)
+      if empresas_rel:
+          data["empresa_ids_permitidas"] = [
+              int(getattr(e, "id")) for e in empresas_rel
+          ]
+  except Exception:
+      # si algo sale mal, mantenemos la lista vacía
+      data["empresa_ids_permitidas"] = []
+
+  # ui_theme_overrides: puede ser dict, JSON en texto, None...
+  try:
+      overrides = getattr(current_user, "ui_theme_overrides", None)
+      if overrides is None or overrides == "":
+          data["ui_theme_overrides"] = None
+      elif isinstance(overrides, dict):
+          data["ui_theme_overrides"] = overrides
+      else:
+          # por si viene como JSON en texto o tipo raro
+          import json
+
+          try:
+              if isinstance(overrides, str):
+                  data["ui_theme_overrides"] = json.loads(overrides)
+              else:
+                  data["ui_theme_overrides"] = dict(overrides)
+          except Exception:
+              data["ui_theme_overrides"] = None
+  except Exception:
+      data["ui_theme_overrides"] = None
+
+  # Validamos contra el schema Pydantic
+  return UserRead.model_validate(data, from_attributes=False)
 
 
 # ---------------------------------------------------------
@@ -156,98 +208,98 @@ def read_current_user(
 
 
 class UiThemePayload(BaseModel):
-    # Lo dejamos flexible (Dict[str, Any]) porque son CSS vars -> string,
-    # pero no pasa nada si mañana guardas más metadatos.
-    ui_theme_overrides: Optional[Dict[str, Any]] = None
+  # Lo dejamos flexible (Dict[str, Any]) porque son CSS vars -> string,
+  # pero no pasa nada si mañana guardas más metadatos.
+  ui_theme_overrides: Optional[Dict[str, Any]] = None
 
 
 @router.get("/ui-theme", response_model=UiThemePayload)
 def get_ui_theme(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Devuelve el JSON de overrides del tema para el usuario actual.
+  """
+  Devuelve el JSON de overrides del tema para el usuario actual.
 
-    Solo permitido para roles 'admin' o 'owner' (o superuser).
-    """
-    if not _can_manage_ui_settings(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para ver los ajustes de UI",
-        )
+  Solo permitido para roles 'admin' o 'owner' (o superuser).
+  """
+  if not _can_manage_ui_settings(current_user):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para ver los ajustes de UI",
+      )
 
-    overrides = getattr(current_user, "ui_theme_overrides", None)
-    return UiThemePayload(ui_theme_overrides=cast(Optional[Dict[str, Any]], overrides))
+  overrides = getattr(current_user, "ui_theme_overrides", None)
+  return UiThemePayload(ui_theme_overrides=cast(Optional[Dict[str, Any]], overrides))
 
 
 # ✅ IMPORTANTE: el frontend está llamando a PATCH /auth/ui-theme
 @router.patch("/ui-theme", response_model=UiThemePayload)
 def patch_ui_theme(
-    payload: UiThemePayload,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  payload: UiThemePayload,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Guarda (o limpia) el JSON de overrides del tema para el usuario actual.
+  """
+  Guarda (o limpia) el JSON de overrides del tema para el usuario actual.
 
-    - Si ui_theme_overrides = null => se guarda NULL en BD (sin overrides)
-    - Si ui_theme_overrides = {...} => se guarda el JSON
+  - Si ui_theme_overrides = null => se guarda NULL en BD (sin overrides)
+  - Si ui_theme_overrides = {...} => se guarda el JSON
 
-    Solo permitido para roles 'admin' o 'owner' (o superuser).
-    """
-    if not _can_manage_ui_settings(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para guardar los ajustes de UI",
-        )
+  Solo permitido para roles 'admin' o 'owner' (o superuser).
+  """
+  if not _can_manage_ui_settings(current_user):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para guardar los ajustes de UI",
+      )
 
-    _as_any(current_user).ui_theme_overrides = payload.ui_theme_overrides
+  _as_any(current_user).ui_theme_overrides = payload.ui_theme_overrides
 
-    db.add(current_user)
-    db.commit()
-    db.refresh(current_user)
+  db.add(current_user)
+  db.commit()
+  db.refresh(current_user)
 
-    overrides = getattr(current_user, "ui_theme_overrides", None)
-    return UiThemePayload(ui_theme_overrides=cast(Optional[Dict[str, Any]], overrides))
+  overrides = getattr(current_user, "ui_theme_overrides", None)
+  return UiThemePayload(ui_theme_overrides=cast(Optional[Dict[str, Any]], overrides))
 
 
 # ✅ Mantengo PUT por compatibilidad (no desaparece nada)
 @router.put("/ui-theme", response_model=UiThemePayload)
 def set_ui_theme(
-    payload: UiThemePayload,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  payload: UiThemePayload,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Alias de compatibilidad: hace lo mismo que PATCH /ui-theme.
-    """
-    return patch_ui_theme(payload=payload, db=db, current_user=current_user)
+  """
+  Alias de compatibilidad: hace lo mismo que PATCH /ui-theme.
+  """
+  return patch_ui_theme(payload=payload, db=db, current_user=current_user)
 
 
 @router.delete("/ui-theme", response_model=UiThemePayload)
 def clear_ui_theme(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Limpia (pone a NULL) los overrides del tema del usuario actual.
+  """
+  Limpia (pone a NULL) los overrides del tema del usuario actual.
 
-    Solo permitido para roles 'admin' o 'owner' (o superuser).
-    """
-    if not _can_manage_ui_settings(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para borrar los ajustes de UI",
-        )
+  Solo permitido para roles 'admin' o 'owner' (o superuser).
+  """
+  if not _can_manage_ui_settings(current_user):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para borrar los ajustes de UI",
+      )
 
-    _as_any(current_user).ui_theme_overrides = None
+  _as_any(current_user).ui_theme_overrides = None
 
-    db.add(current_user)
-    db.commit()
-    db.refresh(current_user)
+  db.add(current_user)
+  db.commit()
+  db.refresh(current_user)
 
-    return UiThemePayload(ui_theme_overrides=None)
+  return UiThemePayload(ui_theme_overrides=None)
 
 
 # ---------------------------------------------------------
@@ -258,298 +310,298 @@ def clear_ui_theme(
 
 @router.get("/users", response_model=List[UserRead])
 def list_my_tenant_users(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Lista los usuarios del tenant actual.
+  """
+  Lista los usuarios del tenant actual.
 
-    Solo permitido para roles 'admin' o 'owner'.
-    El usuario protegido no aparece.
-    """
-    if _u_rol(current_user) not in ("admin", "owner"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para listar usuarios del tenant",
-        )
+  Solo permitido para roles 'admin' o 'owner'.
+  El usuario protegido no aparece.
+  """
+  if _u_rol(current_user) not in ("admin", "owner"):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para listar usuarios del tenant",
+      )
 
-    users = (
-        db.query(User)
-        .options(joinedload(User.empresas_permitidas))
-        .filter(User.tenant_id == _u_tenant_id(current_user))
-        .order_by(User.email.asc())
-        .all()
-    )
+  users = (
+      db.query(User)
+      .options(joinedload(User.empresas_permitidas))
+      .filter(User.tenant_id == _u_tenant_id(current_user))
+      .order_by(User.email.asc())
+      .all()
+  )
 
-    users = [u for u in users if _u_email(u) != PROTECTED_USER_EMAIL]
-    return users
+  users = [u for u in users if _u_email(u) != PROTECTED_USER_EMAIL]
+  return users
 
 
 @router.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user_for_my_tenant(
-    user_in: UserCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  user_in: UserCreate,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Crea un usuario dentro del mismo tenant que el usuario actual.
-    No permite crear superusuarios ni usuarios con rol 'owner'.
+  """
+  Crea un usuario dentro del mismo tenant que el usuario actual.
+  No permite crear superusuarios ni usuarios con rol 'owner'.
 
-    Solo permitido para roles 'admin' o 'owner'.
-    """
-    if _u_rol(current_user) not in ("admin", "owner"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para crear usuarios en este tenant",
-        )
+  Solo permitido para roles 'admin' o 'owner'.
+  """
+  if _u_rol(current_user) not in ("admin", "owner"):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para crear usuarios en este tenant",
+      )
 
-    existing = db.query(User).filter(User.email == user_in.email).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un usuario con ese email",
-        )
+  existing = db.query(User).filter(User.email == user_in.email).first()
+  if existing:
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="Ya existe un usuario con ese email",
+      )
 
-    # ⛔️ Desde el panel del cliente solo se admiten roles user/admin
-    if user_in.rol not in ALLOWED_TENANT_ROLES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Rol no permitido desde el panel del cliente",
-        )
+  # ⛔️ Desde el panel del cliente solo se admiten roles user/admin
+  if user_in.rol not in ALLOWED_TENANT_ROLES:
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="Rol no permitido desde el panel del cliente",
+      )
 
-    user = User()
-    u = _as_any(user)  # <- clave para Pylance en asignaciones
-    u.tenant_id = _u_tenant_id(current_user)
-    u.email = user_in.email
-    u.password_hash = get_password_hash(user_in.password)
-    u.rol = user_in.rol
-    u.is_active = user_in.is_active
-    u.is_superuser = False
+  user = User()
+  u = _as_any(user)  # <- clave para Pylance en asignaciones
+  u.tenant_id = _u_tenant_id(current_user)
+  u.email = user_in.email
+  u.password_hash = get_password_hash(user_in.password)
+  u.rol = user_in.rol
+  u.is_active = user_in.is_active
+  u.is_superuser = False
 
-    # Asociar empresas permitidas si vienen
-    if user_in.empresa_ids_permitidas:
-        empresas = (
-            db.query(Empresa)
-            .filter(
-                Empresa.id.in_(user_in.empresa_ids_permitidas),
-                Empresa.tenant_id == _u_tenant_id(current_user),
-            )
-            .all()
-        )
-        u.empresas_permitidas = empresas
+  # Asociar empresas permitidas si vienen
+  if user_in.empresa_ids_permitidas:
+      empresas = (
+          db.query(Empresa)
+          .filter(
+              Empresa.id.in_(user_in.empresa_ids_permitidas),
+              Empresa.tenant_id == _u_tenant_id(current_user),
+          )
+          .all()
+      )
+      u.empresas_permitidas = empresas
 
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+  db.add(user)
+  db.commit()
+  db.refresh(user)
+  return user
 
 
 @router.patch("/users/{user_id}", response_model=UserRead)
 def update_user_in_my_tenant(
-    user_id: int,
-    user_in: UserUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  user_id: int,
+  user_in: UserUpdate,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Actualiza rol / activo / contraseña de un usuario de tu tenant.
+  """
+  Actualiza rol / activo / contraseña de un usuario de tu tenant.
 
-    Desde aquí:
-      - Solo se pueden usar roles 'user' o 'admin'.
-      - No se puede cambiar el rol de un usuario 'owner'.
-      - No se puede convertir a nadie en 'owner'.
-    """
-    if _u_rol(current_user) not in ("admin", "owner"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para actualizar usuarios en este tenant",
-        )
+  Desde aquí:
+    - Solo se pueden usar roles 'user' o 'admin'.
+    - No se puede cambiar el rol de un usuario 'owner'.
+    - No se puede convertir a nadie en 'owner'.
+  """
+  if _u_rol(current_user) not in ("admin", "owner"):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para actualizar usuarios en este tenant",
+      )
 
-    user = (
-        db.query(User)
-        .options(joinedload(User.empresas_permitidas))
-        .filter(
-            User.id == user_id,
-            User.tenant_id == _u_tenant_id(current_user),
-        )
-        .first()
-    )
+  user = (
+      db.query(User)
+      .options(joinedload(User.empresas_permitidas))
+      .filter(
+          User.id == user_id,
+          User.tenant_id == _u_tenant_id(current_user),
+      )
+      .first()
+  )
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado en tu tenant",
-        )
+  if user is None:
+      raise HTTPException(
+          status_code=status.HTTP_404_NOT_FOUND,
+          detail="Usuario no encontrado en tu tenant",
+      )
 
-    if _u_email(user) == PROTECTED_USER_EMAIL:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Este usuario solo puede ser gestionado por plataforma",
-        )
+  if _u_email(user) == PROTECTED_USER_EMAIL:
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="Este usuario solo puede ser gestionado por plataforma",
+      )
 
-    if _u_id(user) == _u_id(current_user) and user_in.is_active is False:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes desactivar tu propio usuario",
-        )
+  if _u_id(user) == _u_id(current_user) and user_in.is_active is False:
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="No puedes desactivar tu propio usuario",
+      )
 
-    # ⛔️ Si el usuario objetivo es owner y NO soy yo, no lo puedo tocar
-    if _u_rol(user) == "owner" and _u_id(user) != _u_id(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Los usuarios con rol 'owner' solo pueden ser gestionados por plataforma",
-        )
+  # ⛔️ Si el usuario objetivo es owner y NO soy yo, no lo puedo tocar
+  if _u_rol(user) == "owner" and _u_id(user) != _u_id(current_user):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="Los usuarios con rol 'owner' solo pueden ser gestionados por plataforma",
+      )
 
-    u = _as_any(user)  # <- clave para Pylance en asignaciones
+  u = _as_any(user)  # <- clave para Pylance en asignaciones
 
-    # Rol
-    if user_in.rol is not None:
-        if user_in.rol not in ALLOWED_TENANT_ROLES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Rol no permitido desde el panel del cliente",
-            )
+  # Rol
+  if user_in.rol is not None:
+      if user_in.rol not in ALLOWED_TENANT_ROLES:
+          raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Rol no permitido desde el panel del cliente",
+          )
 
-        if _u_rol(user) == "owner" and user_in.rol != "owner":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El rol 'owner' solo puede cambiarlo plataforma",
-            )
+      if _u_rol(user) == "owner" and user_in.rol != "owner":
+          raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="El rol 'owner' solo puede cambiarlo plataforma",
+          )
 
-        u.rol = user_in.rol
+      u.rol = user_in.rol
 
-    # Activo
-    if user_in.is_active is not None:
-        u.is_active = user_in.is_active
+  # Activo
+  if user_in.is_active is not None:
+      u.is_active = user_in.is_active
 
-    # Password
-    if user_in.password is not None and user_in.password != "":
-        u.password_hash = get_password_hash(user_in.password)
+  # Password
+  if user_in.password is not None and user_in.password != "":
+      u.password_hash = get_password_hash(user_in.password)
 
-    # Actualizar empresas permitidas
-    if user_in.empresa_ids_permitidas is not None:
-        if len(user_in.empresa_ids_permitidas) == 0:
-            u.empresas_permitidas = []
-        else:
-            empresas = (
-                db.query(Empresa)
-                .filter(
-                    Empresa.id.in_(user_in.empresa_ids_permitidas),
-                    Empresa.tenant_id == _u_tenant_id(current_user),
-                )
-                .all()
-            )
-            u.empresas_permitidas = empresas
+  # Actualizar empresas permitidas
+  if user_in.empresa_ids_permitidas is not None:
+      if len(user_in.empresa_ids_permitidas) == 0:
+          u.empresas_permitidas = []
+      else:
+          empresas = (
+              db.query(Empresa)
+              .filter(
+                  Empresa.id.in_(user_in.empresa_ids_permitidas),
+                  Empresa.tenant_id == _u_tenant_id(current_user),
+              )
+              .all()
+          )
+          u.empresas_permitidas = empresas
 
-    db.commit()
-    db.refresh(user)
-    return user
+  db.commit()
+  db.refresh(user)
+  return user
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_user_in_my_tenant(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  user_id: int,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Desactiva (is_active = False) un usuario de tu mismo tenant.
-    """
-    if _u_rol(current_user) not in ("admin", "owner"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para desactivar usuarios en este tenant",
-        )
+  """
+  Desactiva (is_active = False) un usuario de tu mismo tenant.
+  """
+  if _u_rol(current_user) not in ("admin", "owner"):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para desactivar usuarios en este tenant",
+      )
 
-    user = (
-        db.query(User)
-        .filter(
-            User.id == user_id,
-            User.tenant_id == _u_tenant_id(current_user),
-        )
-        .first()
-    )
+  user = (
+      db.query(User)
+      .filter(
+          User.id == user_id,
+          User.tenant_id == _u_tenant_id(current_user),
+      )
+      .first()
+  )
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado en tu tenant",
-        )
+  if user is None:
+      raise HTTPException(
+          status_code=status.HTTP_404_NOT_FOUND,
+          detail="Usuario no encontrado en tu tenant",
+      )
 
-    if _u_email(user) == PROTECTED_USER_EMAIL:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Este usuario solo puede ser gestionado por plataforma",
-        )
+  if _u_email(user) == PROTECTED_USER_EMAIL:
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="Este usuario solo puede ser gestionado por plataforma",
+      )
 
-    if _u_id(user) == _u_id(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes desactivar tu propio usuario",
-        )
+  if _u_id(user) == _u_id(current_user):
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="No puedes desactivar tu propio usuario",
+      )
 
-    if _u_rol(user) == "owner":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No puedes desactivar un usuario con rol 'owner' desde el panel del cliente",
-        )
+  if _u_rol(user) == "owner":
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No puedes desactivar un usuario con rol 'owner' desde el panel del cliente",
+      )
 
-    _as_any(user).is_active = False
-    db.commit()
-    return None
+  _as_any(user).is_active = False
+  db.commit()
+  return None
 
 
 @router.delete("/users/{user_id}/hard-delete", status_code=status.HTTP_204_NO_CONTENT)
 def hard_delete_user_in_my_tenant(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+  user_id: int,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
 ):
-    """
-    Elimina físicamente un usuario de tu mismo tenant.
-    """
-    if _u_rol(current_user) not in ("admin", "owner"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para eliminar usuarios en este tenant",
-        )
+  """
+  Elimina físicamente un usuario de tu mismo tenant.
+  """
+  if _u_rol(current_user) not in ("admin", "owner"):
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No tienes permisos para eliminar usuarios en este tenant",
+      )
 
-    user = (
-        db.query(User)
-        .filter(
-            User.id == user_id,
-            User.tenant_id == _u_tenant_id(current_user),
-        )
-        .first()
-    )
+  user = (
+      db.query(User)
+      .filter(
+          User.id == user_id,
+          User.tenant_id == _u_tenant_id(current_user),
+      )
+      .first()
+  )
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado en tu tenant",
-        )
+  if user is None:
+      raise HTTPException(
+          status_code=status.HTTP_404_NOT_FOUND,
+          detail="Usuario no encontrado en tu tenant",
+      )
 
-    if _u_email(user) == PROTECTED_USER_EMAIL:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Este usuario solo puede ser gestionado por plataforma",
-        )
+  if _u_email(user) == PROTECTED_USER_EMAIL:
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="Este usuario solo puede ser gestionado por plataforma",
+      )
 
-    if _u_id(user) == _u_id(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes eliminar tu propio usuario",
-        )
+  if _u_id(user) == _u_id(current_user):
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="No puedes eliminar tu propio usuario",
+      )
 
-    if _u_rol(user) == "owner":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No puedes eliminar un usuario con rol 'owner' desde el panel del cliente",
-        )
+  if _u_rol(user) == "owner":
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="No puedes eliminar un usuario con rol 'owner' desde el panel del cliente",
+      )
 
-    db.delete(user)
-    db.commit()
-    return None
+  db.delete(user)
+  db.commit()
+  return None
 
 
 # ---------------------------------------------------------
@@ -559,270 +611,270 @@ def hard_delete_user_in_my_tenant(
 
 @router.get("/admin/users", response_model=List[UserRead])
 def list_all_users_as_superuser(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Lista TODOS los usuarios de TODOS los tenants.
-    Solo accesible para superusuarios de plataforma.
-    """
-    users = (
-        db.query(User)
-        .options(joinedload(User.empresas_permitidas))
-        .order_by(User.tenant_id.asc(), User.email.asc())
-        .all()
-    )
-    return users
+  """
+  Lista TODOS los usuarios de TODOS los tenants.
+  Solo accesible para superusuarios de plataforma.
+  """
+  users = (
+      db.query(User)
+      .options(joinedload(User.empresas_permitidas))
+      .order_by(User.tenant_id.asc(), User.email.asc())
+      .all()
+  )
+  return users
 
 
 @router.post("/admin/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user_as_superuser(
-    user_in: UserCreateAdmin,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  user_in: UserCreateAdmin,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Crea un usuario en cualquier tenant.
-    Solo para superusuarios.
-    """
-    existing = db.query(User).filter(User.email == user_in.email).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un usuario con ese email",
-        )
+  """
+  Crea un usuario en cualquier tenant.
+  Solo para superusuarios.
+  """
+  existing = db.query(User).filter(User.email == user_in.email).first()
+  if existing:
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="Ya existe un usuario con ese email",
+      )
 
-    user = User()
-    u = _as_any(user)
-    u.tenant_id = user_in.tenant_id
-    u.email = user_in.email
-    u.password_hash = get_password_hash(user_in.password)
-    u.rol = user_in.rol
-    u.is_active = user_in.is_active
-    u.is_superuser = user_in.is_superuser
+  user = User()
+  u = _as_any(user)
+  u.tenant_id = user_in.tenant_id
+  u.email = user_in.email
+  u.password_hash = get_password_hash(user_in.password)
+  u.rol = user_in.rol
+  u.is_active = user_in.is_active
+  u.is_superuser = user_in.is_superuser
 
-    if user_in.empresa_ids_permitidas:
-        empresas = (
-            db.query(Empresa)
-            .filter(
-                Empresa.id.in_(user_in.empresa_ids_permitidas),
-                Empresa.tenant_id == user_in.tenant_id,
-            )
-            .all()
-        )
-        u.empresas_permitidas = empresas
+  if user_in.empresa_ids_permitidas:
+      empresas = (
+          db.query(Empresa)
+          .filter(
+              Empresa.id.in_(user_in.empresa_ids_permitidas),
+              Empresa.tenant_id == user_in.tenant_id,
+          )
+          .all()
+      )
+      u.empresas_permitidas = empresas
 
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+  db.add(user)
+  db.commit()
+  db.refresh(user)
+  return user
 
 
 # ✅ NUEVO: actualizar usuario como superuser (panel global)
 @router.patch("/admin/users/{user_id}", response_model=UserRead)
 def update_user_as_superuser(
-    user_id: int,
-    user_in: UserUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  user_id: int,
+  user_in: UserUpdate,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Actualiza un usuario globalmente como superusuario.
+  """
+  Actualiza un usuario globalmente como superusuario.
 
-    - Permite editar usuarios con rol 'owner' (a diferencia del panel cliente).
-    - Mantiene protecciones básicas (no desactivar/eliminar tu propio usuario).
-    - Mantiene el check del usuario protegido, pero está desactivado si PROTECTED_USER_EMAIL="".
-    """
-    user = (
-        db.query(User)
-        .options(joinedload(User.empresas_permitidas))
-        .filter(User.id == user_id)
-        .first()
-    )
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
+  - Permite editar usuarios con rol 'owner' (a diferencia del panel cliente).
+  - Mantiene protecciones básicas (no desactivar/eliminar tu propio usuario).
+  - Mantiene el check del usuario protegido, pero está desactivado si PROTECTED_USER_EMAIL="".
+  """
+  user = (
+      db.query(User)
+      .options(joinedload(User.empresas_permitidas))
+      .filter(User.id == user_id)
+      .first()
+  )
+  if user is None:
+      raise HTTPException(
+          status_code=status.HTTP_404_NOT_FOUND,
+          detail="Usuario no encontrado",
+      )
 
-    if _u_email(user) == PROTECTED_USER_EMAIL:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Este usuario solo puede ser gestionado por plataforma",
-        )
+  if _u_email(user) == PROTECTED_USER_EMAIL:
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="Este usuario solo puede ser gestionado por plataforma",
+      )
 
-    # Evitar autodesactivarse desde aquí
-    if _u_id(user) == _u_id(current_user) and user_in.is_active is False:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes desactivar tu propio usuario",
-        )
+  # Evitar autodesactivarse desde aquí
+  if _u_id(user) == _u_id(current_user) and user_in.is_active is False:
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="No puedes desactivar tu propio usuario",
+      )
 
-    u = _as_any(user)
+  u = _as_any(user)
 
-    # Rol (superuser puede poner user/admin/owner según tu modelo)
-    if user_in.rol is not None:
-        u.rol = user_in.rol
+  # Rol (superuser puede poner user/admin/owner según tu modelo)
+  if user_in.rol is not None:
+      u.rol = user_in.rol
 
-    # Activo
-    if user_in.is_active is not None:
-        u.is_active = user_in.is_active
+  # Activo
+  if user_in.is_active is not None:
+      u.is_active = user_in.is_active
 
-    # Password
-    if user_in.password is not None and user_in.password != "":
-        u.password_hash = get_password_hash(user_in.password)
+  # Password
+  if user_in.password is not None and user_in.password != "":
+      u.password_hash = get_password_hash(user_in.password)
 
-    # Empresas permitidas:
-    # - Respetamos el tenant del usuario objetivo para no mezclar empresas de otros tenants.
-    if user_in.empresa_ids_permitidas is not None:
-        if len(user_in.empresa_ids_permitidas) == 0:
-            u.empresas_permitidas = []
-        else:
-            tenant_id_target = cast(int, getattr(user, "tenant_id"))
-            empresas = (
-                db.query(Empresa)
-                .filter(
-                    Empresa.id.in_(user_in.empresa_ids_permitidas),
-                    Empresa.tenant_id == tenant_id_target,
-                )
-                .all()
-            )
-            u.empresas_permitidas = empresas
+  # Empresas permitidas:
+  # - Respetamos el tenant del usuario objetivo para no mezclar empresas de otros tenants.
+  if user_in.empresa_ids_permitidas is not None:
+      if len(user_in.empresa_ids_permitidas) == 0:
+          u.empresas_permitidas = []
+      else:
+          tenant_id_target = cast(int, getattr(user, "tenant_id"))
+          empresas = (
+              db.query(Empresa)
+              .filter(
+                  Empresa.id.in_(user_in.empresa_ids_permitidas),
+                  Empresa.tenant_id == tenant_id_target,
+              )
+              .all()
+          )
+          u.empresas_permitidas = empresas
 
-    db.commit()
-    db.refresh(user)
-    return user
+  db.commit()
+  db.refresh(user)
+  return user
 
 
 # ✅ NUEVO: hard-delete usuario como superuser (panel global)
 @router.delete("/admin/users/{user_id}/hard-delete", status_code=status.HTTP_204_NO_CONTENT)
 def hard_delete_user_as_superuser(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  user_id: int,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Elimina físicamente un usuario globalmente como superusuario.
+  """
+  Elimina físicamente un usuario globalmente como superusuario.
 
-    - Permite borrar usuarios con rol 'owner'.
-    - No permite borrar tu propio usuario (evitar quedarte sin acceso).
-    - Mantiene el check del usuario protegido, pero está desactivado si PROTECTED_USER_EMAIL="".
-    """
-    user = db.query(User).filter(User.id == user_id).first()
+  - Permite borrar usuarios con rol 'owner'.
+  - No permite borrar tu propio usuario (evitar quedarte sin acceso).
+  - Mantiene el check del usuario protegido, pero está desactivado si PROTECTED_USER_EMAIL="".
+  """
+  user = db.query(User).filter(User.id == user_id).first()
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
+  if user is None:
+      raise HTTPException(
+          status_code=status.HTTP_404_NOT_FOUND,
+          detail="Usuario no encontrado",
+      )
 
-    if _u_email(user) == PROTECTED_USER_EMAIL:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Este usuario solo puede ser gestionado por plataforma",
-        )
+  if _u_email(user) == PROTECTED_USER_EMAIL:
+      raise HTTPException(
+          status_code=status.HTTP_403_FORBIDDEN,
+          detail="Este usuario solo puede ser gestionado por plataforma",
+      )
 
-    if _u_id(user) == _u_id(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes eliminar tu propio usuario",
-        )
+  if _u_id(user) == _u_id(current_user):
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="No puedes eliminar tu propio usuario",
+      )
 
-    db.delete(user)
-    db.commit()
-    return None
+  db.delete(user)
+  db.commit()
+  return None
 
 
 @router.get("/admin/tenants", response_model=List[TenantRead])
 def list_all_tenants_as_superuser(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Lista TODOS los tenants (clientes) de la plataforma,
-    incluyendo sus empresas asociadas.
-    """
-    tenants = (
-        db.query(Tenant)
-        .options(joinedload(Tenant.empresas))
-        .order_by(Tenant.id.asc())
-        .all()
-    )
-    return tenants
+  """
+  Lista TODOS los tenants (clientes) de la plataforma,
+  incluyendo sus empresas asociadas.
+  """
+  tenants = (
+      db.query(Tenant)
+      .options(joinedload(Tenant.empresas))
+      .order_by(Tenant.id.asc())
+      .all()
+  )
+  return tenants
 
 
 @router.post("/admin/tenants", response_model=TenantRead, status_code=status.HTTP_201_CREATED)
 def create_tenant_as_superuser(
-    tenant_in: TenantCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  tenant_in: TenantCreate,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Crea un nuevo tenant (cliente).
-    Solo para superusuarios.
-    """
-    tenant = Tenant()
-    t = _as_any(tenant)
-    t.nombre = tenant_in.nombre
-    t.plan = tenant_in.plan
+  """
+  Crea un nuevo tenant (cliente).
+  Solo para superusuarios.
+  """
+  tenant = Tenant()
+  t = _as_any(tenant)
+  t.nombre = tenant_in.nombre
+  t.plan = tenant_in.plan
 
-    if tenant_in.empresa_ids:
-        empresas = db.query(Empresa).filter(Empresa.id.in_(tenant_in.empresa_ids)).all()
-        t.empresas = empresas
+  if tenant_in.empresa_ids:
+      empresas = db.query(Empresa).filter(Empresa.id.in_(tenant_in.empresa_ids)).all()
+      t.empresas = empresas
 
-    db.add(tenant)
-    db.commit()
-    db.refresh(tenant)
-    return tenant
+  db.add(tenant)
+  db.commit()
+  db.refresh(tenant)
+  return tenant
 
 
 @router.patch("/admin/tenants/{tenant_id}", response_model=TenantRead)
 def update_tenant_as_superuser(
-    tenant_id: int,
-    tenant_in: TenantUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  tenant_id: int,
+  tenant_in: TenantUpdate,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Actualiza parcialmente un tenant (nombre/plan/empresas).
-    Solo para superusuarios.
-    """
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
+  """
+  Actualiza parcialmente un tenant (nombre/plan/empresas).
+  Solo para superusuarios.
+  """
+  tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+  if tenant is None:
+      raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
 
-    t = _as_any(tenant)
+  t = _as_any(tenant)
 
-    if tenant_in.nombre is not None:
-        t.nombre = tenant_in.nombre
-    if tenant_in.plan is not None:
-        t.plan = tenant_in.plan
+  if tenant_in.nombre is not None:
+      t.nombre = tenant_in.nombre
+  if tenant_in.plan is not None:
+      t.plan = tenant_in.plan
 
-    if tenant_in.empresa_ids is not None:
-        if len(tenant_in.empresa_ids) == 0:
-            t.empresas = []
-        else:
-            empresas = db.query(Empresa).filter(Empresa.id.in_(tenant_in.empresa_ids)).all()
-            t.empresas = empresas
+  if tenant_in.empresa_ids is not None:
+      if len(tenant_in.empresa_ids) == 0:
+          t.empresas = []
+      else:
+          empresas = db.query(Empresa).filter(Empresa.id.in_(tenant_in.empresa_ids)).all()
+          t.empresas = empresas
 
-    db.commit()
-    db.refresh(tenant)
-    return tenant
+  db.commit()
+  db.refresh(tenant)
+  return tenant
 
 
 @router.delete("/admin/tenants/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tenant_as_superuser(
-    tenant_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+  tenant_id: int,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Elimina un tenant (cliente) de la plataforma.
-    """
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
+  """
+  Elimina un tenant (cliente) de la plataforma.
+  """
+  tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+  if tenant is None:
+      raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
 
-    db.delete(tenant)
-    db.commit()
-    return None
+  db.delete(tenant)
+  db.commit()
+  return None
