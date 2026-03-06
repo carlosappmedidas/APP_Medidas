@@ -109,7 +109,6 @@ export default function HomePage() {
 
   const [activeTab, setActiveTab] = useState<MainTab>("login");
   const [tablasOpen, setTablasOpen] = useState(false);
-  const [ajustesOpen, setAjustesOpen] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [ajustesSubTab, setAjustesSubTab] = useState<"aspecto">("aspecto");
@@ -126,7 +125,6 @@ export default function HomePage() {
       if (tab) setActiveTab(tab);
 
       setTablasOpen(localStorage.getItem("ui_tablas_open") === "1");
-      setAjustesOpen(localStorage.getItem("ui_ajustes_open") === "1");
 
       const colOrder = localStorage.getItem("medidas_column_order");
       if (colOrder) setColumnOrder(JSON.parse(colOrder));
@@ -149,10 +147,6 @@ export default function HomePage() {
   useEffect(() => {
     localStorage.setItem("ui_tablas_open", tablasOpen ? "1" : "0");
   }, [tablasOpen]);
-
-  useEffect(() => {
-    localStorage.setItem("ui_ajustes_open", ajustesOpen ? "1" : "0");
-  }, [ajustesOpen]);
 
   useEffect(() => {
     localStorage.setItem("medidas_column_order", JSON.stringify(columnOrder));
@@ -210,7 +204,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (isTablasActive && !tablasOpen) setTablasOpen(true);
-  }, [isTablasActive]);
+  }, [isTablasActive, tablasOpen]);
 
   const resetUiColors = () => {
     window.dispatchEvent(new CustomEvent("ui-theme-reset"));
@@ -291,7 +285,7 @@ export default function HomePage() {
               </span>
             </button>
 
-            {/* ✅ RESTAURADO: submenú para que NO “desaparezcan” General/PS */}
+            {/* Submenú para General / PS */}
             {tablasOpen && (
               <div className="ui-nav-sub">
                 <button
@@ -399,33 +393,63 @@ export default function HomePage() {
         {activeTab === "carga" && <CargaSection token={token} />}
 
         {activeTab === "ajustes" && canSeeAjustes && (
-          <section className="ui-card ui-card--border text-sm">
-            <button
-              onClick={() => setAjustesOpen((prev) => !prev)}
-              className="mb-4 flex w-full items-center justify-between"
-            >
-              <span>Configuración</span>
-              <span>{ajustesOpen ? "▾" : "▸"}</span>
-            </button>
+          <section className="settings-page">
+            <header className="settings-header">
+              <div>
+                <h3 className="ui-page-title">Configuración</h3>
+                <p className="ui-card-subtitle">
+                  Ajustes de la cuenta y apariencia del panel.
+                </p>
+              </div>
 
-            {ajustesOpen && (
-              <>
+              <div className="settings-header-right">
+                <span className="ui-badge ui-badge--neutral">
+                  {token
+                    ? "Guardando en local + servidor"
+                    : "Guardando solo en este navegador"}
+                </span>
+
                 <button
-                  onClick={() => setAjustesSubTab("aspecto")}
-                  className="ui-btn"
+                  type="button"
+                  onClick={resetUiColors}
+                  className="ui-btn ui-btn-outline ui-btn-xs"
                 >
-                  Apariencia
-                </button>
-
-                <button onClick={resetUiColors} className="ui-btn">
                   Restaurar colores
                 </button>
+              </div>
+            </header>
 
+            <div className="settings-layout ui-card ui-card--border text-sm">
+              {/* Menú lateral de secciones de ajustes */}
+              <aside className="settings-sidebar">
+                <p className="settings-sidebar-title">Secciones</p>
+
+                <button
+                  type="button"
+                  className={[
+                    "settings-menu-item",
+                    ajustesSubTab === "aspecto" ? "settings-menu-item--active" : "",
+                  ].join(" ")}
+                  onClick={() => setAjustesSubTab("aspecto")}
+                >
+                  <span>Apariencia</span>
+                  <span className="settings-menu-item-pill">Colores y tema</span>
+                </button>
+
+                {/* Futuras secciones:
+                    - General
+                    - Notificaciones
+                    - etc.
+                */}
+              </aside>
+
+              {/* Contenido de la sección seleccionada */}
+              <div className="settings-content">
                 {ajustesSubTab === "aspecto" && (
                   <AppearanceSettingsSection token={token} />
                 )}
-              </>
-            )}
+              </div>
+            </div>
           </section>
         )}
 

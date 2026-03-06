@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import AccordionCard from "./ui/AccordionCard";
 
 /**
  * Ajustes de aspecto (colores) vía CSS variables.
@@ -227,6 +226,10 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   const [presets, setPresets] = useState<Record<string, ThemeOverrides>>({});
   const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PRESET_ID);
 
+  // Modo de color y tema rápido seleccionados (solo para la UI)
+  const [activeModeId, setActiveModeId] = useState<"dark" | "light" | "system" | null>(null);
+  const [activeQuickThemeId, setActiveQuickThemeId] = useState<string | null>(null);
+
   // Debounce guardado en backend
   const saveTimerRef = useRef<number | null>(null);
   const skipNextBackendSaveRef = useRef(false);
@@ -266,13 +269,26 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   });
 
   const alphaEnabled = useMemo<Set<VarKey>>(
-    () => new Set<VarKey>(["--card-border", "--sidebar-bg", "--sidebar-border", "--nav-item-bg", "--nav-item-hover"]),
+    () =>
+      new Set<VarKey>([
+        "--card-border",
+        "--sidebar-bg",
+        "--sidebar-border",
+        "--nav-item-bg",
+        "--nav-item-hover",
+      ]),
     []
   );
 
   const [draftAlpha, setDraftAlpha] = useState<Record<VarKey, number>>(() => {
     const out = {} as Record<VarKey, number>;
-    for (const v of ["--card-border", "--sidebar-bg", "--sidebar-border", "--nav-item-bg", "--nav-item-hover"] as VarKey[]) {
+    for (const v of [
+      "--card-border",
+      "--sidebar-bg",
+      "--sidebar-border",
+      "--nav-item-bg",
+      "--nav-item-hover",
+    ] as VarKey[]) {
       out[v] = 100;
     }
     return out;
@@ -316,7 +332,10 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     });
   };
 
-  const syncDraftsFromValues = (values: ThemeOverrides, cssFallback?: Record<VarKey, string> | null) => {
+  const syncDraftsFromValues = (
+    values: ThemeOverrides,
+    cssFallback?: Record<VarKey, string> | null
+  ) => {
     setDraftHex((prev) => {
       const next = { ...prev };
       for (const v of vars) next[v] = values[v] ?? cssFallback?.[v] ?? next[v] ?? "";
@@ -388,7 +407,10 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     return snap;
   };
 
-  const persistPresets = (next: Record<string, ThemeOverrides>, nextActive?: string) => {
+  const persistPresets = (
+    next: Record<string, ThemeOverrides>,
+    nextActive?: string
+  ) => {
     setPresets(next);
     try {
       window.localStorage.setItem(PRESETS_KEY, JSON.stringify(next));
@@ -407,6 +429,10 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   };
 
   const onSelectPreset = (id: string) => {
+    // Al aplicar un preset “mío”, limpiamos estado de modos/temas rápidos
+    setActiveModeId(null);
+    setActiveQuickThemeId(null);
+
     if (id === DEFAULT_PRESET_ID) {
       persistPresets(presets, DEFAULT_PRESET_ID);
       void resetAll();
@@ -494,7 +520,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   };
 
   const importPresets = () => {
-    const raw = window.prompt('Pega el JSON de presets (formato: { "Nombre": {"--var": "..."} })');
+    const raw = window.prompt(
+      'Pega el JSON de presets (formato: { "Nombre": {"--var": "..."} })'
+    );
     if (!raw) return;
 
     try {
@@ -505,7 +533,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       }
 
       const incoming: Record<string, ThemeOverrides> = {};
-      for (const [name, presetObj] of Object.entries(parsed as Record<string, unknown>)) {
+      for (const [name, presetObj] of Object.entries(
+        parsed as Record<string, unknown>
+      )) {
         const clean = sanitizePresetObject(presetObj, vars);
         if (!clean) continue;
         const key = (name || "").trim();
@@ -584,9 +614,11 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       return next;
     });
 
-    // Reset global desde page.tsx (NO hay botón aquí)
+    // Reset global desde page.tsx (botón "Restaurar colores")
     const onReset = () => {
       setActivePresetId(DEFAULT_PRESET_ID);
+      setActiveModeId(null);
+      setActiveQuickThemeId(null);
       try {
         window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
       } catch {
@@ -642,7 +674,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       const rgb = hexToRgb(norm);
       if (!rgb) return;
       const a = Math.max(0, Math.min(1, pct / 100));
-      const rgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.round(a * 1000) / 1000})`;
+      const rgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
+        Math.round(a * 1000) / 1000
+      })`;
       setDraftHex((prev) => ({ ...prev, [key]: rgba }));
       setVar(key, rgba);
       return;
@@ -661,7 +695,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     if (!rgb) return;
 
     const a = clamped / 100;
-    const rgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.round(a * 1000) / 1000})`;
+    const rgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
+      Math.round(a * 1000) / 1000
+    })`;
     setDraftHex((prev) => ({ ...prev, [key]: rgba }));
     setVar(key, rgba);
   };
@@ -706,7 +742,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
         <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] ui-muted">
             <span>Alpha</span>
-            <span>{(draftAlpha[varKey] ?? currentAlphaPct(varKey))}%</span>
+            <span>{draftAlpha[varKey] ?? currentAlphaPct(varKey)}%</span>
           </div>
           <input
             type="range"
@@ -723,10 +759,13 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     </div>
   );
 
-  const presetOptions = useMemo(() => Object.keys(presets).sort((a, b) => a.localeCompare(b)), [presets]);
+  const presetOptions = useMemo(
+    () => Object.keys(presets).sort((a, b) => a.localeCompare(b)),
+    [presets]
+  );
 
   // -----------------------------
-  // Mini-accordion interno (cerrado por defecto)
+  // Mini-accordion interno
   // -----------------------------
   const MiniAccordion = ({
     title,
@@ -741,7 +780,10 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     setOpen: (v: boolean) => void;
     children: React.ReactNode;
   }) => (
-    <div className="rounded-xl border bg-black/20" style={{ borderColor: "var(--card-border)" }}>
+    <div
+      className="rounded-xl border bg-black/20"
+      style={{ borderColor: "var(--card-border)" }}
+    >
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -752,17 +794,25 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             {title}
           </div>
           {subtitle ? (
-            <div className="mt-0.5 text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <div
+              className="mt-0.5 text-[10px]"
+              style={{ color: "var(--text-muted)" }}
+            >
               {subtitle}
             </div>
           ) : null}
         </div>
 
-        <span className="text-[11px] ui-muted">{open ? "Ocultar ▲" : "Mostrar ▼"}</span>
+        <span className="text-[11px] ui-muted">
+          {open ? "Ocultar ▲" : "Mostrar ▼"}
+        </span>
       </button>
 
       {open && (
-        <div className="border-t px-4 py-3" style={{ borderColor: "var(--card-border)" }}>
+        <div
+          className="border-t px-4 py-3"
+          style={{ borderColor: "var(--card-border)" }}
+        >
           {children}
         </div>
       )}
@@ -777,23 +827,289 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   const [openSidebar, setOpenSidebar] = useState(false);
   const [openNav, setOpenNav] = useState(false);
 
+  // ==============================
+  // Modos de color y temas rápidos
+  // ==============================
+
+  const DARK_MODE_OVERRIDES: ThemeOverrides = {
+    "--app-bg": "#020617",
+    "--main-bg": "rgba(0, 0, 0, 0)",
+    "--card-bg": "#111827",
+    "--card-border": "rgba(255, 255, 255, 0.08)",
+    "--text": "#e5e7eb",
+    "--text-muted": "rgba(228, 228, 231, 0.7)",
+    "--btn-primary-bg": "#059669",
+    "--btn-secondary-bg": "#4f46e5",
+    "--sidebar-bg": "rgba(0, 0, 0, 0.4)",
+    "--sidebar-border": "rgba(255, 255, 255, 0.08)",
+    "--nav-item-bg": "rgba(255, 255, 255, 0.05)",
+    "--nav-item-hover": "rgba(255, 255, 255, 0.1)",
+    "--nav-item-text": "rgba(228, 228, 231, 0.95)",
+    "--nav-active-bg": "#4f46e5",
+    "--nav-active-text": "#ffffff",
+    "--nav-sub-active-bg": "#6366f1",
+  };
+
+  const LIGHT_MODE_OVERRIDES: ThemeOverrides = {
+    "--app-bg": "#f8fafc",
+    "--main-bg": "rgba(255, 255, 255, 0)",
+    "--card-bg": "#ffffff",
+    "--card-border": "rgba(15, 23, 42, 0.1)",
+    "--text": "#0f172a",
+    "--text-muted": "rgba(15, 23, 42, 0.65)",
+    "--btn-primary-bg": "#059669",
+    "--btn-secondary-bg": "#4f46e5",
+    "--sidebar-bg": "rgba(255, 255, 255, 0.6)",
+    "--sidebar-border": "rgba(15, 23, 42, 0.1)",
+    "--nav-item-bg": "rgba(15, 23, 42, 0.05)",
+    "--nav-item-hover": "rgba(15, 23, 42, 0.08)",
+    "--nav-item-text": "rgba(15, 23, 42, 0.9)",
+    "--nav-active-bg": "#4f46e5",
+    "--nav-active-text": "#ffffff",
+    "--nav-sub-active-bg": "#6366f1",
+  };
+
+  const QUICK_THEMES: {
+    id: string;
+    name: string;
+    description: string;
+    overrides: ThemeOverrides;
+  }[] = [
+    {
+      id: "corporativo",
+      name: "Corporativo",
+      description: "Azul intenso para dashboards serios.",
+      overrides: {
+        ...DARK_MODE_OVERRIDES,
+        "--btn-secondary-bg": "#1d4ed8",
+        "--nav-active-bg": "#1d4ed8",
+        "--nav-sub-active-bg": "#2563eb",
+      },
+    },
+    {
+      id: "verde-contable",
+      name: "Verde contable",
+      description: "Toque verde para datos y reporting.",
+      overrides: {
+        ...DARK_MODE_OVERRIDES,
+        "--btn-primary-bg": "#16a34a",
+        "--btn-secondary-bg": "#16a34a",
+        "--nav-active-bg": "#16a34a",
+        "--nav-sub-active-bg": "#22c55e",
+      },
+    },
+    {
+      id: "pastel",
+      name: "Pastel",
+      description: "Colores suaves y amigables.",
+      overrides: {
+        ...LIGHT_MODE_OVERRIDES,
+        "--app-bg": "#eef2ff",
+        "--card-bg": "#ffffff",
+        "--btn-secondary-bg": "#a855f7",
+        "--nav-item-bg": "rgba(59, 130, 246, 0.06)",
+        "--nav-item-hover": "rgba(79, 70, 229, 0.12)",
+      },
+    },
+    {
+      id: "alto-contraste",
+      name: "Alto contraste",
+      description: "Ideal para maximizar legibilidad.",
+      overrides: {
+        ...DARK_MODE_OVERRIDES,
+        "--app-bg": "#020617",
+        "--card-bg": "#020617",
+        "--card-border": "rgba(250, 250, 250, 0.35)",
+        "--text": "#ffffff",
+        "--text-muted": "rgba(250, 250, 250, 0.7)",
+      },
+    },
+  ];
+
+  const handleSelectMode = (mode: "dark" | "light" | "system") => {
+    setActiveModeId(mode);
+    setActiveQuickThemeId(null);
+    // Modo de color no se guarda como preset “mío”
+    setActivePresetId(DEFAULT_PRESET_ID);
+    try {
+      window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
+    } catch {
+      // ignore
+    }
+
+    if (mode === "system") {
+      // System = quitar overrides y dejar tema base
+      void resetAll();
+      return;
+    }
+
+    const overridesToApply =
+      mode === "dark" ? DARK_MODE_OVERRIDES : LIGHT_MODE_OVERRIDES;
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(overridesToApply));
+    } catch {
+      // ignore
+    }
+
+    applyFullTheme(overridesToApply);
+  };
+
+  const handleSelectQuickTheme = (id: string) => {
+    const theme = QUICK_THEMES.find((t) => t.id === id);
+    if (!theme) return;
+
+    setActiveQuickThemeId(id);
+    setActiveModeId(null);
+    setActivePresetId(DEFAULT_PRESET_ID);
+    try {
+      window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
+    } catch {
+      // ignore
+    }
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(theme.overrides));
+    } catch {
+      // ignore
+    }
+
+    applyFullTheme(theme.overrides);
+  };
+
   return (
-    <AccordionCard
-      title="Configuración · Apariencia"
-      subtitle="Preferencias y ajustes del panel."
-      defaultOpen={false} // ✅ cerrado por defecto, como pediste
-    >
-      <div className="ui-panel space-y-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+    <div className="appearance-root">
+      {/* Cabecera */}
+      <div className="appearance-header">
+        <h3 className="ui-card-title">Apariencia del panel</h3>
+        <p className="ui-card-subtitle">
+          Cambia los colores del panel. Se aplica al momento en todas las
+          secciones.
+        </p>
+        <p className="ui-help">
+          {token
+            ? "✅ Guardando en local y en tu usuario (servidor)."
+            : "ℹ️ Guardado solo en este navegador."}
+        </p>
+      </div>
+
+      {/* A) Modos de color */}
+      <section className="appearance-section">
+        <div className="appearance-section-header">
           <div>
-            <h3 className="text-base font-semibold">Ajustes · Aspecto</h3>
-            <p className="mt-1 text-xs ui-muted">
-              Personaliza colores del panel. Se aplica al momento y se guarda (local y, si hay token, también en BD).
+            <div className="appearance-section-title">Modo de color</div>
+            <p className="appearance-section-subtitle">
+              Elige un modo base de color. Siempre puedes afinar abajo.
             </p>
           </div>
+        </div>
 
-          <div className="text-[10px] ui-muted">
-            {token ? "✅ Guardando también en BD (admin/owner)." : "ℹ️ Guardado solo local."}
+        <div className="theme-mode-grid">
+          <button
+            type="button"
+            className={[
+              "theme-mode-card",
+              activeModeId === "dark" ? "theme-mode-card--active" : "",
+            ].join(" ")}
+            onClick={() => handleSelectMode("dark")}
+          >
+            <div className="theme-mode-card-header">
+              <span className="theme-mode-card-title">Oscuro</span>
+              <span className="theme-mode-card-badge">Recomendado</span>
+            </div>
+            <div className="theme-mode-card-preview">
+              <div className="theme-mode-card-preview-bar" />
+              <div className="theme-mode-card-preview-body">
+                <div className="theme-mode-card-preview-main" />
+                <div className="theme-mode-card-preview-side" />
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={[
+              "theme-mode-card",
+              activeModeId === "light" ? "theme-mode-card--active" : "",
+            ].join(" ")}
+            onClick={() => handleSelectMode("light")}
+          >
+            <div className="theme-mode-card-header">
+              <span className="theme-mode-card-title">Claro</span>
+              <span className="theme-mode-card-badge">Suave</span>
+            </div>
+            <div className="theme-mode-card-preview">
+              <div className="theme-mode-card-preview-bar" />
+              <div className="theme-mode-card-preview-body">
+                <div className="theme-mode-card-preview-main" />
+                <div className="theme-mode-card-preview-side" />
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={[
+              "theme-mode-card",
+              activeModeId === "system" ? "theme-mode-card--active" : "",
+            ].join(" ")}
+            onClick={() => handleSelectMode("system")}
+          >
+            <div className="theme-mode-card-header">
+              <span className="theme-mode-card-title">Sistema</span>
+              <span className="theme-mode-card-badge">Por defecto</span>
+            </div>
+            <div className="theme-mode-card-preview">
+              <div className="theme-mode-card-preview-bar" />
+              <div className="theme-mode-card-preview-body">
+                <div className="theme-mode-card-preview-main" />
+                <div className="theme-mode-card-preview-side" />
+              </div>
+            </div>
+          </button>
+        </div>
+      </section>
+
+      {/* B) Temas rápidos */}
+      <section className="appearance-section">
+        <div className="appearance-section-header">
+          <div>
+            <div className="appearance-section-title">Temas rápidos</div>
+            <p className="appearance-section-subtitle">
+              Estilos preconfigurados. Se pueden ajustar y guardar como tema
+              propio.
+            </p>
+          </div>
+        </div>
+
+        <div className="theme-chips-row">
+          {QUICK_THEMES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={[
+                "theme-chip",
+                activeQuickThemeId === t.id ? "theme-chip--active" : "",
+              ].join(" ")}
+              onClick={() => handleSelectQuickTheme(t.id)}
+              title={t.description}
+            >
+              <span className="theme-chip-dot" />
+              <span className="theme-chip-name">{t.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* C) Mis temas (presets actuales) */}
+      <section className="appearance-section">
+        <div className="appearance-section-header">
+          <div>
+            <div className="appearance-section-title">Mis temas guardados</div>
+            <p className="appearance-section-subtitle">
+              Guarda y recupera tus propias combinaciones de colores. Se
+              almacenan en tu navegador y, si aplica, en el backend.
+            </p>
           </div>
         </div>
 
@@ -805,15 +1121,15 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
         >
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-[10px] ui-muted">Preset</label>
+              <label className="text-[10px] ui-muted">Tema</label>
               <select
                 className="ui-select"
                 value={activePresetId}
                 onChange={(e) => onSelectPreset(e.target.value)}
-                aria-label="Seleccionar preset"
+                aria-label="Seleccionar tema guardado"
                 style={{ width: 220 }}
               >
-                <option value={DEFAULT_PRESET_ID}>CSS (Default)</option>
+                <option value={DEFAULT_PRESET_ID}>CSS (por defecto)</option>
                 {presetOptions.map((name) => (
                   <option key={name} value={name}>
                     {name}
@@ -823,7 +1139,11 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             </div>
 
             <div className="flex flex-wrap gap-2 md:justify-end">
-              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={savePresetAs}>
+              <button
+                type="button"
+                className="ui-btn ui-btn-outline ui-btn-xs"
+                onClick={savePresetAs}
+              >
                 Guardar como…
               </button>
 
@@ -831,7 +1151,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                 type="button"
                 className="ui-btn ui-btn-outline ui-btn-xs"
                 onClick={overwritePreset}
-                disabled={activePresetId === DEFAULT_PRESET_ID || !presets[activePresetId]}
+                disabled={
+                  activePresetId === DEFAULT_PRESET_ID || !presets[activePresetId]
+                }
               >
                 Sobrescribir
               </button>
@@ -840,21 +1162,44 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                 type="button"
                 className="ui-btn ui-btn-outline ui-btn-xs"
                 onClick={deletePreset}
-                disabled={activePresetId === DEFAULT_PRESET_ID || !presets[activePresetId]}
+                disabled={
+                  activePresetId === DEFAULT_PRESET_ID || !presets[activePresetId]
+                }
               >
                 Borrar
               </button>
 
-              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={exportPresets}>
+              <button
+                type="button"
+                className="ui-btn ui-btn-outline ui-btn-xs"
+                onClick={exportPresets}
+              >
                 Exportar
               </button>
 
-              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={importPresets}>
+              <button
+                type="button"
+                className="ui-btn ui-btn-outline ui-btn-xs"
+                onClick={importPresets}
+              >
                 Importar
               </button>
             </div>
           </div>
         </MiniAccordion>
+      </section>
+
+      {/* D) Ajustes detallados */}
+      <section className="appearance-section">
+        <div className="appearance-section-header">
+          <div>
+            <div className="appearance-section-title">Ajustes detallados</div>
+            <p className="appearance-section-subtitle">
+              Colores por sección (fondo, tarjetas, texto, botones…). No hace
+              falta tocarlos para usar la app.
+            </p>
+          </div>
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <MiniAccordion
@@ -863,7 +1208,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             open={openFondo}
             setOpen={setOpenFondo}
           >
-            <ColorRow varKey="--app-bg" label="fondo general (app)" placeholder="#020617" aria="Color fondo general" />
+            <ColorRow
+              varKey="--app-bg"
+              label="fondo general (app)"
+              placeholder="#020617"
+              aria="Color fondo general"
+            />
             <div className="mt-3">
               <ColorRow
                 varKey="--main-bg"
@@ -874,8 +1224,18 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             </div>
           </MiniAccordion>
 
-          <MiniAccordion title="Tarjetas" subtitle="Fondo y borde de tarjetas." open={openTarjetas} setOpen={setOpenTarjetas}>
-            <ColorRow varKey="--card-bg" label="fondo de tarjetas" placeholder="#111827" aria="Color fondo tarjetas" />
+          <MiniAccordion
+            title="Tarjetas"
+            subtitle="Fondo y borde de tarjetas."
+            open={openTarjetas}
+            setOpen={setOpenTarjetas}
+          >
+            <ColorRow
+              varKey="--card-bg"
+              label="fondo de tarjetas"
+              placeholder="#111827"
+              aria="Color fondo tarjetas"
+            />
             <div className="mt-3">
               <ColorRow
                 varKey="--card-border"
@@ -887,8 +1247,18 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             </div>
           </MiniAccordion>
 
-          <MiniAccordion title="Texto" subtitle="Texto principal y secundario." open={openTexto} setOpen={setOpenTexto}>
-            <ColorRow varKey="--text" label="texto principal" placeholder="#e5e7eb" aria="Color texto principal" />
+          <MiniAccordion
+            title="Texto"
+            subtitle="Texto principal y secundario."
+            open={openTexto}
+            setOpen={setOpenTexto}
+          >
+            <ColorRow
+              varKey="--text"
+              label="texto principal"
+              placeholder="#e5e7eb"
+              aria="Color texto principal"
+            />
             <div className="mt-3">
               <ColorRow
                 varKey="--text-muted"
@@ -899,7 +1269,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             </div>
           </MiniAccordion>
 
-          <MiniAccordion title="Botones" subtitle="Primario y secundario." open={openBotones} setOpen={setOpenBotones}>
+          <MiniAccordion
+            title="Botones"
+            subtitle="Primario y secundario."
+            open={openBotones}
+            setOpen={setOpenBotones}
+          >
             <ColorRow
               varKey="--btn-primary-bg"
               label="botón primario"
@@ -928,7 +1303,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             </div>
           </MiniAccordion>
 
-          <MiniAccordion title="Sidebar" subtitle="Fondo y borde de la barra lateral." open={openSidebar} setOpen={setOpenSidebar}>
+          <MiniAccordion
+            title="Sidebar"
+            subtitle="Fondo y borde de la barra lateral."
+            open={openSidebar}
+            setOpen={setOpenSidebar}
+          >
             <ColorRow
               varKey="--sidebar-bg"
               label="fondo sidebar"
@@ -947,7 +1327,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             </div>
           </MiniAccordion>
 
-          <MiniAccordion title="Navegación" subtitle="Items, hover, activo y preview." open={openNav} setOpen={setOpenNav}>
+          <MiniAccordion
+            title="Navegación"
+            subtitle="Items, hover, activo y preview."
+            open={openNav}
+            setOpen={setOpenNav}
+          >
             <ColorRow
               varKey="--nav-item-bg"
               label="fondo item (normal)"
@@ -965,13 +1350,28 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               />
             </div>
             <div className="mt-3">
-              <ColorRow varKey="--nav-item-text" label="texto item" placeholder="rgba(...) o #rrggbbaa" aria="Color texto item" />
+              <ColorRow
+                varKey="--nav-item-text"
+                label="texto item"
+                placeholder="rgba(...) o #rrggbbaa"
+                aria="Color texto item"
+              />
             </div>
             <div className="mt-3">
-              <ColorRow varKey="--nav-active-bg" label="fondo item activo" placeholder="#4f46e5" aria="Color fondo activo" />
+              <ColorRow
+                varKey="--nav-active-bg"
+                label="fondo item activo"
+                placeholder="#4f46e5"
+                aria="Color fondo activo"
+              />
             </div>
             <div className="mt-3">
-              <ColorRow varKey="--nav-active-text" label="texto activo" placeholder="#ffffff" aria="Color texto activo" />
+              <ColorRow
+                varKey="--nav-active-text"
+                label="texto activo"
+                placeholder="#ffffff"
+                aria="Color texto activo"
+              />
             </div>
             <div className="mt-3">
               <ColorRow
@@ -993,32 +1393,47 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                 }}
               >
                 <div className="p-3">
-                  <div className="text-[11px] font-semibold" style={{ color: "var(--nav-item-text)" }}>
+                  <div
+                    className="text-[11px] font-semibold"
+                    style={{ color: "var(--nav-item-text)" }}
+                  >
                     APP Medidas
                   </div>
                   <div className="mt-2 space-y-2">
                     <div
                       className="rounded-full px-3 py-2 text-[11px]"
-                      style={{ background: "var(--nav-item-bg)", color: "var(--nav-item-text)" }}
+                      style={{
+                        background: "var(--nav-item-bg)",
+                        color: "var(--nav-item-text)",
+                      }}
                     >
                       Item normal
                     </div>
                     <div
                       className="rounded-full px-3 py-2 text-[11px]"
-                      style={{ background: "var(--nav-item-hover)", color: "var(--nav-item-text)" }}
+                      style={{
+                        background: "var(--nav-item-hover)",
+                        color: "var(--nav-item-text)",
+                      }}
                     >
                       Item hover (simulado)
                     </div>
                     <div
                       className="rounded-full px-3 py-2 text-[11px]"
-                      style={{ background: "var(--nav-active-bg)", color: "var(--nav-active-text)" }}
+                      style={{
+                        background: "var(--nav-active-bg)",
+                        color: "var(--nav-active-text)",
+                      }}
                     >
                       Item activo
                     </div>
                     <div className="pl-4">
                       <div
                         className="rounded-full px-3 py-2 text-[11px]"
-                        style={{ background: "var(--nav-sub-active-bg)", color: "var(--nav-active-text)" }}
+                        style={{
+                          background: "var(--nav-sub-active-bg)",
+                          color: "var(--nav-active-text)",
+                        }}
                       >
                         Sub-item activo
                       </div>
@@ -1028,14 +1443,18 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               </div>
 
               <div className="mt-2 text-[10px] ui-muted">
-                Esto no cambia nada: solo sirve para ver cómo quedan tus colores.
+                Esto no cambia nada: solo sirve para ver cómo quedan tus
+                colores.
               </div>
             </div>
           </MiniAccordion>
         </div>
 
-        <div className="text-[10px] ui-muted">Se aplica al momento (variables CSS en :root).</div>
-      </div>
-    </AccordionCard>
+        <div className="mt-2 text-[10px] ui-muted">
+          Todos los cambios se aplican sobre variables CSS en <code>:root</code>,
+          así que afectan a toda la app.
+        </div>
+      </section>
+    </div>
   );
 }

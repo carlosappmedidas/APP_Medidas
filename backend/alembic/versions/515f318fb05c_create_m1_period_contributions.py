@@ -72,6 +72,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_m1_contrib_tenant_empresa_period", table_name="m1_period_contributions")
-    op.drop_index("ix_m1_contrib_ingestion_file", table_name="m1_period_contributions")
+    op.execute("DROP INDEX IF EXISTS ix_m1_contrib_tenant_empresa_period")
+    op.execute("DROP INDEX IF EXISTS ix_m1_contrib_ingestion_file")
     op.drop_table("m1_period_contributions")
