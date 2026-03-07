@@ -1,12 +1,16 @@
 // app/components/DashboardSection.tsx
 "use client";
 
+import React, { useState } from "react";
+import EmpresasSection from "./EmpresasSection";
+
 type Props = {
   token: string | null;
 };
 
 export default function DashboardSection({ token }: Props) {
   const isLogged = !!token;
+  const [showEmpresas, setShowEmpresas] = useState(false);
 
   return (
     <section className="ui-card text-sm">
@@ -18,17 +22,49 @@ export default function DashboardSection({ token }: Props) {
           </p>
         </div>
 
-        {/* Badge estado sesión (sin hardcodear colores) */}
-        <span
-          className={[
-            "ui-btn ui-btn-xs",
-            isLogged ? "ui-btn-outline" : "ui-btn-danger",
-          ].join(" ")}
-          title={isLogged ? "Sesión iniciada" : "No hay sesión activa"}
-        >
-          {isLogged ? "Con sesión" : "Sin sesión"}
-        </span>
+        {/* Zona derecha: estado sesión + botón de empresas */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Badge estado sesión (sin hardcodear colores) */}
+          <span
+            className={[
+              "ui-btn ui-btn-xs",
+              isLogged ? "ui-btn-outline" : "ui-btn-danger",
+            ].join(" ")}
+            title={isLogged ? "Sesión iniciada" : "No hay sesión activa"}
+          >
+            {isLogged ? "Con sesión" : "Sin sesión"}
+          </span>
+
+          {/* Botón informativo Empresas */}
+          <button
+            type="button"
+            onClick={() => setShowEmpresas((prev) => !prev)}
+            className="ui-btn ui-btn-outline ui-btn-xs"
+            disabled={!isLogged}
+            title={
+              isLogged
+                ? "Ver información de empresas asociadas"
+                : "Inicia sesión para ver empresas"
+            }
+          >
+            {showEmpresas ? "Ocultar empresas" : "Empresas (info)"}
+          </button>
+        </div>
       </div>
+
+      {/* Desplegable Empresas */}
+      {showEmpresas && (
+        <div className="mt-4 ui-panel">
+          <div className="mb-3">
+            <div className="text-xs font-semibold">Empresas</div>
+            <div className="mt-0.5 text-[11px] ui-muted">
+              Información de empresas asociadas al cliente.
+            </div>
+          </div>
+
+          <EmpresasSection token={token} />
+        </div>
+      )}
 
       {/* Estado general */}
       <div className="mt-4 grid gap-3 md:grid-cols-3">

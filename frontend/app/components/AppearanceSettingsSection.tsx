@@ -226,9 +226,18 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   const [presets, setPresets] = useState<Record<string, ThemeOverrides>>({});
   const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PRESET_ID);
 
-  // Modo de color y tema rápido seleccionados (solo para la UI)
-  const [activeModeId, setActiveModeId] = useState<"dark" | "light" | "system" | null>(null);
-  const [activeQuickThemeId, setActiveQuickThemeId] = useState<string | null>(null);
+  // Modo de color seleccionado (solo UI)
+  const [activeModeId, setActiveModeId] = useState<"dark" | "light" | null>(null);
+
+  // Pestañas internas de la sección Apariencia
+  const [activeSettingsTab, setActiveSettingsTab] = useState<
+    "mode" | "presets" | "advanced"
+  >("mode");
+
+  // Zona activa en Ajustes detallados
+  const [activeDetailSection, setActiveDetailSection] = useState<
+    "fondo" | "tarjetas" | "texto" | "botones" | "sidebar" | "nav"
+  >("fondo");
 
   // Debounce guardado en backend
   const saveTimerRef = useRef<number | null>(null);
@@ -253,7 +262,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            ui_theme_overrides: Object.keys(nextOverrides || {}).length ? nextOverrides : null,
+            ui_theme_overrides: Object.keys(nextOverrides || {}).length
+              ? nextOverrides
+              : null,
           }),
         });
       } catch (err) {
@@ -429,9 +440,8 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
   };
 
   const onSelectPreset = (id: string) => {
-    // Al aplicar un preset “mío”, limpiamos estado de modos/temas rápidos
+    // Al aplicar un preset “mío”, limpiamos estado de modo de color
     setActiveModeId(null);
-    setActiveQuickThemeId(null);
 
     if (id === DEFAULT_PRESET_ID) {
       persistPresets(presets, DEFAULT_PRESET_ID);
@@ -618,7 +628,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     const onReset = () => {
       setActivePresetId(DEFAULT_PRESET_ID);
       setActiveModeId(null);
-      setActiveQuickThemeId(null);
       try {
         window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
       } catch {
@@ -764,71 +773,8 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     [presets]
   );
 
-  // -----------------------------
-  // Mini-accordion interno
-  // -----------------------------
-  const MiniAccordion = ({
-    title,
-    subtitle,
-    open,
-    setOpen,
-    children,
-  }: {
-    title: string;
-    subtitle?: string;
-    open: boolean;
-    setOpen: (v: boolean) => void;
-    children: React.ReactNode;
-  }) => (
-    <div
-      className="rounded-xl border bg-black/20"
-      style={{ borderColor: "var(--card-border)" }}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
-      >
-        <div className="min-w-0">
-          <div className="text-xs font-semibold" style={{ color: "var(--text)" }}>
-            {title}
-          </div>
-          {subtitle ? (
-            <div
-              className="mt-0.5 text-[10px]"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {subtitle}
-            </div>
-          ) : null}
-        </div>
-
-        <span className="text-[11px] ui-muted">
-          {open ? "Ocultar ▲" : "Mostrar ▼"}
-        </span>
-      </button>
-
-      {open && (
-        <div
-          className="border-t px-4 py-3"
-          style={{ borderColor: "var(--card-border)" }}
-        >
-          {children}
-        </div>
-      )}
-    </div>
-  );
-
-  const [openPresets, setOpenPresets] = useState(false);
-  const [openFondo, setOpenFondo] = useState(false);
-  const [openTarjetas, setOpenTarjetas] = useState(false);
-  const [openTexto, setOpenTexto] = useState(false);
-  const [openBotones, setOpenBotones] = useState(false);
-  const [openSidebar, setOpenSidebar] = useState(false);
-  const [openNav, setOpenNav] = useState(false);
-
   // ==============================
-  // Modos de color y temas rápidos
+  // Modos de color
   // ==============================
 
   const DARK_MODE_OVERRIDES: ThemeOverrides = {
@@ -869,78 +815,14 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     "--nav-sub-active-bg": "#6366f1",
   };
 
-  const QUICK_THEMES: {
-    id: string;
-    name: string;
-    description: string;
-    overrides: ThemeOverrides;
-  }[] = [
-    {
-      id: "corporativo",
-      name: "Corporativo",
-      description: "Azul intenso para dashboards serios.",
-      overrides: {
-        ...DARK_MODE_OVERRIDES,
-        "--btn-secondary-bg": "#1d4ed8",
-        "--nav-active-bg": "#1d4ed8",
-        "--nav-sub-active-bg": "#2563eb",
-      },
-    },
-    {
-      id: "verde-contable",
-      name: "Verde contable",
-      description: "Toque verde para datos y reporting.",
-      overrides: {
-        ...DARK_MODE_OVERRIDES,
-        "--btn-primary-bg": "#16a34a",
-        "--btn-secondary-bg": "#16a34a",
-        "--nav-active-bg": "#16a34a",
-        "--nav-sub-active-bg": "#22c55e",
-      },
-    },
-    {
-      id: "pastel",
-      name: "Pastel",
-      description: "Colores suaves y amigables.",
-      overrides: {
-        ...LIGHT_MODE_OVERRIDES,
-        "--app-bg": "#eef2ff",
-        "--card-bg": "#ffffff",
-        "--btn-secondary-bg": "#a855f7",
-        "--nav-item-bg": "rgba(59, 130, 246, 0.06)",
-        "--nav-item-hover": "rgba(79, 70, 229, 0.12)",
-      },
-    },
-    {
-      id: "alto-contraste",
-      name: "Alto contraste",
-      description: "Ideal para maximizar legibilidad.",
-      overrides: {
-        ...DARK_MODE_OVERRIDES,
-        "--app-bg": "#020617",
-        "--card-bg": "#020617",
-        "--card-border": "rgba(250, 250, 250, 0.35)",
-        "--text": "#ffffff",
-        "--text-muted": "rgba(250, 250, 250, 0.7)",
-      },
-    },
-  ];
-
-  const handleSelectMode = (mode: "dark" | "light" | "system") => {
+  const handleSelectMode = (mode: "dark" | "light") => {
     setActiveModeId(mode);
-    setActiveQuickThemeId(null);
     // Modo de color no se guarda como preset “mío”
     setActivePresetId(DEFAULT_PRESET_ID);
     try {
       window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
     } catch {
       // ignore
-    }
-
-    if (mode === "system") {
-      // System = quitar overrides y dejar tema base
-      void resetAll();
-      return;
     }
 
     const overridesToApply =
@@ -955,26 +837,49 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     applyFullTheme(overridesToApply);
   };
 
-  const handleSelectQuickTheme = (id: string) => {
-    const theme = QUICK_THEMES.find((t) => t.id === id);
-    if (!theme) return;
+  // ==============================
+  // Reset de grupo (Ajustes detallados)
+  // ==============================
+  const resetGroup = (keys: VarKey[]) => {
+    if (!defaults) return;
 
-    setActiveQuickThemeId(id);
-    setActiveModeId(null);
-    setActivePresetId(DEFAULT_PRESET_ID);
-    try {
-      window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
-    } catch {
-      // ignore
-    }
+    const root = document.documentElement;
 
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(theme.overrides));
-    } catch {
-      // ignore
-    }
+    setOverrides((prev) => {
+      const next = { ...prev };
 
-    applyFullTheme(theme.overrides);
+      for (const k of keys) {
+        const base = (defaults[k] ?? "").toString();
+        if (base && base.trim() !== "") {
+          next[k] = base;
+          root.style.setProperty(k, base);
+        } else {
+          delete next[k];
+          root.style.removeProperty(k);
+        }
+      }
+
+      return next;
+    });
+
+    setDraftHex((prev) => {
+      const next = { ...prev };
+      for (const k of keys) {
+        next[k] = (defaults[k] ?? "").toString();
+      }
+      return next;
+    });
+
+    setDraftAlpha((prev) => {
+      const next = { ...prev };
+      for (const k of keys) {
+        if (k in next) {
+          const base = (defaults[k] ?? "").toString();
+          next[k] = alphaPctFromColorValue(base);
+        }
+      }
+      return next;
+    });
   };
 
   return (
@@ -983,8 +888,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
       <div className="appearance-header">
         <h3 className="ui-card-title">Apariencia del panel</h3>
         <p className="ui-card-subtitle">
-          Cambia los colores del panel. Se aplica al momento en todas las
-          secciones.
+          Cambia los colores del panel. Se aplica al momento en todas las secciones.
         </p>
         <p className="ui-help">
           {token
@@ -993,141 +897,125 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
         </p>
       </div>
 
-      {/* A) Modos de color */}
-      <section className="appearance-section">
-        <div className="appearance-section-header">
-          <div>
-            <div className="appearance-section-title">Modo de color</div>
-            <p className="appearance-section-subtitle">
-              Elige un modo base de color. Siempre puedes afinar abajo.
-            </p>
+      {/* Barra horizontal de pestañas */}
+      <div className="mt-1 flex flex-wrap gap-2 border-b border-[color:var(--card-border)] pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab("mode")}
+          className={[
+            "ui-btn ui-btn-xs",
+            activeSettingsTab === "mode" ? "ui-btn-secondary" : "ui-btn-outline",
+          ].join(" ")}
+        >
+          Modo de color
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab("presets")}
+          className={[
+            "ui-btn ui-btn-xs",
+            activeSettingsTab === "presets" ? "ui-btn-secondary" : "ui-btn-outline",
+          ].join(" ")}
+        >
+          Mis temas
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab("advanced")}
+          className={[
+            "ui-btn ui-btn-xs",
+            activeSettingsTab === "advanced"
+              ? "ui-btn-secondary"
+              : "ui-btn-outline",
+          ].join(" ")}
+        >
+          Ajustes detallados
+        </button>
+      </div>
+
+      {/* A) Modo de color */}
+      {activeSettingsTab === "mode" && (
+        <section className="appearance-section">
+          <div className="appearance-section-header">
+            <div>
+              <div className="appearance-section-title">Modo de color</div>
+              <p className="appearance-section-subtitle">
+                Elige un modo base de color. Siempre puedes afinar abajo.
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="theme-mode-grid">
-          <button
-            type="button"
-            className={[
-              "theme-mode-card",
-              activeModeId === "dark" ? "theme-mode-card--active" : "",
-            ].join(" ")}
-            onClick={() => handleSelectMode("dark")}
-          >
-            <div className="theme-mode-card-header">
-              <span className="theme-mode-card-title">Oscuro</span>
-              <span className="theme-mode-card-badge">Recomendado</span>
-            </div>
-            <div className="theme-mode-card-preview">
-              <div className="theme-mode-card-preview-bar" />
-              <div className="theme-mode-card-preview-body">
-                <div className="theme-mode-card-preview-main" />
-                <div className="theme-mode-card-preview-side" />
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={[
-              "theme-mode-card",
-              activeModeId === "light" ? "theme-mode-card--active" : "",
-            ].join(" ")}
-            onClick={() => handleSelectMode("light")}
-          >
-            <div className="theme-mode-card-header">
-              <span className="theme-mode-card-title">Claro</span>
-              <span className="theme-mode-card-badge">Suave</span>
-            </div>
-            <div className="theme-mode-card-preview">
-              <div className="theme-mode-card-preview-bar" />
-              <div className="theme-mode-card-preview-body">
-                <div className="theme-mode-card-preview-main" />
-                <div className="theme-mode-card-preview-side" />
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={[
-              "theme-mode-card",
-              activeModeId === "system" ? "theme-mode-card--active" : "",
-            ].join(" ")}
-            onClick={() => handleSelectMode("system")}
-          >
-            <div className="theme-mode-card-header">
-              <span className="theme-mode-card-title">Sistema</span>
-              <span className="theme-mode-card-badge">Por defecto</span>
-            </div>
-            <div className="theme-mode-card-preview">
-              <div className="theme-mode-card-preview-bar" />
-              <div className="theme-mode-card-preview-body">
-                <div className="theme-mode-card-preview-main" />
-                <div className="theme-mode-card-preview-side" />
-              </div>
-            </div>
-          </button>
-        </div>
-      </section>
-
-      {/* B) Temas rápidos */}
-      <section className="appearance-section">
-        <div className="appearance-section-header">
-          <div>
-            <div className="appearance-section-title">Temas rápidos</div>
-            <p className="appearance-section-subtitle">
-              Estilos preconfigurados. Se pueden ajustar y guardar como tema
-              propio.
-            </p>
-          </div>
-        </div>
-
-        <div className="theme-chips-row">
-          {QUICK_THEMES.map((t) => (
+          <div className="theme-mode-grid">
             <button
-              key={t.id}
               type="button"
               className={[
-                "theme-chip",
-                activeQuickThemeId === t.id ? "theme-chip--active" : "",
+                "theme-mode-card",
+                activeModeId === "dark" ? "theme-mode-card--active" : "",
               ].join(" ")}
-              onClick={() => handleSelectQuickTheme(t.id)}
-              title={t.description}
+              onClick={() => handleSelectMode("dark")}
             >
-              <span className="theme-chip-dot" />
-              <span className="theme-chip-name">{t.name}</span>
+              <div className="theme-mode-card-header">
+                <span className="theme-mode-card-title">Oscuro</span>
+                <span className="theme-mode-card-badge">Recomendado</span>
+              </div>
+              <div className="theme-mode-card-preview">
+                <div className="theme-mode-card-preview-bar" />
+                <div className="theme-mode-card-preview-body">
+                  <div className="theme-mode-card-preview-main" />
+                  <div className="theme-mode-card-preview-side" />
+                </div>
+              </div>
             </button>
-          ))}
-        </div>
-      </section>
 
-      {/* C) Mis temas (presets actuales) */}
-      <section className="appearance-section">
-        <div className="appearance-section-header">
-          <div>
-            <div className="appearance-section-title">Mis temas guardados</div>
-            <p className="appearance-section-subtitle">
-              Guarda y recupera tus propias combinaciones de colores. Se
-              almacenan en tu navegador y, si aplica, en el backend.
-            </p>
+            <button
+              type="button"
+              className={[
+                "theme-mode-card",
+                activeModeId === "light" ? "theme-mode-card--active" : "",
+              ].join(" ")}
+              onClick={() => handleSelectMode("light")}
+            >
+              <div className="theme-mode-card-header">
+                <span className="theme-mode-card-title">Claro</span>
+                <span className="theme-mode-card-badge">Suave</span>
+              </div>
+              <div className="theme-mode-card-preview">
+                <div className="theme-mode-card-preview-bar" />
+                <div className="theme-mode-card-preview-body">
+                  <div className="theme-mode-card-preview-main" />
+                  <div className="theme-mode-card-preview-side" />
+                </div>
+              </div>
+            </button>
           </div>
-        </div>
+        </section>
+      )}
 
-        <MiniAccordion
-          title="Presets"
-          subtitle="Guarda combinaciones de colores y cámbialas rápido."
-          open={openPresets}
-          setOpen={setOpenPresets}
-        >
+      {/* B) Mis temas (presets actuales) */}
+      {activeSettingsTab === "presets" && (
+        <section className="appearance-section">
+          <div className="appearance-section-header">
+            <div>
+              <div className="appearance-section-title">Mis temas guardados</div>
+              <p className="appearance-section-subtitle">
+                Guarda y recupera tus propias combinaciones de colores. Se almacenan en tu
+                navegador y, si aplica, en el backend.
+              </p>
+            </div>
+          </div>
+
+          {/* Fila 1: selector + acciones */}
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="text-[10px] ui-muted">Tema</label>
+            <div className="min-w-[220px]">
+              <label className="mb-1 block text-[10px] ui-muted">Tema actual</label>
               <select
                 className="ui-select"
                 value={activePresetId}
                 onChange={(e) => onSelectPreset(e.target.value)}
                 aria-label="Seleccionar tema guardado"
-                style={{ width: 220 }}
+                style={{ width: 260 }}
               >
                 <option value={DEFAULT_PRESET_ID}>CSS (por defecto)</option>
                 {presetOptions.map((name) => (
@@ -1136,12 +1024,18 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </option>
                 ))}
               </select>
+
+              <p className="mt-1 text-[10px] ui-muted">
+                {activePresetId === DEFAULT_PRESET_ID
+                  ? "Usando los colores por defecto de la aplicación."
+                  : "Estás usando un tema guardado. Puedes actualizarlo con tus cambios actuales."}
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2 md:justify-end">
               <button
                 type="button"
-                className="ui-btn ui-btn-outline ui-btn-xs"
+                className="ui-btn ui-btn-primary ui-btn-xs"
                 onClick={savePresetAs}
               >
                 Guardar como…
@@ -1168,7 +1062,17 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               >
                 Borrar
               </button>
+            </div>
+          </div>
 
+          {/* Fila 2: exportar / importar */}
+          <div className="mt-4 flex flex-col gap-3 border-t border-[color:var(--card-border)] pt-3 md:flex-row md:items-center md:justify-between">
+            <p className="max-w-md text-[10px] ui-muted">
+              Exporta tus temas a JSON para compartirlos o hacer copia de seguridad.
+              Puedes importarlos más tarde en otro navegador o equipo.
+            </p>
+
+            <div className="flex flex-wrap gap-2 md:justify-end">
               <button
                 type="button"
                 className="ui-btn ui-btn-outline ui-btn-xs"
@@ -1186,275 +1090,520 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               </button>
             </div>
           </div>
-        </MiniAccordion>
-      </section>
+        </section>
+      )}
 
-      {/* D) Ajustes detallados */}
-      <section className="appearance-section">
-        <div className="appearance-section-header">
-          <div>
-            <div className="appearance-section-title">Ajustes detallados</div>
-            <p className="appearance-section-subtitle">
-              Colores por sección (fondo, tarjetas, texto, botones…). No hace
-              falta tocarlos para usar la app.
-            </p>
+      {/* C) Ajustes detallados */}
+      {activeSettingsTab === "advanced" && (
+        <section className="appearance-section">
+          <div className="appearance-section-header">
+            <div>
+              <div className="appearance-section-title">Ajustes detallados</div>
+              <p className="appearance-section-subtitle">
+                Colores por sección (fondo, tarjetas, texto, botones…). No hace falta
+                tocarlos para usar la app.
+              </p>
+              <p className="mt-1 text-[10px] ui-muted">
+                Solo para ajustes finos. Cambiar estos valores afecta a toda la interfaz.
+                Siempre puedes restaurar los colores desde Configuración o desde cada
+                grupo.
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <MiniAccordion
-            title="Fondo"
-            subtitle='Tip: “app” es el fondo global; “main” es el fondo del área central.'
-            open={openFondo}
-            setOpen={setOpenFondo}
-          >
-            <ColorRow
-              varKey="--app-bg"
-              label="fondo general (app)"
-              placeholder="#020617"
-              aria="Color fondo general"
-            />
-            <div className="mt-3">
-              <ColorRow
-                varKey="--main-bg"
-                label="fondo del contenido (main)"
-                placeholder="rgba(...) o #rrggbbaa"
-                aria="Color fondo main"
-              />
-            </div>
-          </MiniAccordion>
+          {/* Chips de zonas */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveDetailSection("fondo")}
+              className={[
+                "ui-btn ui-btn-xs",
+                activeDetailSection === "fondo"
+                  ? "ui-btn-secondary"
+                  : "ui-btn-outline",
+              ].join(" ")}
+            >
+              Fondo
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDetailSection("tarjetas")}
+              className={[
+                "ui-btn ui-btn-xs",
+                activeDetailSection === "tarjetas"
+                  ? "ui-btn-secondary"
+                  : "ui-btn-outline",
+              ].join(" ")}
+            >
+              Tarjetas
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDetailSection("texto")}
+              className={[
+                "ui-btn ui-btn-xs",
+                activeDetailSection === "texto"
+                  ? "ui-btn-secondary"
+                  : "ui-btn-outline",
+              ].join(" ")}
+            >
+              Texto
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDetailSection("botones")}
+              className={[
+                "ui-btn ui-btn-xs",
+                activeDetailSection === "botones"
+                  ? "ui-btn-secondary"
+                  : "ui-btn-outline",
+              ].join(" ")}
+            >
+              Botones
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDetailSection("sidebar")}
+              className={[
+                "ui-btn ui-btn-xs",
+                activeDetailSection === "sidebar"
+                  ? "ui-btn-secondary"
+                  : "ui-btn-outline",
+              ].join(" ")}
+            >
+              Sidebar
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDetailSection("nav")}
+              className={[
+                "ui-btn ui-btn-xs",
+                activeDetailSection === "nav"
+                  ? "ui-btn-secondary"
+                  : "ui-btn-outline",
+              ].join(" ")}
+            >
+              Navegación
+            </button>
+          </div>
 
-          <MiniAccordion
-            title="Tarjetas"
-            subtitle="Fondo y borde de tarjetas."
-            open={openTarjetas}
-            setOpen={setOpenTarjetas}
-          >
-            <ColorRow
-              varKey="--card-bg"
-              label="fondo de tarjetas"
-              placeholder="#111827"
-              aria="Color fondo tarjetas"
-            />
-            <div className="mt-3">
-              <ColorRow
-                varKey="--card-border"
-                label="borde de tarjetas"
-                placeholder="rgba(...) o #rrggbbaa"
-                aria="Color borde tarjetas"
-                showAlpha
-              />
-            </div>
-          </MiniAccordion>
-
-          <MiniAccordion
-            title="Texto"
-            subtitle="Texto principal y secundario."
-            open={openTexto}
-            setOpen={setOpenTexto}
-          >
-            <ColorRow
-              varKey="--text"
-              label="texto principal"
-              placeholder="#e5e7eb"
-              aria="Color texto principal"
-            />
-            <div className="mt-3">
-              <ColorRow
-                varKey="--text-muted"
-                label="texto secundario"
-                placeholder="rgba(...) o #rrggbbaa"
-                aria="Color texto secundario"
-              />
-            </div>
-          </MiniAccordion>
-
-          <MiniAccordion
-            title="Botones"
-            subtitle="Primario y secundario."
-            open={openBotones}
-            setOpen={setOpenBotones}
-          >
-            <ColorRow
-              varKey="--btn-primary-bg"
-              label="botón primario"
-              placeholder="#059669"
-              aria="Color botón primario"
-            />
-            <div className="mt-3">
-              <ColorRow
-                varKey="--btn-secondary-bg"
-                label="botón secundario"
-                placeholder="#4f46e5"
-                aria="Color botón secundario"
-              />
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" className="ui-btn ui-btn-primary" disabled>
-                Primario
-              </button>
-              <button type="button" className="ui-btn ui-btn-secondary" disabled>
-                Secundario
-              </button>
-              <button type="button" className="ui-btn ui-btn-outline" disabled>
-                Outline
-              </button>
-            </div>
-          </MiniAccordion>
-
-          <MiniAccordion
-            title="Sidebar"
-            subtitle="Fondo y borde de la barra lateral."
-            open={openSidebar}
-            setOpen={setOpenSidebar}
-          >
-            <ColorRow
-              varKey="--sidebar-bg"
-              label="fondo sidebar"
-              placeholder="rgba(...) o #rrggbbaa"
-              aria="Color fondo sidebar"
-              showAlpha
-            />
-            <div className="mt-3">
-              <ColorRow
-                varKey="--sidebar-border"
-                label="borde sidebar"
-                placeholder="rgba(...) o #rrggbbaa"
-                aria="Color borde sidebar"
-                showAlpha
-              />
-            </div>
-          </MiniAccordion>
-
-          <MiniAccordion
-            title="Navegación"
-            subtitle="Items, hover, activo y preview."
-            open={openNav}
-            setOpen={setOpenNav}
-          >
-            <ColorRow
-              varKey="--nav-item-bg"
-              label="fondo item (normal)"
-              placeholder="rgba(...) o #rrggbbaa"
-              aria="Color item normal"
-              showAlpha
-            />
-            <div className="mt-3">
-              <ColorRow
-                varKey="--nav-item-hover"
-                label="fondo item (hover)"
-                placeholder="rgba(...) o #rrggbbaa"
-                aria="Color item hover"
-                showAlpha
-              />
-            </div>
-            <div className="mt-3">
-              <ColorRow
-                varKey="--nav-item-text"
-                label="texto item"
-                placeholder="rgba(...) o #rrggbbaa"
-                aria="Color texto item"
-              />
-            </div>
-            <div className="mt-3">
-              <ColorRow
-                varKey="--nav-active-bg"
-                label="fondo item activo"
-                placeholder="#4f46e5"
-                aria="Color fondo activo"
-              />
-            </div>
-            <div className="mt-3">
-              <ColorRow
-                varKey="--nav-active-text"
-                label="texto activo"
-                placeholder="#ffffff"
-                aria="Color texto activo"
-              />
-            </div>
-            <div className="mt-3">
-              <ColorRow
-                varKey="--nav-sub-active-bg"
-                label="fondo sub-item activo"
-                placeholder="#6366f1"
-                aria="Color fondo sub activo"
-              />
-            </div>
-
-            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
-              <div className="mb-2 text-[11px] ui-muted">Preview sidebar</div>
+          {/* Layout preview + controles */}
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {/* Columna izquierda: preview grande */}
+            <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-[11px]">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="ui-muted">Vista previa del panel</span>
+                <span className="text-[10px] ui-muted">
+                  Solo visual, no afecta a datos reales.
+                </span>
+              </div>
 
               <div
-                className="rounded-xl border"
+                className="rounded-xl p-2"
                 style={{
-                  borderColor: "var(--sidebar-border)",
-                  background: "var(--sidebar-bg)",
+                  background: "var(--app-bg)",
+                  color: "var(--text)",
                 }}
               >
-                <div className="p-3">
+                <div
+                  className="mb-2 rounded-md px-3 py-2 text-[11px] font-semibold"
+                  style={{
+                    background: "var(--main-bg)",
+                    border: "1px solid var(--card-border)",
+                  }}
+                >
+                  APP Medidas · Dashboard
+                </div>
+
+                <div className="flex gap-2">
+                  {/* Sidebar mini */}
                   <div
-                    className="text-[11px] font-semibold"
-                    style={{ color: "var(--nav-item-text)" }}
+                    className="flex h-32 w-24 flex-col rounded-lg border p-2"
+                    style={{
+                      borderColor: "var(--sidebar-border)",
+                      background: "var(--sidebar-bg)",
+                    }}
                   >
-                    APP Medidas
-                  </div>
-                  <div className="mt-2 space-y-2">
                     <div
-                      className="rounded-full px-3 py-2 text-[11px]"
-                      style={{
-                        background: "var(--nav-item-bg)",
-                        color: "var(--nav-item-text)",
-                      }}
+                      className="mb-1 text-[10px] font-semibold truncate"
+                      style={{ color: "var(--nav-item-text)" }}
                     >
-                      Item normal
+                      Menú
                     </div>
-                    <div
-                      className="rounded-full px-3 py-2 text-[11px]"
-                      style={{
-                        background: "var(--nav-item-hover)",
-                        color: "var(--nav-item-text)",
-                      }}
-                    >
-                      Item hover (simulado)
-                    </div>
-                    <div
-                      className="rounded-full px-3 py-2 text-[11px]"
-                      style={{
-                        background: "var(--nav-active-bg)",
-                        color: "var(--nav-active-text)",
-                      }}
-                    >
-                      Item activo
-                    </div>
-                    <div className="pl-4">
+                    <div className="space-y-1">
                       <div
-                        className="rounded-full px-3 py-2 text-[11px]"
+                        className="rounded-full px-2 py-1 text-[9px]"
                         style={{
-                          background: "var(--nav-sub-active-bg)",
+                          background: "var(--nav-item-bg)",
+                          color: "var(--nav-item-text)",
+                        }}
+                      >
+                        Item
+                      </div>
+                      <div
+                        className="rounded-full px-2 py-1 text-[9px]"
+                        style={{
+                          background: "var(--nav-item-hover)",
+                          color: "var(--nav-item-text)",
+                        }}
+                      >
+                        Hover
+                      </div>
+                      <div
+                        className="rounded-full px-2 py-1 text-[9px]"
+                        style={{
+                          background: "var(--nav-active-bg)",
                           color: "var(--nav-active-text)",
                         }}
                       >
-                        Sub-item activo
+                        Activo
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Zona de contenido */}
+                  <div
+                    className="flex-1 rounded-lg border p-2"
+                    style={{
+                      background: "var(--main-bg)",
+                      borderColor: "var(--card-border)",
+                    }}
+                  >
+                    <div
+                      className="mb-2 rounded-md border p-2 text-[10px]"
+                      style={{
+                        background: "var(--card-bg)",
+                        borderColor: "var(--card-border)",
+                      }}
+                    >
+                      <div className="text-[10px] font-semibold">
+                        Tarjeta de ejemplo
+                      </div>
+                      <div
+                        className="mt-1 text-[9px]"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Texto secundario dentro de una tarjeta del panel.
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn-primary ui-btn-xs"
+                        disabled
+                      >
+                        Acción primaria
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn-secondary ui-btn-xs"
+                        disabled
+                      >
+                        Acción secundaria
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="mt-2 text-[10px] ui-muted">
-                Esto no cambia nada: solo sirve para ver cómo quedan tus
-                colores.
+                Usa esta vista para ver cómo combinan los colores entre sí (fondo, tarjetas,
+                sidebar, navegación y botones).
               </div>
             </div>
-          </MiniAccordion>
-        </div>
 
-        <div className="mt-2 text-[10px] ui-muted">
-          Todos los cambios se aplican sobre variables CSS en <code>:root</code>,
-          así que afectan a toda la app.
-        </div>
-      </section>
+            {/* Columna derecha: controles por zona */}
+            <div className="space-y-4">
+              {activeDetailSection === "fondo" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold">Fondo</div>
+                      <p className="text-[10px] ui-muted">
+                        Colores base del fondo general de la app y del área central.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost ui-btn-xs"
+                      onClick={() => resetGroup(["--app-bg", "--main-bg"])}
+                      disabled={!defaults}
+                    >
+                      Restaurar fondo
+                    </button>
+                  </div>
+
+                  <ColorRow
+                    varKey="--app-bg"
+                    label="fondo general (app)"
+                    placeholder="#020617"
+                    aria="Color fondo general"
+                  />
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--main-bg"
+                      label="fondo del contenido (main)"
+                      placeholder="rgba(...) o #rrggbbaa"
+                      aria="Color fondo main"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeDetailSection === "tarjetas" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold">Tarjetas</div>
+                      <p className="text-[10px] ui-muted">
+                        Fondo y borde de las tarjetas del panel.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost ui-btn-xs"
+                      onClick={() => resetGroup(["--card-bg", "--card-border"])}
+                      disabled={!defaults}
+                    >
+                      Restaurar tarjetas
+                    </button>
+                  </div>
+
+                  <ColorRow
+                    varKey="--card-bg"
+                    label="fondo de tarjetas"
+                    placeholder="#111827"
+                    aria="Color fondo tarjetas"
+                  />
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--card-border"
+                      label="borde de tarjetas"
+                      placeholder="rgba(...) o #rrggbbaa"
+                      aria="Color borde tarjetas"
+                      showAlpha
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeDetailSection === "texto" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold">Texto</div>
+                      <p className="text-[10px] ui-muted">
+                        Colores de texto principal y secundario en toda la app.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost ui-btn-xs"
+                      onClick={() => resetGroup(["--text", "--text-muted"])}
+                      disabled={!defaults}
+                    >
+                      Restaurar texto
+                    </button>
+                  </div>
+
+                  <ColorRow
+                    varKey="--text"
+                    label="texto principal"
+                    placeholder="#e5e7eb"
+                    aria="Color texto principal"
+                  />
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--text-muted"
+                      label="texto secundario"
+                      placeholder="rgba(...) o #rrggbbaa"
+                      aria="Color texto secundario"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeDetailSection === "botones" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold">Botones</div>
+                      <p className="text-[10px] ui-muted">
+                        Colores de los botones primario y secundario.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost ui-btn-xs"
+                      onClick={() =>
+                        resetGroup(["--btn-primary-bg", "--btn-secondary-bg"])
+                      }
+                      disabled={!defaults}
+                    >
+                      Restaurar botones
+                    </button>
+                  </div>
+
+                  <ColorRow
+                    varKey="--btn-primary-bg"
+                    label="botón primario"
+                    placeholder="#059669"
+                    aria="Color botón primario"
+                  />
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--btn-secondary-bg"
+                      label="botón secundario"
+                      placeholder="#4f46e5"
+                      aria="Color botón secundario"
+                    />
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button type="button" className="ui-btn ui-btn-primary" disabled>
+                      Primario
+                    </button>
+                    <button type="button" className="ui-btn ui-btn-secondary" disabled>
+                      Secundario
+                    </button>
+                    <button type="button" className="ui-btn ui-btn-outline" disabled>
+                      Outline
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {activeDetailSection === "sidebar" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold">Sidebar</div>
+                      <p className="text-[10px] ui-muted">
+                        Fondo y borde de la barra lateral de navegación.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost ui-btn-xs"
+                      onClick={() => resetGroup(["--sidebar-bg", "--sidebar-border"])}
+                      disabled={!defaults}
+                    >
+                      Restaurar sidebar
+                    </button>
+                  </div>
+
+                  <ColorRow
+                    varKey="--sidebar-bg"
+                    label="fondo sidebar"
+                    placeholder="rgba(...) o #rrggbbaa"
+                    aria="Color fondo sidebar"
+                    showAlpha
+                  />
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--sidebar-border"
+                      label="borde sidebar"
+                      placeholder="rgba(...) o #rrggbbaa"
+                      aria="Color borde sidebar"
+                      showAlpha
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeDetailSection === "nav" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold">Navegación</div>
+                      <p className="text-[10px] ui-muted">
+                        Colores de los items del menú lateral (normal, hover y activo).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost ui-btn-xs"
+                      onClick={() =>
+                        resetGroup([
+                          "--nav-item-bg",
+                          "--nav-item-hover",
+                          "--nav-item-text",
+                          "--nav-active-bg",
+                          "--nav-active-text",
+                          "--nav-sub-active-bg",
+                        ])
+                      }
+                      disabled={!defaults}
+                    >
+                      Restaurar navegación
+                    </button>
+                  </div>
+
+                  <ColorRow
+                    varKey="--nav-item-bg"
+                    label="fondo item (normal)"
+                    placeholder="rgba(...) o #rrggbbaa"
+                    aria="Color item normal"
+                    showAlpha
+                  />
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--nav-item-hover"
+                      label="fondo item (hover)"
+                      placeholder="rgba(...) o #rrggbbaa"
+                      aria="Color item hover"
+                      showAlpha
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--nav-item-text"
+                      label="texto item"
+                      placeholder="rgba(...) o #rrggbbaa"
+                      aria="Color texto item"
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--nav-active-bg"
+                      label="fondo item activo"
+                      placeholder="#4f46e5"
+                      aria="Color fondo activo"
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--nav-active-text"
+                      label="texto activo"
+                      placeholder="#ffffff"
+                      aria="Color texto activo"
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <ColorRow
+                      varKey="--nav-sub-active-bg"
+                      label="fondo sub-item activo"
+                      placeholder="#6366f1"
+                      aria="Color fondo sub activo"
+                    />
+                  </div>
+
+                  <p className="mt-2 text-[10px] ui-muted">
+                    Los efectos se pueden ver en la vista previa de la izquierda (items
+                    normal, hover y activo).
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-2 text-[10px] ui-muted">
+            Todos los cambios se aplican sobre variables CSS en <code>:root</code>, así que
+            afectan a toda la app.
+          </div>
+        </section>
+      )}
     </div>
   );
 }

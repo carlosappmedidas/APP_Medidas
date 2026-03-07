@@ -8,8 +8,7 @@ import type { User } from "../types";
 type LoginProps = {
   token: string | null;
   setToken: (t: string | null) => void;
-  // usuario actual solo para mostrar info (lo gestiona page.tsx)
-  currentUser: User | null;
+  currentUser: User | null; // no lo usamos pero lo mantenemos por compatibilidad
 };
 
 function friendlyLoginError(status?: number) {
@@ -20,16 +19,19 @@ function friendlyLoginError(status?: number) {
   return `Acceso fallido (HTTP ${status}).`;
 }
 
-export default function LoginSection({ token, setToken, currentUser }: LoginProps) {
+export default function LoginSection({ token, setToken }: LoginProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isLogged = !!token;
 
   const handleLogin = async () => {
+    if (isLogged) return;
+
     setLoading(true);
     setError(null);
 
@@ -52,7 +54,9 @@ export default function LoginSection({ token, setToken, currentUser }: LoginProp
             const d = (maybeJson as any).detail;
             if (typeof d === "string") detail = d;
           }
-        } catch {}
+        } catch {
+          // ignore
+        }
 
         setError(
           detail
@@ -68,9 +72,11 @@ export default function LoginSection({ token, setToken, currentUser }: LoginProp
 
       setToken(accessToken);
       setError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Error login:", err);
-      setError("No se pudo conectar con la API. Revisa la URL o que el backend esté levantado.");
+      setError(
+        "No se pudo conectar con la API. Revisa la URL o que el backend esté levantado."
+      );
       setToken(null);
     } finally {
       setLoading(false);
@@ -80,44 +86,54 @@ export default function LoginSection({ token, setToken, currentUser }: LoginProp
   const handleLogout = () => {
     setError(null);
     setToken(null);
-    // opcional: limpiar campos
     setPassword("");
   };
 
   return (
-    <section className="ui-card text-sm">
-      {/* HEADER (NO desplegable) */}
-      <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+    <section
+      className="
+        ui-card text-sm
+        max-w-md
+        mx-auto
+      "
+    >
+      {/* HEADER */}
+      <header className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="ui-card-title">Acceso</h3>
-          <p className="ui-card-subtitle">
-            Inicia sesión para acceder al panel y gestionar la información.
+          <p className="ui-card-subtitle mt-1">
+            Introduce tus credenciales para entrar.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className={["ui-btn ui-btn-xs", isLogged ? "ui-btn-outline" : "ui-btn-danger"].join(" ")}>
+        <div className="flex flex-col items-end gap-2">
+          <span
+            className={[
+              "ui-btn ui-btn-xs",
+              isLogged ? "ui-btn-outline" : "ui-btn-danger",
+            ].join(" ")}
+          >
             {isLogged ? "Con sesión" : "Sin sesión"}
           </span>
 
-          {isLogged ? (
+          {isLogged && (
             <button
               type="button"
               onClick={handleLogout}
-              className="ui-btn ui-btn-outline rounded-lg"
+              className="ui-btn ui-btn-outline ui-btn-xs rounded-lg"
               title="Cerrar sesión"
             >
               Cerrar sesión
             </button>
-          ) : null}
+          )}
         </div>
       </header>
 
-      {/* Error */}
-      {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
+      {/* ERROR */}
+      {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
-      {/* Form */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* FORM */}
+      <div className="space-y-3">
         <div>
           <label className="ui-label">Usuario (email)</label>
           <input
@@ -126,97 +142,55 @@ export default function LoginSection({ token, setToken, currentUser }: LoginProp
             onChange={(e) => setEmail(e.target.value)}
             placeholder="usuario@empresa.com"
             autoComplete="username"
-            disabled={isLogged}
+            disabled={isLogged || loading}
           />
-          {isLogged && <p className="ui-help">Ya hay una sesión activa.</p>}
         </div>
 
         <div>
           <label className="ui-label">Contraseña</label>
-          <input
-            type="password"
-            className="ui-input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Introduce tu contraseña"
-            autoComplete="current-password"
-            disabled={isLogged}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !isLogged && !loading) {
-                e.preventDefault();
-                handleLogin();
-              }
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type={showPassword ? "text" : "password"}
+              className="ui-input flex-1"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Introduce tu contraseña"
+              autoComplete="current-password"
+              disabled={isLogged || loading}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isLogged && !loading) {
+                  e.preventDefault();
+                  handleLogin();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="ui-btn ui-btn-ghost ui-btn-xs"
+              onClick={() => setShowPassword((v) => !v)}
+              disabled={isLogged || !password}
+            >
+              {showPassword ? "Ocultar" : "Mostrar"}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {!isLogged && (
-        <div className="mt-4">
+        {!isLogged && (
           <button
             type="button"
             onClick={handleLogin}
             disabled={loading}
-            className="ui-btn ui-btn-secondary w-full justify-center rounded-lg"
+            className="ui-btn ui-btn-secondary w-full justify-center rounded-lg mt-2"
           >
             {loading ? "Accediendo..." : "Entrar"}
           </button>
-        </div>
-      )}
-
-      {/* Info técnica + perfil */}
-      <div className="mt-4 space-y-1 text-xs ui-muted">
-        <div>
-          Servidor API:{" "}
-          <span className="font-mono text-[11px] ui-muted">{API_BASE_URL}</span>
-        </div>
-
-        <div>
-          Estado de sesión:{" "}
-          {isLogged ? (
-            <span className="font-mono text-[11px]" style={{ color: "var(--field-border-focus)" }}>
-              OK
-            </span>
-          ) : (
-            <span style={{ color: "var(--danger-text)" }}>no iniciada</span>
-          )}
-        </div>
-
-        <div className="mt-2 ui-divider pt-2">
-          <div className="mb-1 text-[11px] font-semibold ui-muted">Perfil actual</div>
-
-          {currentUser ? (
-            <div className="space-y-0.5 text-[11px]" style={{ color: "var(--text)" }}>
-              <div>
-                Email: <span className="font-mono text-[11px]">{currentUser.email}</span>
-              </div>
-              <div>
-                Tenant ID: <span className="font-mono text-[11px]">{currentUser.tenant_id}</span>
-              </div>
-              <div>
-                Rol: <span className="font-mono text-[11px]">{currentUser.rol}</span>
-              </div>
-              <div>
-                Activo:{" "}
-                <span className="font-mono text-[11px]">{currentUser.is_active ? "Sí" : "No"}</span>
-              </div>
-              <div>
-                Superusuario:{" "}
-                <span
-                  className="font-mono text-[11px]"
-                  style={{
-                    color: currentUser.is_superuser ? "var(--field-border-focus)" : "var(--text-muted)",
-                  }}
-                >
-                  {currentUser.is_superuser ? "Sí ✅" : "No"}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="text-[11px] ui-muted">Aún no se han cargado los datos del usuario.</div>
-          )}
-        </div>
+        )}
       </div>
+
+      {/* NOTA PIE */}
+      <p className="mt-4 text-center text-[10px] ui-muted">
+        Acceso restringido · Introduce tus credenciales para continuar.
+      </p>
     </section>
   );
 }

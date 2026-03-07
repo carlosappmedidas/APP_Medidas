@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 
 import LoginSection from "./components/Login-section";
 import DashboardSection from "./components/DashboardSection";
-import EmpresasSection from "./components/EmpresasSection";
 import MedidasGeneralSection from "./components/MedidasGeneralSection";
 import CargaSection from "./components/CargaSection";
 import UsersSection from "./components/UsersSection";
@@ -17,7 +16,6 @@ import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
 type MainTab =
-  | "login"
   | "dashboard"
   | "usuarios"
   | "clientes"
@@ -91,27 +89,15 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
   { id: "perdidas_e_facturada_art15_pct", label: "Pérdidas ART15 (%)", group: "ART15" },
 ];
 
-const UI_THEME_STORAGE_KEY = "ui_theme_overrides";
-
-function applyUiThemeOverrides(overrides: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
-  const root = document.documentElement;
-
-  for (const [k, v] of Object.entries(overrides || {})) {
-    if (!k.startsWith("--")) continue;
-    if (typeof v !== "string") continue;
-    root.style.setProperty(k, v);
-  }
-}
+const SIDEBAR_STORAGE_KEY = "ui_sidebar_collapsed";
 
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<MainTab>("login");
+  const [activeTab, setActiveTab] = useState<MainTab>("dashboard");
   const [tablasOpen, setTablasOpen] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [ajustesSubTab, setAjustesSubTab] = useState<"aspecto">("aspecto");
 
   const [columnOrder, setColumnOrder] = useState<string[]>(ALL_COLUMNS_META.map((c) => c.id));
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
@@ -119,10 +105,27 @@ export default function HomePage() {
   const [psColumnOrder, setPsColumnOrder] = useState<string[]>(COLUMNS_PS_META.map((c) => c.id));
   const [psHiddenColumns, setPsHiddenColumns] = useState<string[]>([]);
 
+  // Estado para colapsar la barra lateral
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Estado para el menú de la casita (usuario + logout)
+  const [homeMenuOpen, setHomeMenuOpen] = useState(false);
+
   useEffect(() => {
     try {
-      const tab = localStorage.getItem("ui_active_tab") as MainTab | null;
-      if (tab) setActiveTab(tab);
+      const savedTab = localStorage.getItem("ui_active_tab");
+      if (
+        savedTab === "dashboard" ||
+        savedTab === "usuarios" ||
+        savedTab === "clientes" ||
+        savedTab === "tablas-general" ||
+        savedTab === "tablas-ps" ||
+        savedTab === "carga" ||
+        savedTab === "ajustes" ||
+        savedTab === "sistema"
+      ) {
+        setActiveTab(savedTab);
+      }
 
       setTablasOpen(localStorage.getItem("ui_tablas_open") === "1");
 
@@ -137,33 +140,72 @@ export default function HomePage() {
 
       const psHidden = localStorage.getItem("medidas_ps_hidden_columns");
       if (psHidden) setPsHiddenColumns(JSON.parse(psHidden));
-    } catch {}
+
+      const sidebarRaw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (sidebarRaw === "1") setSidebarCollapsed(true);
+    } catch {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("ui_active_tab", activeTab);
+    try {
+      localStorage.setItem("ui_active_tab", activeTab);
+    } catch {
+      // ignore
+    }
   }, [activeTab]);
 
   useEffect(() => {
-    localStorage.setItem("ui_tablas_open", tablasOpen ? "1" : "0");
+    try {
+      localStorage.setItem("ui_tablas_open", tablasOpen ? "1" : "0");
+    } catch {
+      // ignore
+    }
   }, [tablasOpen]);
 
   useEffect(() => {
-    localStorage.setItem("medidas_column_order", JSON.stringify(columnOrder));
+    try {
+      localStorage.setItem("medidas_column_order", JSON.stringify(columnOrder));
+    } catch {
+      // ignore
+    }
   }, [columnOrder]);
 
   useEffect(() => {
-    localStorage.setItem("medidas_hidden_columns", JSON.stringify(hiddenColumns));
+    try {
+      localStorage.setItem("medidas_hidden_columns", JSON.stringify(hiddenColumns));
+    } catch {
+      // ignore
+    }
   }, [hiddenColumns]);
 
   useEffect(() => {
-    localStorage.setItem("medidas_ps_column_order", JSON.stringify(psColumnOrder));
+    try {
+      localStorage.setItem("medidas_ps_column_order", JSON.stringify(psColumnOrder));
+    } catch {
+      // ignore
+    }
   }, [psColumnOrder]);
 
   useEffect(() => {
-    localStorage.setItem("medidas_ps_hidden_columns", JSON.stringify(psHiddenColumns));
+    try {
+      localStorage.setItem("medidas_ps_hidden_columns", JSON.stringify(psHiddenColumns));
+    } catch {
+      // ignore
+    }
   }, [psHiddenColumns]);
 
+  // Guardar estado de la sidebar
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [sidebarCollapsed]);
+
+  // Cargar /auth/me cuando hay token
   useEffect(() => {
     if (!token) {
       setCurrentUser(null);
@@ -179,7 +221,6 @@ export default function HomePage() {
         if (!res.ok) {
           setCurrentUser(null);
           setToken(null);
-          setActiveTab("login");
           return;
         }
 
@@ -193,173 +234,288 @@ export default function HomePage() {
     loadMe();
   }, [token]);
 
+  // Cerrar menú de la casita cuando cambias de pestaña
+  useEffect(() => {
+    setHomeMenuOpen(false);
+  }, [activeTab]);
+
   const canManageUsers =
     currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
 
   const canSeeAjustes = !!canManageUsers;
   const isSuperuser = !!currentUser?.is_superuser;
 
-  const isTablasActive =
-    activeTab === "tablas-general" || activeTab === "tablas-ps";
-
-  useEffect(() => {
-    if (isTablasActive && !tablasOpen) setTablasOpen(true);
-  }, [isTablasActive, tablasOpen]);
-
   const resetUiColors = () => {
     window.dispatchEvent(new CustomEvent("ui-theme-reset"));
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => !prev);
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    setHomeMenuOpen(false);
+  };
+
+  const handleGoHome = () => {
+    setActiveTab("dashboard");
+    setHomeMenuOpen(false);
+  };
+
+  /* =========================================
+   * 1) Vista LOGIN a pantalla completa
+   * ========================================= */
+  if (!token) {
+    return (
+      <div className="ui-login-shell">
+        <div className="ui-login-panel">
+          <div className="ui-login-brand mb-4 text-center">
+            <h1 className="text-xl font-semibold">APP Medidas</h1>
+            <p className="mt-1 text-xs ui-muted">
+              Plataforma de gestión y análisis de medidas
+            </p>
+          </div>
+
+          {/* Tarjeta de acceso reutilizando LoginSection */}
+          <LoginSection token={token} setToken={setToken} currentUser={currentUser} />
+
+          <p className="mt-4 text-center text-[11px] ui-muted">
+            Acceso restringido · Introduce tus credenciales para continuar.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /* =========================================
+   * 2) Vista APP (sidebar + contenido)
+   * ========================================= */
   return (
     <div className="ui-shell">
       {/* SIDEBAR */}
-      <aside className="ui-sidebar">
-        <div className="mb-8">
-          <h1 className="text-lg font-semibold">APP Medidas</h1>
-          <p className="mt-1 text-xs ui-muted">Plataforma de gestión</p>
+      <aside
+        className="ui-sidebar"
+        style={{
+          width: sidebarCollapsed ? "52px" : undefined,
+          transition: "width 0.2s ease",
+        }}
+      >
+        {/* Cabecera barra lateral con botón de plegado */}
+        <div className="mb-6 flex items-center justify-between gap-2">
+          {!sidebarCollapsed && (
+            <div>
+              <h1 className="text-lg font-semibold">APP Medidas</h1>
+              <p className="mt-1 text-xs ui-muted">Plataforma de gestión</p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="ui-btn ui-btn-ghost ui-btn-xs ml-auto rounded-full px-2"
+            aria-label={sidebarCollapsed ? "Mostrar barra lateral" : "Ocultar barra lateral"}
+          >
+            {sidebarCollapsed ? "»" : "«"}
+          </button>
         </div>
 
-        {/* MENÚ */}
-        <nav className="ui-nav">
-          <div className="ui-nav-section-title">Menú</div>
+        {/* MENÚ (sin pestaña Acceso) */}
+        {!sidebarCollapsed && (
+          <nav className="ui-nav">
+            <div className="ui-nav-section-title">Menú</div>
 
-          <button
-            onClick={() => setActiveTab("login")}
-            className={[
-              "ui-nav-item",
-              activeTab === "login" ? "ui-nav-item--active" : "",
-            ].join(" ")}
-          >
-            <span>Acceso</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("dashboard")}
-            className={[
-              "ui-nav-item",
-              activeTab === "dashboard" ? "ui-nav-item--active" : "",
-            ].join(" ")}
-          >
-            <span>Dashboard</span>
-          </button>
-
-          {canManageUsers && (
             <button
-              onClick={() => setActiveTab("usuarios")}
+              onClick={() => setActiveTab("dashboard")}
               className={[
                 "ui-nav-item",
-                activeTab === "usuarios" ? "ui-nav-item--active" : "",
+                activeTab === "dashboard" ? "ui-nav-item--active" : "",
               ].join(" ")}
             >
-              <span>Usuarios</span>
-            </button>
-          )}
-
-          {isSuperuser && (
-            <button
-              onClick={() => setActiveTab("clientes")}
-              className={[
-                "ui-nav-item",
-                activeTab === "clientes" ? "ui-nav-item--active" : "",
-              ].join(" ")}
-            >
-              <span>Clientes</span>
-            </button>
-          )}
-
-          {/* TABLAS */}
-          <div>
-            <button
-              onClick={() => {
-                setTablasOpen((prev) => !prev);
-                if (!isTablasActive) setActiveTab("tablas-general");
-              }}
-              className={[
-                "ui-nav-item",
-                isTablasActive ? "ui-nav-item--active" : "",
-              ].join(" ")}
-            >
-              <span>Tablas</span>
-              <span className="text-[10px] ui-muted">
-                {tablasOpen ? "▾" : "▸"}
-              </span>
+              <span>Dashboard</span>
             </button>
 
-            {/* Submenú para General / PS */}
-            {tablasOpen && (
-              <div className="ui-nav-sub">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("tablas-general")}
-                  className={[
-                    "ui-nav-subitem",
-                    activeTab === "tablas-general" ? "ui-nav-subitem--active" : "",
-                  ].join(" ")}
-                >
-                  <span>Medidas general</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("tablas-ps")}
-                  className={[
-                    "ui-nav-subitem",
-                    activeTab === "tablas-ps" ? "ui-nav-subitem--active" : "",
-                  ].join(" ")}
-                >
-                  <span>Medidas PS</span>
-                </button>
-              </div>
+            {canManageUsers && (
+              <button
+                onClick={() => setActiveTab("usuarios")}
+                className={[
+                  "ui-nav-item",
+                  activeTab === "usuarios" ? "ui-nav-item--active" : "",
+                ].join(" ")}
+              >
+                <span>Usuarios</span>
+              </button>
             )}
-          </div>
 
-          <button
-            onClick={() => setActiveTab("carga")}
-            className={[
-              "ui-nav-item",
-              activeTab === "carga" ? "ui-nav-item--active" : "",
-            ].join(" ")}
-          >
-            <span>Carga de datos</span>
-          </button>
+            {isSuperuser && (
+              <button
+                onClick={() => setActiveTab("clientes")}
+                className={[
+                  "ui-nav-item",
+                  activeTab === "clientes" ? "ui-nav-item--active" : "",
+                ].join(" ")}
+              >
+                <span>Clientes</span>
+              </button>
+            )}
 
-          {canSeeAjustes && (
+            {/* TABLAS */}
+            <div>
+              <button
+                onClick={() => {
+                  setTablasOpen((prev) => !prev);
+                  if (activeTab !== "tablas-general" && activeTab !== "tablas-ps") {
+                    setActiveTab("tablas-general");
+                  }
+                }}
+                className={[
+                  "ui-nav-item",
+                  activeTab === "tablas-general" || activeTab === "tablas-ps"
+                    ? "ui-nav-item--active"
+                    : "",
+                ].join(" ")}
+              >
+                <span>Tablas</span>
+                <span className="text-[10px] ui-muted">
+                  {tablasOpen ? "▾" : "▸"}
+                </span>
+              </button>
+
+              {tablasOpen && (
+                <div className="ui-nav-sub">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("tablas-general")}
+                    className={[
+                      "ui-nav-subitem",
+                      activeTab === "tablas-general" ? "ui-nav-subitem--active" : "",
+                    ].join(" ")}
+                  >
+                    <span>Medidas general</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("tablas-ps")}
+                    className={[
+                      "ui-nav-subitem",
+                      activeTab === "tablas-ps" ? "ui-nav-subitem--active" : "",
+                    ].join(" ")}
+                  >
+                    <span>Medidas PS</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
-              onClick={() => setActiveTab("ajustes")}
+              onClick={() => setActiveTab("carga")}
               className={[
                 "ui-nav-item",
-                activeTab === "ajustes" ? "ui-nav-item--active" : "",
+                activeTab === "carga" ? "ui-nav-item--active" : "",
               ].join(" ")}
             >
-              <span>Configuración</span>
+              <span>Carga de datos</span>
             </button>
-          )}
 
-          {isSuperuser && (
-            <button
-              onClick={() => setActiveTab("sistema")}
-              className={[
-                "ui-nav-item",
-                activeTab === "sistema" ? "ui-nav-item--active" : "",
-              ].join(" ")}
-            >
-              <span>Sistema</span>
-            </button>
-          )}
-        </nav>
+            {canSeeAjustes && (
+              <button
+                onClick={() => setActiveTab("ajustes")}
+                className={[
+                  "ui-nav-item",
+                  activeTab === "ajustes" ? "ui-nav-item--active" : "",
+                ].join(" ")}
+              >
+                <span>Configuración</span>
+              </button>
+            )}
+
+            {isSuperuser && (
+              <button
+                onClick={() => setActiveTab("sistema")}
+                className={[
+                  "ui-nav-item",
+                  activeTab === "sistema" ? "ui-nav-item--active" : "",
+                ].join(" ")}
+              >
+                <span>Sistema</span>
+              </button>
+            )}
+          </nav>
+        )}
       </aside>
 
       {/* MAIN */}
       <main className="ui-main">
-        <h2 className="mb-8 ui-page-title">APP Medidas</h2>
+        {/* CABECERA con título + casita */}
+        <header className="mb-6 flex items-center justify-between gap-3">
+          <h2 className="ui-page-title">APP Medidas</h2>
 
-        {activeTab === "login" && (
-          <>
-            <LoginSection token={token} setToken={setToken} currentUser={currentUser} />
-            <EmpresasSection token={token} />
-          </>
-        )}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setHomeMenuOpen((prev) => !prev)}
+              className="ui-btn ui-btn-ghost ui-btn-xs rounded-full px-3"
+              aria-label="Menú de usuario"
+            >
+              🏠
+            </button>
 
+            {homeMenuOpen && (
+              <div
+                className="absolute right-0 mt-2 w-64 rounded-xl border bg-[color:var(--card-bg)] p-3 shadow-lg"
+                style={{ borderColor: "var(--card-border)", zIndex: 20 }}
+              >
+                <div className="mb-2 text-[11px] font-semibold" style={{ color: "var(--text)" }}>
+                  Usuario activo
+                </div>
+
+                <div className="space-y-0.5 text-[11px]">
+                  <div className="ui-muted">
+                    Email:{" "}
+                    <span className="font-mono text-[11px]" style={{ color: "var(--text)" }}>
+                      {currentUser?.email ?? "—"}
+                    </span>
+                  </div>
+                  <div className="ui-muted">
+                    Rol:{" "}
+                    <span className="font-mono text-[11px]" style={{ color: "var(--text)" }}>
+                      {currentUser?.rol ?? "—"}
+                    </span>
+                  </div>
+                  {currentUser && (
+                    <div className="ui-muted">
+                      Tenant:{" "}
+                      <span className="font-mono text-[11px]" style={{ color: "var(--text)" }}>
+                        {currentUser.tenant_id}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGoHome}
+                    className="ui-btn ui-btn-outline ui-btn-xs w-full justify-center"
+                  >
+                    Ir al dashboard
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="ui-btn ui-btn-outline ui-btn-xs w-full justify-center"
+                  >
+                    Cerrar sesión
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* CONTENIDO */}
         {activeTab === "dashboard" && <DashboardSection token={token} />}
 
         {activeTab === "usuarios" && canManageUsers && (
@@ -419,36 +575,8 @@ export default function HomePage() {
               </div>
             </header>
 
-            <div className="settings-layout ui-card ui-card--border text-sm">
-              {/* Menú lateral de secciones de ajustes */}
-              <aside className="settings-sidebar">
-                <p className="settings-sidebar-title">Secciones</p>
-
-                <button
-                  type="button"
-                  className={[
-                    "settings-menu-item",
-                    ajustesSubTab === "aspecto" ? "settings-menu-item--active" : "",
-                  ].join(" ")}
-                  onClick={() => setAjustesSubTab("aspecto")}
-                >
-                  <span>Apariencia</span>
-                  <span className="settings-menu-item-pill">Colores y tema</span>
-                </button>
-
-                {/* Futuras secciones:
-                    - General
-                    - Notificaciones
-                    - etc.
-                */}
-              </aside>
-
-              {/* Contenido de la sección seleccionada */}
-              <div className="settings-content">
-                {ajustesSubTab === "aspecto" && (
-                  <AppearanceSettingsSection token={token} />
-                )}
-              </div>
+            <div className="ui-card ui-card--border text-sm">
+              <AppearanceSettingsSection token={token} />
             </div>
           </section>
         )}
