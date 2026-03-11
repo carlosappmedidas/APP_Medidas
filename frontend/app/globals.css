@@ -1036,3 +1036,127 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* =========================================================
+   17) Login shell
+   ========================================================= */
+
+.ui-login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background:
+    radial-gradient(circle at top, rgba(79, 70, 229, 0.12), transparent 35%),
+    var(--app-bg);
+}
+
+.ui-login-panel {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* =========================================================
+   18) Alertas
+   ========================================================= */
+
+.alerts-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.alerts-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.alerts-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.alerts-filters-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.alerts-filters-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.alerts-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.alerts-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.alerts-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.alerts-detail-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 1200px) {
+  .alerts-filters-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .alerts-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .alerts-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .alerts-header,
+  .alerts-filters-header,
+  .alerts-table-header,
+  .alerts-detail-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .alerts-header-actions {
+    justify-content: flex-start;
+  }
+
+  .alerts-filters-grid,
+  .alerts-stats-grid,
+  .alerts-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

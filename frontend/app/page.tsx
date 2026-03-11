@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 
 import LoginSection from "./components/Login-section";
 import DashboardSection from "./components/DashboardSection";
+import AlertsSection from "./components/AlertsSection";
 import MedidasGeneralSection from "./components/MedidasGeneralSection";
 import CargaSection from "./components/CargaSection";
 import UsersSection from "./components/UsersSection";
@@ -17,6 +18,7 @@ import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
 type MainTab =
   | "dashboard"
+  | "alertas"
   | "usuarios"
   | "clientes"
   | "tablas-general"
@@ -102,13 +104,12 @@ export default function HomePage() {
   const [columnOrder, setColumnOrder] = useState<string[]>(ALL_COLUMNS_META.map((c) => c.id));
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
 
-  const [psColumnOrder, setPsColumnOrder] = useState<string[]>(COLUMNS_PS_META.map((c) => c.id));
+  const [psColumnOrder, setPsColumnOrder] = useState<string[]>(
+    COLUMNS_PS_META.map((c) => c.id)
+  );
   const [psHiddenColumns, setPsHiddenColumns] = useState<string[]>([]);
 
-  // Estado para colapsar la barra lateral
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  // Estado para el menú de la casita (usuario + logout)
   const [homeMenuOpen, setHomeMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -116,6 +117,7 @@ export default function HomePage() {
       const savedTab = localStorage.getItem("ui_active_tab");
       if (
         savedTab === "dashboard" ||
+        savedTab === "alertas" ||
         savedTab === "usuarios" ||
         savedTab === "clientes" ||
         savedTab === "tablas-general" ||
@@ -196,7 +198,6 @@ export default function HomePage() {
     }
   }, [psHiddenColumns]);
 
-  // Guardar estado de la sidebar
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0");
@@ -205,7 +206,6 @@ export default function HomePage() {
     }
   }, [sidebarCollapsed]);
 
-  // Cargar /auth/me cuando hay token
   useEffect(() => {
     if (!token) {
       setCurrentUser(null);
@@ -234,7 +234,6 @@ export default function HomePage() {
     loadMe();
   }, [token]);
 
-  // Cerrar menú de la casita cuando cambias de pestaña
   useEffect(() => {
     setHomeMenuOpen(false);
   }, [activeTab]);
@@ -263,9 +262,6 @@ export default function HomePage() {
     setHomeMenuOpen(false);
   };
 
-  /* =========================================
-   * 1) Vista LOGIN a pantalla completa
-   * ========================================= */
   if (!token) {
     return (
       <div className="ui-login-shell">
@@ -277,7 +273,6 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Tarjeta de acceso reutilizando LoginSection */}
           <LoginSection token={token} setToken={setToken} currentUser={currentUser} />
 
           <p className="mt-4 text-center text-[11px] ui-muted">
@@ -288,12 +283,8 @@ export default function HomePage() {
     );
   }
 
-  /* =========================================
-   * 2) Vista APP (sidebar + contenido)
-   * ========================================= */
   return (
     <div className="ui-shell">
-      {/* SIDEBAR */}
       <aside
         className="ui-sidebar"
         style={{
@@ -301,7 +292,6 @@ export default function HomePage() {
           transition: "width 0.2s ease",
         }}
       >
-        {/* Cabecera barra lateral con botón de plegado */}
         <div className="mb-6 flex items-center justify-between gap-2">
           {!sidebarCollapsed && (
             <div>
@@ -320,7 +310,6 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* MENÚ (sin pestaña Acceso) */}
         {!sidebarCollapsed && (
           <nav className="ui-nav">
             <div className="ui-nav-section-title">Menú</div>
@@ -333,6 +322,16 @@ export default function HomePage() {
               ].join(" ")}
             >
               <span>Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("alertas")}
+              className={[
+                "ui-nav-item",
+                activeTab === "alertas" ? "ui-nav-item--active" : "",
+              ].join(" ")}
+            >
+              <span>Alertas</span>
             </button>
 
             {canManageUsers && (
@@ -359,7 +358,6 @@ export default function HomePage() {
               </button>
             )}
 
-            {/* TABLAS */}
             <div>
               <button
                 onClick={() => {
@@ -376,9 +374,7 @@ export default function HomePage() {
                 ].join(" ")}
               >
                 <span>Tablas</span>
-                <span className="text-[10px] ui-muted">
-                  {tablasOpen ? "▾" : "▸"}
-                </span>
+                <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
               </button>
 
               {tablasOpen && (
@@ -445,9 +441,7 @@ export default function HomePage() {
         )}
       </aside>
 
-      {/* MAIN */}
       <main className="ui-main">
-        {/* CABECERA con título + casita */}
         <header className="mb-6 flex items-center justify-between gap-3">
           <h2 className="ui-page-title">APP Medidas</h2>
 
@@ -515,12 +509,11 @@ export default function HomePage() {
           </div>
         </header>
 
-        {/* CONTENIDO */}
         {activeTab === "dashboard" && <DashboardSection token={token} />}
 
-        {activeTab === "usuarios" && canManageUsers && (
-          <UsersSection token={token} />
-        )}
+        {activeTab === "alertas" && <AlertsSection token={token} currentUser={currentUser} />}
+
+        {activeTab === "usuarios" && canManageUsers && <UsersSection token={token} />}
 
         {activeTab === "clientes" && isSuperuser && (
           <ClientesSection token={token} currentUser={currentUser} />
@@ -560,9 +553,7 @@ export default function HomePage() {
 
               <div className="settings-header-right">
                 <span className="ui-badge ui-badge--neutral">
-                  {token
-                    ? "Guardando en local + servidor"
-                    : "Guardando solo en este navegador"}
+                  {token ? "Guardando en local + servidor" : "Guardando solo en este navegador"}
                 </span>
 
                 <button
@@ -581,9 +572,7 @@ export default function HomePage() {
           </section>
         )}
 
-        {activeTab === "sistema" && isSuperuser && (
-          <SistemaSection token={token} />
-        )}
+        {activeTab === "sistema" && isSuperuser && <SistemaSection token={token} />}
       </main>
     </div>
   );

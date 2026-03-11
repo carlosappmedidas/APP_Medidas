@@ -15,10 +15,12 @@ from app.core.db import get_db
 from app.tenants.routes import router as auth_router
 from app.empresas.routes import router as empresas_router
 from app.ingestion.routes import router as ingestion_router
-from app.measures.routes import router as medidas_router  # 👈 NUEVO
+from app.measures.routes import router as medidas_router
+from app.alerts.routes import router as alerts_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
-from app.measures.models import MedidaMicro, MedidaGeneral  # noqa: F401
+from app.measures.models import MedidaMicro, MedidaGeneral, MedidaPS  # noqa: F401
+from app.alerts.models import AlertRuleCatalog, EmpresaAlertRuleConfig, AlertResult  # noqa: F401
 
 settings = get_settings()
 
@@ -65,3 +67,4 @@ app.include_router(auth_router)
 app.include_router(empresas_router)
 app.include_router(ingestion_router)
 app.include_router(medidas_router)
+app.include_router(alerts_router)
