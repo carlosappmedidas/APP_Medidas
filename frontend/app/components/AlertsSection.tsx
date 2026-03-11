@@ -69,6 +69,12 @@ type CompanyAlertConfigRow = {
   default_severity: string;
 };
 
+type AvailablePeriodsResponse = {
+  empresa_id: number;
+  anios: number[];
+  meses: number[];
+};
+
 function severityBadgeClass(severity: AlertSeverity): string {
   if (severity === "critical") return "ui-badge ui-badge--err";
   if (severity === "warning") return "ui-badge ui-badge--warn";
@@ -147,12 +153,15 @@ export default function AlertsSection({ token, currentUser }: Props) {
 
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [empresas, setEmpresas] = useState<EmpresaItem[]>([]);
-
   const [companyConfig, setCompanyConfig] = useState<CompanyAlertConfigRow[]>([]);
+
+  const [availableAnios, setAvailableAnios] = useState<number[]>([]);
+  const [availableMeses, setAvailableMeses] = useState<number[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [loadingEmpresas, setLoadingEmpresas] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
+  const [loadingPeriods, setLoadingPeriods] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
 
@@ -274,11 +283,47 @@ export default function AlertsSection({ token, currentUser }: Props) {
     }
   };
 
+  const loadAvailablePeriods = async (empresaId: number) => {
+    if (!token) {
+      setAvailableAnios([]);
+      setAvailableMeses([]);
+      return;
+    }
+
+    setLoadingPeriods(true);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/alerts/available-periods/${empresaId}`,
+        {
+          headers: getAuthHeaders(token),
+        }
+      );
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Error ${res.status}`);
+      }
+
+      const json = (await res.json()) as AvailablePeriodsResponse;
+      setAvailableAnios(Array.isArray(json.anios) ? json.anios : []);
+      setAvailableMeses(Array.isArray(json.meses) ? json.meses : []);
+    } catch (err) {
+      console.error("Error cargando periodos disponibles:", err);
+      setAvailableAnios([]);
+      setAvailableMeses([]);
+      setError("No se pudieron cargar los periodos disponibles.");
+    } finally {
+      setLoadingPeriods(false);
+    }
+  };
+
   useEffect(() => {
     if (!token) {
       setAlerts([]);
       setEmpresas([]);
       setCompanyConfig([]);
+      setAvailableAnios([]);
+      setAvailableMeses([]);
       setError(null);
       return;
     }
@@ -295,10 +340,15 @@ export default function AlertsSection({ token, currentUser }: Props) {
   useEffect(() => {
     if (!token || !selectedEmpresaId) {
       setCompanyConfig([]);
+      setAvailableAnios([]);
+      setAvailableMeses([]);
+      setAnioFilter("all");
+      setMesFilter("all");
       return;
     }
 
     loadCompanyConfig(selectedEmpresaId);
+    loadAvailablePeriods(selectedEmpresaId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, selectedEmpresaId]);
 
@@ -317,15 +367,8 @@ export default function AlertsSection({ token, currentUser }: Props) {
     });
   }, [alerts, tipoFilter]);
 
-  const anios = useMemo(
-    () => Array.from(new Set(alerts.map((a) => a.anio))).sort((a, b) => b - a),
-    [alerts]
-  );
-
-  const meses = useMemo(
-    () => Array.from(new Set(alerts.map((a) => a.mes))).sort((a, b) => a - b),
-    [alerts]
-  );
+  const anios = useMemo(() => availableAnios, [availableAnios]);
+  const meses = useMemo(() => availableMeses, [availableMeses]);
 
   const stats = useMemo(() => {
     const activeAlerts = filteredAlerts.filter((a) => a.status === "triggered").length;
@@ -350,6 +393,8 @@ export default function AlertsSection({ token, currentUser }: Props) {
     setStatusFilter("all");
     setInfoMessage(null);
     setSelectedAlert(null);
+    setAvailableAnios([]);
+    setAvailableMeses([]);
   };
 
   const handleRecalculate = async () => {
@@ -391,6 +436,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
       await loadAlerts();
       if (selectedEmpresaId) {
         await loadCompanyConfig(selectedEmpresaId);
+        await loadAvailablePeriods(selectedEmpresaId);
       }
     } catch (err) {
       console.error("Error recalculando alertas:", err);
@@ -566,7 +612,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
               className="ui-select"
               value={anioFilter}
               onChange={(e) => setAnioFilter(e.target.value)}
-              disabled={!token}
+              disabled={!token || loadingPeriods || empresaFilter === "all"}
             >
               <option value="all">Todos</option>
               {anios.map((anio) => (
@@ -583,7 +629,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
               className="ui-select"
               value={mesFilter}
               onChange={(e) => setMesFilter(e.target.value)}
-              disabled={!token}
+              disabled={!token || loadingPeriods || empresaFilter === "all"}
             >
               <option value="all">Todos</option>
               {meses.map((mes) => (

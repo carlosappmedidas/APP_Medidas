@@ -87,3 +87,9 @@ class AlertRecalculateResponse(BaseModel):
     mes: int
     results_created: int
     results: List[AlertResultRead]
+
+
+class AlertAvailablePeriodsRead(BaseModel):
+    empresa_id: int
+    anios: List[int]
+    meses: List[int]

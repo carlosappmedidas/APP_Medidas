@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.alerts.schemas import (
+    AlertAvailablePeriodsRead,
     AlertRecalculatePayload,
     AlertRecalculateResponse,
     AlertResultRead,
@@ -18,6 +19,7 @@ from app.alerts.schemas import (
 )
 from app.alerts.services import (
     get_alert_rule_catalog,
+    get_available_periods_for_empresa,
     get_empresa_alert_effective_config,
     list_alert_results,
     recalculate_alerts_for_period,
@@ -117,7 +119,6 @@ def get_alert_results(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # superuser puede filtrar tenant_id
     effective_tenant_id: Optional[int]
     if _is_superuser(current_user):
         effective_tenant_id = tenant_id
@@ -140,6 +141,31 @@ def get_alert_results(
         alert_code=alert_code,
         severity=severity,
         status=status_value,
+    )
+
+
+@router.get(
+    "/available-periods/{empresa_id}",
+    response_model=AlertAvailablePeriodsRead,
+)
+def get_available_periods(
+    empresa_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    empresa = _get_empresa_or_404(db, empresa_id=empresa_id)
+    _assert_empresa_access(user=current_user, empresa=empresa)
+
+    anios, meses = get_available_periods_for_empresa(
+        db,
+        tenant_id=int(getattr(empresa, "tenant_id")),
+        empresa_id=int(getattr(empresa, "id")),
+    )
+
+    return AlertAvailablePeriodsRead(
+        empresa_id=int(getattr(empresa, "id")),
+        anios=anios,
+        meses=meses,
     )
 
 

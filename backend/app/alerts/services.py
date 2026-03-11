@@ -644,3 +644,24 @@ def list_alert_results(
             )
         )
     return out
+
+def get_available_periods_for_empresa(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+) -> Tuple[List[int], List[int]]:
+    rows = (
+        db.query(MedidaGeneral.anio, MedidaGeneral.mes)
+        .filter(
+            MedidaGeneral.tenant_id == tenant_id,
+            MedidaGeneral.empresa_id == empresa_id,
+        )
+        .order_by(MedidaGeneral.anio.desc(), MedidaGeneral.mes.asc())
+        .all()
+    )
+
+    anios = sorted({int(anio) for anio, _mes in rows}, reverse=True)
+    meses = sorted({int(mes) for _anio, mes in rows})
+
+    return anios, meses
