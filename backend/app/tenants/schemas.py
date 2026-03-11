@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import json
 
-from pydantic import BaseModel, EmailStr, ConfigDict  # type: ignore[reportMissingImports]
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator  # type: ignore[reportMissingImports]
 
 
 # ----- MODELOS PÚBLICOS (USUARIOS) -----
@@ -62,6 +63,44 @@ class UserRead(UserBase):
 
     # ✅ NUEVO: overrides del tema UI
     ui_theme_overrides: Optional[Dict[str, Any]] = None
+
+    @field_validator("ui_theme_overrides", mode="before")
+    @classmethod
+    def normalize_ui_theme_overrides(cls, v: Any) -> Optional[Dict[str, Any]]:
+        """
+        Normaliza valores heredados/raros de BD para evitar errores de serialización.
+
+        Casos soportados:
+        - None -> None
+        - dict -> dict
+        - "null", "None", "" -> None
+        - string JSON válido -> dict si representa un objeto
+        - cualquier otra cosa -> None
+        """
+        if v is None:
+            return None
+
+        if isinstance(v, dict):
+            return v
+
+        if isinstance(v, str):
+            raw = v.strip()
+            if raw == "":
+                return None
+            if raw.lower() in ("null", "none"):
+                return None
+
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                return None
+
+            if isinstance(parsed, dict):
+                return parsed
+
+            return None
+
+        return None
 
     model_config = ConfigDict(from_attributes=True)
 
