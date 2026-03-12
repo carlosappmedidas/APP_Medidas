@@ -198,3 +198,9 @@ class MedidaPS(TimestampMixin, Base):
 
 # ✅ Import “side-effect” para registrar el modelo de contribuciones M1 en metadata
 from app.measures.m1_models import M1PeriodContribution  # noqa: F401,E402
+
+# ✅ Import “side-effect” para registrar el modelo de contribuciones PS en metadata
+from app.measures.ps_models import PSPeriodContribution  # noqa: F401,E402
+
+# ✅ Import “side-effect” para registrar el modelo de detalle PS en metadata
+from app.measures.ps_detail_models import PSPeriodDetail  # noqa: F401,E402

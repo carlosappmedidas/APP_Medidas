@@ -24,7 +24,7 @@ from sqlalchemy import select
 
 from app.core.db import get_db
 from app.core.auth import get_current_user
-from app.core.config import get_settings  # ✅ NUEVO (configurable por .env)
+from app.core.config import get_settings
 from app.ingestion.models import IngestionFile
 from app.ingestion.schemas import (
     IngestionFileCreate,
@@ -94,13 +94,12 @@ def _find_existing_ingestion_file(
     tipo: str,
     anio: int,
     mes: int,
-    filename: str | None = None,  # ✅ NUEVO: solo se usa para BALD
+    filename: str | None = None,
 ) -> IngestionFile | None:
     """
-    - Para la mayoría de tipos: seguimos la lógica actual (1 fichero por tipo/periodo/empresa/tenant).
-    - Para BALD: permitimos varios ficheros en el mismo periodo, por lo que buscamos también por filename
-      (si viene informado). Así cada BALD distinto genera un ingestion_id distinto, y solo se "reusa"
-      si subes el mismo filename.
+    - Para la mayoría de tipos: 1 fichero lógico por tenant/empresa/tipo/anio/mes.
+    - Para BALD: permitimos varios en el mismo periodo, así que además diferenciamos por filename.
+    - Si por histórico antiguo existen duplicados, cogemos el más reciente.
     """
     q = (
         db.query(IngestionFile)
@@ -116,18 +115,10 @@ def _find_existing_ingestion_file(
     if (tipo or "").upper() == "BALD" and filename:
         q = q.filter(IngestionFile.filename == filename)
 
-    return q.first()
+    return q.order_by(IngestionFile.id.desc()).first()
 
 
-# ---------------------------------------------------------
-# ✅ NUEVO: helpers de borrado físico (sin afectar lógica)
-# ---------------------------------------------------------
 def _safe_unlink(storage_key: str | None) -> None:
-    """
-    Borra el fichero físico si existe.
-    - Nunca lanza excepción (para no romper flujo).
-    - Solo toca disco; no cambia estados ni DB.
-    """
     if not storage_key:
         return
     try:
@@ -135,14 +126,10 @@ def _safe_unlink(storage_key: str | None) -> None:
         if p.exists() and p.is_file():
             p.unlink()
     except Exception:
-        # Silencioso: el borrado es best-effort
         return
 
 
 def _extract_ingestion_warnings(obj: Any) -> list[Any]:
-    """
-    Lee warnings "en memoria" (p.ej. mg._ingestion_warnings) y normaliza a lista.
-    """
     try:
         w = getattr(obj, "_ingestion_warnings", None)
     except Exception:
@@ -166,8 +153,6 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
 ):
     tipo_norm = (tipo or "").upper()
-
-    # ✅ Solo tipado estático (sin cambiar lógica/runtime)
     tenant_id_int = cast(int, current_user.tenant_id)
 
     empresa = (
@@ -198,7 +183,6 @@ async def upload_file(
             detail=str(e),
         )
 
-    # ✅ FIX BALD:
     existing = _find_existing_ingestion_file(
         db,
         tenant_id=tenant_id_int,
@@ -233,15 +217,12 @@ async def upload_file(
         ex.tipo = tipo_norm
         ex.anio = anio
         ex.mes = mes
-
         ex.status = IngestionFile.STATUS_PENDING
         ex.rows_ok = 0
         ex.rows_error = 0
         ex.error_message = None
         ex.processed_at = None
         ex.updated_at = datetime.utcnow()
-
-        # ✅ NUEVO: reset avisos
         ex.warnings_json = None
 
         db.commit()
@@ -262,7 +243,6 @@ async def upload_file(
         "storage_key": storage_key,
         "status": IngestionFile.STATUS_PENDING,
         "uploaded_by": cast(int, current_user.id),
-        # ✅ NUEVO: sin avisos al crear
         "warnings_json": None,
     }
 
@@ -299,17 +279,47 @@ def register_file(
             detail="Empresa no encontrada para este tenant",
         )
 
+    tipo_norm = str(data.tipo).upper()
+
+    existing = _find_existing_ingestion_file(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=data.empresa_id,
+        tipo=tipo_norm,
+        anio=data.anio,
+        mes=data.mes,
+        filename=data.filename if tipo_norm == "BALD" else None,
+    )
+
+    if existing:
+        ex = cast(Any, existing)
+        ex.filename = data.filename
+        ex.storage_key = data.storage_key
+        ex.tipo = tipo_norm
+        ex.anio = data.anio
+        ex.mes = data.mes
+        ex.status = IngestionFile.STATUS_PENDING
+        ex.rows_ok = 0
+        ex.rows_error = 0
+        ex.error_message = None
+        ex.processed_at = None
+        ex.updated_at = datetime.utcnow()
+        ex.warnings_json = None
+
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     ingestion_data: dict[str, Any] = {
         "tenant_id": tenant_id_int,
         "empresa_id": data.empresa_id,
-        "tipo": data.tipo,
+        "tipo": tipo_norm,
         "anio": data.anio,
         "mes": data.mes,
         "filename": data.filename,
         "storage_key": data.storage_key,
         "status": IngestionFile.STATUS_PENDING,
         "uploaded_by": cast(int, current_user.id),
-        # ✅ NUEVO
         "warnings_json": None,
     }
 
@@ -477,9 +487,7 @@ def process_file(
             detail="El fichero no tiene storage_key; no se puede procesar",
         )
 
-    # ✅ Reset avisos al re-procesar
     ing.warnings_json = None
-
     ing.status = IngestionFile.STATUS_PROCESSING
     db.commit()
     db.refresh(ingestion)
@@ -493,10 +501,10 @@ def process_file(
         empresa_id = cast(int, ing.empresa_id)
         storage_key = cast(str, ing.storage_key)
 
-        m1_result_obj: Any | None = None
+        result_obj: Any | None = None
 
         if tipo == "BALD":
-            procesar_fichero_bald(
+            result_obj = procesar_fichero_bald(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -504,8 +512,7 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "M1":
-            # ✅ capturamos retorno para extraer warnings
-            m1_result_obj = procesar_fichero_m1_desde_csv(
+            result_obj = procesar_fichero_m1_desde_csv(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -513,7 +520,7 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "M1_AUTOCONSUMO":
-            procesar_fichero_m1_autoconsumo_desde_csv(
+            result_obj = procesar_fichero_m1_autoconsumo_desde_csv(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -521,7 +528,7 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "ACUMCIL":
-            procesar_fichero_acumcil_generacion(
+            result_obj = procesar_fichero_acumcil_generacion(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -529,7 +536,7 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "ACUM_H2_GRD":
-            procesar_fichero_acum_h2_grd_generacion(
+            result_obj = procesar_fichero_acum_h2_grd_generacion(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -537,7 +544,7 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "ACUM_H2_GEN":
-            procesar_fichero_acum_h2_gen_generacion(
+            result_obj = procesar_fichero_acum_h2_gen_generacion(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -545,7 +552,7 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "ACUM_H2_RDD_P2":
-            procesar_fichero_acum_h2_rdd_p2_frontera_dd(
+            result_obj = procesar_fichero_acum_h2_rdd_p2_frontera_dd(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -560,7 +567,7 @@ def process_file(
                 fichero=ingestion,
                 file_path=storage_key,
             )
-            procesar_fichero_acum_h2_rdd_pf_kwh(
+            result_obj = procesar_fichero_acum_h2_rdd_pf_kwh(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -568,7 +575,7 @@ def process_file(
                 file_path=storage_key,
             )
         elif tipo == "PS":
-            procesar_fichero_ps(
+            result_obj = procesar_fichero_ps(
                 db=db,
                 tenant_id=tenant_id,
                 empresa_id=empresa_id,
@@ -578,11 +585,9 @@ def process_file(
         else:
             raise ValueError(f"Tipo de fichero no soportado para procesado: {tipo}")
 
-        # ✅ Persistimos warnings si los hay (solo M1 de momento)
-        if m1_result_obj is not None:
-            warnings_list = _extract_ingestion_warnings(m1_result_obj)
-            if warnings_list:
-                ing.warnings_json = json.dumps(warnings_list, ensure_ascii=False)
+        warnings_list = _extract_ingestion_warnings(result_obj)
+        if warnings_list:
+            ing.warnings_json = json.dumps(warnings_list, ensure_ascii=False)
 
         ing.status = IngestionFile.STATUS_OK
         ing.rows_ok = int(ing.rows_ok or 0) + 1
