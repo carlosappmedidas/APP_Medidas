@@ -23,11 +23,36 @@ class DeleteIdsPayload(BaseModel):
     ids: list[int]
 
 
+def _parse_int_list_param(value: str | None) -> list[int]:
+    if not value:
+        return []
+
+    result: list[int] = []
+    for part in value.split(","):
+        s = part.strip()
+        if not s:
+            continue
+        try:
+            n = int(s)
+        except ValueError:
+            continue
+        result.append(n)
+
+    return list(dict.fromkeys(result))
+
+
+def _merge_single_and_multi(
+    *,
+    single_value: int | None,
+    multi_value: str | None,
+) -> list[int]:
+    values = _parse_int_list_param(multi_value)
+    if single_value is not None and single_value not in values:
+        values.append(single_value)
+    return values
+
+
 def _sanitize_value(value: Any):
-    """
-    Convierte NaN / infinitos en 0.0 para que sean JSON-compatibles.
-    Deja el resto tal cual.
-    """
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             return 0.0
@@ -42,10 +67,6 @@ def _sanitize_value(value: Any):
 
 
 def _sanitize_medida(medida_obj: Any) -> dict:
-    """
-    Convierte un objeto MedidaPS a dict, eliminando el estado interno
-    de SQLAlchemy y saneando NaN/inf en todos los campos numéricos.
-    """
     data = {k: v for k, v in medida_obj.__dict__.items() if not k.startswith("_")}
 
     for k, v in list(data.items()):
@@ -55,10 +76,6 @@ def _sanitize_medida(medida_obj: Any) -> dict:
 
 
 def _build_empresa_codigo(empresa: Empresa) -> str | None:
-    """
-    Construye el código corto tipo 0277 / 0336 a partir de
-    codigo_cnmc / codigo_ree / id.
-    """
     codigo_cnmc = cast(Optional[str], getattr(empresa, "codigo_cnmc", None))
     codigo_ree = cast(Optional[str], getattr(empresa, "codigo_ree", None))
 
@@ -140,7 +157,6 @@ def _ps_tarifa_filter(query, tarifa: str):
             | (MedidaPS.importe_tarifa_64td_eur.isnot(None))
         )
 
-    # tarifa desconocida: no filtramos (no rompemos)
     return query
 
 
@@ -149,12 +165,6 @@ def listar_medidas_ps(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Devuelve las filas de medidas_ps del tenant actual, ordenadas
-    del mes más reciente al más antiguo.
-
-    Añade empresa_codigo igual que en medidas_general.
-    """
     query = (
         db.query(MedidaPS, Empresa)
         .join(Empresa, MedidaPS.empresa_id == Empresa.id)
@@ -181,10 +191,6 @@ def listar_medidas_ps_todos_tenants(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Devuelve TODAS las filas de medidas_ps de TODOS los tenants.
-    Solo puede llamarlo un superusuario de plataforma.
-    """
     query = (
         db.query(MedidaPS, Empresa)
         .join(Empresa, MedidaPS.empresa_id == Empresa.id)
@@ -218,13 +224,6 @@ def borrar_medidas_ps_todos_tenants(
     mes: int | None = None,
     tarifa: str | None = None,
 ):
-    """
-    Borra medidas_ps de TODOS los tenants.
-
-    Modo A: enviar body JSON: { "ids": [1,2,3] } -> borra SOLO esos IDs.
-    Modo B: filtrar por tenant_id/empresa_id/anio/mes/tarifa.
-    Si no se pasa nada, borra TODO.
-    """
     query = db.query(MedidaPS)
 
     if payload is not None and isinstance(payload.ids, list) and len(payload.ids) > 0:
@@ -265,13 +264,6 @@ def medidas_ps_filters(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Devuelve opciones completas para filtros PS (tenant actual):
-      - empresas: [{id, codigo}]
-      - anios: [..]
-      - meses: [..]
-      - tarifas: ["20td","30td",...]
-    """
     tenant_id = current_user.tenant_id
 
     empresas_rows = (
@@ -282,12 +274,16 @@ def medidas_ps_filters(
             MedidaPS.tenant_id == tenant_id,
         )
         .distinct()
-        .order_by(Empresa.id.asc())
+        .order_by(Empresa.nombre.asc(), Empresa.id.asc())
         .all()
     )
 
     empresas = [
-        {"id": cast(int, getattr(e, "id")), "codigo": _build_empresa_codigo(e)}
+        {
+            "id": cast(int, getattr(e, "id")),
+            "codigo": _build_empresa_codigo(e),
+            "nombre": cast(Optional[str], getattr(e, "nombre", None)),
+        }
         for e in empresas_rows
     ]
 
@@ -348,14 +344,11 @@ def medidas_ps_filters_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Opciones filtros PS para Sistema (todos los tenants).
-    """
     empresas_rows = (
         db.query(Empresa)
         .join(MedidaPS, MedidaPS.empresa_id == Empresa.id)
         .distinct()
-        .order_by(Empresa.tenant_id.asc(), Empresa.id.asc())
+        .order_by(Empresa.tenant_id.asc(), Empresa.nombre.asc(), Empresa.id.asc())
         .all()
     )
 
@@ -363,6 +356,7 @@ def medidas_ps_filters_all(
         {
             "id": cast(int, getattr(e, "id")),
             "codigo": _build_empresa_codigo(e),
+            "nombre": cast(Optional[str], getattr(e, "nombre", None)),
             "tenant_id": cast(int, getattr(e, "tenant_id")),
         }
         for e in empresas_rows
@@ -424,13 +418,17 @@ def listar_medidas_ps_page(
     anio: int | None = Query(default=None),
     mes: int | None = Query(default=None),
     tarifa: str | None = Query(default=None),
+    empresa_ids: str | None = Query(default=None),
+    anios: str | None = Query(default=None),
+    meses: str | None = Query(default=None),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ):
-    """
-    Paginación real para medidas_ps (tenant actual).
-    """
     tenant_id = current_user.tenant_id
+
+    empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
+    anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
+    meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
 
     base = (
         db.query(MedidaPS, Empresa)
@@ -441,22 +439,22 @@ def listar_medidas_ps_page(
         )
     )
 
-    if empresa_id is not None:
-        base = base.filter(MedidaPS.empresa_id == empresa_id)
-    if anio is not None:
-        base = base.filter(MedidaPS.anio == anio)
-    if mes is not None:
-        base = base.filter(MedidaPS.mes == mes)
+    if empresa_ids_list:
+        base = base.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        base = base.filter(MedidaPS.anio.in_(anios_list))
+    if meses_list:
+        base = base.filter(MedidaPS.mes.in_(meses_list))
     if tarifa:
         base = _ps_tarifa_filter(base, tarifa)
 
     total_q = db.query(func.count(MedidaPS.id)).filter(MedidaPS.tenant_id == tenant_id)
-    if empresa_id is not None:
-        total_q = total_q.filter(MedidaPS.empresa_id == empresa_id)
-    if anio is not None:
-        total_q = total_q.filter(MedidaPS.anio == anio)
-    if mes is not None:
-        total_q = total_q.filter(MedidaPS.mes == mes)
+    if empresa_ids_list:
+        total_q = total_q.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        total_q = total_q.filter(MedidaPS.anio.in_(anios_list))
+    if meses_list:
+        total_q = total_q.filter(MedidaPS.mes.in_(meses_list))
     if tarifa:
         total_q = _ps_tarifa_filter(total_q, tarifa)
 
@@ -498,34 +496,43 @@ def listar_medidas_ps_all_page(
     anio: int | None = Query(default=None),
     mes: int | None = Query(default=None),
     tarifa: str | None = Query(default=None),
+    tenant_ids: str | None = Query(default=None),
+    empresa_ids: str | None = Query(default=None),
+    anios: str | None = Query(default=None),
+    meses: str | None = Query(default=None),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ):
-    """
-    Paginación real para medidas_ps (todos los tenants) - SOLO superuser.
-    """
+    tenant_ids_list = _merge_single_and_multi(single_value=tenant_id, multi_value=tenant_ids)
+    empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
+    anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
+    meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+
     base = db.query(MedidaPS, Empresa).join(Empresa, MedidaPS.empresa_id == Empresa.id)
 
-    if tenant_id is not None:
-        base = base.filter(MedidaPS.tenant_id == tenant_id, Empresa.tenant_id == tenant_id)
-    if empresa_id is not None:
-        base = base.filter(MedidaPS.empresa_id == empresa_id)
-    if anio is not None:
-        base = base.filter(MedidaPS.anio == anio)
-    if mes is not None:
-        base = base.filter(MedidaPS.mes == mes)
+    if tenant_ids_list:
+        base = base.filter(
+            MedidaPS.tenant_id.in_(tenant_ids_list),
+            Empresa.tenant_id.in_(tenant_ids_list),
+        )
+    if empresa_ids_list:
+        base = base.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        base = base.filter(MedidaPS.anio.in_(anios_list))
+    if meses_list:
+        base = base.filter(MedidaPS.mes.in_(meses_list))
     if tarifa:
         base = _ps_tarifa_filter(base, tarifa)
 
     total_q = db.query(func.count(MedidaPS.id))
-    if tenant_id is not None:
-        total_q = total_q.filter(MedidaPS.tenant_id == tenant_id)
-    if empresa_id is not None:
-        total_q = total_q.filter(MedidaPS.empresa_id == empresa_id)
-    if anio is not None:
-        total_q = total_q.filter(MedidaPS.anio == anio)
-    if mes is not None:
-        total_q = total_q.filter(MedidaPS.mes == mes)
+    if tenant_ids_list:
+        total_q = total_q.filter(MedidaPS.tenant_id.in_(tenant_ids_list))
+    if empresa_ids_list:
+        total_q = total_q.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        total_q = total_q.filter(MedidaPS.anio.in_(anios_list))
+    if meses_list:
+        total_q = total_q.filter(MedidaPS.mes.in_(meses_list))
     if tarifa:
         total_q = _ps_tarifa_filter(total_q, tarifa)
 

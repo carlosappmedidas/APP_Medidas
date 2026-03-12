@@ -7,11 +7,7 @@ import type { MedidaGeneral } from "../types";
 
 type MedidasProps = {
   token: string | null;
-
-  // tenant -> /medidas/general/*
-  // all    -> /medidas/general/all/*   (solo superuser)
   scope?: "tenant" | "all";
-
   columnOrder?: string[];
   setColumnOrder?: (order: string[]) => void;
   hiddenColumns?: string[];
@@ -21,7 +17,8 @@ type MedidasProps = {
 type EmpresaFilterOption = {
   id: number;
   codigo?: string | null;
-  tenant_id?: number | null; // solo para scope=all (no es obligatorio)
+  nombre?: string | null;
+  tenant_id?: number | null;
 };
 
 type GeneralFiltersResponse = {
@@ -38,7 +35,6 @@ type PaginatedResponse = {
   total_pages: number;
 };
 
-// ---------- Helpers ----------
 const formatNumberEs = (v: number | null | undefined, decimals: number = 2): string => {
   if (v == null || Number.isNaN(v)) return "-";
   return new Intl.NumberFormat("es-ES", {
@@ -60,332 +56,57 @@ export type ColumnDefGeneral = {
   render: (m: MedidaGeneral | any) => any;
 };
 
-// TODAS las columnas base (tenant view)
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
-  {
-    id: "empresa_id",
-    label: "Empresa ID",
-    align: "left",
-    group: "Identificación",
-    render: (m) => m.empresa_id,
-  },
-  {
-    id: "empresa_codigo",
-    label: "Código empresa",
-    align: "left",
-    group: "Identificación",
-    render: (m) => (m as any).empresa_codigo ?? "-",
-  },
-  {
-    id: "punto_id",
-    label: "Punto",
-    align: "left",
-    group: "Identificación",
-    render: (m) => m.punto_id,
-  },
-  {
-    id: "anio",
-    label: "Año",
-    align: "left",
-    group: "Identificación",
-    render: (m) => m.anio,
-  },
-  {
-    id: "mes",
-    label: "Mes",
-    align: "left",
-    group: "Identificación",
-    render: (m) => m.mes.toString().padStart(2, "0"),
-  },
+  { id: "empresa_id", label: "Empresa ID", align: "left", group: "Identificación", render: (m) => m.empresa_id },
+  { id: "empresa_codigo", label: "Código empresa", align: "left", group: "Identificación", render: (m) => (m as any).empresa_codigo ?? "-" },
+  { id: "punto_id", label: "Punto", align: "left", group: "Identificación", render: (m) => m.punto_id },
+  { id: "anio", label: "Año", align: "left", group: "Identificación", render: (m) => m.anio },
+  { id: "mes", label: "Mes", align: "left", group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
 
-  {
-    id: "energia_bruta_facturada",
-    label: "E bruta facturada",
-    align: "right",
-    group: "General",
-    render: (m) => formatNumberEs(m.energia_bruta_facturada),
-  },
-  {
-    id: "energia_autoconsumo_kwh",
-    label: "E autoconsumo",
-    align: "right",
-    group: "General",
-    render: (m) => formatNumberEs(m.energia_autoconsumo_kwh),
-  },
-  {
-    id: "energia_neta_facturada_kwh",
-    label: "E neta facturada",
-    align: "right",
-    group: "General",
-    render: (m) => formatNumberEs(m.energia_neta_facturada_kwh),
-  },
-  {
-    id: "energia_generada_kwh",
-    label: "E generada",
-    align: "right",
-    group: "General",
-    render: (m) => formatNumberEs(m.energia_generada_kwh),
-  },
-  {
-    id: "energia_frontera_dd_kwh",
-    label: "E frontera DD",
-    align: "right",
-    group: "General",
-    render: (m) => formatNumberEs(m.energia_frontera_dd_kwh),
-  },
-  {
-    id: "energia_pf_final_kwh",
-    label: "E PF final",
-    align: "right",
-    group: "General",
-    render: (m) => formatNumberEs(m.energia_pf_final_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_kwh",
-    label: "Pérdidas E facturada (kWh)",
-    align: "right",
-    group: "General",
-    render: (m) => formatNumberEs(m.perdidas_e_facturada_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_pct",
-    label: "Pérdidas E facturada (%)",
-    align: "right",
-    group: "General",
-    render: (m) => formatPercentEs(m.perdidas_e_facturada_pct),
-  },
+  { id: "energia_bruta_facturada", label: "E bruta facturada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_bruta_facturada) },
+  { id: "energia_autoconsumo_kwh", label: "E autoconsumo", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_autoconsumo_kwh) },
+  { id: "energia_neta_facturada_kwh", label: "E neta facturada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_neta_facturada_kwh) },
+  { id: "energia_generada_kwh", label: "E generada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_generada_kwh) },
+  { id: "energia_frontera_dd_kwh", label: "E frontera DD", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_frontera_dd_kwh) },
+  { id: "energia_pf_final_kwh", label: "E PF final", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_pf_final_kwh) },
+  { id: "perdidas_e_facturada_kwh", label: "Pérdidas E facturada (kWh)", align: "right", group: "General", render: (m) => formatNumberEs(m.perdidas_e_facturada_kwh) },
+  { id: "perdidas_e_facturada_pct", label: "Pérdidas E facturada (%)", align: "right", group: "General", render: (m) => formatPercentEs(m.perdidas_e_facturada_pct) },
 
-  // M2
-  {
-    id: "energia_publicada_m2_kwh",
-    label: "E publ M2",
-    align: "right",
-    group: "M2",
-    render: (m) => formatNumberEs(m.energia_publicada_m2_kwh),
-  },
-  {
-    id: "energia_autoconsumo_m2_kwh",
-    label: "E autoc M2",
-    align: "right",
-    group: "M2",
-    render: (m) => formatNumberEs(m.energia_autoconsumo_m2_kwh),
-  },
-  {
-    id: "energia_pf_m2_kwh",
-    label: "E PF M2",
-    align: "right",
-    group: "M2",
-    render: (m) => formatNumberEs(m.energia_pf_m2_kwh),
-  },
-  {
-    id: "energia_frontera_dd_m2_kwh",
-    label: "E front DD M2",
-    align: "right",
-    group: "M2",
-    render: (m) => formatNumberEs(m.energia_frontera_dd_m2_kwh),
-  },
-  {
-    id: "energia_generada_m2_kwh",
-    label: "E gen M2",
-    align: "right",
-    group: "M2",
-    render: (m) => formatNumberEs(m.energia_generada_m2_kwh),
-  },
-  {
-    id: "energia_neta_facturada_m2_kwh",
-    label: "E neta M2",
-    align: "right",
-    group: "M2",
-    render: (m) => formatNumberEs(m.energia_neta_facturada_m2_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_m2_kwh",
-    label: "Pérdidas M2 (kWh)",
-    align: "right",
-    group: "M2",
-    render: (m) => formatNumberEs(m.perdidas_e_facturada_m2_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_m2_pct",
-    label: "Pérdidas M2 (%)",
-    align: "right",
-    group: "M2",
-    render: (m) => formatPercentEs(m.perdidas_e_facturada_m2_pct),
-  },
+  { id: "energia_publicada_m2_kwh", label: "E publ M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_publicada_m2_kwh) },
+  { id: "energia_autoconsumo_m2_kwh", label: "E autoc M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_autoconsumo_m2_kwh) },
+  { id: "energia_pf_m2_kwh", label: "E PF M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_pf_m2_kwh) },
+  { id: "energia_frontera_dd_m2_kwh", label: "E front DD M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_frontera_dd_m2_kwh) },
+  { id: "energia_generada_m2_kwh", label: "E gen M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_generada_m2_kwh) },
+  { id: "energia_neta_facturada_m2_kwh", label: "E neta M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_neta_facturada_m2_kwh) },
+  { id: "perdidas_e_facturada_m2_kwh", label: "Pérdidas M2 (kWh)", align: "right", group: "M2", render: (m) => formatNumberEs(m.perdidas_e_facturada_m2_kwh) },
+  { id: "perdidas_e_facturada_m2_pct", label: "Pérdidas M2 (%)", align: "right", group: "M2", render: (m) => formatPercentEs(m.perdidas_e_facturada_m2_pct) },
 
-  // M7
-  {
-    id: "energia_publicada_m7_kwh",
-    label: "E publ M7",
-    align: "right",
-    group: "M7",
-    render: (m) => formatNumberEs(m.energia_publicada_m7_kwh),
-  },
-  {
-    id: "energia_autoconsumo_m7_kwh",
-    label: "E autoc M7",
-    align: "right",
-    group: "M7",
-    render: (m) => formatNumberEs(m.energia_autoconsumo_m7_kwh),
-  },
-  {
-    id: "energia_pf_m7_kwh",
-    label: "E PF M7",
-    align: "right",
-    group: "M7",
-    render: (m) => formatNumberEs(m.energia_pf_m7_kwh),
-  },
-  {
-    id: "energia_frontera_dd_m7_kwh",
-    label: "E front DD M7",
-    align: "right",
-    group: "M7",
-    render: (m) => formatNumberEs(m.energia_frontera_dd_m7_kwh),
-  },
-  {
-    id: "energia_generada_m7_kwh",
-    label: "E gen M7",
-    align: "right",
-    group: "M7",
-    render: (m) => formatNumberEs(m.energia_generada_m7_kwh),
-  },
-  {
-    id: "energia_neta_facturada_m7_kwh",
-    label: "E neta M7",
-    align: "right",
-    group: "M7",
-    render: (m) => formatNumberEs(m.energia_neta_facturada_m7_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_m7_kwh",
-    label: "Pérdidas M7 (kWh)",
-    align: "right",
-    group: "M7",
-    render: (m) => formatNumberEs(m.perdidas_e_facturada_m7_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_m7_pct",
-    label: "Pérdidas M7 (%)",
-    align: "right",
-    group: "M7",
-    render: (m) => formatPercentEs(m.perdidas_e_facturada_m7_pct),
-  },
+  { id: "energia_publicada_m7_kwh", label: "E publ M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_publicada_m7_kwh) },
+  { id: "energia_autoconsumo_m7_kwh", label: "E autoc M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_autoconsumo_m7_kwh) },
+  { id: "energia_pf_m7_kwh", label: "E PF M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_pf_m7_kwh) },
+  { id: "energia_frontera_dd_m7_kwh", label: "E front DD M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_frontera_dd_m7_kwh) },
+  { id: "energia_generada_m7_kwh", label: "E gen M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_generada_m7_kwh) },
+  { id: "energia_neta_facturada_m7_kwh", label: "E neta M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_neta_facturada_m7_kwh) },
+  { id: "perdidas_e_facturada_m7_kwh", label: "Pérdidas M7 (kWh)", align: "right", group: "M7", render: (m) => formatNumberEs(m.perdidas_e_facturada_m7_kwh) },
+  { id: "perdidas_e_facturada_m7_pct", label: "Pérdidas M7 (%)", align: "right", group: "M7", render: (m) => formatPercentEs(m.perdidas_e_facturada_m7_pct) },
 
-  // M11
-  {
-    id: "energia_publicada_m11_kwh",
-    label: "E publ M11",
-    align: "right",
-    group: "M11",
-    render: (m) => formatNumberEs(m.energia_publicada_m11_kwh),
-  },
-  {
-    id: "energia_autoconsumo_m11_kwh",
-    label: "E autoc M11",
-    align: "right",
-    group: "M11",
-    render: (m) => formatNumberEs(m.energia_autoconsumo_m11_kwh),
-  },
-  {
-    id: "energia_pf_m11_kwh",
-    label: "E PF M11",
-    align: "right",
-    group: "M11",
-    render: (m) => formatNumberEs(m.energia_pf_m11_kwh),
-  },
-  {
-    id: "energia_frontera_dd_m11_kwh",
-    label: "E front DD M11",
-    align: "right",
-    group: "M11",
-    render: (m) => formatNumberEs(m.energia_frontera_dd_m11_kwh),
-  },
-  {
-    id: "energia_generada_m11_kwh",
-    label: "E gen M11",
-    align: "right",
-    group: "M11",
-    render: (m) => formatNumberEs(m.energia_generada_m11_kwh),
-  },
-  {
-    id: "energia_neta_facturada_m11_kwh",
-    label: "E neta M11",
-    align: "right",
-    group: "M11",
-    render: (m) => formatNumberEs(m.energia_neta_facturada_m11_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_m11_kwh",
-    label: "Pérdidas M11 (kWh)",
-    align: "right",
-    group: "M11",
-    render: (m) => formatNumberEs(m.perdidas_e_facturada_m11_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_m11_pct",
-    label: "Pérdidas M11 (%)",
-    align: "right",
-    group: "M11",
-    render: (m) => formatPercentEs(m.perdidas_e_facturada_m11_pct),
-  },
+  { id: "energia_publicada_m11_kwh", label: "E publ M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_publicada_m11_kwh) },
+  { id: "energia_autoconsumo_m11_kwh", label: "E autoc M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_autoconsumo_m11_kwh) },
+  { id: "energia_pf_m11_kwh", label: "E PF M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_pf_m11_kwh) },
+  { id: "energia_frontera_dd_m11_kwh", label: "E front DD M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_frontera_dd_m11_kwh) },
+  { id: "energia_generada_m11_kwh", label: "E gen M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_generada_m11_kwh) },
+  { id: "energia_neta_facturada_m11_kwh", label: "E neta M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_neta_facturada_m11_kwh) },
+  { id: "perdidas_e_facturada_m11_kwh", label: "Pérdidas M11 (kWh)", align: "right", group: "M11", render: (m) => formatNumberEs(m.perdidas_e_facturada_m11_kwh) },
+  { id: "perdidas_e_facturada_m11_pct", label: "Pérdidas M11 (%)", align: "right", group: "M11", render: (m) => formatPercentEs(m.perdidas_e_facturada_m11_pct) },
 
-  // ART15
-  {
-    id: "energia_publicada_art15_kwh",
-    label: "E publ ART15",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatNumberEs(m.energia_publicada_art15_kwh),
-  },
-  {
-    id: "energia_autoconsumo_art15_kwh",
-    label: "E autoc ART15",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatNumberEs(m.energia_autoconsumo_art15_kwh),
-  },
-  {
-    id: "energia_pf_art15_kwh",
-    label: "E PF ART15",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatNumberEs(m.energia_pf_art15_kwh),
-  },
-  {
-    id: "energia_frontera_dd_art15_kwh",
-    label: "E front DD ART15",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatNumberEs(m.energia_frontera_dd_art15_kwh),
-  },
-  {
-    id: "energia_generada_art15_kwh",
-    label: "E gen ART15",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatNumberEs(m.energia_generada_art15_kwh),
-  },
-  {
-    id: "energia_neta_facturada_art15_kwh",
-    label: "E neta ART15",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatNumberEs(m.energia_neta_facturada_art15_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_art15_kwh",
-    label: "Pérdidas ART15 (kWh)",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatNumberEs(m.perdidas_e_facturada_art15_kwh),
-  },
-  {
-    id: "perdidas_e_facturada_art15_pct",
-    label: "Pérdidas ART15 (%)",
-    align: "right",
-    group: "ART15",
-    render: (m) => formatPercentEs(m.perdidas_e_facturada_art15_pct),
-  },
+  { id: "energia_publicada_art15_kwh", label: "E publ ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_publicada_art15_kwh) },
+  { id: "energia_autoconsumo_art15_kwh", label: "E autoc ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_autoconsumo_art15_kwh) },
+  { id: "energia_pf_art15_kwh", label: "E PF ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_pf_art15_kwh) },
+  { id: "energia_frontera_dd_art15_kwh", label: "E front DD ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_frontera_dd_art15_kwh) },
+  { id: "energia_generada_art15_kwh", label: "E gen ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_generada_art15_kwh) },
+  { id: "energia_neta_facturada_art15_kwh", label: "E neta ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_neta_facturada_art15_kwh) },
+  { id: "perdidas_e_facturada_art15_kwh", label: "Pérdidas ART15 (kWh)", align: "right", group: "ART15", render: (m) => formatNumberEs(m.perdidas_e_facturada_art15_kwh) },
+  { id: "perdidas_e_facturada_art15_pct", label: "Pérdidas ART15 (%)", align: "right", group: "ART15", render: (m) => formatPercentEs(m.perdidas_e_facturada_art15_pct) },
 ];
 
 export const COLUMNS_GENERAL_META = ALL_COLUMNS_GENERAL.map((c) => ({
@@ -394,7 +115,6 @@ export const COLUMNS_GENERAL_META = ALL_COLUMNS_GENERAL.map((c) => ({
   group: c.group,
 }));
 
-// ---------- Modal simple (inline) ----------
 function ConfirmDeleteModalInline({
   open,
   title,
@@ -446,6 +166,155 @@ function ConfirmDeleteModalInline({
   );
 }
 
+type MultiSelectOption = {
+  value: string;
+  label: string;
+};
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selectedValues,
+  onChange,
+  disabled = false,
+  placeholder = "Todas",
+}: {
+  label: string;
+  options: MultiSelectOption[];
+  selectedValues: string[];
+  onChange: (values: string[]) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedLabels = useMemo(() => {
+    const selectedSet = new Set(selectedValues);
+    return options.filter((o) => selectedSet.has(o.value)).map((o) => o.label);
+  }, [options, selectedValues]);
+
+  const buttonText = useMemo(() => {
+    if (selectedValues.length === 0) return placeholder;
+    if (selectedValues.length <= 2) return selectedLabels.join(", ");
+    return `${selectedValues.length} seleccionados`;
+  }, [placeholder, selectedLabels, selectedValues.length]);
+
+  const toggleValue = (value: string) => {
+    if (selectedValues.includes(value)) {
+      onChange(selectedValues.filter((v) => v !== value));
+    } else {
+      onChange([...selectedValues, value]);
+    }
+  };
+
+  const allSelected = options.length > 0 && selectedValues.length === options.length;
+
+  const toggleAll = () => {
+    if (allSelected) onChange([]);
+    else onChange(options.map((o) => o.value));
+  };
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <label className="ui-label">{label}</label>
+
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="ui-select flex w-full items-center justify-between text-left text-[10px]"
+        style={{
+          minHeight: 30,
+          paddingTop: 4,
+          paddingBottom: 4,
+          paddingLeft: 8,
+          paddingRight: 8,
+          lineHeight: 1.15,
+        }}
+      >
+        <span className="truncate">{buttonText}</span>
+        <span className="ml-2 shrink-0 ui-muted text-[10px]">{open ? "▴" : "▾"}</span>
+      </button>
+
+      {open && !disabled && (
+        <div
+          className="absolute z-30 mt-1.5 w-full rounded-xl border p-2 shadow-lg"
+          style={{
+            background: "var(--card-bg)",
+            borderColor: "var(--card-border)",
+          }}
+        >
+          <div className="mb-2 border-b pb-2" style={{ borderColor: "var(--card-border)" }}>
+            <label className="flex cursor-pointer items-center gap-2 text-[10px]">
+              <input
+                type="checkbox"
+                className="ui-checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+              />
+              <span>Seleccionar todo</span>
+            </label>
+          </div>
+
+          <div className="max-h-52 overflow-y-auto space-y-1">
+            {options.length === 0 ? (
+              <div className="px-2 py-2 text-[10px] ui-muted">Sin opciones</div>
+            ) : (
+              options.map((opt) => (
+                <label
+                  key={opt.value}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[10px] hover:bg-[var(--field-bg-soft)]"
+                >
+                  <input
+                    type="checkbox"
+                    className="ui-checkbox"
+                    checked={selectedValues.includes(opt.value)}
+                    onChange={() => toggleValue(opt.value)}
+                  />
+                  <span className="truncate">{opt.label}</span>
+                </label>
+              ))
+            )}
+          </div>
+
+          <div
+            className="mt-2 flex items-center justify-end gap-2 border-t pt-2"
+            style={{ borderColor: "var(--card-border)" }}
+          >
+            <button
+              type="button"
+              className="ui-btn ui-btn-outline ui-btn-xs"
+              onClick={() => onChange([])}
+            >
+              Limpiar
+            </button>
+            <button
+              type="button"
+              className="ui-btn ui-btn-primary ui-btn-xs"
+              onClick={() => setOpen(false)}
+            >
+              Aplicar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MedidasGeneralSection({
   token,
   scope = "tenant",
@@ -462,28 +331,23 @@ export default function MedidasGeneralSection({
 
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  // filtros
-  const [filtroTenant, setFiltroTenant] = useState<string>(""); // solo Sistema
-  const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("");
-  const [filtroAnio, setFiltroAnio] = useState<string>("");
-  const [filtroMes, setFiltroMes] = useState<string>("");
+  const [filtroTenant, setFiltroTenant] = useState<string>("");
+  const [filtroEmpresaIds, setFiltroEmpresaIds] = useState<string[]>([]);
+  const [filtroAnios, setFiltroAnios] = useState<string[]>([]);
+  const [filtroMeses, setFiltroMeses] = useState<string[]>([]);
 
-  // opciones filtros (PRO, desde backend)
   const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>([]);
   const [opcionesAnio, setOpcionesAnio] = useState<number[]>([]);
   const [opcionesMes, setOpcionesMes] = useState<number[]>([]);
 
-  // paginación real (backend)
-  const [pageSize, setPageSize] = useState<number>(50);
+  const [pageSize, setPageSize] = useState<number>(20);
   const [page, setPage] = useState<number>(0);
   const [totalFilas, setTotalFilas] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
 
-  // ajustes columnas
   const [showAdjust, setShowAdjust] = useState<boolean>(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  // ✅ selección + borrar (solo Sistema)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -491,7 +355,6 @@ export default function MedidasGeneralSection({
 
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
 
-  // columnas: en Sistema añadimos tenant_id al inicio (sin tocar el resto)
   const systemTenantColumn: ColumnDefGeneral = useMemo(
     () => ({
       id: "tenant_id",
@@ -509,8 +372,6 @@ export default function MedidasGeneralSection({
 
   const safeColumnOrder = useMemo(() => {
     if (Array.isArray(columnOrder) && columnOrder.length > 0) return columnOrder;
-    // si es sistema, el defaultOrder no incluye tenant_id, así que no lo forzamos en orden persistido;
-    // simplemente se añade por delante en columnas renderizadas.
     return defaultOrder;
   }, [columnOrder, defaultOrder]);
 
@@ -527,13 +388,16 @@ export default function MedidasGeneralSection({
   }, [safeColumnOrder, defaultOrder]);
 
   const filtrosActivosCount =
-    (isSistema && filtroTenant ? 1 : 0) + (filtroEmpresaId ? 1 : 0) + (filtroAnio ? 1 : 0) + (filtroMes ? 1 : 0);
+    (isSistema && filtroTenant ? 1 : 0) +
+    (filtroEmpresaIds.length > 0 ? 1 : 0) +
+    (filtroAnios.length > 0 ? 1 : 0) +
+    (filtroMeses.length > 0 ? 1 : 0);
 
   const clearFilters = () => {
     setFiltroTenant("");
-    setFiltroEmpresaId("");
-    setFiltroAnio("");
-    setFiltroMes("");
+    setFiltroEmpresaIds([]);
+    setFiltroAnios([]);
+    setFiltroMeses([]);
     setPage(0);
   };
 
@@ -573,9 +437,9 @@ export default function MedidasGeneralSection({
       params.set("page_size", String(pageSize));
 
       if (isSistema && filtroTenant) params.set("tenant_id", filtroTenant);
-      if (filtroEmpresaId) params.set("empresa_id", filtroEmpresaId);
-      if (filtroAnio) params.set("anio", filtroAnio);
-      if (filtroMes) params.set("mes", filtroMes);
+      if (filtroEmpresaIds.length > 0) params.set("empresa_ids", filtroEmpresaIds.join(","));
+      if (filtroAnios.length > 0) params.set("anios", filtroAnios.join(","));
+      if (filtroMeses.length > 0) params.set("meses", filtroMeses.join(","));
 
       const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
         headers: getAuthHeaders(token),
@@ -591,7 +455,6 @@ export default function MedidasGeneralSection({
 
       setHasLoadedOnce(true);
 
-      // ✅ en Sistema: limpiar selección cuando cambia dataset/página
       if (isSistema) setSelectedIds(new Set());
     } catch (err) {
       console.error("Error cargando medidas_general paginadas:", err);
@@ -606,7 +469,6 @@ export default function MedidasGeneralSection({
     }
   };
 
-  // AUTO: cuando cambia token/scope, recarga filtros y la primera página
   const bootKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) {
@@ -620,9 +482,9 @@ export default function MedidasGeneralSection({
       setOpcionesMes([]);
 
       setFiltroTenant("");
-      setFiltroEmpresaId("");
-      setFiltroAnio("");
-      setFiltroMes("");
+      setFiltroEmpresaIds([]);
+      setFiltroAnios([]);
+      setFiltroMeses([]);
 
       setPage(0);
       setTotalFilas(0);
@@ -641,21 +503,19 @@ export default function MedidasGeneralSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, scope]);
 
-  // filtros/pageSize -> reset a 0 y reload
   const filterKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) return;
 
-    const key = `${scope}::${filtroTenant}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}::${pageSize}`;
+    const key = `${scope}::${filtroTenant}::${filtroEmpresaIds.join(",")}::${filtroAnios.join(",")}::${filtroMeses.join(",")}::${pageSize}`;
     if (filterKeyRef.current === key) return;
     filterKeyRef.current = key;
 
     setPage(0);
     void handleLoadMedidas(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, scope, filtroTenant, filtroEmpresaId, filtroAnio, filtroMes, pageSize]);
+  }, [token, scope, filtroTenant, filtroEmpresaIds, filtroAnios, filtroMeses, pageSize]);
 
-  // page -> reload
   const pageKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) return;
@@ -668,7 +528,6 @@ export default function MedidasGeneralSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, page]);
 
-  // opciones tenant (solo Sistema)
   const opcionesTenant = useMemo(() => {
     if (!isSistema) return [];
     const tenants = new Set<number>();
@@ -678,7 +537,6 @@ export default function MedidasGeneralSection({
     return Array.from(tenants).sort((a, b) => a - b).map(String);
   }, [isSistema, opcionesEmpresa]);
 
-  // empresas filtradas por tenant (solo UX)
   const opcionesEmpresaFiltradas = useMemo(() => {
     if (!isSistema) return opcionesEmpresa;
     if (!filtroTenant) return opcionesEmpresa;
@@ -686,6 +544,30 @@ export default function MedidasGeneralSection({
     if (Number.isNaN(t)) return opcionesEmpresa;
     return opcionesEmpresa.filter((e) => e.tenant_id === t);
   }, [isSistema, opcionesEmpresa, filtroTenant]);
+
+  const empresaOptions = useMemo<MultiSelectOption[]>(() => {
+    const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;
+    return source.map((e) => ({
+      value: String(e.id),
+      label:
+        `${e.nombre ?? e.codigo ?? `Empresa ${e.id}`}` +
+        (isSistema && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""),
+    }));
+  }, [isSistema, opcionesEmpresa, opcionesEmpresaFiltradas]);
+
+  const anioOptions = useMemo<MultiSelectOption[]>(
+    () => opcionesAnio.map((anio) => ({ value: String(anio), label: String(anio) })),
+    [opcionesAnio]
+  );
+
+  const mesOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      opcionesMes.map((mes) => ({
+        value: String(mes),
+        label: mes.toString().padStart(2, "0"),
+      })),
+    [opcionesMes]
+  );
 
   const columnasPorId = useMemo(() => {
     const map = new Map<string, ColumnDefGeneral>();
@@ -696,23 +578,18 @@ export default function MedidasGeneralSection({
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefGeneral[] = [];
 
-    // En Sistema: tenant_id siempre delante (no editable)
     if (isSistema) {
       const tcol = columnasPorId.get("tenant_id");
       if (tcol) base.push(tcol);
     }
 
-    // resto: orden/hide como siempre (solo sobre columnas de ALL_COLUMNS_GENERAL)
     for (const id of safeColumnOrder) {
       const col = columnasPorId.get(id);
       if (col && col.id !== "tenant_id") base.push(col);
     }
 
     const faltantes = ALL_COLUMNS_GENERAL.filter((c) => !safeColumnOrder.includes(c.id));
-    const full = [
-      ...base,
-      ...faltantes.filter((c) => !base.some((b) => b.id === c.id)),
-    ];
+    const full = [...base, ...faltantes.filter((c) => !base.some((b) => b.id === c.id))];
 
     if (!safeHiddenColumns || safeHiddenColumns.length === 0) return full;
     return full.filter((c) => !safeHiddenColumns.includes(c.id));
@@ -724,7 +601,6 @@ export default function MedidasGeneralSection({
   const startIndex = totalFilas === 0 ? 0 : currentPage * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalFilas);
 
-  // ---- ajustes columnas: drag & drop + checks ----
   const handleDragStart = (index: number) => setDragIndex(index);
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
@@ -803,7 +679,6 @@ export default function MedidasGeneralSection({
     );
   };
 
-  // ✅ selección (solo Sistema, página actual)
   const currentPageIds = useMemo(() => {
     if (!isSistema) return [];
     const ids: number[] = [];
@@ -859,8 +734,6 @@ export default function MedidasGeneralSection({
     setDeleteError(null);
 
     try {
-      // Mantengo tu endpoint actual:
-      // DELETE /medidas/general/all/ids  body: { ids: number[] }
       const res = await fetch(`${API_BASE_URL}/medidas/general/all/ids`, {
         method: "DELETE",
         headers: {
@@ -955,15 +828,25 @@ export default function MedidasGeneralSection({
         )}
       </div>
 
-      {/* Filtros */}
-      <div className={isSistema ? "mb-4 grid gap-3 md:grid-cols-4" : "mb-4 grid gap-3 md:grid-cols-3"}>
+      <div className={isSistema ? "mb-4 grid gap-2 md:grid-cols-4" : "mb-4 grid gap-2 md:grid-cols-3"}>
         {isSistema && (
           <div>
             <label className="ui-label">Cliente</label>
             <select
-              className="ui-select"
+              className="ui-select text-[10px]"
+              style={{
+                minHeight: 30,
+                paddingTop: 4,
+                paddingBottom: 4,
+                paddingLeft: 8,
+                paddingRight: 8,
+                lineHeight: 1.15,
+              }}
               value={filtroTenant}
-              onChange={(e) => setFiltroTenant(e.target.value)}
+              onChange={(e) => {
+                setFiltroTenant(e.target.value);
+                setFiltroEmpresaIds([]);
+              }}
               disabled={!token || loading}
             >
               <option value="">Todos</option>
@@ -976,57 +859,32 @@ export default function MedidasGeneralSection({
           </div>
         )}
 
-        <div>
-          <label className="ui-label">Empresa</label>
-          <select
-            className="ui-select"
-            value={filtroEmpresaId}
-            onChange={(e) => setFiltroEmpresaId(e.target.value)}
-            disabled={!token || loading}
-          >
-            <option value="">Todas</option>
-            {(isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa).map((e) => (
-              <option key={`${e.tenant_id ?? "x"}-${e.id}`} value={String(e.id)}>
-                {(e.codigo ?? `Empresa ${e.id}`) + ` (ID ${e.id})`}
-                {isSistema && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Empresa"
+          options={empresaOptions}
+          selectedValues={filtroEmpresaIds}
+          onChange={setFiltroEmpresaIds}
+          disabled={!token || loading}
+          placeholder="Todas"
+        />
 
-        <div>
-          <label className="ui-label">Año</label>
-          <select
-            className="ui-select"
-            value={filtroAnio}
-            onChange={(e) => setFiltroAnio(e.target.value)}
-            disabled={!token || loading}
-          >
-            <option value="">Todos</option>
-            {opcionesAnio.map((anio) => (
-              <option key={anio} value={String(anio)}>
-                {anio}
-              </option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Año"
+          options={anioOptions}
+          selectedValues={filtroAnios}
+          onChange={setFiltroAnios}
+          disabled={!token || loading}
+          placeholder="Todos"
+        />
 
-        <div>
-          <label className="ui-label">Mes</label>
-          <select
-            className="ui-select"
-            value={filtroMes}
-            onChange={(e) => setFiltroMes(e.target.value)}
-            disabled={!token || loading}
-          >
-            <option value="">Todos</option>
-            {opcionesMes.map((mes) => (
-              <option key={mes} value={String(mes)}>
-                {mes.toString().padStart(2, "0")}
-              </option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Mes"
+          options={mesOptions}
+          selectedValues={filtroMeses}
+          onChange={setFiltroMeses}
+          disabled={!token || loading}
+          placeholder="Todos"
+        />
       </div>
 
       {canEditAdjustments && (
@@ -1062,24 +920,18 @@ export default function MedidasGeneralSection({
 
               <div className="flex gap-3">
                 <div className="flex-1 space-y-1">{firstIds.map((id, idx) => renderAdjustItem(id, idx))}</div>
-                <div className="flex-1 space-y-1">
-                  {secondIds.map((id, idx) => renderAdjustItem(id, third + idx))}
-                </div>
-                <div className="flex-1 space-y-1">
-                  {thirdIds.map((id, idx) => renderAdjustItem(id, 2 * third + idx))}
-                </div>
+                <div className="flex-1 space-y-1">{secondIds.map((id, idx) => renderAdjustItem(id, third + idx))}</div>
+                <div className="flex-1 space-y-1">{thirdIds.map((id, idx) => renderAdjustItem(id, 2 * third + idx))}</div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Tabla */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]">
           <thead className="ui-thead">
             <tr>
-              {/* ✅ Selección solo Sistema */}
               {isSistema && (
                 <th className="ui-th" style={{ width: 44 }}>
                   <input
@@ -1200,13 +1052,23 @@ export default function MedidasGeneralSection({
               <div className="flex items-center gap-2">
                 <span>Filas por página:</span>
                 <select
-                  className="ui-select w-auto px-2 py-1 text-[11px]"
+                  className="ui-select w-auto text-[10px]"
+                  style={{
+                    minHeight: 28,
+                    paddingTop: 3,
+                    paddingBottom: 3,
+                    paddingLeft: 8,
+                    paddingRight: 8,
+                    lineHeight: 1.1,
+                  }}
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value) || 10)}
+                  onChange={(e) => setPageSize(Number(e.target.value) || 20)}
                 >
+                  <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
+                  <option value={200}>200</option>
                 </select>
               </div>
 
@@ -1245,7 +1107,6 @@ export default function MedidasGeneralSection({
         )}
       </div>
 
-      {/* ✅ Confirmación borrado (solo Sistema) */}
       <ConfirmDeleteModalInline
         open={deleteOpen}
         title="Borrar medidas (General) · Sistema"

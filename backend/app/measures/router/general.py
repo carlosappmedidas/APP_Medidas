@@ -22,19 +22,40 @@ from app.measures.router.utils import (
 router = APIRouter(prefix="/general", tags=["medidas"])
 
 
+def _parse_int_list_param(value: str | None) -> list[int]:
+    if not value:
+        return []
+
+    result: list[int] = []
+    for part in value.split(","):
+        s = part.strip()
+        if not s:
+            continue
+        try:
+            n = int(s)
+        except ValueError:
+            continue
+        result.append(n)
+
+    return list(dict.fromkeys(result))
+
+
+def _merge_single_and_multi(
+    *,
+    single_value: int | None,
+    multi_value: str | None,
+) -> list[int]:
+    values = _parse_int_list_param(multi_value)
+    if single_value is not None and single_value not in values:
+        values.append(single_value)
+    return values
+
+
 @router.get("/")
 def listar_medidas_generales(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Devuelve las filas de medidas_general del tenant actual, ordenadas
-    del mes más reciente al más antiguo.
-
-    Además:
-      - sanea cualquier NaN/Infinity para que el JSON sea válido.
-      - añade empresa_codigo (ej. 0277, 0336...) a partir de Empresa.codigo_cnmc/codigo_ree.
-    """
     query = (
         db.query(MedidaGeneral, Empresa)
         .join(Empresa, MedidaGeneral.empresa_id == Empresa.id)
@@ -61,12 +82,6 @@ def listar_medidas_generales_todos_tenants(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Devuelve TODAS las filas de medidas_general de TODOS los tenants.
-    Solo puede llamarlo un superusuario de plataforma.
-
-    Aplica el mismo saneado (NaN/Infinity) y el mismo cálculo de empresa_codigo.
-    """
     query = (
         db.query(MedidaGeneral, Empresa)
         .join(Empresa, MedidaGeneral.empresa_id == Empresa.id)
@@ -98,16 +113,6 @@ def borrar_medidas_generales_todos_tenants(
     anio: int | None = None,
     mes: int | None = None,
 ):
-    """
-    Borra medidas_general de TODOS los tenants o filtrando por:
-      - tenant_id (opcional)
-      - empresa_id (opcional)
-      - anio (opcional)
-      - mes (opcional)
-
-    Si no se pasa ningún filtro, borra TODAS las medidas de la BBDD.
-    Solo puede llamarlo un superusuario de plataforma.
-    """
     query = db.query(MedidaGeneral)
 
     if tenant_id is not None:
@@ -146,10 +151,6 @@ def borrar_medidas_generales_todos_tenants_por_ids(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Borra medidas_general por IDs (modo Sistema).
-    Solo superusuario.
-    """
     ids = [int(x) for x in (payload.ids or []) if int(x) > 0]
     if not ids:
         return {"deleted": 0, "ids": []}
@@ -169,12 +170,6 @@ def medidas_general_filters(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Devuelve opciones completas para filtros (tenant actual):
-      - empresas: [{id, codigo}]
-      - anios: [..]
-      - meses: [..]
-    """
     tenant_id = current_user.tenant_id
 
     empresas_rows = (
@@ -190,7 +185,11 @@ def medidas_general_filters(
     )
 
     empresas = [
-        {"id": cast(int, getattr(e, "id")), "codigo": build_empresa_codigo(e)}
+        {
+            "id": cast(int, getattr(e, "id")),
+            "codigo": build_empresa_codigo(e),
+            "nombre": cast(str, getattr(e, "nombre", "")) or f"Empresa {getattr(e, 'id')}",
+        }
         for e in empresas_rows
     ]
 
@@ -226,9 +225,6 @@ def medidas_general_filters_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
-    """
-    Opciones de filtros para Sistema (todos los tenants).
-    """
     empresas_rows = (
         db.query(Empresa)
         .join(MedidaGeneral, MedidaGeneral.empresa_id == Empresa.id)
@@ -241,6 +237,7 @@ def medidas_general_filters_all(
         {
             "id": cast(int, getattr(e, "id")),
             "codigo": build_empresa_codigo(e),
+            "nombre": cast(str, getattr(e, "nombre", "")) or f"Empresa {getattr(e, 'id')}",
             "tenant_id": cast(int, getattr(e, "tenant_id")),
         }
         for e in empresas_rows
@@ -278,15 +275,17 @@ def listar_medidas_generales_page(
     empresa_id: int | None = Query(default=None),
     anio: int | None = Query(default=None),
     mes: int | None = Query(default=None),
+    empresa_ids: str | None = Query(default=None),
+    anios: str | None = Query(default=None),
+    meses: str | None = Query(default=None),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ):
-    """
-    Paginación real para medidas_general (tenant actual).
-    Respuesta:
-      { items, page, page_size, total, total_pages }
-    """
     tenant_id = current_user.tenant_id
+
+    empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
+    anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
+    meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
 
     base = (
         db.query(MedidaGeneral, Empresa)
@@ -297,20 +296,20 @@ def listar_medidas_generales_page(
         )
     )
 
-    if empresa_id is not None:
-        base = base.filter(MedidaGeneral.empresa_id == empresa_id)
-    if anio is not None:
-        base = base.filter(MedidaGeneral.anio == anio)
-    if mes is not None:
-        base = base.filter(MedidaGeneral.mes == mes)
+    if empresa_ids_list:
+        base = base.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        base = base.filter(MedidaGeneral.anio.in_(anios_list))
+    if meses_list:
+        base = base.filter(MedidaGeneral.mes.in_(meses_list))
 
     total = db.query(func.count(MedidaGeneral.id)).filter(MedidaGeneral.tenant_id == tenant_id)
-    if empresa_id is not None:
-        total = total.filter(MedidaGeneral.empresa_id == empresa_id)
-    if anio is not None:
-        total = total.filter(MedidaGeneral.anio == anio)
-    if mes is not None:
-        total = total.filter(MedidaGeneral.mes == mes)
+    if empresa_ids_list:
+        total = total.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        total = total.filter(MedidaGeneral.anio.in_(anios_list))
+    if meses_list:
+        total = total.filter(MedidaGeneral.mes.in_(meses_list))
 
     total_int = int(total.scalar() or 0)
     pg = paginate(total_int, page, page_size)
@@ -349,32 +348,41 @@ def listar_medidas_generales_all_page(
     empresa_id: int | None = Query(default=None),
     anio: int | None = Query(default=None),
     mes: int | None = Query(default=None),
+    tenant_ids: str | None = Query(default=None),
+    empresa_ids: str | None = Query(default=None),
+    anios: str | None = Query(default=None),
+    meses: str | None = Query(default=None),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ):
-    """
-    Paginación real para medidas_general (todos los tenants) - SOLO superuser.
-    """
+    tenant_ids_list = _merge_single_and_multi(single_value=tenant_id, multi_value=tenant_ids)
+    empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
+    anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
+    meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+
     base = db.query(MedidaGeneral, Empresa).join(Empresa, MedidaGeneral.empresa_id == Empresa.id)
 
-    if tenant_id is not None:
-        base = base.filter(MedidaGeneral.tenant_id == tenant_id, Empresa.tenant_id == tenant_id)
-    if empresa_id is not None:
-        base = base.filter(MedidaGeneral.empresa_id == empresa_id)
-    if anio is not None:
-        base = base.filter(MedidaGeneral.anio == anio)
-    if mes is not None:
-        base = base.filter(MedidaGeneral.mes == mes)
+    if tenant_ids_list:
+        base = base.filter(
+            MedidaGeneral.tenant_id.in_(tenant_ids_list),
+            Empresa.tenant_id.in_(tenant_ids_list),
+        )
+    if empresa_ids_list:
+        base = base.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        base = base.filter(MedidaGeneral.anio.in_(anios_list))
+    if meses_list:
+        base = base.filter(MedidaGeneral.mes.in_(meses_list))
 
     total_q = db.query(func.count(MedidaGeneral.id))
-    if tenant_id is not None:
-        total_q = total_q.filter(MedidaGeneral.tenant_id == tenant_id)
-    if empresa_id is not None:
-        total_q = total_q.filter(MedidaGeneral.empresa_id == empresa_id)
-    if anio is not None:
-        total_q = total_q.filter(MedidaGeneral.anio == anio)
-    if mes is not None:
-        total_q = total_q.filter(MedidaGeneral.mes == mes)
+    if tenant_ids_list:
+        total_q = total_q.filter(MedidaGeneral.tenant_id.in_(tenant_ids_list))
+    if empresa_ids_list:
+        total_q = total_q.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
+    if anios_list:
+        total_q = total_q.filter(MedidaGeneral.anio.in_(anios_list))
+    if meses_list:
+        total_q = total_q.filter(MedidaGeneral.mes.in_(meses_list))
 
     total_int = int(total_q.scalar() or 0)
     pg = paginate(total_int, page, page_size)

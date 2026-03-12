@@ -8,10 +8,8 @@ import type { MedidaPS } from "../types";
 type MedidasPsProps = {
   token: string | null;
   scope?: "tenant" | "all";
-
   columnOrder?: string[];
   setColumnOrder?: (order: string[]) => void;
-
   hiddenColumns?: string[];
   setHiddenColumns?: (cols: string[]) => void;
 };
@@ -19,14 +17,14 @@ type MedidasPsProps = {
 type EmpresaFilterOption = {
   id: number;
   codigo?: string | null;
-  tenant_id?: number | null; // solo scope=all
+  nombre?: string | null;
+  tenant_id?: number | null;
 };
 
 type PsFiltersResponse = {
   empresas: EmpresaFilterOption[];
   anios: number[];
   meses: number[];
-  // tarifas: string[];  // ✅ ya no se usa
 };
 
 type PaginatedResponse = {
@@ -37,7 +35,6 @@ type PaginatedResponse = {
   total_pages: number;
 };
 
-// Formateo numérico
 const formatNumberEs = (
   v: number | null | undefined,
   decimals: number = 2
@@ -378,7 +375,6 @@ export const COLUMNS_PS_META = ALL_COLUMNS_PS.map((c) => ({
   group: c.group,
 }));
 
-// ---------- Modal simple (inline) ----------
 function ConfirmDeleteModalInline({
   open,
   title,
@@ -444,6 +440,156 @@ function ConfirmDeleteModalInline({
   );
 }
 
+type MultiSelectOption = {
+  value: string;
+  label: string;
+};
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selectedValues,
+  onChange,
+  disabled = false,
+  placeholder = "Todas",
+}: {
+  label: string;
+  options: MultiSelectOption[];
+  selectedValues: string[];
+  onChange: (values: string[]) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedLabels = useMemo(() => {
+    const selectedSet = new Set(selectedValues);
+    return options.filter((o) => selectedSet.has(o.value)).map((o) => o.label);
+  }, [options, selectedValues]);
+
+  const buttonText = useMemo(() => {
+    if (selectedValues.length === 0) return placeholder;
+    if (selectedValues.length <= 2) return selectedLabels.join(", ");
+    return `${selectedValues.length} seleccionados`;
+  }, [placeholder, selectedLabels, selectedValues.length]);
+
+  const toggleValue = (value: string) => {
+    if (selectedValues.includes(value)) {
+      onChange(selectedValues.filter((v) => v !== value));
+    } else {
+      onChange([...selectedValues, value]);
+    }
+  };
+
+  const allSelected = options.length > 0 && selectedValues.length === options.length;
+
+  const toggleAll = () => {
+    if (allSelected) onChange([]);
+    else onChange(options.map((o) => o.value));
+  };
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <label className="ui-label">{label}</label>
+
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="ui-select flex w-full items-center justify-between text-left text-[10px]"
+        style={{
+          minHeight: 28,
+          height: 28,
+          paddingTop: 2,
+          paddingBottom: 2,
+          paddingLeft: 8,
+          paddingRight: 8,
+          lineHeight: 1.05,
+        }}
+      >
+        <span className="truncate">{buttonText}</span>
+        <span className="ml-2 shrink-0 ui-muted text-[10px]">{open ? "▴" : "▾"}</span>
+      </button>
+
+      {open && !disabled && (
+        <div
+          className="absolute z-30 mt-1.5 w-full rounded-xl border p-2 shadow-lg"
+          style={{
+            background: "var(--card-bg)",
+            borderColor: "var(--card-border)",
+          }}
+        >
+          <div className="mb-2 border-b pb-2" style={{ borderColor: "var(--card-border)" }}>
+            <label className="flex cursor-pointer items-center gap-2 text-[10px]">
+              <input
+                type="checkbox"
+                className="ui-checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+              />
+              <span>Seleccionar todo</span>
+            </label>
+          </div>
+
+          <div className="max-h-52 overflow-y-auto space-y-1">
+            {options.length === 0 ? (
+              <div className="px-2 py-2 text-[10px] ui-muted">Sin opciones</div>
+            ) : (
+              options.map((opt) => (
+                <label
+                  key={opt.value}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[10px] hover:bg-[var(--field-bg-soft)]"
+                >
+                  <input
+                    type="checkbox"
+                    className="ui-checkbox"
+                    checked={selectedValues.includes(opt.value)}
+                    onChange={() => toggleValue(opt.value)}
+                  />
+                  <span className="truncate">{opt.label}</span>
+                </label>
+              ))
+            )}
+          </div>
+
+          <div
+            className="mt-2 flex items-center justify-end gap-2 border-t pt-2"
+            style={{ borderColor: "var(--card-border)" }}
+          >
+            <button
+              type="button"
+              className="ui-btn ui-btn-outline ui-btn-xs"
+              onClick={() => onChange([])}
+            >
+              Limpiar
+            </button>
+            <button
+              type="button"
+              className="ui-btn ui-btn-primary ui-btn-xs"
+              onClick={() => setOpen(false)}
+            >
+              Aplicar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MedidasPsSection({
   token,
   scope = "tenant",
@@ -458,27 +604,22 @@ export default function MedidasPsSection({
 
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  // filtros (✅ sin tarifa)
-  const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("");
-  const [filtroAnio, setFiltroAnio] = useState<string>("");
-  const [filtroMes, setFiltroMes] = useState<string>("");
+  const [filtroEmpresaIds, setFiltroEmpresaIds] = useState<string[]>([]);
+  const [filtroAnios, setFiltroAnios] = useState<string[]>([]);
+  const [filtroMeses, setFiltroMeses] = useState<string[]>([]);
 
-  // opciones PRO (backend)
   const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>([]);
   const [opcionesAnio, setOpcionesAnio] = useState<number[]>([]);
   const [opcionesMes, setOpcionesMes] = useState<number[]>([]);
 
-  // paginación real
-  const [pageSize, setPageSize] = useState<number>(50);
+  const [pageSize, setPageSize] = useState<number>(20);
   const [page, setPage] = useState<number>(0);
   const [totalFilas, setTotalFilas] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
 
-  // ajustes columnas
   const [showAdjust, setShowAdjust] = useState<boolean>(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  // ✅ selección + borrar (solo se usa en Sistema)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -506,12 +647,14 @@ export default function MedidasPsSection({
   }, [safeColumnOrder, defaultOrder]);
 
   const filtrosActivosCount =
-    (filtroEmpresaId ? 1 : 0) + (filtroAnio ? 1 : 0) + (filtroMes ? 1 : 0);
+    (filtroEmpresaIds.length > 0 ? 1 : 0) +
+    (filtroAnios.length > 0 ? 1 : 0) +
+    (filtroMeses.length > 0 ? 1 : 0);
 
   const clearFilters = () => {
-    setFiltroEmpresaId("");
-    setFiltroAnio("");
-    setFiltroMes("");
+    setFiltroEmpresaIds([]);
+    setFiltroAnios([]);
+    setFiltroMeses([]);
     setPage(0);
   };
 
@@ -536,8 +679,10 @@ export default function MedidasPsSection({
     }
   };
 
-  const handleLoadMedidas = async () => {
+  const handleLoadMedidas = async (nextPage?: number) => {
     if (!token) return;
+
+    const effectivePage = typeof nextPage === "number" ? nextPage : page;
 
     setLoading(true);
     setError(null);
@@ -546,12 +691,12 @@ export default function MedidasPsSection({
       const endpoint = scope === "all" ? "/medidas/ps/all/page" : "/medidas/ps/page";
 
       const params = new URLSearchParams();
-      params.set("page", String(page));
+      params.set("page", String(effectivePage));
       params.set("page_size", String(pageSize));
 
-      if (filtroEmpresaId) params.set("empresa_id", filtroEmpresaId);
-      if (filtroAnio) params.set("anio", filtroAnio);
-      if (filtroMes) params.set("mes", filtroMes);
+      if (filtroEmpresaIds.length > 0) params.set("empresa_ids", filtroEmpresaIds.join(","));
+      if (filtroAnios.length > 0) params.set("anios", filtroAnios.join(","));
+      if (filtroMeses.length > 0) params.set("meses", filtroMeses.join(","));
 
       const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
         headers: getAuthHeaders(token),
@@ -566,8 +711,6 @@ export default function MedidasPsSection({
       setTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
 
       setHasLoadedOnce(true);
-
-      // ✅ limpia selección al recargar dataset/página
       setSelectedIds(new Set());
     } catch (err) {
       console.error("Error cargando medidas_ps paginadas:", err);
@@ -582,7 +725,6 @@ export default function MedidasPsSection({
     }
   };
 
-  // boot: token/scope
   const bootKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) {
@@ -590,15 +732,15 @@ export default function MedidasPsSection({
       setHasLoadedOnce(false);
       setError(null);
       setData([]);
-
       setOpcionesEmpresa([]);
       setOpcionesAnio([]);
       setOpcionesMes([]);
-
+      setFiltroEmpresaIds([]);
+      setFiltroAnios([]);
+      setFiltroMeses([]);
       setPage(0);
       setTotalFilas(0);
       setTotalPages(1);
-
       setSelectedIds(new Set());
       return;
     }
@@ -609,37 +751,58 @@ export default function MedidasPsSection({
 
     setPage(0);
     void loadFilters().then(() => {
-      void handleLoadMedidas();
+      void handleLoadMedidas(0);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, scope]);
 
-  // filtros/pageSize -> reset page 0 + reload
   const filterKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) return;
 
-    const key = `${scope}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}::${pageSize}`;
+    const key = `${scope}::${filtroEmpresaIds.join(",")}::${filtroAnios.join(",")}::${filtroMeses.join(",")}::${pageSize}`;
     if (filterKeyRef.current === key) return;
     filterKeyRef.current = key;
 
     setPage(0);
+    void handleLoadMedidas(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    void handleLoadMedidas();
-  }, [token, scope, filtroEmpresaId, filtroAnio, filtroMes, pageSize]);
+  }, [token, scope, filtroEmpresaIds, filtroAnios, filtroMeses, pageSize]);
 
-  // page -> reload
   const pageKeyRef = useRef<string>("");
   useEffect(() => {
     if (!token) return;
 
-    const key = `${scope}::${page}::${pageSize}::${filtroEmpresaId}::${filtroAnio}::${filtroMes}`;
+    const key = `${scope}::${page}`;
     if (pageKeyRef.current === key) return;
     pageKeyRef.current = key;
 
-    void handleLoadMedidas();
+    void handleLoadMedidas(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, page]);
+
+  const empresaOptions = useMemo<MultiSelectOption[]>(() => {
+    return opcionesEmpresa.map((e) => ({
+      value: String(e.id),
+      label:
+        `${e.nombre ?? e.codigo ?? `Empresa ${e.id}`}` +
+        (scope === "all" && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""),
+    }));
+  }, [opcionesEmpresa, scope]);
+
+  const anioOptions = useMemo<MultiSelectOption[]>(
+    () => opcionesAnio.map((anio) => ({ value: String(anio), label: String(anio) })),
+    [opcionesAnio]
+  );
+
+  const mesOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      opcionesMes.map((mes) => ({
+        value: String(mes),
+        label: mes.toString().padStart(2, "0"),
+      })),
+    [opcionesMes]
+  );
 
   const columnasPorId = useMemo(() => {
     const map = new Map<string, ColumnDefPs>();
@@ -749,7 +912,6 @@ export default function MedidasPsSection({
     );
   };
 
-  // ✅ selección (por página actual)
   const currentPageIds = useMemo(() => {
     const ids: number[] = [];
     for (const r of data as any[]) {
@@ -804,8 +966,6 @@ export default function MedidasPsSection({
     setDeleteError(null);
 
     try {
-      // ✅ Sistema / superuser:
-      // DELETE /medidas/ps/all con body { ids: number[] }
       const res = await fetch(`${API_BASE_URL}/medidas/ps/all`, {
         method: "DELETE",
         headers: {
@@ -822,7 +982,7 @@ export default function MedidasPsSection({
 
       setDeleteOpen(false);
       setSelectedIds(new Set());
-      await handleLoadMedidas();
+      await handleLoadMedidas(page);
     } catch (e) {
       console.error("Error borrando medidas PS (Sistema):", e);
       setDeleteError(
@@ -843,7 +1003,7 @@ export default function MedidasPsSection({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => void handleLoadMedidas()}
+            onClick={() => void handleLoadMedidas(page)}
             disabled={loading || !token}
             className="ui-btn ui-btn-primary"
             type="button"
@@ -851,7 +1011,6 @@ export default function MedidasPsSection({
             {loading ? "Actualizando..." : "Actualizar"}
           </button>
 
-          {/* ✅ Solo en Sistema: borrar seleccionadas */}
           {isSistema && (
             <button
               onClick={openDelete}
@@ -903,59 +1062,33 @@ export default function MedidasPsSection({
         )}
       </div>
 
-      {/* ✅ Filtros superiores (sin Tarifa) */}
-      <div className="mb-4 grid gap-3 md:grid-cols-3">
-        <div>
-          <label className="ui-label">Empresa</label>
-          <select
-            className="ui-select"
-            value={filtroEmpresaId}
-            onChange={(e) => setFiltroEmpresaId(e.target.value)}
-            disabled={!token || loading}
-          >
-            <option value="">Todas</option>
-            {opcionesEmpresa.map((e) => (
-              <option key={e.id} value={String(e.id)}>
-                {(e.codigo ?? `Empresa ${e.id}`) + ` (ID ${e.id})`}
-                {scope === "all" && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="mb-4 grid gap-2 md:grid-cols-3">
+        <MultiSelectDropdown
+          label="Empresa"
+          options={empresaOptions}
+          selectedValues={filtroEmpresaIds}
+          onChange={setFiltroEmpresaIds}
+          disabled={!token || loading}
+          placeholder="Todas"
+        />
 
-        <div>
-          <label className="ui-label">Año</label>
-          <select
-            className="ui-select"
-            value={filtroAnio}
-            onChange={(e) => setFiltroAnio(e.target.value)}
-            disabled={!token || loading}
-          >
-            <option value="">Todos</option>
-            {opcionesAnio.map((anio) => (
-              <option key={anio} value={String(anio)}>
-                {anio}
-              </option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Año"
+          options={anioOptions}
+          selectedValues={filtroAnios}
+          onChange={setFiltroAnios}
+          disabled={!token || loading}
+          placeholder="Todos"
+        />
 
-        <div>
-          <label className="ui-label">Mes</label>
-          <select
-            className="ui-select"
-            value={filtroMes}
-            onChange={(e) => setFiltroMes(e.target.value)}
-            disabled={!token || loading}
-          >
-            <option value="">Todos</option>
-            {opcionesMes.map((mes) => (
-              <option key={mes} value={String(mes)}>
-                {mes.toString().padStart(2, "0")}
-              </option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Mes"
+          options={mesOptions}
+          selectedValues={filtroMeses}
+          onChange={setFiltroMeses}
+          disabled={!token || loading}
+          placeholder="Todos"
+        />
       </div>
 
       {canEditAdjustments && (
@@ -1003,7 +1136,6 @@ export default function MedidasPsSection({
         <table className="ui-table text-[11px]">
           <thead className="ui-thead">
             <tr>
-              {/* ✅ Selección solo en Sistema */}
               {isSistema && (
                 <th className="ui-th" style={{ width: 44 }}>
                   <input
@@ -1124,13 +1256,24 @@ export default function MedidasPsSection({
               <div className="flex items-center gap-2">
                 <span>Filas por página:</span>
                 <select
-                  className="ui-select w-auto px-2 py-1 text-[11px]"
+                  className="ui-select w-auto text-[10px]"
+                  style={{
+                    minHeight: 26,
+                    height: 26,
+                    paddingTop: 2,
+                    paddingBottom: 2,
+                    paddingLeft: 8,
+                    paddingRight: 8,
+                    lineHeight: 1.05,
+                  }}
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value) || 10)}
+                  onChange={(e) => setPageSize(Number(e.target.value) || 20)}
                 >
+                  <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
+                  <option value={200}>200</option>
                 </select>
               </div>
 
@@ -1169,7 +1312,6 @@ export default function MedidasPsSection({
         )}
       </div>
 
-      {/* ✅ Confirmación borrado (solo en Sistema) */}
       <ConfirmDeleteModalInline
         open={deleteOpen}
         title="Borrar medidas (PS) · Sistema"
