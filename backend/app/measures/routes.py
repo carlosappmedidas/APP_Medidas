@@ -7,4 +7,4 @@ router = APIRouter(prefix="/medidas", tags=["medidas"])
 
 # subrouters
 router.include_router(general_router)
-router.include_router(ps_router)
+router.include_router(ps_router)   
