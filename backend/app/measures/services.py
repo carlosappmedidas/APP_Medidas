@@ -427,7 +427,7 @@ def procesar_m1(
         )
 
         # ✅ FIX CRÍTICO: en tu BD medidas_general.file_id es NOT NULL
-        # Si este proceso toca el periodo (principal o refactura), debe dejar file_id relleno.
+        # Si creamos un periodo “refactura”, también debe tener file_id
         mg.file_id = fichero.id  # type: ignore[assignment]
 
         if es_principal:
@@ -908,7 +908,7 @@ def procesar_bald_medidas_general(
 
     demanda_suministrada = _to_float(fila.get("Demanda_suministrada"))
     demanda_vertida = _to_float(fila.get("Demanda_vertida"))
-    adquisicion = _to_float(fila.get("Adquisicion"))
+    dd_a = _to_float(fila.get("DD_A"))
     dd_s = _to_float(fila.get("DD_S"))
     ed = _to_float(fila.get("ED"))
     cil = _to_float(fila.get("CIL"))
@@ -922,7 +922,7 @@ def procesar_bald_medidas_general(
 
     _set("energia_publicada", demanda_suministrada)
     _set("energia_autoconsumo", demanda_vertida)
-    _set("energia_pf", adquisicion)
+    _set("energia_pf", dd_a)
     _set("energia_frontera_dd", dd_s)
     _set("energia_generada", energia_generada)
 
