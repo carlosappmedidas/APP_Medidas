@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import math
 from typing import cast
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel
-from fastapi import Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -138,7 +136,6 @@ def borrar_medidas_generales_todos_tenants(
     }
 
 
-# ✅ NUEVO: borrar por IDs (modo Sistema) - para que el frontend no dé 404
 class DeleteIdsPayload(BaseModel):
     ids: list[int]
 

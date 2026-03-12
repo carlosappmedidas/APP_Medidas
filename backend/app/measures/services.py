@@ -216,9 +216,15 @@ def _prev_month(anio: int, mes: int) -> tuple[int, int]:
     return anio, mes - 1
 
 
+def _next_month(anio: int, mes: int) -> tuple[int, int]:
+    if mes == 12:
+        return anio + 1, 1
+    return anio, mes + 1
+
+
 def _periodo_objetivo_por_ventana(fecha_final: date, dias_post: int = 3) -> tuple[int, int]:
     """
-    Regla facturación:
+    Regla antigua conservada por compatibilidad:
     - Si Fecha_final cae en los primeros `dias_post` días del mes siguiente (1..dias_post),
       entonces la asignamos al mes anterior.
     - Si no, se queda en su propio mes.
@@ -246,6 +252,40 @@ def _extraer_periodo_principal_de_fichero(fichero: IngestionFile) -> tuple[int, 
     if not m:
         raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
     return int(m.group(1)), int(m.group(2))
+
+
+def _periodo_objetivo_m1_desde_periodo_principal(
+    fecha_final: date,
+    *,
+    anio_principal: int,
+    mes_principal: int,
+) -> tuple[int, int, str]:
+    """
+    Nueva regla M1 basada en el nombre del fichero:
+
+    - El periodo principal es el AAAAMM del fichero.
+    - La ventana válida del fichero es:
+        desde 01/MM/AAAA
+        hasta 03 del mes siguiente
+    - Si Fecha_final cae dentro de esa ventana -> va al periodo principal.
+    - Si Fecha_final es anterior al inicio de ventana -> refactura, va a su mes real.
+    - Si Fecha_final es posterior al final de ventana -> warning y va a su mes real.
+
+    Devuelve:
+      (anio_obj, mes_obj, motivo)
+      donde motivo ∈ {"main_window", "refactura", "future_out_of_window"}
+    """
+    inicio_ventana = date(anio_principal, mes_principal, 1)
+    anio_sig, mes_sig = _next_month(anio_principal, mes_principal)
+    fin_ventana = date(anio_sig, mes_sig, 3)
+
+    if inicio_ventana <= fecha_final <= fin_ventana:
+        return anio_principal, mes_principal, "main_window"
+
+    if fecha_final < inicio_ventana:
+        return fecha_final.year, fecha_final.month, "refactura"
+
+    return fecha_final.year, fecha_final.month, "future_out_of_window"
 
 
 def _sum_contribuciones_m1(
@@ -282,8 +322,15 @@ def procesar_m1(
 ) -> MedidaGeneral:
     """
     ✅ M1 con tabla de contribuciones (SIN duplicidades):
-    - Periodo objetivo por fila (ventana +3 días).
-    - Suma Energia_Kwh por (anio, mes) objetivo.
+    - El periodo principal lo marca el nombre del fichero.
+    - Ventana válida del fichero:
+        01 del mes principal -> 03 del mes siguiente
+    - Si una fila cae dentro de esa ventana:
+        se asigna al periodo principal.
+    - Si una fila es anterior al inicio de ventana:
+        se trata como refactura y va a su mes real.
+    - Si una fila es posterior al final de ventana:
+        deja warning y va a su mes real.
     - Guarda en m1_period_contributions con UNIQUE(tenant,empresa,ingestion_file_id,anio,mes).
       -> reprocesar mismo fichero = UPDATE (idempotente).
     - Recalcula medidas_general.energia_bruta_facturada como SUM(contribuciones) del periodo.
@@ -298,7 +345,6 @@ def procesar_m1(
     energia_por_periodo: dict[tuple[int, int], float] = {}
     periodos_afectados: set[tuple[int, int]] = set()
 
-    # 1) Agregar energía por periodo objetivo (ventana +3)
     for f in filas:
         try:
             fecha_final = _to_date(f.get("Fecha_final"))
@@ -312,16 +358,31 @@ def procesar_m1(
         except Exception:
             fecha_inicio = None
 
-        anio_obj, mes_obj = _periodo_objetivo_por_ventana(fecha_final, dias_post=3)
+        anio_obj, mes_obj, motivo = _periodo_objetivo_m1_desde_periodo_principal(
+            fecha_final,
+            anio_principal=anio_principal,
+            mes_principal=mes_principal,
+        )
+
+        if motivo == "future_out_of_window":
+            warnings.append(
+                {
+                    "type": "future_out_of_window",
+                    "fecha_final": fecha_final.isoformat(),
+                    "periodo_asignado": f"{anio_obj:04d}{mes_obj:02d}",
+                    "periodo_principal": f"{anio_principal:04d}{mes_principal:02d}",
+                }
+            )
 
         if fecha_inicio is not None:
-            if (fecha_inicio.year, fecha_inicio.month) != (fecha_final.year, fecha_final.month) and fecha_final.day > 3:
+            if (fecha_inicio.year, fecha_inicio.month) != (fecha_final.year, fecha_final.month):
                 warnings.append(
                     {
-                        "type": "fecha_final_fuera_ventana",
+                        "type": "fecha_inicio_fecha_final_distinto_mes",
                         "fecha_inicio": fecha_inicio.isoformat(),
                         "fecha_final": fecha_final.isoformat(),
                         "periodo_asignado": f"{anio_obj:04d}{mes_obj:02d}",
+                        "periodo_principal": f"{anio_principal:04d}{mes_principal:02d}",
                     }
                 )
 
@@ -334,7 +395,6 @@ def procesar_m1(
             "No hay filas con Fecha_final válida para calcular energia_bruta_facturada (todas NaT/NaN/None/vacías)"
         )
 
-    # 2) UPSERT contribuciones por (file, periodo) -> idempotente
     for (anio, mes), energia_total in sorted(energia_por_periodo.items()):
         es_principal = (anio, mes) == (anio_principal, mes_principal)
 
@@ -375,10 +435,8 @@ def procesar_m1(
                 }
             )
 
-    # ⚠️ muy importante para que la SUM vea las contribuciones de ESTE proceso
     db.flush()
 
-    # 3) Recalcular medidas_general por SUM(contribuciones)
     mg_principal: MedidaGeneral | None = None
 
     for (anio, mes) in sorted(periodos_afectados):
@@ -426,8 +484,6 @@ def procesar_m1(
             mes=mes,
         )
 
-        # ✅ FIX CRÍTICO: en tu BD medidas_general.file_id es NOT NULL
-        # Si creamos un periodo “refactura”, también debe tener file_id
         mg.file_id = fichero.id  # type: ignore[assignment]
 
         if es_principal:
