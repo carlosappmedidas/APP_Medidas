@@ -45,6 +45,9 @@ from app.ingestion.services import (
     procesar_fichero_ps,
 )
 from app.measures.models import MedidaGeneral, MedidaPS
+from app.measures.m1_models import M1PeriodContribution
+from app.measures.ps_models import PSPeriodContribution
+from app.measures.ps_detail_models import PSPeriodDetail
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
@@ -418,6 +421,33 @@ def delete_files(
     ids_subq = base_query.with_entities(IngestionFile.id).subquery()
     ids_select = select(ids_subq.c.id)
 
+    deleted_m1_contrib = (
+        db.query(M1PeriodContribution)
+        .filter(
+            M1PeriodContribution.tenant_id == tenant_id_int,
+            M1PeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)),
+        )
+        .delete(synchronize_session=False)
+    )
+
+    deleted_ps_detail = (
+        db.query(PSPeriodDetail)
+        .filter(
+            PSPeriodDetail.tenant_id == tenant_id_int,
+            PSPeriodDetail.ingestion_file_id.in_(cast(Any, ids_select)),
+        )
+        .delete(synchronize_session=False)
+    )
+
+    deleted_ps_contrib = (
+        db.query(PSPeriodContribution)
+        .filter(
+            PSPeriodContribution.tenant_id == tenant_id_int,
+            PSPeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)),
+        )
+        .delete(synchronize_session=False)
+    )
+
     deleted_medidas_general = (
         db.query(MedidaGeneral)
         .filter(
@@ -442,6 +472,9 @@ def delete_files(
 
     return {
         "deleted_ingestion_files": deleted_files,
+        "deleted_m1_period_contributions": deleted_m1_contrib,
+        "deleted_ps_period_detail": deleted_ps_detail,
+        "deleted_ps_period_contributions": deleted_ps_contrib,
         "deleted_medidas_general": deleted_medidas_general,
         "deleted_medidas_ps": deleted_medidas_ps,
     }

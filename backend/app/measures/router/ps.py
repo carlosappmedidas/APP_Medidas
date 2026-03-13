@@ -8,11 +8,15 @@ from typing import Any, Optional, cast
 from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from app.core.db import get_db
 from app.core.auth import get_current_user, get_current_active_superuser
-from app.measures.models import MedidaPS
+from app.measures.models import MedidaPS, MedidaGeneral
+from app.measures.m1_models import M1PeriodContribution
+from app.measures.ps_models import PSPeriodContribution
+from app.measures.ps_detail_models import PSPeriodDetail
+from app.ingestion.models import IngestionFile
 from app.empresas.models import Empresa
 from app.tenants.models import User
 
@@ -160,6 +164,56 @@ def _ps_tarifa_filter(query, tarifa: str):
     return query
 
 
+def _deep_delete_by_file_ids(
+    db: Session,
+    *,
+    tenant_id: int | None,
+    file_ids_select: Any,
+) -> dict[str, int]:
+    m1_q = db.query(M1PeriodContribution).filter(
+        M1PeriodContribution.ingestion_file_id.in_(file_ids_select)
+    )
+    ps_detail_q = db.query(PSPeriodDetail).filter(
+        PSPeriodDetail.ingestion_file_id.in_(file_ids_select)
+    )
+    ps_contrib_q = db.query(PSPeriodContribution).filter(
+        PSPeriodContribution.ingestion_file_id.in_(file_ids_select)
+    )
+    mg_q = db.query(MedidaGeneral).filter(
+        MedidaGeneral.file_id.in_(file_ids_select)
+    )
+    mp_q = db.query(MedidaPS).filter(
+        MedidaPS.file_id.in_(file_ids_select)
+    )
+    ingestion_q = db.query(IngestionFile).filter(
+        IngestionFile.id.in_(file_ids_select)
+    )
+
+    if tenant_id is not None:
+        m1_q = m1_q.filter(M1PeriodContribution.tenant_id == tenant_id)
+        ps_detail_q = ps_detail_q.filter(PSPeriodDetail.tenant_id == tenant_id)
+        ps_contrib_q = ps_contrib_q.filter(PSPeriodContribution.tenant_id == tenant_id)
+        mg_q = mg_q.filter(MedidaGeneral.tenant_id == tenant_id)
+        mp_q = mp_q.filter(MedidaPS.tenant_id == tenant_id)
+        ingestion_q = ingestion_q.filter(IngestionFile.tenant_id == tenant_id)
+
+    deleted_m1 = m1_q.delete(synchronize_session=False)
+    deleted_ps_detail = ps_detail_q.delete(synchronize_session=False)
+    deleted_ps_contrib = ps_contrib_q.delete(synchronize_session=False)
+    deleted_mg = mg_q.delete(synchronize_session=False)
+    deleted_mp = mp_q.delete(synchronize_session=False)
+    deleted_ingestion = ingestion_q.delete(synchronize_session=False)
+
+    return {
+        "deleted_m1_period_contributions": int(deleted_m1 or 0),
+        "deleted_ps_period_detail": int(deleted_ps_detail or 0),
+        "deleted_ps_period_contributions": int(deleted_ps_contrib or 0),
+        "deleted_medidas_general": int(deleted_mg or 0),
+        "deleted_medidas_ps": int(deleted_mp or 0),
+        "deleted_ingestion_files": int(deleted_ingestion or 0),
+    }
+
+
 @router.get("/")
 def listar_medidas_ps(
     db: Session = Depends(get_db),
@@ -227,10 +281,29 @@ def borrar_medidas_ps_todos_tenants(
     query = db.query(MedidaPS)
 
     if payload is not None and isinstance(payload.ids, list) and len(payload.ids) > 0:
-        query = query.filter(MedidaPS.id.in_(payload.ids))
-        deleted_rows = query.delete(synchronize_session=False)
+        file_ids_subq = (
+            db.query(MedidaPS.file_id)
+            .filter(
+                MedidaPS.id.in_(payload.ids),
+                MedidaPS.file_id.isnot(None),
+            )
+            .distinct()
+            .subquery()
+        )
+        file_ids_select = select(file_ids_subq.c.file_id)
+
+        result = _deep_delete_by_file_ids(
+            db,
+            tenant_id=None,
+            file_ids_select=cast(Any, file_ids_select),
+        )
         db.commit()
-        return {"deleted": deleted_rows, "mode": "ids", "ids": payload.ids}
+
+        return {
+            "mode": "deep_ids",
+            "ids": payload.ids,
+            **result,
+        }
 
     if tenant_id is not None:
         query = query.filter(MedidaPS.tenant_id == tenant_id)
@@ -243,12 +316,23 @@ def borrar_medidas_ps_todos_tenants(
     if tarifa:
         query = _ps_tarifa_filter(query, tarifa)
 
-    deleted_rows = query.delete(synchronize_session=False)
+    file_ids_subq = (
+        query.filter(MedidaPS.file_id.isnot(None))
+        .with_entities(MedidaPS.file_id)
+        .distinct()
+        .subquery()
+    )
+    file_ids_select = select(file_ids_subq.c.file_id)
+
+    result = _deep_delete_by_file_ids(
+        db,
+        tenant_id=tenant_id,
+        file_ids_select=cast(Any, file_ids_select),
+    )
     db.commit()
 
     return {
-        "deleted": deleted_rows,
-        "mode": "filters",
+        "mode": "deep_filters",
         "filters": {
             "tenant_id": tenant_id,
             "empresa_id": empresa_id,
@@ -256,6 +340,7 @@ def borrar_medidas_ps_todos_tenants(
             "mes": mes,
             "tarifa": tarifa,
         },
+        **result,
     }
 
 

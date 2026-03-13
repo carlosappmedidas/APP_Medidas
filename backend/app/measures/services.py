@@ -260,6 +260,33 @@ def _sum_contribuciones_m1(
     return float(total or 0.0)
 
 
+def _get_existing_m1_file_periods(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    ingestion_file_id: int,
+) -> set[tuple[int, int]]:
+    periods: set[tuple[int, int]] = set()
+
+    rows = (
+        db.query(M1PeriodContribution.anio, M1PeriodContribution.mes)
+        .filter(
+            M1PeriodContribution.tenant_id == tenant_id,
+            M1PeriodContribution.empresa_id == empresa_id,
+            M1PeriodContribution.ingestion_file_id == ingestion_file_id,
+        )
+        .distinct()
+        .all()
+    )
+
+    for anio, mes in rows:
+        if anio is not None and mes is not None:
+            periods.add((int(anio), int(mes)))
+
+    return periods
+
+
 # ---------- helpers PS ----------
 
 
@@ -684,7 +711,25 @@ def procesar_m1(
 
     warnings: list[dict[str, Any]] = []
     energia_por_periodo: dict[tuple[int, int], float] = {}
-    periodos_afectados: set[tuple[int, int]] = set()
+    periodos_nuevos: set[tuple[int, int]] = set()
+
+    periodos_previos = _get_existing_m1_file_periods(
+        db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        ingestion_file_id=_file_id(fichero),
+    )
+
+    (
+        db.query(M1PeriodContribution)
+        .filter(
+            M1PeriodContribution.tenant_id == tenant_id,
+            M1PeriodContribution.empresa_id == empresa_id,
+            M1PeriodContribution.ingestion_file_id == _file_id(fichero),
+        )
+        .delete(synchronize_session=False)
+    )
+    db.flush()
 
     for f in filas:
         try:
@@ -729,7 +774,7 @@ def procesar_m1(
 
         energia = _to_float(f.get("Energia_Kwh", 0.0))
         energia_por_periodo[(anio_obj, mes_obj)] = energia_por_periodo.get((anio_obj, mes_obj), 0.0) + energia
-        periodos_afectados.add((anio_obj, mes_obj))
+        periodos_nuevos.add((anio_obj, mes_obj))
 
     if not energia_por_periodo:
         raise ValueError(
@@ -739,32 +784,16 @@ def procesar_m1(
     for (anio, mes), energia_total in sorted(energia_por_periodo.items()):
         es_principal = (anio, mes) == (anio_principal, mes_principal)
 
-        contrib = (
-            db.query(M1PeriodContribution)
-            .filter_by(
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
-                ingestion_file_id=_file_id(fichero),
-                anio=anio,
-                mes=mes,
-            )
-            .first()
+        contrib = M1PeriodContribution(  # type: ignore[call-arg]
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            ingestion_file_id=_file_id(fichero),
+            anio=anio,
+            mes=mes,
+            energia_kwh=float(energia_total),
+            is_principal=bool(es_principal),
         )
-
-        if contrib is None:
-            contrib = M1PeriodContribution(  # type: ignore[call-arg]
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
-                ingestion_file_id=_file_id(fichero),
-                anio=anio,
-                mes=mes,
-                energia_kwh=float(energia_total),
-                is_principal=bool(es_principal),
-            )
-            db.add(contrib)
-        else:
-            contrib.energia_kwh = float(energia_total)  # type: ignore[assignment]
-            contrib.is_principal = bool(es_principal)  # type: ignore[assignment]
+        db.add(contrib)
 
         if not es_principal:
             warnings.append(
@@ -778,6 +807,7 @@ def procesar_m1(
 
     db.flush()
 
+    periodos_afectados = set(periodos_previos) | set(periodos_nuevos)
     mg_principal: MedidaGeneral | None = None
 
     for (anio, mes) in sorted(periodos_afectados):
@@ -806,18 +836,7 @@ def procesar_m1(
 
         es_principal = (anio, mes) == (anio_principal, mes_principal)
 
-        if creado and not es_principal:
-            warnings.append(
-                {
-                    "type": "missing_period_created",
-                    "periodo": f"{anio:04d}{mes:02d}",
-                    "energia_kwh": _sum_contribuciones_m1(
-                        db, tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes
-                    ),
-                }
-            )
-
-        mg.energia_bruta_facturada = _sum_contribuciones_m1(  # type: ignore[assignment]
+        energia_periodo = _sum_contribuciones_m1(
             db,
             tenant_id=tenant_id,
             empresa_id=empresa_id,
@@ -825,6 +844,16 @@ def procesar_m1(
             mes=mes,
         )
 
+        if creado and not es_principal and energia_periodo != 0.0:
+            warnings.append(
+                {
+                    "type": "missing_period_created",
+                    "periodo": f"{anio:04d}{mes:02d}",
+                    "energia_kwh": float(energia_periodo),
+                }
+            )
+
+        mg.energia_bruta_facturada = float(energia_periodo)  # type: ignore[assignment]
         mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
         if es_principal:
@@ -908,7 +937,7 @@ def procesar_m1_autoconsumo(
         )
         db.add(mg)
 
-    mg.energia_autoconsumo_kwh = energia_total  # type: ignore[assignment]
+    mg.energia_autoconsumo_kwh = float(energia_total)  # type: ignore[assignment]
     mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
     _recalcular_energia_neta_y_perdidas(mg)
@@ -979,7 +1008,7 @@ def procesar_acumcil_generacion(
         )
         db.add(mg)
 
-    mg.energia_generada_kwh = (cast(float | None, mg.energia_generada_kwh) or 0.0) + energia_total  # type: ignore[assignment]
+    mg.energia_generada_kwh = float(energia_total)  # type: ignore[assignment]
     _recalcular_energia_pf_final(mg)
     mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
@@ -1045,7 +1074,7 @@ def procesar_acum_h2_grd_generacion(
         )
         db.add(mg)
 
-    mg.energia_generada_kwh = (cast(float | None, mg.energia_generada_kwh) or 0.0) + energia_total  # type: ignore[assignment]
+    mg.energia_generada_kwh = float(energia_total)  # type: ignore[assignment]
     _recalcular_energia_pf_final(mg)
     mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
@@ -1131,7 +1160,7 @@ def procesar_acum_h2_rdd_frontera_dd(
         )
         db.add(mg)
 
-    mg.energia_frontera_dd_kwh = (cast(float | None, mg.energia_frontera_dd_kwh) or 0.0) + energia_total  # type: ignore[assignment]
+    mg.energia_frontera_dd_kwh = float(energia_total)  # type: ignore[assignment]
     _recalcular_energia_pf_final(mg)
     mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
@@ -1194,7 +1223,7 @@ def procesar_acum_h2_rdd_pf_kwh(
         )
         db.add(mg)
 
-    mg.energia_pf_kwh = (cast(float | None, mg.energia_pf_kwh) or 0.0) + energia_total  # type: ignore[assignment]
+    mg.energia_pf_kwh = float(energia_total)  # type: ignore[assignment]
     _recalcular_energia_pf_final(mg)
     mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
@@ -1257,7 +1286,7 @@ def procesar_acum_h2_trd_pf_kwh(
         )
         db.add(mg)
 
-    mg.energia_pf_kwh = (cast(float | None, mg.energia_pf_kwh) or 0.0) + energia_total  # type: ignore[assignment]
+    mg.energia_pf_kwh = float(energia_total)  # type: ignore[assignment]
     _recalcular_energia_pf_final(mg)
     mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
