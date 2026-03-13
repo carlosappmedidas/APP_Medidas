@@ -95,7 +95,17 @@ const SIDEBAR_STORAGE_KEY = "ui_sidebar_collapsed";
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
 export default function HomePage() {
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+
+    try {
+      return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  });
+
+  const [authReady, setAuthReady] = useState(false);
 
   const [activeTab, setActiveTab] = useState<MainTab>("dashboard");
   const [tablasOpen, setTablasOpen] = useState(false);
@@ -115,11 +125,6 @@ export default function HomePage() {
 
   useEffect(() => {
     try {
-      const savedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-      if (savedToken) {
-        setToken(savedToken);
-      }
-
       const savedTab = localStorage.getItem("ui_active_tab");
       if (
         savedTab === "dashboard" ||
@@ -153,6 +158,8 @@ export default function HomePage() {
       if (sidebarRaw === "1") setSidebarCollapsed(true);
     } catch {
       // ignore
+    } finally {
+      setAuthReady(true);
     }
   }, []);
 
@@ -278,6 +285,19 @@ export default function HomePage() {
     setActiveTab("dashboard");
     setHomeMenuOpen(false);
   };
+
+  if (!authReady) {
+    return (
+      <div className="ui-login-shell">
+        <div className="ui-login-panel">
+          <div className="ui-login-brand mb-4 text-center">
+            <h1 className="text-xl font-semibold">APP Medidas</h1>
+            <p className="mt-1 text-xs ui-muted">Cargando sesión...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!token) {
     return (
