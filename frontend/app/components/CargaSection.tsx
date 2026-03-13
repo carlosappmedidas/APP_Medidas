@@ -69,6 +69,8 @@ const PLANTILLAS = [
   { label: "PS", file: "PS_XXXX_XXXXXX.xlsx" },
 ] as const;
 
+type SessionLogFilter = "all" | "warnings" | "errors" | "ok" | "omitted";
+
 function inferTipoFromFilename(filename: string): string | null {
   const name = filename.toUpperCase();
 
@@ -231,6 +233,12 @@ export default function CargaSection({ token }: Props) {
   const [cargaOpen, setCargaOpen] = useState<boolean>(false);
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
 
+  // ✅ NUEVO: resumen plegable
+  const [summaryOpen, setSummaryOpen] = useState<boolean>(false);
+
+  // ✅ NUEVO: filtro de logs desde el resumen
+  const [logFilter, setLogFilter] = useState<SessionLogFilter>("all");
+
   // Cargar empresas para seleccionar empresa_id
   useEffect(() => {
     const loadEmpresas = async () => {
@@ -257,6 +265,95 @@ export default function CargaSection({ token }: Props) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files);
+  };
+
+  // ✅ NUEVO: resumen de sesión actual, derivado del log actual
+  const sessionSummary = useMemo(() => {
+    const totalSeleccionados = files?.length ?? 0;
+
+    let totalIniciados = 0;
+    let subidosOk = 0;
+    let erroresSubida = 0;
+    let procesadosOk = 0;
+    let erroresProcesado = 0;
+    let avisos = 0;
+    let notas = 0;
+    let omitidos = 0;
+    let finalizado = false;
+
+    for (const line of logLines) {
+      if (line.includes("Iniciando carga de")) {
+        const m = line.match(/Iniciando carga de\s+(\d+)\s+fichero/i);
+        if (m) totalIniciados = Number.parseInt(m[1], 10) || totalIniciados;
+      }
+
+      if (line.includes("✅ Subido")) subidosOk += 1;
+      if (line.includes("❌ Error subiendo")) erroresSubida += 1;
+      if (line.includes("✅ Procesado")) procesadosOk += 1;
+      if (line.includes("❌ Error procesando")) erroresProcesado += 1;
+      if (line.includes("⚠ Avisos")) avisos += 1;
+      if (line.includes("↳ ⚠")) avisos += 1;
+      if (line.includes("ℹ️ Notas")) notas += 1;
+      if (line.includes("↳ ℹ️")) notas += 1;
+      if (line.includes("Se omite")) omitidos += 1;
+      if (line.includes("✔ Carga y procesado de ficheros finalizados.")) finalizado = true;
+    }
+
+    const totalErrores = erroresSubida + erroresProcesado;
+    const estado = loading ? "processing" : finalizado ? "done" : logLines.length > 0 ? "idle" : "empty";
+
+    return {
+      totalSeleccionados,
+      totalIniciados,
+      subidosOk,
+      erroresSubida,
+      procesadosOk,
+      erroresProcesado,
+      totalErrores,
+      avisos,
+      notas,
+      omitidos,
+      finalizado,
+      estado,
+    };
+  }, [files, logLines, loading]);
+
+  // ✅ NUEVO: logs filtrados desde badges
+  const filteredLogLines = useMemo(() => {
+    if (logFilter === "all") return logLines;
+
+    return logLines.filter((line) => {
+      if (logFilter === "warnings") {
+        return line.includes("⚠ Avisos") || line.includes("↳ ⚠") || line.includes("⚠ Fichero") || line.includes("⚠ Avisos:");
+      }
+
+      if (logFilter === "errors") {
+        return line.includes("❌") || line.includes("↳ Motivo:");
+      }
+
+      if (logFilter === "ok") {
+        return line.includes("✅ Subido") || line.includes("✅ Procesado") || line.includes("✔ Carga y procesado");
+      }
+
+      if (logFilter === "omitted") {
+        return line.includes("Se omite");
+      }
+
+      return true;
+    });
+  }, [logFilter, logLines]);
+
+  const logFilterLabel = useMemo(() => {
+    if (logFilter === "warnings") return "Avisos";
+    if (logFilter === "errors") return "Errores";
+    if (logFilter === "ok") return "OK";
+    if (logFilter === "omitted") return "Omitidos";
+    return "Todos";
+  }, [logFilter]);
+
+  const activateLogFilter = (filter: SessionLogFilter) => {
+    setSummaryOpen(true);
+    setLogFilter(filter);
   };
 
   // --- Lógica actual de subida/proceso: NO TOCAR ---
@@ -563,26 +660,172 @@ export default function CargaSection({ token }: Props) {
           )}
         </div>
 
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button type="button" onClick={handleProcess} disabled={!canUse || loading} className="ui-btn ui-btn-primary">
-            {loading ? "Procesando..." : "Subir y procesar ficheros"}
-          </button>
+        {/* ✅ NUEVO: botones + resumen plegable */}
+        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_320px] md:items-start">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={handleProcess} disabled={!canUse || loading} className="ui-btn ui-btn-primary">
+              {loading ? "Procesando..." : "Subir y procesar ficheros"}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setLogLines([])}
-            disabled={logLines.length === 0}
-            className="ui-btn ui-btn-outline"
-            title="Limpiar logs"
+            <button
+              type="button"
+              onClick={() => {
+                setLogLines([]);
+                setLogFilter("all");
+              }}
+              disabled={logLines.length === 0}
+              className="ui-btn ui-btn-outline"
+              title="Limpiar logs"
+            >
+              Limpiar logs
+            </button>
+          </div>
+
+          <div
+            className="rounded-xl border px-3 py-2"
+            style={{ borderColor: "var(--card-border)", background: "var(--field-bg-soft)" }}
           >
-            Limpiar logs
-          </button>
+            <button
+              type="button"
+              onClick={() => setSummaryOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+              aria-expanded={summaryOpen}
+              aria-controls="upload-session-summary"
+            >
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold">Resumen de carga</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                  <span className="ui-badge ui-badge--neutral">Total {sessionSummary.totalSeleccionados}</span>
+                  <span className="ui-badge ui-badge--ok">OK {sessionSummary.procesadosOk}</span>
+                  <span className="ui-badge ui-badge--err">Error {sessionSummary.totalErrores}</span>
+                  <span className="ui-badge ui-badge--warn">Avisos {sessionSummary.avisos}</span>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-[10px] ui-muted">
+                  {sessionSummary.estado === "processing"
+                    ? "En curso"
+                    : sessionSummary.estado === "done"
+                    ? "Completado"
+                    : sessionSummary.estado === "idle"
+                    ? "Listo"
+                    : "Sin datos"}
+                </span>
+                <span
+                  className={[
+                    "inline-flex items-center justify-center text-[13px] ui-muted transition-transform",
+                    summaryOpen ? "rotate-180" : "rotate-0",
+                  ].join(" ")}
+                  aria-hidden="true"
+                >
+                  ▾
+                </span>
+              </div>
+            </button>
+
+            {summaryOpen && (
+              <div id="upload-session-summary" className="mt-3 border-t pt-3" style={{ borderColor: "var(--card-border)" }}>
+                <div className="grid grid-cols-2 gap-2 text-[11px] md:grid-cols-2">
+                  <div
+                    className="rounded-lg border px-2 py-2"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                  >
+                    <div className="ui-muted text-[10px]">Total seleccionados</div>
+                    <div className="mt-1 font-mono">{sessionSummary.totalSeleccionados}</div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => activateLogFilter("ok")}
+                    className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    title="Ver logs OK"
+                  >
+                    <div className="ui-muted text-[10px]">Subidos / procesados OK</div>
+                    <div className="mt-1 font-mono">{sessionSummary.procesadosOk}</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => activateLogFilter("errors")}
+                    className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    title="Ver logs con error"
+                  >
+                    <div className="ui-muted text-[10px]">Errores</div>
+                    <div className="mt-1 font-mono">{sessionSummary.totalErrores}</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => activateLogFilter("warnings")}
+                    className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    title="Ver logs con avisos"
+                  >
+                    <div className="ui-muted text-[10px]">Avisos</div>
+                    <div className="mt-1 font-mono">{sessionSummary.avisos}</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => activateLogFilter("omitted")}
+                    className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    title="Ver ficheros omitidos"
+                  >
+                    <div className="ui-muted text-[10px]">Omitidos</div>
+                    <div className="mt-1 font-mono">{sessionSummary.omitidos}</div>
+                  </button>
+
+                  <div
+                    className="rounded-lg border px-2 py-2"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                  >
+                    <div className="ui-muted text-[10px]">Notas</div>
+                    <div className="mt-1 font-mono">{sessionSummary.notas}</div>
+                  </div>
+                </div>
+
+                <div className="mt-3 text-[10px] ui-muted">
+                  Estado actual:{" "}
+                  <span style={{ color: "var(--text)" }}>
+                    {sessionSummary.estado === "processing"
+                      ? "Procesando ficheros"
+                      : sessionSummary.estado === "done"
+                      ? "Carga finalizada"
+                      : sessionSummary.estado === "idle"
+                      ? "Sesión preparada"
+                      : "Sin actividad"}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div>
           <div className="mb-1 flex items-center justify-between gap-3">
             <h4 className="text-xs font-semibold">Logs sesión actual</h4>
-            <span className="text-[10px] ui-muted">{loading ? "Trabajando…" : ""}</span>
+
+            <div className="flex items-center gap-2">
+              {logFilter !== "all" && (
+                <>
+                  <span className="ui-badge ui-badge--neutral">Filtro: {logFilterLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() => setLogFilter("all")}
+                    className="ui-btn ui-btn-outline"
+                    title="Quitar filtro"
+                  >
+                    Ver todo
+                  </button>
+                </>
+              )}
+
+              <span className="text-[10px] ui-muted">{loading ? "Trabajando…" : ""}</span>
+            </div>
           </div>
 
           <div
@@ -595,10 +838,12 @@ export default function CargaSection({ token }: Props) {
           >
             {logLines.length === 0 ? (
               <div className="ui-muted">Aquí aparecerán los logs de subida y procesado.</div>
+            ) : filteredLogLines.length === 0 ? (
+              <div className="ui-muted">No hay líneas para el filtro seleccionado.</div>
             ) : (
               <ul className="space-y-0.5">
-                {logLines.map((line, idx) => (
-                  <li key={idx}>• {line}</li>
+                {filteredLogLines.map((line, idx) => (
+                  <li key={`${logFilter}-${idx}`}>• {line}</li>
                 ))}
               </ul>
             )}
@@ -755,9 +1000,7 @@ export default function CargaSection({ token }: Props) {
                 <th className="ui-th ui-th-right">Error</th>
                 <th className="ui-th">Subido</th>
                 <th className="ui-th">Procesado</th>
-                {/* ✅ NUEVO (no rompe nada si backend no envía warnings): */}
                 <th className="ui-th ui-th-right">Avisos</th>
-                {/* ✅ NUEVO: acción detalle */}
                 <th className="ui-th">Detalle</th>
               </tr>
             </thead>
@@ -873,7 +1116,6 @@ export default function CargaSection({ token }: Props) {
               <div className="mt-4">
                 <div className="text-xs font-semibold">Avisos / notas</div>
 
-                {/* warnings_message (si existe) */}
                 {selectedHistory.warnings_message ? (
                   <div className="mt-2 ui-alert ui-alert--warning text-[11px]">{selectedHistory.warnings_message}</div>
                 ) : null}
