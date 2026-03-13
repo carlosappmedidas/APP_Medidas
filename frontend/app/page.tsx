@@ -92,6 +92,7 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
 ];
 
 const SIDEBAR_STORAGE_KEY = "ui_sidebar_collapsed";
+const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(null);
@@ -114,6 +115,11 @@ export default function HomePage() {
 
   useEffect(() => {
     try {
+      const savedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+      if (savedToken) {
+        setToken(savedToken);
+      }
+
       const savedTab = localStorage.getItem("ui_active_tab");
       if (
         savedTab === "dashboard" ||
@@ -219,6 +225,11 @@ export default function HomePage() {
         });
 
         if (!res.ok) {
+          try {
+            localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+          } catch {
+            // ignore
+          }
           setCurrentUser(null);
           setToken(null);
           return;
@@ -253,7 +264,13 @@ export default function HomePage() {
   };
 
   const handleLogout = () => {
+    try {
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
     setToken(null);
+    setCurrentUser(null);
     setHomeMenuOpen(false);
   };
 

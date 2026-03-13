@@ -11,6 +11,8 @@ type LoginProps = {
   currentUser: User | null; // no lo usamos pero lo mantenemos por compatibilidad
 };
 
+const AUTH_TOKEN_STORAGE_KEY = "auth_token";
+
 function friendlyLoginError(status?: number) {
   if (!status) return "No se pudo conectar con la API. Revisa red/URL.";
   if (status === 401) return "Credenciales incorrectas (usuario o contraseña).";
@@ -63,12 +65,25 @@ export default function LoginSection({ token, setToken }: LoginProps) {
             ? `${friendlyLoginError(res.status)} (${detail})`
             : friendlyLoginError(res.status)
         );
+
+        try {
+          localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+
         setToken(null);
         return;
       }
 
       const json = await res.json();
       const accessToken = json.access_token as string;
+
+      try {
+        localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, accessToken);
+      } catch {
+        // ignore
+      }
 
       setToken(accessToken);
       setError(null);
@@ -77,6 +92,13 @@ export default function LoginSection({ token, setToken }: LoginProps) {
       setError(
         "No se pudo conectar con la API. Revisa la URL o que el backend esté levantado."
       );
+
+      try {
+        localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+
       setToken(null);
     } finally {
       setLoading(false);
@@ -85,6 +107,13 @@ export default function LoginSection({ token, setToken }: LoginProps) {
 
   const handleLogout = () => {
     setError(null);
+
+    try {
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+
     setToken(null);
     setPassword("");
   };
@@ -97,7 +126,6 @@ export default function LoginSection({ token, setToken }: LoginProps) {
         mx-auto
       "
     >
-      {/* HEADER */}
       <header className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="ui-card-title">Acceso</h3>
@@ -129,10 +157,8 @@ export default function LoginSection({ token, setToken }: LoginProps) {
         </div>
       </header>
 
-      {/* ERROR */}
       {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
-      {/* FORM */}
       <div className="space-y-3">
         <div>
           <label className="ui-label">Usuario (email)</label>
@@ -187,7 +213,6 @@ export default function LoginSection({ token, setToken }: LoginProps) {
         )}
       </div>
 
-      {/* NOTA PIE */}
       <p className="mt-4 text-center text-[10px] ui-muted">
         Acceso restringido · Introduce tus credenciales para continuar.
       </p>
