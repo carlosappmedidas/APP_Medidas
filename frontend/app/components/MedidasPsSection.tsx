@@ -1,4 +1,3 @@
-// app/components/MedidasPsSection.tsx
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -604,6 +603,7 @@ export default function MedidasPsSection({
 
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
+  const [filtroTenant, setFiltroTenant] = useState<string>("");
   const [filtroEmpresaIds, setFiltroEmpresaIds] = useState<string[]>([]);
   const [filtroAnios, setFiltroAnios] = useState<string[]>([]);
   const [filtroMeses, setFiltroMeses] = useState<string[]>([]);
@@ -620,7 +620,6 @@ export default function MedidasPsSection({
   const [showAdjust, setShowAdjust] = useState<boolean>(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -628,6 +627,21 @@ export default function MedidasPsSection({
   const isSistema = scope === "all";
 
   const defaultOrder = useMemo(() => ALL_COLUMNS_PS.map((c) => c.id), []);
+
+  const systemTenantColumn: ColumnDefPs = useMemo(
+    () => ({
+      id: "tenant_id",
+      label: "Cliente",
+      align: "left",
+      group: "Identificación",
+      render: (m) => (m as any).tenant_id ?? "-",
+    }),
+    []
+  );
+
+  const baseColumns = useMemo(() => {
+    return isSistema ? [systemTenantColumn, ...ALL_COLUMNS_PS] : ALL_COLUMNS_PS;
+  }, [isSistema, systemTenantColumn]);
 
   const safeColumnOrder = useMemo(() => {
     if (Array.isArray(columnOrder) && columnOrder.length > 0) return columnOrder;
@@ -647,11 +661,24 @@ export default function MedidasPsSection({
   }, [safeColumnOrder, defaultOrder]);
 
   const filtrosActivosCount =
+    (isSistema && filtroTenant ? 1 : 0) +
     (filtroEmpresaIds.length > 0 ? 1 : 0) +
     (filtroAnios.length > 0 ? 1 : 0) +
     (filtroMeses.length > 0 ? 1 : 0);
 
+  const canDeleteByFilters =
+    isSistema &&
+    filtroEmpresaIds.length > 0 &&
+    filtroAnios.length > 0 &&
+    filtroMeses.length > 0;
+
+  const totalDeleteOps = useMemo(() => {
+    if (!canDeleteByFilters) return 0;
+    return filtroEmpresaIds.length * filtroAnios.length * filtroMeses.length;
+  }, [canDeleteByFilters, filtroEmpresaIds, filtroAnios, filtroMeses]);
+
   const clearFilters = () => {
+    setFiltroTenant("");
     setFiltroEmpresaIds([]);
     setFiltroAnios([]);
     setFiltroMeses([]);
@@ -694,6 +721,7 @@ export default function MedidasPsSection({
       params.set("page", String(effectivePage));
       params.set("page_size", String(pageSize));
 
+      if (isSistema && filtroTenant) params.set("tenant_id", filtroTenant);
       if (filtroEmpresaIds.length > 0) params.set("empresa_ids", filtroEmpresaIds.join(","));
       if (filtroAnios.length > 0) params.set("anios", filtroAnios.join(","));
       if (filtroMeses.length > 0) params.set("meses", filtroMeses.join(","));
@@ -711,7 +739,6 @@ export default function MedidasPsSection({
       setTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
 
       setHasLoadedOnce(true);
-      setSelectedIds(new Set());
     } catch (err) {
       console.error("Error cargando medidas_ps paginadas:", err);
       setError("Error cargando medidas PS. Revisa la API y el token.");
@@ -719,7 +746,6 @@ export default function MedidasPsSection({
       setTotalFilas(0);
       setTotalPages(1);
       setHasLoadedOnce(true);
-      setSelectedIds(new Set());
     } finally {
       setLoading(false);
     }
@@ -735,13 +761,13 @@ export default function MedidasPsSection({
       setOpcionesEmpresa([]);
       setOpcionesAnio([]);
       setOpcionesMes([]);
+      setFiltroTenant("");
       setFiltroEmpresaIds([]);
       setFiltroAnios([]);
       setFiltroMeses([]);
       setPage(0);
       setTotalFilas(0);
       setTotalPages(1);
-      setSelectedIds(new Set());
       return;
     }
 
@@ -760,14 +786,14 @@ export default function MedidasPsSection({
   useEffect(() => {
     if (!token) return;
 
-    const key = `${scope}::${filtroEmpresaIds.join(",")}::${filtroAnios.join(",")}::${filtroMeses.join(",")}::${pageSize}`;
+    const key = `${scope}::${filtroTenant}::${filtroEmpresaIds.join(",")}::${filtroAnios.join(",")}::${filtroMeses.join(",")}::${pageSize}`;
     if (filterKeyRef.current === key) return;
     filterKeyRef.current = key;
 
     setPage(0);
     void handleLoadMedidas(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, scope, filtroEmpresaIds, filtroAnios, filtroMeses, pageSize]);
+  }, [token, scope, filtroTenant, filtroEmpresaIds, filtroAnios, filtroMeses, pageSize]);
 
   const pageKeyRef = useRef<string>("");
   useEffect(() => {
@@ -781,14 +807,32 @@ export default function MedidasPsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, page]);
 
+  const opcionesTenant = useMemo(() => {
+    if (!isSistema) return [];
+    const tenants = new Set<number>();
+    for (const e of opcionesEmpresa) {
+      if (typeof e?.tenant_id === "number") tenants.add(e.tenant_id);
+    }
+    return Array.from(tenants).sort((a, b) => a - b).map(String);
+  }, [isSistema, opcionesEmpresa]);
+
+  const opcionesEmpresaFiltradas = useMemo(() => {
+    if (!isSistema) return opcionesEmpresa;
+    if (!filtroTenant) return opcionesEmpresa;
+    const t = Number.parseInt(filtroTenant, 10);
+    if (Number.isNaN(t)) return opcionesEmpresa;
+    return opcionesEmpresa.filter((e) => e.tenant_id === t);
+  }, [isSistema, opcionesEmpresa, filtroTenant]);
+
   const empresaOptions = useMemo<MultiSelectOption[]>(() => {
-    return opcionesEmpresa.map((e) => ({
+    const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;
+    return source.map((e) => ({
       value: String(e.id),
       label:
         `${e.nombre ?? e.codigo ?? `Empresa ${e.id}`}` +
-        (scope === "all" && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""),
+        (isSistema && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""),
     }));
-  }, [opcionesEmpresa, scope]);
+  }, [isSistema, opcionesEmpresa, opcionesEmpresaFiltradas]);
 
   const anioOptions = useMemo<MultiSelectOption[]>(
     () => opcionesAnio.map((anio) => ({ value: String(anio), label: String(anio) })),
@@ -806,24 +850,29 @@ export default function MedidasPsSection({
 
   const columnasPorId = useMemo(() => {
     const map = new Map<string, ColumnDefPs>();
-    for (const c of ALL_COLUMNS_PS) map.set(c.id, c);
+    for (const c of baseColumns) map.set(c.id, c);
     return map;
-  }, []);
+  }, [baseColumns]);
 
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefPs[] = [];
 
+    if (isSistema) {
+      const tcol = columnasPorId.get("tenant_id");
+      if (tcol) base.push(tcol);
+    }
+
     for (const id of safeColumnOrder) {
       const col = columnasPorId.get(id);
-      if (col) base.push(col);
+      if (col && col.id !== "tenant_id") base.push(col);
     }
 
     const faltantes = ALL_COLUMNS_PS.filter((c) => !safeColumnOrder.includes(c.id));
-    const full = [...base, ...faltantes];
+    const full = [...base, ...faltantes.filter((c) => !base.some((b) => b.id === c.id))];
 
     if (!safeHiddenColumns || safeHiddenColumns.length === 0) return full;
     return full.filter((c) => !safeHiddenColumns.includes(c.id));
-  }, [safeColumnOrder, columnasPorId, safeHiddenColumns]);
+  }, [isSistema, safeColumnOrder, columnasPorId, safeHiddenColumns]);
 
   const totalColumnas = columnasOrdenadas.length || 1;
 
@@ -873,9 +922,13 @@ export default function MedidasPsSection({
   const thirdIds = orderForAdjustments.slice(2 * third);
 
   const renderAdjustItem = (id: string, index: number) => {
-    const meta = ALL_COLUMNS_PS.find((c) => c.id === id);
-    const label = meta?.label ?? id;
-    const group = meta?.group ?? "-";
+    const meta =
+      (isSistema && id === "tenant_id"
+        ? { label: "Cliente", group: "Identificación" }
+        : ALL_COLUMNS_PS.find((c) => c.id === id)) ?? { label: id, group: "-" };
+
+    const label = meta.label;
+    const group = meta.group;
     const isChecked = !safeHiddenColumns.includes(id);
 
     return (
@@ -912,40 +965,6 @@ export default function MedidasPsSection({
     );
   };
 
-  const currentPageIds = useMemo(() => {
-    const ids: number[] = [];
-    for (const r of data as any[]) {
-      if (typeof r?.id === "number") ids.push(r.id);
-    }
-    return ids;
-  }, [data]);
-
-  const allCurrentSelected =
-    currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
-
-  const toggleSelectAllCurrent = () => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (allCurrentSelected) {
-        for (const id of currentPageIds) next.delete(id);
-      } else {
-        for (const id of currentPageIds) next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const toggleRow = (rowId: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(rowId)) next.delete(rowId);
-      else next.add(rowId);
-      return next;
-    });
-  };
-
-  const selectedCount = selectedIds.size;
-
   const openDelete = () => {
     setDeleteError(null);
     setDeleteOpen(true);
@@ -958,35 +977,57 @@ export default function MedidasPsSection({
   };
 
   const confirmDelete = async () => {
-    if (!token) return;
-    if (!isSistema) return;
-    if (selectedIds.size === 0) return;
+    if (!token || !isSistema) return;
+    if (!canDeleteByFilters) return;
 
     setDeleteBusy(true);
     setDeleteError(null);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/medidas/ps/all`, {
-        method: "DELETE",
-        headers: {
-          ...getAuthHeaders(token),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ids: Array.from(selectedIds) }),
-      });
+      const tasks: Array<{ tenantId: string; empresaId: string; anio: string; mes: string }> = [];
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `Error ${res.status}`);
+      for (const empresaId of filtroEmpresaIds) {
+        const empresa = opcionesEmpresa.find((e) => String(e.id) === empresaId);
+        const tenantId = empresa?.tenant_id != null ? String(empresa.tenant_id) : filtroTenant;
+
+        if (!tenantId) {
+          throw new Error(`No se pudo resolver tenant_id para empresa ${empresaId}`);
+        }
+
+        for (const anio of filtroAnios) {
+          for (const mes of filtroMeses) {
+            tasks.push({ tenantId, empresaId, anio, mes });
+          }
+        }
+      }
+
+      for (const task of tasks) {
+        const params = new URLSearchParams();
+        params.set("tenant_id", task.tenantId);
+        params.set("empresa_id", task.empresaId);
+        params.set("anio", task.anio);
+        params.set("mes", task.mes);
+        params.set("tipo", "PS");
+
+        const res = await fetch(`${API_BASE_URL}/ingestion/files?${params.toString()}`, {
+          method: "DELETE",
+          headers: getAuthHeaders(token),
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || `Error ${res.status}`);
+        }
       }
 
       setDeleteOpen(false);
-      setSelectedIds(new Set());
-      await handleLoadMedidas(page);
+      await loadFilters();
+      await handleLoadMedidas(0);
+      setPage(0);
     } catch (e) {
-      console.error("Error borrando medidas PS (Sistema):", e);
+      console.error("Error borrando ingestion PS desde Sistema:", e);
       setDeleteError(
-        "No se pudieron borrar las medidas PS. Revisa el endpoint y permisos (superuser)."
+        "No se pudo completar el borrado por ingestion de PS. Revisa filtros, endpoint y permisos."
       );
     } finally {
       setDeleteBusy(false);
@@ -1014,15 +1055,19 @@ export default function MedidasPsSection({
           {isSistema && (
             <button
               onClick={openDelete}
-              disabled={loading || !token || selectedCount === 0}
+              disabled={loading || !token || !canDeleteByFilters}
               className="ui-btn ui-btn-danger"
               type="button"
-              title={selectedCount === 0 ? "Selecciona filas para borrar" : "Borrar filas seleccionadas"}
+              title={
+                canDeleteByFilters
+                  ? "Borrar por ingestion usando los filtros activos"
+                  : "Selecciona al menos empresa, año y mes para borrar"
+              }
             >
               Borrar…
-              {selectedCount > 0 ? (
+              {totalDeleteOps > 0 ? (
                 <span className="ui-badge ui-badge--neutral" style={{ marginLeft: 6 }}>
-                  {selectedCount}
+                  {totalDeleteOps}
                 </span>
               ) : null}
             </button>
@@ -1062,7 +1107,45 @@ export default function MedidasPsSection({
         )}
       </div>
 
-      <div className="mb-4 grid gap-2 md:grid-cols-3">
+      {isSistema && (
+        <div className="mb-3 ui-alert ui-alert--warning">
+          En Sistema, el borrado de PS se hace siempre por <strong>ingestion</strong> usando los filtros activos
+          y forzando <strong>tipo=PS</strong>. Selecciona al menos <strong>empresa + año + mes</strong>.
+        </div>
+      )}
+
+      <div className={isSistema ? "mb-4 grid gap-2 md:grid-cols-4" : "mb-4 grid gap-2 md:grid-cols-3"}>
+        {isSistema && (
+          <div>
+            <label className="ui-label">Cliente</label>
+            <select
+              className="ui-select text-[10px]"
+              style={{
+                minHeight: 28,
+                height: 28,
+                paddingTop: 2,
+                paddingBottom: 2,
+                paddingLeft: 8,
+                paddingRight: 8,
+                lineHeight: 1.05,
+              }}
+              value={filtroTenant}
+              onChange={(e) => {
+                setFiltroTenant(e.target.value);
+                setFiltroEmpresaIds([]);
+              }}
+              disabled={!token || loading}
+            >
+              <option value="">Todos</option>
+              {opcionesTenant.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <MultiSelectDropdown
           label="Empresa"
           options={empresaOptions}
@@ -1136,19 +1219,6 @@ export default function MedidasPsSection({
         <table className="ui-table text-[11px]">
           <thead className="ui-thead">
             <tr>
-              {isSistema && (
-                <th className="ui-th" style={{ width: 44 }}>
-                  <input
-                    type="checkbox"
-                    className="ui-checkbox"
-                    checked={allCurrentSelected}
-                    onChange={toggleSelectAllCurrent}
-                    disabled={loading || !hasLoadedOnce || currentPageIds.length === 0}
-                    title="Seleccionar todo (página actual)"
-                  />
-                </th>
-              )}
-
               {columnasOrdenadas.map((col) => (
                 <th
                   key={col.id}
@@ -1164,19 +1234,6 @@ export default function MedidasPsSection({
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={`sk-${i}`} className="ui-tr">
-                  {isSistema && (
-                    <td className="ui-td">
-                      <span
-                        className="inline-block h-3 w-4 rounded-md"
-                        style={{
-                          background: "var(--field-bg-soft)",
-                          border: "1px solid var(--field-border)",
-                          opacity: 0.6,
-                        }}
-                      />
-                    </td>
-                  )}
-
                   {Array.from({ length: totalColumnas }).map((__, j) => (
                     <td key={`sk-${i}-${j}`} className="ui-td">
                       <span
@@ -1194,43 +1251,25 @@ export default function MedidasPsSection({
 
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
-                <td colSpan={totalColumnas + (isSistema ? 1 : 0)} className="ui-td text-center ui-muted">
+                <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
                   No hay medidas PS que cumplan los filtros.
                 </td>
               </tr>
             )}
 
             {!loading &&
-              data.map((m: any) => {
-                const rowId = typeof m?.id === "number" ? (m.id as number) : null;
-                const checked = rowId != null ? selectedIds.has(rowId) : false;
-
-                return (
-                  <tr key={`${m.empresa_id}-${m.anio}-${m.mes}`} className="ui-tr">
-                    {isSistema && (
-                      <td className="ui-td">
-                        <input
-                          type="checkbox"
-                          className="ui-checkbox"
-                          checked={checked}
-                          disabled={rowId == null}
-                          onChange={() => rowId != null && toggleRow(rowId)}
-                          title={rowId == null ? "Fila sin id (no seleccionable)" : "Seleccionar fila"}
-                        />
-                      </td>
-                    )}
-
-                    {columnasOrdenadas.map((col) => (
-                      <td
-                        key={col.id}
-                        className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
-                      >
-                        {col.render(m)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
+              data.map((m: any) => (
+                <tr key={`${m.empresa_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`} className="ui-tr">
+                  {columnasOrdenadas.map((col) => (
+                    <td
+                      key={col.id}
+                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
+                    >
+                      {col.render(m)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
           </tbody>
         </table>
 
@@ -1314,8 +1353,12 @@ export default function MedidasPsSection({
 
       <ConfirmDeleteModalInline
         open={deleteOpen}
-        title="Borrar medidas (PS) · Sistema"
-        subtitle={`Vas a borrar ${selectedCount} fila(s) seleccionada(s) (página actual). Esta acción no se puede deshacer.`}
+        title="Borrar por ingestion · PS · Sistema"
+        subtitle={
+          canDeleteByFilters
+            ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion con tipo=PS usando empresa + año + mes. Esto elimina también detalles, contribuciones y medidas derivadas asociadas.`
+            : "Selecciona al menos empresa, año y mes para habilitar el borrado."
+        }
         busy={deleteBusy}
         error={deleteError}
         confirmText="Borrar definitivamente"

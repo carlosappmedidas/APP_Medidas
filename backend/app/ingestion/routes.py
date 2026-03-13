@@ -431,6 +431,29 @@ def delete_files(
     - anio
     - mes
     """
+    if tenant_id is not None and empresa_id is not None:
+        empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+        if not empresa:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Empresa no encontrada",
+            )
+        empresa_tenant_id = cast(int, empresa.tenant_id)
+        if empresa_tenant_id != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La empresa indicada no pertenece al tenant indicado",
+            )
+
+    elif tenant_id is None and empresa_id is not None:
+        empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+        if not empresa:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Empresa no encontrada",
+            )
+        tenant_id = cast(int, empresa.tenant_id)
+
     base_query = db.query(IngestionFile)
 
     base_query = _apply_ingestion_filters(
@@ -443,8 +466,28 @@ def delete_files(
         mes=mes,
     )
 
-    ids_subq = base_query.with_entities(IngestionFile.id).subquery()
-    ids_select = select(ids_subq.c.id)
+    rows_to_delete = base_query.all()
+    ids_to_delete = [cast(int, row.id) for row in rows_to_delete]
+
+    if not ids_to_delete:
+        return {
+            "deleted_ingestion_files": 0,
+            "deleted_m1_period_contributions": 0,
+            "deleted_ps_period_detail": 0,
+            "deleted_ps_period_contributions": 0,
+            "deleted_medidas_general": 0,
+            "deleted_medidas_ps": 0,
+            "filters": {
+                "tenant_id": tenant_id,
+                "empresa_id": empresa_id,
+                "tipo": tipo,
+                "status_": status_,
+                "anio": anio,
+                "mes": mes,
+            },
+        }
+
+    ids_select = select(IngestionFile.id).where(IngestionFile.id.in_(ids_to_delete))
 
     deleted_m1_contrib = (
         db.query(M1PeriodContribution)
@@ -476,7 +519,11 @@ def delete_files(
         .delete(synchronize_session=False)
     )
 
-    deleted_files = base_query.delete(synchronize_session=False)
+    deleted_files = (
+        db.query(IngestionFile)
+        .filter(IngestionFile.id.in_(ids_to_delete))
+        .delete(synchronize_session=False)
+    )
 
     db.commit()
 
