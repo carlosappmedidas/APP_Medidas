@@ -1,4 +1,3 @@
-// app/components/MedidasGeneralSection.tsx
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -348,7 +347,6 @@ export default function MedidasGeneralSection({
   const [showAdjust, setShowAdjust] = useState<boolean>(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -392,6 +390,18 @@ export default function MedidasGeneralSection({
     (filtroEmpresaIds.length > 0 ? 1 : 0) +
     (filtroAnios.length > 0 ? 1 : 0) +
     (filtroMeses.length > 0 ? 1 : 0);
+
+  const canDeleteByFilters =
+    isSistema &&
+    !!filtroTenant &&
+    filtroEmpresaIds.length > 0 &&
+    filtroAnios.length > 0 &&
+    filtroMeses.length > 0;
+
+  const totalDeleteOps = useMemo(() => {
+    if (!canDeleteByFilters) return 0;
+    return filtroEmpresaIds.length * filtroAnios.length * filtroMeses.length;
+  }, [canDeleteByFilters, filtroEmpresaIds, filtroAnios, filtroMeses]);
 
   const clearFilters = () => {
     setFiltroTenant("");
@@ -454,8 +464,6 @@ export default function MedidasGeneralSection({
       setTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
 
       setHasLoadedOnce(true);
-
-      if (isSistema) setSelectedIds(new Set());
     } catch (err) {
       console.error("Error cargando medidas_general paginadas:", err);
       setError("Error cargando medidas. Revisa la API y el token.");
@@ -463,7 +471,6 @@ export default function MedidasGeneralSection({
       setTotalFilas(0);
       setTotalPages(1);
       setHasLoadedOnce(true);
-      if (isSistema) setSelectedIds(new Set());
     } finally {
       setLoading(false);
     }
@@ -489,8 +496,6 @@ export default function MedidasGeneralSection({
       setPage(0);
       setTotalFilas(0);
       setTotalPages(1);
-
-      setSelectedIds(new Set());
       return;
     }
 
@@ -679,41 +684,6 @@ export default function MedidasGeneralSection({
     );
   };
 
-  const currentPageIds = useMemo(() => {
-    if (!isSistema) return [];
-    const ids: number[] = [];
-    for (const r of data as any[]) if (typeof r?.id === "number") ids.push(r.id);
-    return ids;
-  }, [isSistema, data]);
-
-  const selectedCount = selectedIds.size;
-
-  const allCurrentSelected =
-    isSistema && currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
-
-  const toggleSelectAllCurrent = () => {
-    if (!isSistema) return;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (allCurrentSelected) {
-        for (const id of currentPageIds) next.delete(id);
-      } else {
-        for (const id of currentPageIds) next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const toggleRow = (rowId: number) => {
-    if (!isSistema) return;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(rowId)) next.delete(rowId);
-      else next.add(rowId);
-      return next;
-    });
-  };
-
   const openDelete = () => {
     setDeleteError(null);
     setDeleteOpen(true);
@@ -726,34 +696,56 @@ export default function MedidasGeneralSection({
   };
 
   const confirmDelete = async () => {
-    if (!token) return;
-    if (!isSistema) return;
-    if (selectedIds.size === 0) return;
+    if (!token || !isSistema) return;
+    if (!canDeleteByFilters) return;
+    if (!filtroTenant) return;
 
     setDeleteBusy(true);
     setDeleteError(null);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/medidas/general/all/ids`, {
-        method: "DELETE",
-        headers: {
-          ...getAuthHeaders(token),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ids: Array.from(selectedIds) }),
-      });
+      const tasks: Array<{ tenantId: string; empresaId: string; anio: string; mes: string }> = [];
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `Error ${res.status}`);
+      for (const empresaId of filtroEmpresaIds) {
+        for (const anio of filtroAnios) {
+          for (const mes of filtroMeses) {
+            tasks.push({
+              tenantId: filtroTenant,
+              empresaId,
+              anio,
+              mes,
+            });
+          }
+        }
+      }
+
+      for (const task of tasks) {
+        const params = new URLSearchParams();
+        params.set("tenant_id", task.tenantId);
+        params.set("empresa_id", task.empresaId);
+        params.set("anio", task.anio);
+        params.set("mes", task.mes);
+
+        const res = await fetch(`${API_BASE_URL}/ingestion/files?${params.toString()}`, {
+          method: "DELETE",
+          headers: getAuthHeaders(token),
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || `Error ${res.status}`);
+        }
       }
 
       setDeleteOpen(false);
-      setSelectedIds(new Set());
-      await handleLoadMedidas(page);
+      await loadFilters();
+      setPage(0);
+      await handleLoadMedidas(0);
     } catch (e) {
-      console.error("Error borrando medidas_general (Sistema):", e);
-      setDeleteError("No se pudieron borrar las medidas. Revisa el endpoint y permisos (superuser).");
+      console.error("Error borrando ingestion desde General Sistema:", e);
+      setDeleteError(
+        "No se pudo completar el borrado por ingestion. Revisa filtros, endpoint y permisos."
+      );
     } finally {
       setDeleteBusy(false);
     }
@@ -780,15 +772,19 @@ export default function MedidasGeneralSection({
           {isSistema && (
             <button
               onClick={openDelete}
-              disabled={loading || !token || selectedCount === 0}
+              disabled={loading || !token || !canDeleteByFilters}
               className="ui-btn ui-btn-danger"
               type="button"
-              title={selectedCount === 0 ? "Selecciona filas para borrar" : "Borrar filas seleccionadas"}
+              title={
+                canDeleteByFilters
+                  ? "Borrar por ingestion usando tenant + empresa + año + mes"
+                  : "Selecciona tenant, empresa, año y mes para borrar"
+              }
             >
               Borrar…
-              {selectedCount > 0 ? (
+              {totalDeleteOps > 0 ? (
                 <span className="ui-badge ui-badge--neutral" style={{ marginLeft: 6 }}>
-                  {selectedCount}
+                  {totalDeleteOps}
                 </span>
               ) : null}
             </button>
@@ -827,6 +823,13 @@ export default function MedidasGeneralSection({
           </div>
         )}
       </div>
+
+      {isSistema && (
+        <div className="mb-3 ui-alert ui-alert--warning">
+          En Sistema, el borrado se hace siempre por <strong>ingestion</strong> usando
+          <strong> tenant + empresa + año + mes</strong>. Así evitamos borrar datos de otro tenant por error.
+        </div>
+      )}
 
       <div className={isSistema ? "mb-4 grid gap-2 md:grid-cols-4" : "mb-4 grid gap-2 md:grid-cols-3"}>
         {isSistema && (
@@ -932,19 +935,6 @@ export default function MedidasGeneralSection({
         <table className="ui-table text-[11px]">
           <thead className="ui-thead">
             <tr>
-              {isSistema && (
-                <th className="ui-th" style={{ width: 44 }}>
-                  <input
-                    type="checkbox"
-                    className="ui-checkbox"
-                    checked={allCurrentSelected}
-                    onChange={toggleSelectAllCurrent}
-                    disabled={loading || !hasLoadedOnce || currentPageIds.length === 0}
-                    title="Seleccionar todo (página actual)"
-                  />
-                </th>
-              )}
-
               {columnasOrdenadas.map((col) => (
                 <th
                   key={col.id}
@@ -960,19 +950,6 @@ export default function MedidasGeneralSection({
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={`sk-${i}`} className="ui-tr">
-                  {isSistema && (
-                    <td className="ui-td">
-                      <span
-                        className="inline-block h-3 w-4 rounded-md"
-                        style={{
-                          background: "var(--field-bg-soft)",
-                          border: "1px solid var(--field-border)",
-                          opacity: 0.6,
-                        }}
-                      />
-                    </td>
-                  )}
-
                   {Array.from({ length: totalColumnas }).map((__, j) => (
                     <td key={`sk-${i}-${j}`} className="ui-td">
                       <span
@@ -990,43 +967,25 @@ export default function MedidasGeneralSection({
 
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
-                <td colSpan={totalColumnas + (isSistema ? 1 : 0)} className="ui-td text-center ui-muted">
+                <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
                   No hay medidas que cumplan los filtros.
                 </td>
               </tr>
             )}
 
             {!loading &&
-              data.map((m: any) => {
-                const rowId = typeof m?.id === "number" ? (m.id as number) : null;
-                const checked = rowId != null ? selectedIds.has(rowId) : false;
-
-                return (
-                  <tr key={`${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`} className="ui-tr">
-                    {isSistema && (
-                      <td className="ui-td">
-                        <input
-                          type="checkbox"
-                          className="ui-checkbox"
-                          checked={checked}
-                          disabled={rowId == null}
-                          onChange={() => rowId != null && toggleRow(rowId)}
-                          title={rowId == null ? "Fila sin id (no seleccionable)" : "Seleccionar fila"}
-                        />
-                      </td>
-                    )}
-
-                    {columnasOrdenadas.map((col) => (
-                      <td
-                        key={col.id}
-                        className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
-                      >
-                        {col.render(m)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
+              data.map((m: any) => (
+                <tr key={`${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`} className="ui-tr">
+                  {columnasOrdenadas.map((col) => (
+                    <td
+                      key={col.id}
+                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
+                    >
+                      {col.render(m)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
           </tbody>
         </table>
 
@@ -1109,8 +1068,12 @@ export default function MedidasGeneralSection({
 
       <ConfirmDeleteModalInline
         open={deleteOpen}
-        title="Borrar medidas (General) · Sistema"
-        subtitle={`Vas a borrar ${selectedCount} fila(s) seleccionada(s) (página actual). Esta acción no se puede deshacer.`}
+        title="Borrar por ingestion · General · Sistema"
+        subtitle={
+          canDeleteByFilters
+            ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion usando tenant + empresa + año + mes. Esto elimina también contribuciones, detalles y medidas derivadas asociadas.`
+            : "Selecciona tenant, empresa, año y mes para habilitar el borrado."
+        }
         busy={deleteBusy}
         error={deleteError}
         confirmText="Borrar definitivamente"

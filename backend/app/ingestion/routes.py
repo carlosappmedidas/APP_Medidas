@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.db import get_db
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_current_active_superuser
 from app.core.config import get_settings
 from app.ingestion.models import IngestionFile
 from app.ingestion.schemas import (
@@ -141,6 +141,48 @@ def _extract_ingestion_warnings(obj: Any) -> list[Any]:
     if isinstance(w, list):
         return w
     return []
+
+
+def _apply_ingestion_filters(
+    query,
+    *,
+    tenant_id: int | None = None,
+    empresa_id: int | None = None,
+    tipo: str | None = None,
+    status_: str | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+):
+    if tenant_id is not None:
+        query = query.filter(IngestionFile.tenant_id == tenant_id)
+
+    if empresa_id is not None:
+        query = query.filter(IngestionFile.empresa_id == empresa_id)
+
+    if tipo is not None:
+        query = query.filter(IngestionFile.tipo == tipo)
+
+    if status_ is not None:
+        allowed = {
+            IngestionFile.STATUS_PENDING,
+            IngestionFile.STATUS_PROCESSING,
+            IngestionFile.STATUS_OK,
+            IngestionFile.STATUS_ERROR,
+        }
+        if status_ not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Status no válido. Debe ser uno de: {', '.join(sorted(allowed))}",
+            )
+        query = query.filter(IngestionFile.status == status_)
+
+    if anio is not None:
+        query = query.filter(IngestionFile.anio == anio)
+
+    if mes is not None:
+        query = query.filter(IngestionFile.mes == mes)
+
+    return query
 
 
 @router.post(
@@ -349,27 +391,14 @@ def list_files(
         IngestionFile.tenant_id == tenant_id_int,
     )
 
-    if empresa_id is not None:
-        query = query.filter(IngestionFile.empresa_id == empresa_id)
-    if tipo is not None:
-        query = query.filter(IngestionFile.tipo == tipo)
-    if status_ is not None:
-        allowed = {
-            IngestionFile.STATUS_PENDING,
-            IngestionFile.STATUS_PROCESSING,
-            IngestionFile.STATUS_OK,
-            IngestionFile.STATUS_ERROR,
-        }
-        if status_ not in allowed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Status no válido. Debe ser uno de: {', '.join(allowed)}",
-            )
-        query = query.filter(IngestionFile.status == status_)
-    if anio is not None:
-        query = query.filter(IngestionFile.anio == anio)
-    if mes is not None:
-        query = query.filter(IngestionFile.mes == mes)
+    query = _apply_ingestion_filters(
+        query,
+        empresa_id=empresa_id,
+        tipo=tipo,
+        status_=status_,
+        anio=anio,
+        mes=mes,
+    )
 
     query = query.order_by(
         IngestionFile.anio.desc(),
@@ -382,87 +411,68 @@ def list_files(
 
 @router.delete("/files")
 def delete_files(
+    tenant_id: int | None = None,
     empresa_id: int | None = None,
     tipo: str | None = None,
     status_: str | None = None,
     anio: int | None = None,
     mes: int | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_superuser),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    """
+    Borrado profundo SOLO para superusuarios.
 
-    base_query = db.query(IngestionFile).filter(
-        IngestionFile.tenant_id == tenant_id_int,
+    Puede borrar cross-tenant usando filtros opcionales:
+    - tenant_id
+    - empresa_id
+    - tipo
+    - status_
+    - anio
+    - mes
+    """
+    base_query = db.query(IngestionFile)
+
+    base_query = _apply_ingestion_filters(
+        base_query,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        tipo=tipo,
+        status_=status_,
+        anio=anio,
+        mes=mes,
     )
-
-    if empresa_id is not None:
-        base_query = base_query.filter(IngestionFile.empresa_id == empresa_id)
-    if tipo is not None:
-        base_query = base_query.filter(IngestionFile.tipo == tipo)
-    if status_ is not None:
-        allowed = {
-            IngestionFile.STATUS_PENDING,
-            IngestionFile.STATUS_PROCESSING,
-            IngestionFile.STATUS_OK,
-            IngestionFile.STATUS_ERROR,
-        }
-        if status_ not in allowed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Status no válido. Debe ser uno de: {', '.join(allowed)}",
-            )
-        base_query = base_query.filter(IngestionFile.status == status_)
-    if anio is not None:
-        base_query = base_query.filter(IngestionFile.anio == anio)
-    if mes is not None:
-        base_query = base_query.filter(IngestionFile.mes == mes)
 
     ids_subq = base_query.with_entities(IngestionFile.id).subquery()
     ids_select = select(ids_subq.c.id)
 
     deleted_m1_contrib = (
         db.query(M1PeriodContribution)
-        .filter(
-            M1PeriodContribution.tenant_id == tenant_id_int,
-            M1PeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)),
-        )
+        .filter(M1PeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)))
         .delete(synchronize_session=False)
     )
 
     deleted_ps_detail = (
         db.query(PSPeriodDetail)
-        .filter(
-            PSPeriodDetail.tenant_id == tenant_id_int,
-            PSPeriodDetail.ingestion_file_id.in_(cast(Any, ids_select)),
-        )
+        .filter(PSPeriodDetail.ingestion_file_id.in_(cast(Any, ids_select)))
         .delete(synchronize_session=False)
     )
 
     deleted_ps_contrib = (
         db.query(PSPeriodContribution)
-        .filter(
-            PSPeriodContribution.tenant_id == tenant_id_int,
-            PSPeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)),
-        )
+        .filter(PSPeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)))
         .delete(synchronize_session=False)
     )
 
     deleted_medidas_general = (
         db.query(MedidaGeneral)
-        .filter(
-            MedidaGeneral.tenant_id == tenant_id_int,
-            MedidaGeneral.file_id.in_(cast(Any, ids_select)),
-        )
+        .filter(MedidaGeneral.file_id.in_(cast(Any, ids_select)))
         .delete(synchronize_session=False)
     )
 
     deleted_medidas_ps = (
         db.query(MedidaPS)
-        .filter(
-            MedidaPS.tenant_id == tenant_id_int,
-            MedidaPS.file_id.in_(cast(Any, ids_select)),
-        )
+        .filter(MedidaPS.file_id.in_(cast(Any, ids_select)))
         .delete(synchronize_session=False)
     )
 
@@ -477,6 +487,14 @@ def delete_files(
         "deleted_ps_period_contributions": deleted_ps_contrib,
         "deleted_medidas_general": deleted_medidas_general,
         "deleted_medidas_ps": deleted_medidas_ps,
+        "filters": {
+            "tenant_id": tenant_id,
+            "empresa_id": empresa_id,
+            "tipo": tipo,
+            "status_": status_,
+            "anio": anio,
+            "mes": mes,
+        },
     }
 
 
@@ -530,8 +548,8 @@ def process_file(
     try:
         tipo = (ing.tipo or "").upper()
 
-        tenant_id = cast(int, ing.tenant_id)
-        empresa_id = cast(int, ing.empresa_id)
+        tenant_id_local = cast(int, ing.tenant_id)
+        empresa_id_local = cast(int, ing.empresa_id)
         storage_key = cast(str, ing.storage_key)
 
         result_obj: Any | None = None
@@ -539,79 +557,79 @@ def process_file(
         if tipo == "BALD":
             result_obj = procesar_fichero_bald(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "M1":
             result_obj = procesar_fichero_m1_desde_csv(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "M1_AUTOCONSUMO":
             result_obj = procesar_fichero_m1_autoconsumo_desde_csv(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "ACUMCIL":
             result_obj = procesar_fichero_acumcil_generacion(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "ACUM_H2_GRD":
             result_obj = procesar_fichero_acum_h2_grd_generacion(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "ACUM_H2_GEN":
             result_obj = procesar_fichero_acum_h2_gen_generacion(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "ACUM_H2_RDD_P2":
             result_obj = procesar_fichero_acum_h2_rdd_p2_frontera_dd(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "ACUM_H2_RDD_P1":
             procesar_fichero_acum_h2_rdd_p1_frontera_dd(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
             result_obj = procesar_fichero_acum_h2_rdd_pf_kwh(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
         elif tipo == "PS":
             result_obj = procesar_fichero_ps(
                 db=db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
+                tenant_id=tenant_id_local,
+                empresa_id=empresa_id_local,
                 fichero=ingestion,
                 file_path=storage_key,
             )
