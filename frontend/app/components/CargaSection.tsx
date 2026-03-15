@@ -1,51 +1,15 @@
-// app/components/CargaSection.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import type { Empresa } from "../types";
+import type {
+  Empresa,
+  IngestionFile,
+  IngestionWarningItem,
+} from "../types";
 
 type Props = {
   token: string | null;
-};
-
-// ✅ Extendemos el tipo para soportar avisos del backend SIN romper nada si no existen.
-// (Si el backend aún no los envía, simplemente no se muestran.)
-type IngestionWarningItem =
-  | string
-  | {
-      code?: string;
-      message?: string;
-      anio?: number;
-      mes?: number;
-      energia_kwh?: number;
-      fecha_final?: string;
-      [k: string]: unknown;
-    };
-
-type IngestionFile = {
-  id: number;
-  empresa_id: number;
-  tipo: string;
-  anio: number;
-  mes: number;
-  filename: string;
-  status: string;
-
-  rows_ok?: number;
-  rows_error?: number;
-
-  created_at?: string;
-  updated_at?: string | null;
-  processed_at?: string | null;
-  error_message?: string | null;
-
-  // ✅ NUEVO (opcional): avisos/no bloqueante (si el backend los devuelve como arrays)
-  warnings?: IngestionWarningItem[];
-  notices?: IngestionWarningItem[];
-
-  // ✅ NUEVO (opcional): avisos como string (si el backend los guarda/expone así)
-  warnings_message?: string | null;
 };
 
 const EXPECTED_TYPES = [
@@ -62,7 +26,6 @@ const EXPECTED_TYPES = [
 
 const STATUS_OPTIONS = ["pending", "processing", "ok", "error"] as const;
 
-// ✅ Plantillas globales (descarga directa desde backend /plantillas/<file>)
 const PLANTILLAS = [
   { label: "M1 – Facturación", file: "XXXX_XXXX_Facturacion.xlsm" },
   { label: "M1 – Autoconsumos", file: "XXXX_XXXXXX_autoconsumos.xlsx" },
@@ -106,7 +69,6 @@ function fmtPeriodo(anio: number, mes: number) {
   return `${anio}-${String(mes).padStart(2, "0")}`;
 }
 
-// ✅ Siempre en horario de Madrid
 function fmtDateMadrid(value?: string | null) {
   if (!value) return "-";
   const d = new Date(value);
@@ -131,29 +93,36 @@ function statusBadgeClass(status: string) {
   return "ui-badge ui-badge--neutral";
 }
 
-// ✅ helper: formatea avisos (string u objeto) a texto legible
 function formatWarningItem(item: IngestionWarningItem): string {
   if (typeof item === "string") return item;
 
+  const type = (item.type || item.code || "").toString().trim();
   const msg = (item.message || "").toString().trim();
-  const code = (item.code || "").toString().trim();
 
   const parts: string[] = [];
-  if (code) parts.push(`[${code}]`);
+  if (type) parts.push(`[${type}]`);
   if (msg) parts.push(msg);
 
-  const hasPeriodo = typeof item.anio === "number" && typeof item.mes === "number";
-  if (hasPeriodo) parts.push(`(periodo ${item.anio}-${String(item.mes).padStart(2, "0")})`);
+  if (item.periodo && typeof item.periodo === "string") {
+    parts.push(`(periodo ${item.periodo})`);
+  }
 
-  if (typeof item.energia_kwh === "number") parts.push(`energia=${item.energia_kwh}`);
+  if (typeof item.anio === "number" && typeof item.mes === "number") {
+    parts.push(`(periodo ${item.anio}-${String(item.mes).padStart(2, "0")})`);
+  }
 
-  if (item.fecha_final) parts.push(`fecha_final=${item.fecha_final}`);
+  if (typeof item.energia_kwh === "number") {
+    parts.push(`energia=${item.energia_kwh}`);
+  }
+
+  if (item.fecha_final) {
+    parts.push(`fecha_final=${item.fecha_final}`);
+  }
 
   const out = parts.join(" ").trim();
   return out || JSON.stringify(item);
 }
 
-// ✅ Acordeón inline (misma flecha ▾ + rotación)
 function InlineAccordion({
   title,
   subtitle,
@@ -209,37 +178,26 @@ export default function CargaSection({ token }: Props) {
   const [logLines, setLogLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // --- Histórico ---
   const [history, setHistory] = useState<IngestionFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-
-  // ✅ NUEVO: registro seleccionado (detalle debajo)
   const [selectedHistory, setSelectedHistory] = useState<IngestionFile | null>(null);
 
-  // --- Filtros histórico ---
   const [histEmpresaId, setHistEmpresaId] = useState<number | "">("");
   const [histTipo, setHistTipo] = useState<string>("");
   const [histStatus, setHistStatus] = useState<string>("");
   const [histAnio, setHistAnio] = useState<number | "">("");
   const [histMes, setHistMes] = useState<number | "">("");
 
-  // ✅ selector de plantillas
   const [plantillaSel, setPlantillaSel] = useState<string>("");
+
+  const [cargaOpen, setCargaOpen] = useState<boolean>(false);
+  const [historyOpen, setHistoryOpen] = useState<boolean>(false);
+  const [summaryOpen, setSummaryOpen] = useState<boolean>(false);
+  const [logFilter, setLogFilter] = useState<SessionLogFilter>("all");
 
   const canUse = !!token;
 
-  // ✅ estado acordeones (por defecto cerrados como tu AccordionCard)
-  const [cargaOpen, setCargaOpen] = useState<boolean>(false);
-  const [historyOpen, setHistoryOpen] = useState<boolean>(false);
-
-  // ✅ NUEVO: resumen plegable
-  const [summaryOpen, setSummaryOpen] = useState<boolean>(false);
-
-  // ✅ NUEVO: filtro de logs desde el resumen
-  const [logFilter, setLogFilter] = useState<SessionLogFilter>("all");
-
-  // Cargar empresas para seleccionar empresa_id
   useEffect(() => {
     const loadEmpresas = async () => {
       if (!token) return;
@@ -267,7 +225,6 @@ export default function CargaSection({ token }: Props) {
     setFiles(e.target.files);
   };
 
-  // ✅ NUEVO: resumen de sesión actual, derivado del log actual
   const sessionSummary = useMemo(() => {
     const totalSeleccionados = files?.length ?? 0;
 
@@ -318,13 +275,12 @@ export default function CargaSection({ token }: Props) {
     };
   }, [files, logLines, loading]);
 
-  // ✅ NUEVO: logs filtrados desde badges
   const filteredLogLines = useMemo(() => {
     if (logFilter === "all") return logLines;
 
     return logLines.filter((line) => {
       if (logFilter === "warnings") {
-        return line.includes("⚠ Avisos") || line.includes("↳ ⚠") || line.includes("⚠ Fichero") || line.includes("⚠ Avisos:");
+        return line.includes("⚠ Avisos") || line.includes("↳ ⚠") || line.includes("⚠ Fichero");
       }
 
       if (logFilter === "errors") {
@@ -356,7 +312,6 @@ export default function CargaSection({ token }: Props) {
     setLogFilter(filter);
   };
 
-  // --- Lógica actual de subida/proceso: NO TOCAR ---
   const handleProcess = async () => {
     if (!token) {
       appendLog("No hay token, haz login primero.");
@@ -377,7 +332,6 @@ export default function CargaSection({ token }: Props) {
     try {
       const uploaded: IngestionFile[] = [];
 
-      // 1) SUBIR FICHEROS
       for (const file of Array.from(files)) {
         const tipo = inferTipoFromFilename(file.name);
 
@@ -418,7 +372,6 @@ export default function CargaSection({ token }: Props) {
         );
       }
 
-      // 2) PROCESAR FICHEROS SUBIDOS
       for (const ing of uploaded) {
         appendLog(`⚙ Procesando fichero id=${ing.id} (${ing.filename}, tipo=${ing.tipo})...`);
 
@@ -439,7 +392,6 @@ export default function CargaSection({ token }: Props) {
 
         appendLog(`✅ Procesado id=${json.id} (status=${json.status}, filas OK=${filasOk}, filas error=${filasError}).`);
 
-        // ✅ NUEVO: avisos NO bloqueantes (refacturas, periodos fuera de ventana, etc.)
         const warnings = Array.isArray(json.warnings) ? json.warnings : [];
         const notices = Array.isArray(json.notices) ? json.notices : [];
 
@@ -453,12 +405,10 @@ export default function CargaSection({ token }: Props) {
           for (const n of notices) appendLog(`↳ ℹ️ ${formatWarningItem(n)}`);
         }
 
-        // ✅ NUEVO: avisos como string (si backend los manda así)
         if (json.warnings_message) {
           appendLog(`⚠ Avisos: ${json.warnings_message}`);
         }
 
-        // ✅ NUEVO: mostrar motivo real si el backend devolvió error_message
         if ((json.status || "").toLowerCase() === "error") {
           appendLog(`↳ Motivo: ${json.error_message ?? "(sin detalle en error_message)"}`);
         }
@@ -478,7 +428,6 @@ export default function CargaSection({ token }: Props) {
     return e ? `${e.id} – ${e.nombre}` : String(id);
   };
 
-  // Opciones de tipo/año/mes basadas en lo ya cargado (para selects “inteligentes”)
   const histTiposDisponibles = useMemo(() => {
     const set = new Set<string>(EXPECTED_TYPES);
     for (const h of history) set.add((h.tipo || "").toUpperCase());
@@ -497,7 +446,6 @@ export default function CargaSection({ token }: Props) {
     return Array.from(set).sort((a, b) => a - b);
   }, [history]);
 
-  // Cargar histórico con filtros
   const handleLoadHistory = async () => {
     if (!token) {
       setHistoryError("Haz login para poder cargar el histórico.");
@@ -533,7 +481,6 @@ export default function CargaSection({ token }: Props) {
       const json = (await res.json()) as IngestionFile[];
       const arr = Array.isArray(json) ? json : [];
 
-      // ✅ NUEVO: ordenar por fecha real de subida (created_at) DESC (más reciente arriba)
       arr.sort((a, b) => {
         const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
         const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -542,7 +489,6 @@ export default function CargaSection({ token }: Props) {
 
       setHistory(arr);
 
-      // ✅ Mantener seleccionado si sigue existiendo; si no, limpiar
       setSelectedHistory((prev) => {
         if (!prev) return null;
         const still = arr.find((x) => x.id === prev.id);
@@ -566,13 +512,11 @@ export default function CargaSection({ token }: Props) {
     setHistMes("");
   };
 
-  // ✅ descarga al seleccionar plantilla (sin tocar lógica)
   const handleDownloadPlantilla = (fileName: string) => {
     const url = `${API_BASE_URL}/plantillas/${encodeURIComponent(fileName)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  // ✅ contador de avisos (para tabla histórico, si backend lo añade en el futuro)
   const countAvisos = (h: IngestionFile) => {
     const w = Array.isArray(h.warnings) ? h.warnings.length : 0;
     const n = Array.isArray(h.notices) ? h.notices.length : 0;
@@ -580,7 +524,6 @@ export default function CargaSection({ token }: Props) {
     return w + n + wm;
   };
 
-  // ✅ helpers detalle
   const selectedWarnings = useMemo(() => {
     if (!selectedHistory) return [];
     return Array.isArray(selectedHistory.warnings) ? selectedHistory.warnings : [];
@@ -593,7 +536,6 @@ export default function CargaSection({ token }: Props) {
 
   return (
     <div className="space-y-8">
-      {/* ✅ TARJETA 1: Carga */}
       <InlineAccordion
         title="Carga de ficheros"
         subtitle="Sube ficheros BALD, M1, ACUM*, PS_*, etc. El tipo se infiere del nombre."
@@ -603,9 +545,7 @@ export default function CargaSection({ token }: Props) {
       >
         {!canUse && <div className="ui-alert ui-alert--danger mb-4">Necesitas iniciar sesión para cargar ficheros.</div>}
 
-        {/* Layout con columna derecha para “Plantillas” */}
         <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
-          {/* Columna izquierda: Empresa */}
           <div>
             <label className="ui-label">Empresa</label>
             <select
@@ -622,7 +562,6 @@ export default function CargaSection({ token }: Props) {
             </select>
           </div>
 
-          {/* Columna derecha: Plantillas */}
           <div>
             <label className="ui-label">Plantillas</label>
             <select
@@ -660,7 +599,6 @@ export default function CargaSection({ token }: Props) {
           )}
         </div>
 
-        {/* ✅ NUEVO: botones + resumen plegable */}
         <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_320px] md:items-start">
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={handleProcess} disabled={!canUse || loading} className="ui-btn ui-btn-primary">
@@ -849,7 +787,6 @@ export default function CargaSection({ token }: Props) {
             )}
           </div>
 
-          {/* ✅ Nota informativa (no cambia lógica) */}
           <div className="mt-2 text-[10px] ui-muted">
             Con la normativa (±3 días + refacturas), aquí verás avisos tipo “mes no existente” o “refactura detectada”,
             pero la carga NO se bloqueará.
@@ -857,7 +794,6 @@ export default function CargaSection({ token }: Props) {
         </div>
       </InlineAccordion>
 
-      {/* ✅ TARJETA 2: Histórico */}
       <InlineAccordion
         title="Histórico de cargas"
         subtitle="Listado de cargas (ingestion_files) del tenant. Fechas en horario de Madrid."
@@ -880,7 +816,6 @@ export default function CargaSection({ token }: Props) {
               {historyLoading ? "Cargando..." : "Cargar histórico"}
             </button>
 
-            {/* ✅ NUEVO: limpiar selección */}
             <button
               type="button"
               onClick={() => setSelectedHistory(null)}
@@ -892,7 +827,9 @@ export default function CargaSection({ token }: Props) {
             </button>
           </div>
 
-          <div className="text-[10px] ui-muted">Tip: filtra y vuelve a “Cargar histórico”.</div>
+          <div className="text-[10px] ui-muted">
+            El borrado y su vista previa están disponibles en la pestaña Sistema.
+          </div>
         </div>
 
         <div className="ui-panel mb-4 text-[11px]">
@@ -1054,7 +991,6 @@ export default function CargaSection({ token }: Props) {
           </table>
         </div>
 
-        {/* ✅ NUEVO: Tarjeta detalle debajo del histórico */}
         {selectedHistory && (
           <div className="mt-4 ui-card ui-card--border">
             <div className="mb-3 flex items-start justify-between gap-3">
@@ -1112,7 +1048,6 @@ export default function CargaSection({ token }: Props) {
                 </div>
               </div>
 
-              {/* Avisos / notas */}
               <div className="mt-4">
                 <div className="text-xs font-semibold">Avisos / notas</div>
 

@@ -2,7 +2,15 @@
 
 import { useMemo, useState, useEffect, useRef } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import type { MedidaGeneral } from "../types";
+import type {
+  DeleteImpactPreview,
+  DeleteFilesFilters,
+  DeleteImpactIngestionFileItem,
+  DeleteImpactPeriod,
+  DeleteImpactRefactura,
+  MedidaGeneral,
+} from "../types";
+import DeletePreviewModal from "./ui/DeletePreviewModal";
 
 type MedidasProps = {
   token: string | null;
@@ -314,6 +322,151 @@ function MultiSelectDropdown({
   );
 }
 
+function buildPeriodKey(p: DeleteImpactPeriod) {
+  return `${p.tenant_id}-${p.empresa_id}-${p.anio}-${p.mes}`;
+}
+
+function buildIngestionFileKey(f: DeleteImpactIngestionFileItem) {
+  return `${f.id}`;
+}
+
+function buildRefacturaKey(r: DeleteImpactRefactura) {
+  return [
+    r.source_period.anio,
+    r.source_period.mes,
+    r.affected_period.anio,
+    r.affected_period.mes,
+    r.ingestion_file_id ?? "",
+    r.filename ?? "",
+    r.energia_kwh ?? "",
+  ].join("|");
+}
+
+function aggregateDeletePreviews(previews: DeleteImpactPreview[]): DeleteImpactPreview {
+  const ingestionFilesMap = new Map<string, DeleteImpactIngestionFileItem>();
+  const affectedGeneralMap = new Map<string, DeleteImpactPeriod>();
+  const affectedPsMap = new Map<string, DeleteImpactPeriod>();
+  const orphanGeneralMap = new Map<string, DeleteImpactPeriod>();
+  const orphanPsMap = new Map<string, DeleteImpactPeriod>();
+  const refacturasMap = new Map<string, DeleteImpactRefactura>();
+
+  let summary = {
+    ingestion_files_count: 0,
+    m1_period_contributions_count: 0,
+    general_period_contributions_count: 0,
+    bald_period_contributions_count: 0,
+    ps_period_detail_count: 0,
+    ps_period_contributions_count: 0,
+    medidas_general_direct_count: 0,
+    medidas_ps_direct_count: 0,
+    affected_general_periods_count: 0,
+    affected_ps_periods_count: 0,
+    orphan_medidas_general_candidate_count: 0,
+    orphan_medidas_ps_candidate_count: 0,
+    refacturas_m1_count: 0,
+  };
+
+  const filters: DeleteFilesFilters = {};
+
+  for (const preview of previews) {
+    if (preview.filters.tenant_id != null) filters.tenant_id = preview.filters.tenant_id;
+
+    summary.ingestion_files_count += preview.summary.ingestion_files_count;
+    summary.m1_period_contributions_count += preview.summary.m1_period_contributions_count;
+    summary.general_period_contributions_count += preview.summary.general_period_contributions_count;
+    summary.bald_period_contributions_count += preview.summary.bald_period_contributions_count;
+    summary.ps_period_detail_count += preview.summary.ps_period_detail_count;
+    summary.ps_period_contributions_count += preview.summary.ps_period_contributions_count;
+    summary.medidas_general_direct_count += preview.summary.medidas_general_direct_count;
+    summary.medidas_ps_direct_count += preview.summary.medidas_ps_direct_count;
+
+    for (const item of preview.ingestion_files) {
+      ingestionFilesMap.set(buildIngestionFileKey(item), item);
+    }
+
+    for (const item of preview.affected_general_periods) {
+      affectedGeneralMap.set(buildPeriodKey(item), item);
+    }
+
+    for (const item of preview.affected_ps_periods) {
+      affectedPsMap.set(buildPeriodKey(item), item);
+    }
+
+    for (const item of preview.orphan_medidas_general_candidates) {
+      orphanGeneralMap.set(buildPeriodKey(item), item);
+    }
+
+    for (const item of preview.orphan_medidas_ps_candidates) {
+      orphanPsMap.set(buildPeriodKey(item), item);
+    }
+
+    for (const item of preview.refacturas_m1) {
+      refacturasMap.set(buildRefacturaKey(item), item);
+    }
+  }
+
+  const ingestion_files = Array.from(ingestionFilesMap.values()).sort((a, b) => {
+    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
+    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
+    if (a.anio !== b.anio) return a.anio - b.anio;
+    if (a.mes !== b.mes) return a.mes - b.mes;
+    return a.id - b.id;
+  });
+
+  const affected_general_periods = Array.from(affectedGeneralMap.values()).sort((a, b) => {
+    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
+    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
+    if (a.anio !== b.anio) return a.anio - b.anio;
+    return a.mes - b.mes;
+  });
+
+  const affected_ps_periods = Array.from(affectedPsMap.values()).sort((a, b) => {
+    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
+    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
+    if (a.anio !== b.anio) return a.anio - b.anio;
+    return a.mes - b.mes;
+  });
+
+  const orphan_medidas_general_candidates = Array.from(orphanGeneralMap.values()).sort((a, b) => {
+    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
+    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
+    if (a.anio !== b.anio) return a.anio - b.anio;
+    return a.mes - b.mes;
+  });
+
+  const orphan_medidas_ps_candidates = Array.from(orphanPsMap.values()).sort((a, b) => {
+    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
+    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
+    if (a.anio !== b.anio) return a.anio - b.anio;
+    return a.mes - b.mes;
+  });
+
+  const refacturas_m1 = Array.from(refacturasMap.values()).sort((a, b) => {
+    if (a.affected_period.anio !== b.affected_period.anio) return a.affected_period.anio - b.affected_period.anio;
+    if (a.affected_period.mes !== b.affected_period.mes) return a.affected_period.mes - b.affected_period.mes;
+    if (a.source_period.anio !== b.source_period.anio) return a.source_period.anio - b.source_period.anio;
+    return a.source_period.mes - b.source_period.mes;
+  });
+
+  summary.affected_general_periods_count = affected_general_periods.length;
+  summary.affected_ps_periods_count = affected_ps_periods.length;
+  summary.orphan_medidas_general_candidate_count = orphan_medidas_general_candidates.length;
+  summary.orphan_medidas_ps_candidate_count = orphan_medidas_ps_candidates.length;
+  summary.refacturas_m1_count = refacturas_m1.length;
+  summary.ingestion_files_count = ingestion_files.length;
+
+  return {
+    filters,
+    summary,
+    ingestion_files,
+    affected_general_periods,
+    affected_ps_periods,
+    orphan_medidas_general_candidates,
+    orphan_medidas_ps_candidates,
+    refacturas_m1,
+  };
+}
+
 export default function MedidasGeneralSection({
   token,
   scope = "tenant",
@@ -350,6 +503,11 @@ export default function MedidasGeneralSection({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [deletePreviewOpen, setDeletePreviewOpen] = useState(false);
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
+  const [deletePreviewError, setDeletePreviewError] = useState<string | null>(null);
+  const [deletePreviewData, setDeletePreviewData] = useState<DeleteImpactPreview | null>(null);
 
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
 
@@ -409,6 +567,8 @@ export default function MedidasGeneralSection({
     setFiltroAnios([]);
     setFiltroMeses([]);
     setPage(0);
+    setDeletePreviewData(null);
+    setDeletePreviewError(null);
   };
 
   const loadFilters = async () => {
@@ -695,6 +855,60 @@ export default function MedidasGeneralSection({
     setDeleteError(null);
   };
 
+  const handleOpenDeletePreview = async () => {
+    if (!token || !isSistema) return;
+
+    if (!canDeleteByFilters) {
+      setDeletePreviewError("Selecciona tenant, empresa, año y mes para habilitar la vista previa.");
+      return;
+    }
+
+    setDeletePreviewLoading(true);
+    setDeletePreviewError(null);
+    setDeletePreviewData(null);
+
+    try {
+      const previews: DeleteImpactPreview[] = [];
+
+      for (const empresaId of filtroEmpresaIds) {
+        for (const anio of filtroAnios) {
+          for (const mes of filtroMeses) {
+            const params = new URLSearchParams();
+            params.set("tenant_id", filtroTenant);
+            params.set("empresa_id", empresaId);
+            params.set("anio", anio);
+            params.set("mes", mes);
+
+            const res = await fetch(`${API_BASE_URL}/ingestion/files/delete-preview?${params.toString()}`, {
+              headers: getAuthHeaders(token),
+            });
+
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(text || `Error ${res.status}`);
+            }
+
+            const json = (await res.json()) as DeleteImpactPreview;
+            previews.push(json);
+          }
+        }
+      }
+
+      const aggregated = aggregateDeletePreviews(previews);
+      aggregated.filters = {
+        tenant_id: Number(filtroTenant),
+      };
+
+      setDeletePreviewData(aggregated);
+      setDeletePreviewOpen(true);
+    } catch (e) {
+      console.error("Error cargando preview de borrado desde General Sistema:", e);
+      setDeletePreviewError("No se pudo calcular la vista previa del borrado.");
+    } finally {
+      setDeletePreviewLoading(false);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!token || !isSistema) return;
     if (!canDeleteByFilters) return;
@@ -738,6 +952,9 @@ export default function MedidasGeneralSection({
       }
 
       setDeleteOpen(false);
+      setDeletePreviewOpen(false);
+      setDeletePreviewData(null);
+
       await loadFilters();
       setPage(0);
       await handleLoadMedidas(0);
@@ -770,24 +987,40 @@ export default function MedidasGeneralSection({
           </button>
 
           {isSistema && (
-            <button
-              onClick={openDelete}
-              disabled={loading || !token || !canDeleteByFilters}
-              className="ui-btn ui-btn-danger"
-              type="button"
-              title={
-                canDeleteByFilters
-                  ? "Borrar por ingestion usando tenant + empresa + año + mes"
-                  : "Selecciona tenant, empresa, año y mes para borrar"
-              }
-            >
-              Borrar…
-              {totalDeleteOps > 0 ? (
-                <span className="ui-badge ui-badge--neutral" style={{ marginLeft: 6 }}>
-                  {totalDeleteOps}
-                </span>
-              ) : null}
-            </button>
+            <>
+              <button
+                onClick={() => void handleOpenDeletePreview()}
+                disabled={loading || !token || deletePreviewLoading || !canDeleteByFilters}
+                className="ui-btn ui-btn-outline"
+                type="button"
+                title={
+                  canDeleteByFilters
+                    ? "Ver impacto antes de borrar"
+                    : "Selecciona tenant, empresa, año y mes para ver la vista previa"
+                }
+              >
+                {deletePreviewLoading ? "Calculando preview..." : "Vista previa borrado"}
+              </button>
+
+              <button
+                onClick={openDelete}
+                disabled={loading || !token || !canDeleteByFilters}
+                className="ui-btn ui-btn-danger"
+                type="button"
+                title={
+                  canDeleteByFilters
+                    ? "Borrar por ingestion usando tenant + empresa + año + mes"
+                    : "Selecciona tenant, empresa, año y mes para borrar"
+                }
+              >
+                Borrar…
+                {totalDeleteOps > 0 ? (
+                  <span className="ui-badge ui-badge--neutral" style={{ marginLeft: 6 }}>
+                    {totalDeleteOps}
+                  </span>
+                ) : null}
+              </button>
+            </>
           )}
 
           {filtrosActivosCount > 0 && (
@@ -805,6 +1038,7 @@ export default function MedidasGeneralSection({
       </header>
 
       {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
+      {deletePreviewError && <div className="ui-alert ui-alert--danger mb-4">{deletePreviewError}</div>}
 
       <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
         <div className="ui-muted">
@@ -1079,6 +1313,17 @@ export default function MedidasGeneralSection({
         confirmText="Borrar definitivamente"
         onConfirm={confirmDelete}
         onClose={closeDelete}
+      />
+
+      <DeletePreviewModal
+        open={deletePreviewOpen}
+        preview={deletePreviewData}
+        loading={deleteBusy}
+        onClose={() => {
+          if (deleteBusy) return;
+          setDeletePreviewOpen(false);
+        }}
+        onConfirm={confirmDelete}
       />
     </section>
   );

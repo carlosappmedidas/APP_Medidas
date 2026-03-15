@@ -1,4 +1,4 @@
-# app/measures/m1_models.py
+# app/measures/general_contrib_models.py
 # pyright: reportMissingImports=false
 
 from sqlalchemy import (
@@ -6,6 +6,7 @@ from sqlalchemy import (
     Integer,
     Float,
     Boolean,
+    String,
     DateTime,
     ForeignKey,
     Index,
@@ -16,15 +17,23 @@ from sqlalchemy import (
 from app.core.models_base import Base
 
 
-class M1PeriodContribution(Base):
+class GeneralPeriodContribution(Base):
     """
-    Guarda contribuciones de facturación M1 por periodo (año/mes) y por fichero de ingestion,
-    para evitar duplicidades y permitir control de refacturas.
+    Guarda contribuciones de medidas_general por periodo (año/mes) y por fichero de ingestion,
+    para evitar duplicidades al reprocesar y permitir recálculo determinista.
 
-    Tabla: m1_period_contributions
+    Se usa para tipos como:
+    - ACUMCIL
+    - ACUM_H2_GRD
+    - ACUM_H2_GEN
+    - ACUM_H2_RDD_P1
+    - ACUM_H2_RDD_P2
+    - ACUM_H2_RDD_PF
+    - ACUM_H2_TRD_PF
+    - futuros tipos agregables de general
     """
 
-    __tablename__ = "m1_period_contributions"
+    __tablename__ = "general_period_contributions"
 
     id = Column(Integer, primary_key=True)
 
@@ -48,7 +57,12 @@ class M1PeriodContribution(Base):
     anio = Column(Integer, nullable=False)
     mes = Column(Integer, nullable=False)
 
-    energia_kwh = Column(Float, nullable=False, server_default="0")
+    source_tipo = Column(String(50), nullable=False)
+
+    energia_generada_kwh = Column(Float, nullable=False, server_default="0")
+    energia_frontera_dd_kwh = Column(Float, nullable=False, server_default="0")
+    energia_pf_kwh = Column(Float, nullable=False, server_default="0")
+
     is_principal = Column(Boolean, nullable=False, server_default="false")
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
@@ -61,16 +75,25 @@ class M1PeriodContribution(Base):
             "ingestion_file_id",
             "anio",
             "mes",
-            name="uq_m1_contrib_file_period",
+            "source_tipo",
+            name="uq_general_contrib_file_period_tipo",
         ),
         Index(
-            "ix_m1_contrib_ingestion_file",
+            "ix_general_contrib_ingestion_file",
             "ingestion_file_id",
         ),
         Index(
-            "ix_m1_contrib_tenant_empresa_period",
+            "ix_general_contrib_tenant_empresa_period",
             "tenant_id",
             "empresa_id",
+            "anio",
+            "mes",
+        ),
+        Index(
+            "ix_general_contrib_tenant_empresa_tipo_period",
+            "tenant_id",
+            "empresa_id",
+            "source_tipo",
             "anio",
             "mes",
         ),

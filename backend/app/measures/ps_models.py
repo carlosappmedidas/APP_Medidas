@@ -1,7 +1,15 @@
 # app/measures/ps_models.py
 # pyright: reportMissingImports=false
 
-from sqlalchemy import Column, Integer, Float, Boolean, ForeignKey
+from sqlalchemy import (
+    Column,
+    Integer,
+    Float,
+    Boolean,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+)
 
 from app.core.models_base import Base, TimestampMixin
 
@@ -22,23 +30,20 @@ class PSPeriodContribution(TimestampMixin, Base):
         Integer,
         ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     empresa_id = Column(
         Integer,
         ForeignKey("empresas.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     ingestion_file_id = Column(
         Integer,
         ForeignKey("ingestion_files.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
 
-    anio = Column(Integer, nullable=False, index=True)
-    mes = Column(Integer, nullable=False, index=True)
+    anio = Column(Integer, nullable=False)
+    mes = Column(Integer, nullable=False)
 
     is_principal = Column(Boolean, nullable=False, default=False)
 
@@ -101,3 +106,25 @@ class PSPeriodContribution(TimestampMixin, Base):
     energia_tarifa_64td_kwh = Column(Float, nullable=False, default=0.0)
     cups_tarifa_64td = Column(Integer, nullable=False, default=0)
     importe_tarifa_64td_eur = Column(Float, nullable=False, default=0.0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "empresa_id",
+            "ingestion_file_id",
+            "anio",
+            "mes",
+            name="uq_ps_contrib_file_period",
+        ),
+        Index(
+            "ix_ps_contrib_tenant_empresa_period",
+            "tenant_id",
+            "empresa_id",
+            "anio",
+            "mes",
+        ),
+        Index(
+            "ix_ps_contrib_ingestion_file",
+            "ingestion_file_id",
+        ),
+    )

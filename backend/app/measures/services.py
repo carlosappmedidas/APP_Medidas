@@ -15,6 +15,8 @@ from sqlalchemy import func
 
 from app.measures.models import MedidaGeneral, MedidaPS
 from app.measures.m1_models import M1PeriodContribution
+from app.measures.general_contrib_models import GeneralPeriodContribution
+from app.measures.bald_contrib_models import BaldPeriodContribution
 from app.measures.ps_models import PSPeriodContribution
 from app.measures.ps_detail_models import PSPeriodDetail
 from app.ingestion.models import IngestionFile
@@ -119,6 +121,14 @@ def _to_float(value: Any) -> float:
         return 0.0
 
     return x
+
+
+def _safe_refresh(db: Session, obj: Any) -> None:
+    try:
+        db.flush()
+        db.refresh(obj)
+    except Exception:
+        pass
 
 
 def _recalcular_energia_neta_y_perdidas(mg: MedidaGeneral) -> None:
@@ -285,6 +295,416 @@ def _get_existing_m1_file_periods(
             periods.add((int(anio), int(mes)))
 
     return periods
+
+
+# ---------- helpers GENERAL deterministic contributions ----------
+
+
+def _sum_contribuciones_general(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    anio: int,
+    mes: int,
+) -> dict[str, float]:
+    row = (
+        db.query(
+            func.coalesce(func.sum(GeneralPeriodContribution.energia_generada_kwh), 0.0),
+            func.coalesce(func.sum(GeneralPeriodContribution.energia_frontera_dd_kwh), 0.0),
+            func.coalesce(func.sum(GeneralPeriodContribution.energia_pf_kwh), 0.0),
+        )
+        .filter(
+            GeneralPeriodContribution.tenant_id == tenant_id,
+            GeneralPeriodContribution.empresa_id == empresa_id,
+            GeneralPeriodContribution.anio == anio,
+            GeneralPeriodContribution.mes == mes,
+        )
+        .one()
+    )
+
+    return {
+        "energia_generada_kwh": float(row[0] or 0.0),
+        "energia_frontera_dd_kwh": float(row[1] or 0.0),
+        "energia_pf_kwh": float(row[2] or 0.0),
+    }
+
+
+def _get_existing_general_file_periods(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    ingestion_file_id: int,
+) -> set[tuple[int, int]]:
+    periods: set[tuple[int, int]] = set()
+
+    rows = (
+        db.query(GeneralPeriodContribution.anio, GeneralPeriodContribution.mes)
+        .filter(
+            GeneralPeriodContribution.tenant_id == tenant_id,
+            GeneralPeriodContribution.empresa_id == empresa_id,
+            GeneralPeriodContribution.ingestion_file_id == ingestion_file_id,
+        )
+        .distinct()
+        .all()
+    )
+
+    for anio, mes in rows:
+        if anio is not None and mes is not None:
+            periods.add((int(anio), int(mes)))
+
+    return periods
+
+
+def _rebuild_medida_general_from_contributions(
+    *,
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    anio: int,
+    mes: int,
+    fichero: IngestionFile,
+    punto_id_default: str,
+) -> MedidaGeneral:
+    mg = (
+        db.query(MedidaGeneral)
+        .filter_by(
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+        .first()
+    )
+
+    if mg is None:
+        mg = MedidaGeneral(  # type: ignore[call-arg]
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            punto_id=punto_id_default,
+            anio=anio,
+            mes=mes,
+        )
+        db.add(mg)
+    elif not getattr(mg, "punto_id", None):
+        mg.punto_id = punto_id_default  # type: ignore[assignment]
+
+    sums = _sum_contribuciones_general(
+        db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        anio=anio,
+        mes=mes,
+    )
+
+    mg.energia_generada_kwh = float(sums["energia_generada_kwh"])  # type: ignore[assignment]
+    mg.energia_frontera_dd_kwh = float(sums["energia_frontera_dd_kwh"])  # type: ignore[assignment]
+    mg.energia_pf_kwh = float(sums["energia_pf_kwh"])  # type: ignore[assignment]
+    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
+
+    _recalcular_energia_pf_final(mg)
+    return mg
+
+
+def _save_general_period_contribution_and_rebuild(
+    *,
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    fichero: IngestionFile,
+    anio: int,
+    mes: int,
+    source_tipo: str,
+    energia_generada_kwh: float = 0.0,
+    energia_frontera_dd_kwh: float = 0.0,
+    energia_pf_kwh: float = 0.0,
+    punto_id_default: str = "GENERAL",
+) -> MedidaGeneral:
+    periodos_previos = _get_existing_general_file_periods(
+        db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        ingestion_file_id=_file_id(fichero),
+    )
+
+    (
+        db.query(GeneralPeriodContribution)
+        .filter(
+            GeneralPeriodContribution.tenant_id == tenant_id,
+            GeneralPeriodContribution.empresa_id == empresa_id,
+            GeneralPeriodContribution.ingestion_file_id == _file_id(fichero),
+            GeneralPeriodContribution.source_tipo == source_tipo,
+        )
+        .delete(synchronize_session=False)
+    )
+
+    db.flush()
+
+    contrib = GeneralPeriodContribution(  # type: ignore[call-arg]
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        ingestion_file_id=_file_id(fichero),
+        anio=anio,
+        mes=mes,
+        source_tipo=source_tipo,
+        energia_generada_kwh=float(energia_generada_kwh),
+        energia_frontera_dd_kwh=float(energia_frontera_dd_kwh),
+        energia_pf_kwh=float(energia_pf_kwh),
+        is_principal=True,
+    )
+    db.add(contrib)
+    db.flush()
+
+    periodos_afectados = set(periodos_previos) | {(anio, mes)}
+
+    mg_result: MedidaGeneral | None = None
+    for anio_af, mes_af in sorted(periodos_afectados):
+        mg = _rebuild_medida_general_from_contributions(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio_af,
+            mes=mes_af,
+            fichero=fichero,
+            punto_id_default=punto_id_default,
+        )
+        if (anio_af, mes_af) == (anio, mes):
+            mg_result = mg
+
+    db.flush()
+
+    if mg_result is None:
+        mg_result = (
+            db.query(MedidaGeneral)
+            .filter_by(
+                tenant_id=tenant_id,
+                empresa_id=empresa_id,
+                anio=anio,
+                mes=mes,
+            )
+            .first()
+        )
+
+    if mg_result is None:
+        raise ValueError("No se pudo reconstruir la medida general tras guardar contribuciones")
+
+    _safe_refresh(db, mg_result)
+    return mg_result
+
+
+# ---------- helpers BALD deterministic contributions ----------
+
+
+def _sum_contribuciones_bald(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    anio: int,
+    mes: int,
+    ventana_publicacion: str,
+) -> dict[str, float]:
+    row = (
+        db.query(
+            func.coalesce(func.sum(BaldPeriodContribution.energia_publicada_kwh), 0.0),
+            func.coalesce(func.sum(BaldPeriodContribution.energia_autoconsumo_kwh), 0.0),
+            func.coalesce(func.sum(BaldPeriodContribution.energia_pf_kwh), 0.0),
+            func.coalesce(func.sum(BaldPeriodContribution.energia_frontera_dd_kwh), 0.0),
+            func.coalesce(func.sum(BaldPeriodContribution.energia_generada_kwh), 0.0),
+        )
+        .filter(
+            BaldPeriodContribution.tenant_id == tenant_id,
+            BaldPeriodContribution.empresa_id == empresa_id,
+            BaldPeriodContribution.anio == anio,
+            BaldPeriodContribution.mes == mes,
+            BaldPeriodContribution.ventana_publicacion == ventana_publicacion,
+        )
+        .one()
+    )
+
+    return {
+        "energia_publicada_kwh": float(row[0] or 0.0),
+        "energia_autoconsumo_kwh": float(row[1] or 0.0),
+        "energia_pf_kwh": float(row[2] or 0.0),
+        "energia_frontera_dd_kwh": float(row[3] or 0.0),
+        "energia_generada_kwh": float(row[4] or 0.0),
+    }
+
+
+def _get_existing_bald_file_period_windows(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    ingestion_file_id: int,
+) -> set[tuple[int, int, str]]:
+    rows = (
+        db.query(
+            BaldPeriodContribution.anio,
+            BaldPeriodContribution.mes,
+            BaldPeriodContribution.ventana_publicacion,
+        )
+        .filter(
+            BaldPeriodContribution.tenant_id == tenant_id,
+            BaldPeriodContribution.empresa_id == empresa_id,
+            BaldPeriodContribution.ingestion_file_id == ingestion_file_id,
+        )
+        .distinct()
+        .all()
+    )
+
+    result: set[tuple[int, int, str]] = set()
+    for anio, mes, ventana in rows:
+        if anio is not None and mes is not None and ventana:
+            result.add((int(anio), int(mes), str(ventana)))
+    return result
+
+
+def _rebuild_medida_general_bald_window(
+    *,
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    anio: int,
+    mes: int,
+    ventana_publicacion: str,
+    fichero: IngestionFile,
+    punto_id_default: str = "BALD",
+) -> MedidaGeneral:
+    mg = (
+        db.query(MedidaGeneral)
+        .filter_by(
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+        .first()
+    )
+
+    if mg is None:
+        mg = MedidaGeneral(  # type: ignore[call-arg]
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            punto_id=punto_id_default,
+            anio=anio,
+            mes=mes,
+        )
+        db.add(mg)
+    elif not getattr(mg, "punto_id", None):
+        mg.punto_id = punto_id_default  # type: ignore[assignment]
+
+    sums = _sum_contribuciones_bald(
+        db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        anio=anio,
+        mes=mes,
+        ventana_publicacion=ventana_publicacion,
+    )
+
+    sufijo = ventana_publicacion.lower()
+
+    setattr(mg, f"energia_publicada_{sufijo}_kwh", float(sums["energia_publicada_kwh"]))
+    setattr(mg, f"energia_autoconsumo_{sufijo}_kwh", float(sums["energia_autoconsumo_kwh"]))
+    setattr(mg, f"energia_pf_{sufijo}_kwh", float(sums["energia_pf_kwh"]))
+    setattr(mg, f"energia_frontera_dd_{sufijo}_kwh", float(sums["energia_frontera_dd_kwh"]))
+    setattr(mg, f"energia_generada_{sufijo}_kwh", float(sums["energia_generada_kwh"]))
+
+    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
+    _recalcular_energia_neta_y_perdidas(mg)
+    return mg
+
+
+def _save_bald_period_contribution_and_rebuild(
+    *,
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    fichero: IngestionFile,
+    anio: int,
+    mes: int,
+    ventana_publicacion: str,
+    energia_publicada_kwh: float,
+    energia_autoconsumo_kwh: float,
+    energia_pf_kwh: float,
+    energia_frontera_dd_kwh: float,
+    energia_generada_kwh: float,
+) -> MedidaGeneral:
+    previos = _get_existing_bald_file_period_windows(
+        db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        ingestion_file_id=_file_id(fichero),
+    )
+
+    (
+        db.query(BaldPeriodContribution)
+        .filter(
+            BaldPeriodContribution.tenant_id == tenant_id,
+            BaldPeriodContribution.empresa_id == empresa_id,
+            BaldPeriodContribution.ingestion_file_id == _file_id(fichero),
+            BaldPeriodContribution.ventana_publicacion == ventana_publicacion,
+        )
+        .delete(synchronize_session=False)
+    )
+
+    db.flush()
+
+    contrib = BaldPeriodContribution(  # type: ignore[call-arg]
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        ingestion_file_id=_file_id(fichero),
+        anio=anio,
+        mes=mes,
+        ventana_publicacion=ventana_publicacion,
+        energia_publicada_kwh=float(energia_publicada_kwh),
+        energia_autoconsumo_kwh=float(energia_autoconsumo_kwh),
+        energia_pf_kwh=float(energia_pf_kwh),
+        energia_frontera_dd_kwh=float(energia_frontera_dd_kwh),
+        energia_generada_kwh=float(energia_generada_kwh),
+        is_principal=True,
+    )
+    db.add(contrib)
+    db.flush()
+
+    afectados = set(previos) | {(anio, mes, ventana_publicacion)}
+
+    mg_result: MedidaGeneral | None = None
+    for anio_af, mes_af, ventana_af in sorted(afectados):
+        mg = _rebuild_medida_general_bald_window(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio_af,
+            mes=mes_af,
+            ventana_publicacion=ventana_af,
+            fichero=fichero,
+            punto_id_default="BALD",
+        )
+        if (anio_af, mes_af, ventana_af) == (anio, mes, ventana_publicacion):
+            mg_result = mg
+
+    db.flush()
+
+    if mg_result is None:
+        mg_result = (
+            db.query(MedidaGeneral)
+            .filter_by(
+                tenant_id=tenant_id,
+                empresa_id=empresa_id,
+                anio=anio,
+                mes=mes,
+            )
+            .first()
+        )
+
+    if mg_result is None:
+        raise ValueError("No se pudo reconstruir la medida general BALD tras guardar contribuciones")
+
+    _safe_refresh(db, mg_result)
+    return mg_result
 
 
 # ---------- helpers PS ----------
@@ -861,7 +1281,7 @@ def procesar_m1(
 
         _recalcular_energia_neta_y_perdidas(mg)
 
-    db.commit()
+    db.flush()
 
     if mg_principal is None:
         (anio_ret, mes_ret), _ = max(energia_por_periodo.items(), key=lambda kv: kv[1])
@@ -883,7 +1303,7 @@ def procesar_m1(
     except Exception:
         pass
 
-    db.refresh(mg_principal)
+    _safe_refresh(db, mg_principal)
     return mg_principal
 
 
@@ -941,9 +1361,8 @@ def procesar_m1_autoconsumo(
     mg.file_id = _file_id(fichero)  # type: ignore[assignment]
 
     _recalcular_energia_neta_y_perdidas(mg)
-
-    db.commit()
-    db.refresh(mg)
+    db.flush()
+    _safe_refresh(db, mg)
     return mg
 
 
@@ -984,37 +1403,23 @@ def procesar_acumcil_generacion(
     m = re.search(r"_(\d{4})(\d{2})_", nombre)
     if not m:
         raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
+
     anio = int(m.group(1))
     mes = int(m.group(2))
 
-    mg = (
-        db.query(MedidaGeneral)
-        .filter_by(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=anio,
-            mes=mes,
-        )
-        .first()
+    return _save_general_period_contribution_and_rebuild(
+        db=db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        fichero=fichero,
+        anio=anio,
+        mes=mes,
+        source_tipo="ACUMCIL",
+        energia_generada_kwh=float(energia_total),
+        energia_frontera_dd_kwh=0.0,
+        energia_pf_kwh=0.0,
+        punto_id_default="ACUMCIL",
     )
-
-    if mg is None:
-        mg = MedidaGeneral(  # type: ignore[call-arg]
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            punto_id="ACUMCIL",
-            anio=anio,
-            mes=mes,
-        )
-        db.add(mg)
-
-    mg.energia_generada_kwh = float(energia_total)  # type: ignore[assignment]
-    _recalcular_energia_pf_final(mg)
-    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
-
-    db.commit()
-    db.refresh(mg)
-    return mg
 
 
 # ---------- ACUM H2 GRD ----------
@@ -1050,37 +1455,23 @@ def procesar_acum_h2_grd_generacion(
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
         raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
+
     anio = int(m.group(1))
     mes = int(m.group(2))
 
-    mg = (
-        db.query(MedidaGeneral)
-        .filter_by(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=anio,
-            mes=mes,
-        )
-        .first()
+    return _save_general_period_contribution_and_rebuild(
+        db=db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        fichero=fichero,
+        anio=anio,
+        mes=mes,
+        source_tipo="ACUM_H2_GRD",
+        energia_generada_kwh=float(energia_total),
+        energia_frontera_dd_kwh=0.0,
+        energia_pf_kwh=0.0,
+        punto_id_default="ACUM_H2_GRD",
     )
-
-    if mg is None:
-        mg = MedidaGeneral(  # type: ignore[call-arg]
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            punto_id="ACUM_H2_GRD",
-            anio=anio,
-            mes=mes,
-        )
-        db.add(mg)
-
-    mg.energia_generada_kwh = float(energia_total)  # type: ignore[assignment]
-    _recalcular_energia_pf_final(mg)
-    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
-
-    db.commit()
-    db.refresh(mg)
-    return mg
 
 
 def procesar_acum_h2_gen_generacion(
@@ -1091,12 +1482,44 @@ def procesar_acum_h2_gen_generacion(
     fichero: IngestionFile,
     filas_raw: Iterable[Dict[str, Any]],
 ) -> MedidaGeneral:
-    return procesar_acum_h2_grd_generacion(
+    filas = list(filas_raw)
+
+    if not filas:
+        raise ValueError("El fichero ACUM H2 GEN no contiene filas de datos")
+
+    filas_as = [f for f in filas if str(f.get("Magnitud", "")).strip().upper() == "AS"]
+    if not filas_as:
+        raise ValueError("No hay filas con Magnitud 'AS' en el fichero ACUM H2 GEN")
+
+    try:
+        energia_total = sum(
+            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
+            for f in filas_as
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 GEN") from exc
+
+    filename = getattr(fichero, "filename", "") or ""
+    nombre = str(filename)
+    m = re.search(r"_(\d{4})(\d{2})", nombre)
+    if not m:
+        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
+
+    anio = int(m.group(1))
+    mes = int(m.group(2))
+
+    return _save_general_period_contribution_and_rebuild(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
-        filas_raw=filas_raw,
+        anio=anio,
+        mes=mes,
+        source_tipo="ACUM_H2_GEN",
+        energia_generada_kwh=float(energia_total),
+        energia_frontera_dd_kwh=0.0,
+        energia_pf_kwh=0.0,
+        punto_id_default="ACUM_H2_GEN",
     )
 
 
@@ -1108,6 +1531,8 @@ def procesar_acum_h2_rdd_frontera_dd(
     fichero: IngestionFile,
     filas_raw: Iterable[Dict[str, Any]],
     magnitud_objetivo: str = "AE",
+    source_tipo: str = "ACUM_H2_RDD_FRONTERA_DD",
+    punto_id_default: str = "ACUM_H2_RDD",
 ) -> MedidaGeneral:
     filas = list(filas_raw)
 
@@ -1136,37 +1561,23 @@ def procesar_acum_h2_rdd_frontera_dd(
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
         raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
+
     anio = int(m.group(1))
     mes = int(m.group(2))
 
-    mg = (
-        db.query(MedidaGeneral)
-        .filter_by(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=anio,
-            mes=mes,
-        )
-        .first()
+    return _save_general_period_contribution_and_rebuild(
+        db=db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        fichero=fichero,
+        anio=anio,
+        mes=mes,
+        source_tipo=source_tipo,
+        energia_generada_kwh=0.0,
+        energia_frontera_dd_kwh=float(energia_total),
+        energia_pf_kwh=0.0,
+        punto_id_default=punto_id_default,
     )
-
-    if mg is None:
-        mg = MedidaGeneral(  # type: ignore[call-arg]
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            punto_id="ACUM_H2_RDD",
-            anio=anio,
-            mes=mes,
-        )
-        db.add(mg)
-
-    mg.energia_frontera_dd_kwh = float(energia_total)  # type: ignore[assignment]
-    _recalcular_energia_pf_final(mg)
-    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
-
-    db.commit()
-    db.refresh(mg)
-    return mg
 
 
 def procesar_acum_h2_rdd_pf_kwh(
@@ -1199,37 +1610,23 @@ def procesar_acum_h2_rdd_pf_kwh(
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
         raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
+
     anio = int(m.group(1))
     mes = int(m.group(2))
 
-    mg = (
-        db.query(MedidaGeneral)
-        .filter_by(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=anio,
-            mes=mes,
-        )
-        .first()
+    return _save_general_period_contribution_and_rebuild(
+        db=db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        fichero=fichero,
+        anio=anio,
+        mes=mes,
+        source_tipo="ACUM_H2_RDD_PF",
+        energia_generada_kwh=0.0,
+        energia_frontera_dd_kwh=0.0,
+        energia_pf_kwh=float(energia_total),
+        punto_id_default="ACUM_H2_RDD_PF",
     )
-
-    if mg is None:
-        mg = MedidaGeneral(  # type: ignore[call-arg]
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            punto_id="ACUM_H2_RDD_PF",
-            anio=anio,
-            mes=mes,
-        )
-        db.add(mg)
-
-    mg.energia_pf_kwh = float(energia_total)  # type: ignore[assignment]
-    _recalcular_energia_pf_final(mg)
-    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
-
-    db.commit()
-    db.refresh(mg)
-    return mg
 
 
 def procesar_acum_h2_trd_pf_kwh(
@@ -1262,37 +1659,23 @@ def procesar_acum_h2_trd_pf_kwh(
     m = re.search(r"_(\d{4})(\d{2})", nombre)
     if not m:
         raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
+
     anio = int(m.group(1))
     mes = int(m.group(2))
 
-    mg = (
-        db.query(MedidaGeneral)
-        .filter_by(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=anio,
-            mes=mes,
-        )
-        .first()
+    return _save_general_period_contribution_and_rebuild(
+        db=db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        fichero=fichero,
+        anio=anio,
+        mes=mes,
+        source_tipo="ACUM_H2_TRD_PF",
+        energia_generada_kwh=0.0,
+        energia_frontera_dd_kwh=0.0,
+        energia_pf_kwh=float(energia_total),
+        punto_id_default="ACUM_H2_TRD_PF",
     )
-
-    if mg is None:
-        mg = MedidaGeneral(  # type: ignore[call-arg]
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            punto_id="ACUM_H2_TRD_PF",
-            anio=anio,
-            mes=mes,
-        )
-        db.add(mg)
-
-    mg.energia_pf_kwh = float(energia_total)  # type: ignore[assignment]
-    _recalcular_energia_pf_final(mg)
-    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
-
-    db.commit()
-    db.refresh(mg)
-    return mg
 
 
 def procesar_bald_medidas_general(
@@ -1311,27 +1694,6 @@ def procesar_bald_medidas_general(
     anio = _file_anio(fichero)
     mes = _file_mes(fichero)
 
-    mg = (
-        db.query(MedidaGeneral)
-        .filter_by(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=anio,
-            mes=mes,
-        )
-        .first()
-    )
-
-    if mg is None:
-        mg = MedidaGeneral(  # type: ignore[call-arg]
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            punto_id="BALD",
-            anio=anio,
-            mes=mes,
-        )
-        db.add(mg)
-
     demanda_suministrada = _to_float(fila.get("Demanda_suministrada"))
     demanda_vertida = _to_float(fila.get("Demanda_vertida"))
     dd_a = _to_float(fila.get("DD_A"))
@@ -1340,25 +1702,20 @@ def procesar_bald_medidas_general(
     cil = _to_float(fila.get("CIL"))
     energia_generada = ed + cil
 
-    sufijo = periodo_bald_norm.lower()
-
-    def _set(attr_base: str, valor: float) -> None:
-        attr = f"{attr_base}_{sufijo}_kwh"
-        setattr(mg, attr, valor)
-
-    _set("energia_publicada", demanda_suministrada)
-    _set("energia_autoconsumo", demanda_vertida)
-    _set("energia_pf", dd_a)
-    _set("energia_frontera_dd", dd_s)
-    _set("energia_generada", energia_generada)
-
-    _recalcular_energia_neta_y_perdidas(mg)
-
-    mg.file_id = _file_id(fichero)  # type: ignore[assignment]
-
-    db.commit()
-    db.refresh(mg)
-    return mg
+    return _save_bald_period_contribution_and_rebuild(
+        db=db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        fichero=fichero,
+        anio=anio,
+        mes=mes,
+        ventana_publicacion=periodo_bald_norm,
+        energia_publicada_kwh=float(demanda_suministrada),
+        energia_autoconsumo_kwh=float(demanda_vertida),
+        energia_pf_kwh=float(dd_a),
+        energia_frontera_dd_kwh=float(dd_s),
+        energia_generada_kwh=float(energia_generada),
+    )
 
 
 # ---------- PS ----------
@@ -1705,7 +2062,7 @@ def procesar_ps(
         if es_principal:
             mp_principal = mp
 
-    db.commit()
+    db.flush()
 
     if mp_principal is None:
         mejor_periodo = max(
@@ -1742,5 +2099,5 @@ def procesar_ps(
     except Exception:
         pass
 
-    db.refresh(mp_principal)
+    _safe_refresh(db, mp_principal)
     return mp_principal

@@ -1,7 +1,16 @@
 # app/measures/models.py
 # pyright: reportMissingImports=false
 
-from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey
+from sqlalchemy import (
+    Column,
+    Integer,
+    Float,
+    String,
+    DateTime,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+)
 
 from app.core.models_base import Base, TimestampMixin
 
@@ -10,14 +19,15 @@ class MedidaMicro(TimestampMixin, Base):
     __tablename__ = "medidas_micro"
 
     id = Column(Integer, primary_key=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
-    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
 
     # Punto de medida (CUPS o equivalente)
-    punto_id = Column(String(50), nullable=False, index=True)
+    punto_id = Column(String(50), nullable=False)
 
     # Momento de la medida (intervalo real: 15/30/60 min, etc.)
-    timestamp = Column(DateTime, nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False)
 
     # Valores ya normalizados
     energia_kwh = Column(Float, nullable=True)
@@ -27,7 +37,33 @@ class MedidaMicro(TimestampMixin, Base):
 
     # De qué fichero viene
     source_file_id = Column(
-        Integer, ForeignKey("ingestion_files.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("ingestion_files.id"),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "empresa_id",
+            "punto_id",
+            "timestamp",
+            name="uq_medidas_micro_tenant_empresa_punto_timestamp",
+        ),
+        Index(
+            "ix_medidas_micro_tenant_empresa_timestamp",
+            "tenant_id",
+            "empresa_id",
+            "timestamp",
+        ),
+        Index(
+            "ix_medidas_micro_source_file",
+            "source_file_id",
+        ),
+        Index(
+            "ix_medidas_micro_punto_id",
+            "punto_id",
+        ),
     )
 
 
@@ -36,15 +72,15 @@ class MedidaGeneral(TimestampMixin, Base):
 
     id = Column(Integer, primary_key=True)
 
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
-    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
 
     # Identificador del punto de medida (CUPS o equivalente)
-    punto_id = Column(String(50), nullable=False, index=True)
+    punto_id = Column(String(50), nullable=False)
 
     # Periodo (mes agregación)
-    anio = Column(Integer, nullable=False, index=True)
-    mes = Column(Integer, nullable=False, index=True)
+    anio = Column(Integer, nullable=False)
+    mes = Column(Integer, nullable=False)
 
     # ⚡ MÉTRICAS AGREGADAS "GENERALES"
     energia_bruta_facturada = Column(Float, nullable=True)
@@ -104,7 +140,32 @@ class MedidaGeneral(TimestampMixin, Base):
         Integer,
         ForeignKey("ingestion_files.id"),
         nullable=False,
-        index=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "empresa_id",
+            "punto_id",
+            "anio",
+            "mes",
+            name="uq_medidas_general_tenant_empresa_punto_periodo",
+        ),
+        Index(
+            "ix_medidas_general_tenant_empresa_period",
+            "tenant_id",
+            "empresa_id",
+            "anio",
+            "mes",
+        ),
+        Index(
+            "ix_medidas_general_file_id",
+            "file_id",
+        ),
+        Index(
+            "ix_medidas_general_punto_id",
+            "punto_id",
+        ),
     )
 
 
@@ -120,12 +181,12 @@ class MedidaPS(TimestampMixin, Base):
 
     id = Column(Integer, primary_key=True)
 
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
-    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
-    punto_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
+    punto_id = Column(String(50), nullable=False)
 
-    anio = Column(Integer, nullable=False, index=True)
-    mes = Column(Integer, nullable=False, index=True)
+    anio = Column(Integer, nullable=False)
+    mes = Column(Integer, nullable=False)
 
     # --- ENERGÍA POR TIPO DE PS (poliza 1..5) ---
     energia_ps_tipo_1_kwh = Column(Float, nullable=True)
@@ -192,12 +253,43 @@ class MedidaPS(TimestampMixin, Base):
         Integer,
         ForeignKey("ingestion_files.id"),
         nullable=False,
-        index=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "empresa_id",
+            "punto_id",
+            "anio",
+            "mes",
+            name="uq_medidas_ps_tenant_empresa_punto_periodo",
+        ),
+        Index(
+            "ix_medidas_ps_tenant_empresa_period",
+            "tenant_id",
+            "empresa_id",
+            "anio",
+            "mes",
+        ),
+        Index(
+            "ix_medidas_ps_file_id",
+            "file_id",
+        ),
+        Index(
+            "ix_medidas_ps_punto_id",
+            "punto_id",
+        ),
     )
 
 
 # ✅ Import “side-effect” para registrar el modelo de contribuciones M1 en metadata
 from app.measures.m1_models import M1PeriodContribution  # noqa: F401,E402
+
+# ✅ contribuciones deterministas para medidas_general no-M1
+from app.measures.general_contrib_models import GeneralPeriodContribution  # noqa: F401,E402
+
+# ✅ contribuciones deterministas BALD por ventana
+from app.measures.bald_contrib_models import BaldPeriodContribution  # noqa: F401,E402
 
 # ✅ Import “side-effect” para registrar el modelo de contribuciones PS en metadata
 from app.measures.ps_models import PSPeriodContribution  # noqa: F401,E402

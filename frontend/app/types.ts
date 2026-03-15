@@ -138,7 +138,7 @@ export type MedidaPS = {
   file_id: number;
 };
 
-// ---- Usuarios (lo que devuelve UserRead en el backend) ----
+// ---- Usuarios ----
 export type User = {
   id: number;
   tenant_id: number;
@@ -149,25 +149,34 @@ export type User = {
   created_at: string;
   updated_at: string | null;
 
-  // ✅ Backend real: lista de IDs (vacía => “sin filtro extra”, ve todas)
+  // Backend real: lista de IDs (vacía => “sin filtro extra”, ve todas)
   empresa_ids_permitidas: number[];
 
-  // (opcional legacy; no lo usa esta UI)
+  // opcional legacy
   empresas_permitidas?: Empresa[];
 };
 
 // ------------------------------------------------------------
-// ✅ NUEVO: Tipos para ingestion warnings (NO rompe nada)
+// Ingestion warnings
 // ------------------------------------------------------------
 export type IngestionWarningItem =
   | string
   | {
+      type?: string;
       code?: string;
       message?: string;
+      periodo?: string;
+      periodo_principal?: string;
       anio?: number;
       mes?: number;
       energia_kwh?: number;
       fecha_final?: string;
+      fecha_inicio?: string;
+      poliza_existente?: string;
+      poliza_nueva?: string;
+      tarifa_existente?: string;
+      tarifa_nueva?: string;
+      cups?: string;
       [k: string]: unknown;
     };
 
@@ -188,12 +197,97 @@ export type IngestionFile = {
   processed_at?: string | null;
   error_message?: string | null;
 
-  // ✅ avisos/no bloqueante
   warnings?: IngestionWarningItem[];
-
-  // (compat legacy por si un día lo mandas con otro nombre)
   notices?: IngestionWarningItem[];
-
-  // (compat legacy por si lo mandas como string)
   warnings_message?: string | null;
+};
+
+// ------------------------------------------------------------
+// Delete preview
+// ------------------------------------------------------------
+export type DeleteFilesFilters = {
+  tenant_id?: number;
+  empresa_id?: number;
+  tipo?: string;
+  status_?: string;
+  anio?: number;
+  mes?: number;
+};
+
+export type DeleteImpactPeriod = {
+  tenant_id: number;
+  empresa_id: number;
+  anio: number;
+  mes: number;
+};
+
+export type DeleteImpactRefactura = {
+  source_period: {
+    anio: number;
+    mes: number;
+  };
+  affected_period: {
+    anio: number;
+    mes: number;
+  };
+  energia_kwh?: number | null;
+  filename?: string | null;
+  ingestion_file_id?: number | null;
+};
+
+export type DeleteImpactIngestionFileItem = {
+  id: number;
+  tenant_id: number;
+  empresa_id: number;
+  tipo: string;
+  anio: number;
+  mes: number;
+  filename: string;
+  status?: string | null;
+};
+
+export type DeleteImpactSummary = {
+  ingestion_files_count: number;
+  m1_period_contributions_count: number;
+  general_period_contributions_count: number;
+  bald_period_contributions_count: number;
+  ps_period_detail_count: number;
+  ps_period_contributions_count: number;
+  medidas_general_direct_count: number;
+  medidas_ps_direct_count: number;
+  affected_general_periods_count: number;
+  affected_ps_periods_count: number;
+  orphan_medidas_general_candidate_count: number;
+  orphan_medidas_ps_candidate_count: number;
+  refacturas_m1_count: number;
+};
+
+export type DeleteImpactPreview = {
+  filters: DeleteFilesFilters;
+
+  summary: DeleteImpactSummary;
+
+  ingestion_files: DeleteImpactIngestionFileItem[];
+
+  affected_general_periods: DeleteImpactPeriod[];
+  affected_ps_periods: DeleteImpactPeriod[];
+
+  orphan_medidas_general_candidates: DeleteImpactPeriod[];
+  orphan_medidas_ps_candidates: DeleteImpactPeriod[];
+
+  refacturas_m1: DeleteImpactRefactura[];
+};
+
+export type DeleteFilesResponse = {
+  deleted_ingestion_files: number;
+  deleted_m1_period_contributions: number;
+  deleted_general_period_contributions: number;
+  deleted_bald_period_contributions: number;
+  deleted_ps_period_detail: number;
+  deleted_ps_period_contributions: number;
+  deleted_medidas_general_direct: number;
+  deleted_medidas_general_orphan: number;
+  deleted_medidas_ps_direct: number;
+  deleted_medidas_ps_orphan: number;
+  filters: DeleteFilesFilters;
 };
