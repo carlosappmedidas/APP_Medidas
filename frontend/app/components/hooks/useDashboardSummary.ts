@@ -23,15 +23,15 @@ export type DashboardSummaryResponse = {
     energia_neta_facturada_kwh_total: number;
     importe_total_eur_total: number;
     variation_vs_previous: {
-      energia_neta_facturada_kwh_pct: number | null;
-      importe_total_eur_pct: number | null;
+      energia_neta_facturada_kwh_delta: number | null;
+      importe_total_eur_delta: number | null;
     };
   };
   perdidas: {
     perdidas_e_facturada_kwh_total: number;
     perdidas_e_facturada_eur_total?: number | null;
     variation_vs_previous: {
-      perdidas_e_facturada_kwh_pct: number | null;
+      perdidas_e_facturada_kwh_delta: number | null;
     };
   };
 };
