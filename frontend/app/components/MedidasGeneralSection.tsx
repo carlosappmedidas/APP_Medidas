@@ -1,16 +1,15 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import type {
-  DeleteImpactPreview,
-  DeleteFilesFilters,
-  DeleteImpactIngestionFileItem,
-  DeleteImpactPeriod,
-  DeleteImpactRefactura,
-  MedidaGeneral,
-} from "../types";
+import { useMemo } from "react";
+import type { MedidaGeneral } from "../types";
 import DeletePreviewModal from "./ui/DeletePreviewModal";
+import ConfirmDeleteModal from "./ui/ConfirmDeleteModal";
+import ColumnVisibilityOrderPanel from "./ui/ColumnVisibilityOrderPanel";
+import TablePaginationFooter from "./ui/TablePaginationFooter";
+import MedidasFiltersBar from "./ui/MedidasFiltersBar";
+import MedidasTableActions from "./ui/MedidasTableActions";
+import { useMedidasTable } from "./hooks/useMedidasTable";
+import { useDeleteByIngestion } from "./hooks/useDeleteByIngestion";
 
 type MedidasProps = {
   token: string | null;
@@ -19,27 +18,6 @@ type MedidasProps = {
   setColumnOrder?: (order: string[]) => void;
   hiddenColumns?: string[];
   setHiddenColumns?: (cols: string[]) => void;
-};
-
-type EmpresaFilterOption = {
-  id: number;
-  codigo?: string | null;
-  nombre?: string | null;
-  tenant_id?: number | null;
-};
-
-type GeneralFiltersResponse = {
-  empresas: EmpresaFilterOption[];
-  anios: number[];
-  meses: number[];
-};
-
-type PaginatedResponse = {
-  items: MedidaGeneral[];
-  page: number;
-  page_size: number;
-  total: number;
-  total_pages: number;
 };
 
 const formatNumberEs = (v: number | null | undefined, decimals: number = 2): string => {
@@ -122,351 +100,6 @@ export const COLUMNS_GENERAL_META = ALL_COLUMNS_GENERAL.map((c) => ({
   group: c.group,
 }));
 
-function ConfirmDeleteModalInline({
-  open,
-  title,
-  subtitle,
-  confirmText = "Borrar",
-  cancelText = "Cancelar",
-  busy,
-  error,
-  onConfirm,
-  onClose,
-}: {
-  open: boolean;
-  title: string;
-  subtitle?: string;
-  confirmText?: string;
-  cancelText?: string;
-  busy?: boolean;
-  error?: string | null;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" role="dialog" aria-modal="true">
-      <div
-        className="absolute inset-0"
-        style={{ background: "rgba(0,0,0,0.55)" }}
-        onClick={() => !busy && onClose()}
-      />
-      <div className="relative w-full max-w-lg ui-card ui-card--border">
-        <div className="mb-2">
-          <div className="ui-card-title">{title}</div>
-          {subtitle ? <div className="ui-card-subtitle">{subtitle}</div> : null}
-        </div>
-
-        {error ? <div className="ui-alert ui-alert--danger mb-3">{error}</div> : null}
-
-        <div className="flex items-center justify-end gap-2">
-          <button type="button" className="ui-btn ui-btn-outline" onClick={onClose} disabled={!!busy}>
-            {cancelText}
-          </button>
-          <button type="button" className="ui-btn ui-btn-danger" onClick={onConfirm} disabled={!!busy}>
-            {busy ? "Borrando..." : confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type MultiSelectOption = {
-  value: string;
-  label: string;
-};
-
-function MultiSelectDropdown({
-  label,
-  options,
-  selectedValues,
-  onChange,
-  disabled = false,
-  placeholder = "Todas",
-}: {
-  label: string;
-  options: MultiSelectOption[];
-  selectedValues: string[];
-  onChange: (values: string[]) => void;
-  disabled?: boolean;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const selectedLabels = useMemo(() => {
-    const selectedSet = new Set(selectedValues);
-    return options.filter((o) => selectedSet.has(o.value)).map((o) => o.label);
-  }, [options, selectedValues]);
-
-  const buttonText = useMemo(() => {
-    if (selectedValues.length === 0) return placeholder;
-    if (selectedValues.length <= 2) return selectedLabels.join(", ");
-    return `${selectedValues.length} seleccionados`;
-  }, [placeholder, selectedLabels, selectedValues.length]);
-
-  const toggleValue = (value: string) => {
-    if (selectedValues.includes(value)) {
-      onChange(selectedValues.filter((v) => v !== value));
-    } else {
-      onChange([...selectedValues, value]);
-    }
-  };
-
-  const allSelected = options.length > 0 && selectedValues.length === options.length;
-
-  const toggleAll = () => {
-    if (allSelected) onChange([]);
-    else onChange(options.map((o) => o.value));
-  };
-
-  return (
-    <div className="relative" ref={rootRef}>
-      <label className="ui-label">{label}</label>
-
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        className="ui-select flex w-full items-center justify-between text-left text-[10px]"
-        style={{
-          minHeight: 30,
-          paddingTop: 4,
-          paddingBottom: 4,
-          paddingLeft: 8,
-          paddingRight: 8,
-          lineHeight: 1.15,
-        }}
-      >
-        <span className="truncate">{buttonText}</span>
-        <span className="ml-2 shrink-0 ui-muted text-[10px]">{open ? "▴" : "▾"}</span>
-      </button>
-
-      {open && !disabled && (
-        <div
-          className="absolute z-30 mt-1.5 w-full rounded-xl border p-2 shadow-lg"
-          style={{
-            background: "var(--card-bg)",
-            borderColor: "var(--card-border)",
-          }}
-        >
-          <div className="mb-2 border-b pb-2" style={{ borderColor: "var(--card-border)" }}>
-            <label className="flex cursor-pointer items-center gap-2 text-[10px]">
-              <input
-                type="checkbox"
-                className="ui-checkbox"
-                checked={allSelected}
-                onChange={toggleAll}
-              />
-              <span>Seleccionar todo</span>
-            </label>
-          </div>
-
-          <div className="max-h-52 overflow-y-auto space-y-1">
-            {options.length === 0 ? (
-              <div className="px-2 py-2 text-[10px] ui-muted">Sin opciones</div>
-            ) : (
-              options.map((opt) => (
-                <label
-                  key={opt.value}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[10px] hover:bg-[var(--field-bg-soft)]"
-                >
-                  <input
-                    type="checkbox"
-                    className="ui-checkbox"
-                    checked={selectedValues.includes(opt.value)}
-                    onChange={() => toggleValue(opt.value)}
-                  />
-                  <span className="truncate">{opt.label}</span>
-                </label>
-              ))
-            )}
-          </div>
-
-          <div
-            className="mt-2 flex items-center justify-end gap-2 border-t pt-2"
-            style={{ borderColor: "var(--card-border)" }}
-          >
-            <button
-              type="button"
-              className="ui-btn ui-btn-outline ui-btn-xs"
-              onClick={() => onChange([])}
-            >
-              Limpiar
-            </button>
-            <button
-              type="button"
-              className="ui-btn ui-btn-primary ui-btn-xs"
-              onClick={() => setOpen(false)}
-            >
-              Aplicar
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function buildPeriodKey(p: DeleteImpactPeriod) {
-  return `${p.tenant_id}-${p.empresa_id}-${p.anio}-${p.mes}`;
-}
-
-function buildIngestionFileKey(f: DeleteImpactIngestionFileItem) {
-  return `${f.id}`;
-}
-
-function buildRefacturaKey(r: DeleteImpactRefactura) {
-  return [
-    r.source_period.anio,
-    r.source_period.mes,
-    r.affected_period.anio,
-    r.affected_period.mes,
-    r.ingestion_file_id ?? "",
-    r.filename ?? "",
-    r.energia_kwh ?? "",
-  ].join("|");
-}
-
-function aggregateDeletePreviews(previews: DeleteImpactPreview[]): DeleteImpactPreview {
-  const ingestionFilesMap = new Map<string, DeleteImpactIngestionFileItem>();
-  const affectedGeneralMap = new Map<string, DeleteImpactPeriod>();
-  const affectedPsMap = new Map<string, DeleteImpactPeriod>();
-  const orphanGeneralMap = new Map<string, DeleteImpactPeriod>();
-  const orphanPsMap = new Map<string, DeleteImpactPeriod>();
-  const refacturasMap = new Map<string, DeleteImpactRefactura>();
-
-  let summary = {
-    ingestion_files_count: 0,
-    m1_period_contributions_count: 0,
-    general_period_contributions_count: 0,
-    bald_period_contributions_count: 0,
-    ps_period_detail_count: 0,
-    ps_period_contributions_count: 0,
-    medidas_general_direct_count: 0,
-    medidas_ps_direct_count: 0,
-    affected_general_periods_count: 0,
-    affected_ps_periods_count: 0,
-    orphan_medidas_general_candidate_count: 0,
-    orphan_medidas_ps_candidate_count: 0,
-    refacturas_m1_count: 0,
-  };
-
-  const filters: DeleteFilesFilters = {};
-
-  for (const preview of previews) {
-    if (preview.filters.tenant_id != null) filters.tenant_id = preview.filters.tenant_id;
-
-    summary.ingestion_files_count += preview.summary.ingestion_files_count;
-    summary.m1_period_contributions_count += preview.summary.m1_period_contributions_count;
-    summary.general_period_contributions_count += preview.summary.general_period_contributions_count;
-    summary.bald_period_contributions_count += preview.summary.bald_period_contributions_count;
-    summary.ps_period_detail_count += preview.summary.ps_period_detail_count;
-    summary.ps_period_contributions_count += preview.summary.ps_period_contributions_count;
-    summary.medidas_general_direct_count += preview.summary.medidas_general_direct_count;
-    summary.medidas_ps_direct_count += preview.summary.medidas_ps_direct_count;
-
-    for (const item of preview.ingestion_files) {
-      ingestionFilesMap.set(buildIngestionFileKey(item), item);
-    }
-
-    for (const item of preview.affected_general_periods) {
-      affectedGeneralMap.set(buildPeriodKey(item), item);
-    }
-
-    for (const item of preview.affected_ps_periods) {
-      affectedPsMap.set(buildPeriodKey(item), item);
-    }
-
-    for (const item of preview.orphan_medidas_general_candidates) {
-      orphanGeneralMap.set(buildPeriodKey(item), item);
-    }
-
-    for (const item of preview.orphan_medidas_ps_candidates) {
-      orphanPsMap.set(buildPeriodKey(item), item);
-    }
-
-    for (const item of preview.refacturas_m1) {
-      refacturasMap.set(buildRefacturaKey(item), item);
-    }
-  }
-
-  const ingestion_files = Array.from(ingestionFilesMap.values()).sort((a, b) => {
-    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
-    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
-    if (a.anio !== b.anio) return a.anio - b.anio;
-    if (a.mes !== b.mes) return a.mes - b.mes;
-    return a.id - b.id;
-  });
-
-  const affected_general_periods = Array.from(affectedGeneralMap.values()).sort((a, b) => {
-    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
-    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
-    if (a.anio !== b.anio) return a.anio - b.anio;
-    return a.mes - b.mes;
-  });
-
-  const affected_ps_periods = Array.from(affectedPsMap.values()).sort((a, b) => {
-    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
-    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
-    if (a.anio !== b.anio) return a.anio - b.anio;
-    return a.mes - b.mes;
-  });
-
-  const orphan_medidas_general_candidates = Array.from(orphanGeneralMap.values()).sort((a, b) => {
-    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
-    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
-    if (a.anio !== b.anio) return a.anio - b.anio;
-    return a.mes - b.mes;
-  });
-
-  const orphan_medidas_ps_candidates = Array.from(orphanPsMap.values()).sort((a, b) => {
-    if (a.tenant_id !== b.tenant_id) return a.tenant_id - b.tenant_id;
-    if (a.empresa_id !== b.empresa_id) return a.empresa_id - b.empresa_id;
-    if (a.anio !== b.anio) return a.anio - b.anio;
-    return a.mes - b.mes;
-  });
-
-  const refacturas_m1 = Array.from(refacturasMap.values()).sort((a, b) => {
-    if (a.affected_period.anio !== b.affected_period.anio) return a.affected_period.anio - b.affected_period.anio;
-    if (a.affected_period.mes !== b.affected_period.mes) return a.affected_period.mes - b.affected_period.mes;
-    if (a.source_period.anio !== b.source_period.anio) return a.source_period.anio - b.source_period.anio;
-    return a.source_period.mes - b.source_period.mes;
-  });
-
-  summary.affected_general_periods_count = affected_general_periods.length;
-  summary.affected_ps_periods_count = affected_ps_periods.length;
-  summary.orphan_medidas_general_candidate_count = orphan_medidas_general_candidates.length;
-  summary.orphan_medidas_ps_candidate_count = orphan_medidas_ps_candidates.length;
-  summary.refacturas_m1_count = refacturas_m1.length;
-  summary.ingestion_files_count = ingestion_files.length;
-
-  return {
-    filters,
-    summary,
-    ingestion_files,
-    affected_general_periods,
-    affected_ps_periods,
-    orphan_medidas_general_candidates,
-    orphan_medidas_ps_candidates,
-    refacturas_m1,
-  };
-}
-
 export default function MedidasGeneralSection({
   token,
   scope = "tenant",
@@ -475,41 +108,109 @@ export default function MedidasGeneralSection({
   hiddenColumns,
   setHiddenColumns,
 }: MedidasProps) {
-  const isSistema = scope === "all";
-
-  const [data, setData] = useState<MedidaGeneral[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-
-  const [filtroTenant, setFiltroTenant] = useState<string>("");
-  const [filtroEmpresaIds, setFiltroEmpresaIds] = useState<string[]>([]);
-  const [filtroAnios, setFiltroAnios] = useState<string[]>([]);
-  const [filtroMeses, setFiltroMeses] = useState<string[]>([]);
-
-  const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>([]);
-  const [opcionesAnio, setOpcionesAnio] = useState<number[]>([]);
-  const [opcionesMes, setOpcionesMes] = useState<number[]>([]);
-
-  const [pageSize, setPageSize] = useState<number>(20);
-  const [page, setPage] = useState<number>(0);
-  const [totalFilas, setTotalFilas] = useState<number>(0);
-  const [totalPages, setTotalPages] = useState<number>(1);
-
-  const [showAdjust, setShowAdjust] = useState<boolean>(false);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const [deletePreviewOpen, setDeletePreviewOpen] = useState(false);
-  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
-  const [deletePreviewError, setDeletePreviewError] = useState<string | null>(null);
-  const [deletePreviewData, setDeletePreviewData] = useState<DeleteImpactPreview | null>(null);
-
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
+
+  const {
+    isSistema,
+    data,
+    loading,
+    error,
+    hasLoadedOnce,
+
+    filtroTenant,
+    setFiltroTenant,
+    filtroEmpresaIds,
+    setFiltroEmpresaIds,
+    filtroAnios,
+    setFiltroAnios,
+    filtroMeses,
+    setFiltroMeses,
+
+    opcionesEmpresa,
+    opcionesAnio,
+    opcionesMes,
+    opcionesTenant,
+    opcionesEmpresaFiltradas,
+
+    pageSize,
+    setPageSize,
+    page,
+    setPage,
+    totalFilas,
+    totalPages,
+    currentPage,
+    startIndex,
+    endIndex,
+
+    showAdjust,
+    setShowAdjust,
+    handleDragStart,
+    handleDrop,
+
+    safeColumnOrder,
+    safeHiddenColumns,
+    canEditAdjustments,
+    orderForAdjustments,
+
+    filtrosActivosCount,
+
+    clearFilters,
+    loadFilters,
+    handleLoadData,
+
+    toggleVisible,
+    resetOrder,
+    hideAllColumns,
+  } = useMedidasTable<MedidaGeneral>({
+    token,
+    scope,
+    filtersEndpointTenant: "/medidas/general/filters",
+    filtersEndpointAll: "/medidas/general/all/filters",
+    pageEndpointTenant: "/medidas/general/page",
+    pageEndpointAll: "/medidas/general/all/page",
+    defaultColumnOrder: defaultOrder,
+    columnOrder,
+    setColumnOrder,
+    hiddenColumns,
+    setHiddenColumns,
+    loadErrorMessage: "Error cargando medidas. Revisa la API y el token.",
+  });
+
+  const {
+    deleteOpen,
+    deleteBusy,
+    deleteError,
+    deletePreviewOpen,
+    setDeletePreviewOpen,
+    deletePreviewLoading,
+    deletePreviewError,
+    deletePreviewData,
+    canDeleteByFilters,
+    totalDeleteOps,
+    clearDeleteState,
+    openDelete,
+    closeDelete,
+    handleOpenDeletePreview,
+    confirmDelete,
+  } = useDeleteByIngestion({
+    token,
+    isSistema,
+    filtroTenant,
+    filtroEmpresaIds,
+    filtroAnios,
+    filtroMeses,
+    opcionesEmpresa,
+    resolveTenantId: (_empresaId, _empresas, tenantActual) => tenantActual || null,
+    previewMissingFiltersMessage:
+      "Selecciona tenant, empresa, año y mes para habilitar la vista previa.",
+    deleteErrorMessage:
+      "No se pudo completar el borrado por ingestion. Revisa filtros, endpoint y permisos.",
+    onAfterDelete: async () => {
+      await loadFilters();
+      setPage(0);
+      await handleLoadData(0);
+    },
+  });
 
   const systemTenantColumn: ColumnDefGeneral = useMemo(
     () => ({
@@ -526,191 +227,7 @@ export default function MedidasGeneralSection({
     return isSistema ? [systemTenantColumn, ...ALL_COLUMNS_GENERAL] : ALL_COLUMNS_GENERAL;
   }, [isSistema, systemTenantColumn]);
 
-  const safeColumnOrder = useMemo(() => {
-    if (Array.isArray(columnOrder) && columnOrder.length > 0) return columnOrder;
-    return defaultOrder;
-  }, [columnOrder, defaultOrder]);
-
-  const safeHiddenColumns = useMemo(() => {
-    if (Array.isArray(hiddenColumns)) return hiddenColumns;
-    return [];
-  }, [hiddenColumns]);
-
-  const canEditAdjustments = !!setColumnOrder && !!setHiddenColumns;
-
-  const orderForAdjustments = useMemo(() => {
-    const missing = defaultOrder.filter((id) => !safeColumnOrder.includes(id));
-    return [...safeColumnOrder, ...missing];
-  }, [safeColumnOrder, defaultOrder]);
-
-  const filtrosActivosCount =
-    (isSistema && filtroTenant ? 1 : 0) +
-    (filtroEmpresaIds.length > 0 ? 1 : 0) +
-    (filtroAnios.length > 0 ? 1 : 0) +
-    (filtroMeses.length > 0 ? 1 : 0);
-
-  const canDeleteByFilters =
-    isSistema &&
-    !!filtroTenant &&
-    filtroEmpresaIds.length > 0 &&
-    filtroAnios.length > 0 &&
-    filtroMeses.length > 0;
-
-  const totalDeleteOps = useMemo(() => {
-    if (!canDeleteByFilters) return 0;
-    return filtroEmpresaIds.length * filtroAnios.length * filtroMeses.length;
-  }, [canDeleteByFilters, filtroEmpresaIds, filtroAnios, filtroMeses]);
-
-  const clearFilters = () => {
-    setFiltroTenant("");
-    setFiltroEmpresaIds([]);
-    setFiltroAnios([]);
-    setFiltroMeses([]);
-    setPage(0);
-    setDeletePreviewData(null);
-    setDeletePreviewError(null);
-  };
-
-  const loadFilters = async () => {
-    if (!token) return;
-
-    try {
-      const endpoint = isSistema ? "/medidas/general/all/filters" : "/medidas/general/filters";
-
-      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-        headers: getAuthHeaders(token),
-      });
-      if (!res.ok) return;
-
-      const json = (await res.json()) as GeneralFiltersResponse;
-      setOpcionesEmpresa(Array.isArray(json?.empresas) ? json.empresas : []);
-      setOpcionesAnio(Array.isArray(json?.anios) ? json.anios : []);
-      setOpcionesMes(Array.isArray(json?.meses) ? json.meses : []);
-    } catch (e) {
-      console.error("Error cargando filtros general:", e);
-    }
-  };
-
-  const handleLoadMedidas = async (nextPage?: number) => {
-    if (!token) return;
-
-    const effectivePage = typeof nextPage === "number" ? nextPage : page;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const endpoint = isSistema ? "/medidas/general/all/page" : "/medidas/general/page";
-
-      const params = new URLSearchParams();
-      params.set("page", String(effectivePage));
-      params.set("page_size", String(pageSize));
-
-      if (isSistema && filtroTenant) params.set("tenant_id", filtroTenant);
-      if (filtroEmpresaIds.length > 0) params.set("empresa_ids", filtroEmpresaIds.join(","));
-      if (filtroAnios.length > 0) params.set("anios", filtroAnios.join(","));
-      if (filtroMeses.length > 0) params.set("meses", filtroMeses.join(","));
-
-      const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
-        headers: getAuthHeaders(token),
-      });
-
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-
-      const json = (await res.json()) as PaginatedResponse;
-
-      setData(Array.isArray(json?.items) ? json.items : []);
-      setTotalFilas(typeof json?.total === "number" ? json.total : 0);
-      setTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
-
-      setHasLoadedOnce(true);
-    } catch (err) {
-      console.error("Error cargando medidas_general paginadas:", err);
-      setError("Error cargando medidas. Revisa la API y el token.");
-      setData([]);
-      setTotalFilas(0);
-      setTotalPages(1);
-      setHasLoadedOnce(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const bootKeyRef = useRef<string>("");
-  useEffect(() => {
-    if (!token) {
-      bootKeyRef.current = "";
-      setHasLoadedOnce(false);
-      setError(null);
-
-      setData([]);
-      setOpcionesEmpresa([]);
-      setOpcionesAnio([]);
-      setOpcionesMes([]);
-
-      setFiltroTenant("");
-      setFiltroEmpresaIds([]);
-      setFiltroAnios([]);
-      setFiltroMeses([]);
-
-      setPage(0);
-      setTotalFilas(0);
-      setTotalPages(1);
-      return;
-    }
-
-    const key = `${token}::${scope}`;
-    if (bootKeyRef.current === key) return;
-    bootKeyRef.current = key;
-
-    setPage(0);
-    void loadFilters().then(() => void handleLoadMedidas(0));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, scope]);
-
-  const filterKeyRef = useRef<string>("");
-  useEffect(() => {
-    if (!token) return;
-
-    const key = `${scope}::${filtroTenant}::${filtroEmpresaIds.join(",")}::${filtroAnios.join(",")}::${filtroMeses.join(",")}::${pageSize}`;
-    if (filterKeyRef.current === key) return;
-    filterKeyRef.current = key;
-
-    setPage(0);
-    void handleLoadMedidas(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, scope, filtroTenant, filtroEmpresaIds, filtroAnios, filtroMeses, pageSize]);
-
-  const pageKeyRef = useRef<string>("");
-  useEffect(() => {
-    if (!token) return;
-
-    const key = `${scope}::${page}`;
-    if (pageKeyRef.current === key) return;
-    pageKeyRef.current = key;
-
-    void handleLoadMedidas(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, page]);
-
-  const opcionesTenant = useMemo(() => {
-    if (!isSistema) return [];
-    const tenants = new Set<number>();
-    for (const e of opcionesEmpresa) {
-      if (typeof e?.tenant_id === "number") tenants.add(e.tenant_id);
-    }
-    return Array.from(tenants).sort((a, b) => a - b).map(String);
-  }, [isSistema, opcionesEmpresa]);
-
-  const opcionesEmpresaFiltradas = useMemo(() => {
-    if (!isSistema) return opcionesEmpresa;
-    if (!filtroTenant) return opcionesEmpresa;
-    const t = Number.parseInt(filtroTenant, 10);
-    if (Number.isNaN(t)) return opcionesEmpresa;
-    return opcionesEmpresa.filter((e) => e.tenant_id === t);
-  }, [isSistema, opcionesEmpresa, filtroTenant]);
-
-  const empresaOptions = useMemo<MultiSelectOption[]>(() => {
+  const empresaOptions = useMemo(() => {
     const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;
     return source.map((e) => ({
       value: String(e.id),
@@ -720,12 +237,12 @@ export default function MedidasGeneralSection({
     }));
   }, [isSistema, opcionesEmpresa, opcionesEmpresaFiltradas]);
 
-  const anioOptions = useMemo<MultiSelectOption[]>(
+  const anioOptions = useMemo(
     () => opcionesAnio.map((anio) => ({ value: String(anio), label: String(anio) })),
     [opcionesAnio]
   );
 
-  const mesOptions = useMemo<MultiSelectOption[]>(
+  const mesOptions = useMemo(
     () =>
       opcionesMes.map((mes) => ({
         value: String(mes),
@@ -762,211 +279,7 @@ export default function MedidasGeneralSection({
 
   const totalColumnas = columnasOrdenadas.length || 1;
 
-  const currentPage = Math.min(page, Math.max(0, totalPages - 1));
-  const startIndex = totalFilas === 0 ? 0 : currentPage * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalFilas);
-
-  const handleDragStart = (index: number) => setDragIndex(index);
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
-
-  const handleDrop = (index: number) => {
-    if (!canEditAdjustments) return;
-    if (dragIndex === null || dragIndex === index) return;
-
-    const copy = [...orderForAdjustments];
-    const [item] = copy.splice(dragIndex, 1);
-    copy.splice(index, 0, item);
-
-    setColumnOrder?.(copy);
-    setDragIndex(null);
-  };
-
-  const toggleVisible = (id: string) => {
-    if (!canEditAdjustments) return;
-
-    if (safeHiddenColumns.includes(id)) setHiddenColumns?.(safeHiddenColumns.filter((c) => c !== id));
-    else setHiddenColumns?.([...safeHiddenColumns, id]);
-  };
-
-  const resetOrder = () => {
-    if (!canEditAdjustments) return;
-    setColumnOrder?.(defaultOrder);
-    setHiddenColumns?.([]);
-  };
-
-  const hideAllColumns = () => {
-    if (!canEditAdjustments) return;
-    setHiddenColumns?.(defaultOrder);
-  };
-
-  const third = Math.ceil(orderForAdjustments.length / 3) || 1;
-  const firstIds = orderForAdjustments.slice(0, third);
-  const secondIds = orderForAdjustments.slice(third, 2 * third);
-  const thirdIds = orderForAdjustments.slice(2 * third);
-
-  const renderAdjustItem = (id: string, index: number) => {
-    const meta = ALL_COLUMNS_GENERAL.find((c) => c.id === id);
-    const label = meta?.label ?? id;
-    const group = meta?.group ?? "-";
-    const isChecked = !safeHiddenColumns.includes(id);
-
-    return (
-      <div
-        key={id}
-        draggable={canEditAdjustments}
-        onDragStart={() => canEditAdjustments && handleDragStart(index)}
-        onDrop={() => canEditAdjustments && handleDrop(index)}
-        className={[
-          "flex items-center justify-between rounded-lg px-2 py-1.5",
-          "border border-[var(--field-border)] bg-[var(--field-bg-soft)]",
-          canEditAdjustments ? "cursor-move hover:opacity-90" : "opacity-80",
-        ].join(" ")}
-      >
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            className="ui-checkbox"
-            checked={isChecked}
-            onChange={() => toggleVisible(id)}
-            onClick={(e) => e.stopPropagation()}
-            disabled={!canEditAdjustments}
-          />
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[var(--field-border)] bg-[var(--field-bg)] text-[9px]">
-            {index + 1}
-          </span>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-medium">{label}</span>
-            <span className="text-[9px] ui-muted">{group}</span>
-          </div>
-        </div>
-        <span className="text-[13px] ui-muted">☰</span>
-      </div>
-    );
-  };
-
-  const openDelete = () => {
-    setDeleteError(null);
-    setDeleteOpen(true);
-  };
-
-  const closeDelete = () => {
-    if (deleteBusy) return;
-    setDeleteOpen(false);
-    setDeleteError(null);
-  };
-
-  const handleOpenDeletePreview = async () => {
-    if (!token || !isSistema) return;
-
-    if (!canDeleteByFilters) {
-      setDeletePreviewError("Selecciona tenant, empresa, año y mes para habilitar la vista previa.");
-      return;
-    }
-
-    setDeletePreviewLoading(true);
-    setDeletePreviewError(null);
-    setDeletePreviewData(null);
-
-    try {
-      const previews: DeleteImpactPreview[] = [];
-
-      for (const empresaId of filtroEmpresaIds) {
-        for (const anio of filtroAnios) {
-          for (const mes of filtroMeses) {
-            const params = new URLSearchParams();
-            params.set("tenant_id", filtroTenant);
-            params.set("empresa_id", empresaId);
-            params.set("anio", anio);
-            params.set("mes", mes);
-
-            const res = await fetch(`${API_BASE_URL}/ingestion/files/delete-preview?${params.toString()}`, {
-              headers: getAuthHeaders(token),
-            });
-
-            if (!res.ok) {
-              const text = await res.text().catch(() => "");
-              throw new Error(text || `Error ${res.status}`);
-            }
-
-            const json = (await res.json()) as DeleteImpactPreview;
-            previews.push(json);
-          }
-        }
-      }
-
-      const aggregated = aggregateDeletePreviews(previews);
-      aggregated.filters = {
-        tenant_id: Number(filtroTenant),
-      };
-
-      setDeletePreviewData(aggregated);
-      setDeletePreviewOpen(true);
-    } catch (e) {
-      console.error("Error cargando preview de borrado desde General Sistema:", e);
-      setDeletePreviewError("No se pudo calcular la vista previa del borrado.");
-    } finally {
-      setDeletePreviewLoading(false);
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!token || !isSistema) return;
-    if (!canDeleteByFilters) return;
-    if (!filtroTenant) return;
-
-    setDeleteBusy(true);
-    setDeleteError(null);
-
-    try {
-      const tasks: Array<{ tenantId: string; empresaId: string; anio: string; mes: string }> = [];
-
-      for (const empresaId of filtroEmpresaIds) {
-        for (const anio of filtroAnios) {
-          for (const mes of filtroMeses) {
-            tasks.push({
-              tenantId: filtroTenant,
-              empresaId,
-              anio,
-              mes,
-            });
-          }
-        }
-      }
-
-      for (const task of tasks) {
-        const params = new URLSearchParams();
-        params.set("tenant_id", task.tenantId);
-        params.set("empresa_id", task.empresaId);
-        params.set("anio", task.anio);
-        params.set("mes", task.mes);
-
-        const res = await fetch(`${API_BASE_URL}/ingestion/files?${params.toString()}`, {
-          method: "DELETE",
-          headers: getAuthHeaders(token),
-        });
-
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(text || `Error ${res.status}`);
-        }
-      }
-
-      setDeleteOpen(false);
-      setDeletePreviewOpen(false);
-      setDeletePreviewData(null);
-
-      await loadFilters();
-      setPage(0);
-      await handleLoadMedidas(0);
-    } catch (e) {
-      console.error("Error borrando ingestion desde General Sistema:", e);
-      setDeleteError(
-        "No se pudo completar el borrado por ingestion. Revisa filtros, endpoint y permisos."
-      );
-    } finally {
-      setDeleteBusy(false);
-    }
-  };
 
   return (
     <section className="ui-card text-sm">
@@ -976,65 +289,26 @@ export default function MedidasGeneralSection({
           <p className="ui-card-subtitle">Resumen mensual de energía por empresa.</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => void handleLoadMedidas(page)}
-            disabled={loading || !token}
-            className="ui-btn ui-btn-primary"
-            type="button"
-          >
-            {loading ? "Actualizando..." : "Actualizar"}
-          </button>
-
-          {isSistema && (
-            <>
-              <button
-                onClick={() => void handleOpenDeletePreview()}
-                disabled={loading || !token || deletePreviewLoading || !canDeleteByFilters}
-                className="ui-btn ui-btn-outline"
-                type="button"
-                title={
-                  canDeleteByFilters
-                    ? "Ver impacto antes de borrar"
-                    : "Selecciona tenant, empresa, año y mes para ver la vista previa"
-                }
-              >
-                {deletePreviewLoading ? "Calculando preview..." : "Vista previa borrado"}
-              </button>
-
-              <button
-                onClick={openDelete}
-                disabled={loading || !token || !canDeleteByFilters}
-                className="ui-btn ui-btn-danger"
-                type="button"
-                title={
-                  canDeleteByFilters
-                    ? "Borrar por ingestion usando tenant + empresa + año + mes"
-                    : "Selecciona tenant, empresa, año y mes para borrar"
-                }
-              >
-                Borrar…
-                {totalDeleteOps > 0 ? (
-                  <span className="ui-badge ui-badge--neutral" style={{ marginLeft: 6 }}>
-                    {totalDeleteOps}
-                  </span>
-                ) : null}
-              </button>
-            </>
-          )}
-
-          {filtrosActivosCount > 0 && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              disabled={loading}
-              className="ui-btn ui-btn-outline"
-              title="Limpiar filtros"
-            >
-              Limpiar filtros
-            </button>
-          )}
-        </div>
+        <MedidasTableActions
+          loading={loading}
+          token={token}
+          isSistema={isSistema}
+          canDeleteByFilters={canDeleteByFilters}
+          totalDeleteOps={totalDeleteOps}
+          deletePreviewLoading={deletePreviewLoading}
+          filtrosActivosCount={filtrosActivosCount}
+          onRefresh={() => void handleLoadData(page)}
+          onOpenDeletePreview={() => void handleOpenDeletePreview()}
+          onOpenDelete={openDelete}
+          onClearFilters={() => {
+            clearFilters();
+            clearDeleteState();
+          }}
+          deletePreviewTitleEnabled="Ver impacto antes de borrar"
+          deletePreviewTitleDisabled="Selecciona tenant, empresa, año y mes para ver la vista previa"
+          deleteTitleEnabled="Borrar por ingestion usando tenant + empresa + año + mes"
+          deleteTitleDisabled="Selecciona tenant, empresa, año y mes para borrar"
+        />
       </header>
 
       {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
@@ -1065,105 +339,45 @@ export default function MedidasGeneralSection({
         </div>
       )}
 
-      <div className={isSistema ? "mb-4 grid gap-2 md:grid-cols-4" : "mb-4 grid gap-2 md:grid-cols-3"}>
-        {isSistema && (
-          <div>
-            <label className="ui-label">Cliente</label>
-            <select
-              className="ui-select text-[10px]"
-              style={{
-                minHeight: 30,
-                paddingTop: 4,
-                paddingBottom: 4,
-                paddingLeft: 8,
-                paddingRight: 8,
-                lineHeight: 1.15,
-              }}
-              value={filtroTenant}
-              onChange={(e) => {
-                setFiltroTenant(e.target.value);
-                setFiltroEmpresaIds([]);
-              }}
-              disabled={!token || loading}
-            >
-              <option value="">Todos</option>
-              {opcionesTenant.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+      <MedidasFiltersBar
+        isSistema={isSistema}
+        token={token}
+        loading={loading}
+        filtroTenant={filtroTenant}
+        setFiltroTenant={setFiltroTenant}
+        filtroEmpresaIds={filtroEmpresaIds}
+        setFiltroEmpresaIds={setFiltroEmpresaIds}
+        filtroAnios={filtroAnios}
+        setFiltroAnios={setFiltroAnios}
+        filtroMeses={filtroMeses}
+        setFiltroMeses={setFiltroMeses}
+        opcionesTenant={opcionesTenant}
+        empresaOptions={empresaOptions}
+        anioOptions={anioOptions}
+        mesOptions={mesOptions}
+        empresaPlaceholder="Todas"
+        anioPlaceholder="Todos"
+        mesPlaceholder="Todos"
+      />
 
-        <MultiSelectDropdown
-          label="Empresa"
-          options={empresaOptions}
-          selectedValues={filtroEmpresaIds}
-          onChange={setFiltroEmpresaIds}
-          disabled={!token || loading}
-          placeholder="Todas"
-        />
-
-        <MultiSelectDropdown
-          label="Año"
-          options={anioOptions}
-          selectedValues={filtroAnios}
-          onChange={setFiltroAnios}
-          disabled={!token || loading}
-          placeholder="Todos"
-        />
-
-        <MultiSelectDropdown
-          label="Mes"
-          options={mesOptions}
-          selectedValues={filtroMeses}
-          onChange={setFiltroMeses}
-          disabled={!token || loading}
-          placeholder="Todos"
-        />
-      </div>
-
-      {canEditAdjustments && (
-        <div className="mb-4 rounded-xl border border-[var(--card-border)] bg-[var(--field-bg-soft)]">
-          <div className="flex items-center justify-between px-4 py-3">
-            <div>
-              <h5 className="text-xs font-semibold">Ajustes de columnas</h5>
-              <p className="mt-1 text-[10px] ui-muted">
-                Marca las columnas que quieres ver y arrástralas para cambiar el orden.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={hideAllColumns} className="ui-btn ui-btn-outline ui-btn-xs">
-                Quitar todo
-              </button>
-              <button type="button" onClick={resetOrder} className="ui-btn ui-btn-outline ui-btn-xs">
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAdjust((v) => !v)}
-                className="ui-btn ui-btn-outline ui-btn-xs"
-              >
-                {showAdjust ? "Ocultar" : "Mostrar"}
-              </button>
-            </div>
-          </div>
-
-          {showAdjust && (
-            <div className="border-t border-[var(--card-border)] px-4 py-3 text-[11px]" onDragOver={handleDragOver}>
-              <div className="mb-2 text-[10px] ui-muted">☰ = arrastrar · ✓ = mostrar</div>
-
-              <div className="flex gap-3">
-                <div className="flex-1 space-y-1">{firstIds.map((id, idx) => renderAdjustItem(id, idx))}</div>
-                <div className="flex-1 space-y-1">{secondIds.map((id, idx) => renderAdjustItem(id, third + idx))}</div>
-                <div className="flex-1 space-y-1">{thirdIds.map((id, idx) => renderAdjustItem(id, 2 * third + idx))}</div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <ColumnVisibilityOrderPanel
+        show={showAdjust}
+        onToggleShow={() => setShowAdjust((v) => !v)}
+        canEdit={canEditAdjustments}
+        order={orderForAdjustments}
+        hiddenColumns={safeHiddenColumns}
+        columnsMeta={
+          isSistema
+            ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_GENERAL_META]
+            : COLUMNS_GENERAL_META
+        }
+        onToggleVisible={toggleVisible}
+        onReset={resetOrder}
+        onHideAll={hideAllColumns}
+        onDragStart={handleDragStart}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      />
 
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]">
@@ -1223,93 +437,31 @@ export default function MedidasGeneralSection({
           </tbody>
         </table>
 
-        {!loading && hasLoadedOnce && totalFilas > 0 && (
-          <div className="flex flex-col gap-2 border-t border-[var(--card-border)] px-4 py-3 text-[11px] ui-muted md:flex-row md:items-center md:justify-between">
-            <div>
-              Mostrando{" "}
-              <span className="font-medium" style={{ color: "var(--text)" }}>
-                {startIndex + 1}
-              </span>{" "}
-              -{" "}
-              <span className="font-medium" style={{ color: "var(--text)" }}>
-                {endIndex}
-              </span>{" "}
-              de{" "}
-              <span className="font-medium" style={{ color: "var(--text)" }}>
-                {totalFilas}
-              </span>{" "}
-              filas
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span>Filas por página:</span>
-                <select
-                  className="ui-select w-auto text-[10px]"
-                  style={{
-                    minHeight: 28,
-                    paddingTop: 3,
-                    paddingBottom: 3,
-                    paddingLeft: 8,
-                    paddingRight: 8,
-                    lineHeight: 1.1,
-                  }}
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value) || 20)}
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={200}>200</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={currentPage === 0}
-                  className="ui-btn ui-btn-outline ui-btn-xs"
-                >
-                  ← Anterior
-                </button>
-
-                <span>
-                  Página{" "}
-                  <span className="font-medium" style={{ color: "var(--text)" }}>
-                    {currentPage + 1}
-                  </span>{" "}
-                  /{" "}
-                  <span className="font-medium" style={{ color: "var(--text)" }}>
-                    {totalPages}
-                  </span>
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={currentPage >= totalPages - 1}
-                  className="ui-btn ui-btn-outline ui-btn-xs"
-                >
-                  Siguiente →
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <TablePaginationFooter
+          loading={loading}
+          hasLoadedOnce={hasLoadedOnce}
+          totalFilas={totalFilas}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          setPage={setPage}
+        />
       </div>
 
-      <ConfirmDeleteModalInline
+      <ConfirmDeleteModal
         open={deleteOpen}
         title="Borrar por ingestion · General · Sistema"
-        subtitle={
+        description={
           canDeleteByFilters
             ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion usando tenant + empresa + año + mes. Esto elimina también contribuciones, detalles y medidas derivadas asociadas.`
             : "Selecciona tenant, empresa, año y mes para habilitar el borrado."
         }
-        busy={deleteBusy}
         error={deleteError}
+        loading={deleteBusy}
+        loadingText="Borrando..."
         confirmText="Borrar definitivamente"
         onConfirm={confirmDelete}
         onClose={closeDelete}

@@ -5,19 +5,22 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional, cast
 
 import pandas as pd
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.ingestion.models import IngestionFile
 from app.measures.services import (
-    procesar_acum_h2_gen_generacion,
-    procesar_acum_h2_grd_generacion,
-    procesar_acum_h2_rdd_frontera_dd,
-    procesar_acum_h2_rdd_pf_kwh,
-    procesar_acumcil_generacion,
+    procesar_acum_h2_gen_generacion as procesar_acum_h2_gen_generacion_core,
+    procesar_acum_h2_grd_generacion as procesar_acum_h2_grd_generacion_core,
+    procesar_acum_h2_rdd_frontera_dd as procesar_acum_h2_rdd_frontera_dd_core,
+    procesar_acum_h2_rdd_pf_kwh as procesar_acum_h2_rdd_pf_kwh_core,
+    procesar_acumcil_generacion as procesar_acumcil_generacion_core,
     procesar_bald_medidas_general,
     procesar_m1,
     procesar_m1_autoconsumo,
@@ -93,8 +96,31 @@ BALD_COLUMNS = [
 
 
 # ---------------------------------------------------------------------------
-# Helpers internos (warnings)
+# Helpers internos (warnings / cleanup)
 # ---------------------------------------------------------------------------
+
+
+def _safe_unlink(storage_key: str | None) -> None:
+    if not storage_key:
+        return
+
+    try:
+        path = Path(storage_key)
+        if path.exists() and path.is_file():
+            path.unlink()
+    except Exception:
+        return
+
+
+def _extract_ingestion_warnings(obj: Any) -> list[Any]:
+    try:
+        warnings = getattr(obj, "_ingestion_warnings", None)
+    except Exception:
+        warnings = None
+
+    if isinstance(warnings, list):
+        return warnings
+    return []
 
 
 def _try_attach_ingestion_warnings(fichero: IngestionFile, warnings: Any) -> None:
@@ -127,6 +153,279 @@ def _try_copy_warnings_from_result(fichero: IngestionFile, result: Any) -> None:
 
     if warnings:
         _try_attach_ingestion_warnings(fichero, warnings)
+
+
+def _mark_ingestion_processing(db: Session, ingestion: IngestionFile) -> IngestionFile:
+    ing = cast(Any, ingestion)
+    ing.warnings_json = None
+    ing.status = IngestionFile.STATUS_PROCESSING
+    db.commit()
+    db.refresh(ingestion)
+    return ingestion
+
+
+def _mark_ingestion_ok(
+    db: Session,
+    ingestion: IngestionFile,
+    *,
+    result_obj: Any | None,
+) -> IngestionFile:
+    ing = cast(Any, ingestion)
+
+    warnings_list = _extract_ingestion_warnings(result_obj)
+    if warnings_list:
+        ing.warnings_json = json.dumps(warnings_list, ensure_ascii=False)
+
+    ing.status = IngestionFile.STATUS_OK
+    ing.rows_ok = int(ing.rows_ok or 0) + 1
+    ing.rows_error = int(ing.rows_error or 0)
+    ing.error_message = None
+
+    db.commit()
+    db.refresh(ingestion)
+    return ingestion
+
+
+def _mark_ingestion_error(
+    db: Session,
+    *,
+    ingestion_id: int,
+    tenant_id: int,
+    exc: Exception,
+) -> IngestionFile:
+    db.rollback()
+
+    ingestion = (
+        db.query(IngestionFile)
+        .filter(
+            IngestionFile.id == ingestion_id,
+            IngestionFile.tenant_id == tenant_id,
+        )
+        .first()
+    )
+
+    if ingestion is None:
+        raise exc
+
+    ing = cast(Any, ingestion)
+    ing.status = IngestionFile.STATUS_ERROR
+    ing.rows_error = int(ing.rows_error or 0) + 1
+    ing.error_message = str(exc)
+    ing.processed_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(ingestion)
+    return ingestion
+
+
+def _finalize_ingestion_processing(
+    db: Session,
+    *,
+    ingestion_id: int,
+    tenant_id: int,
+    storage_key_for_cleanup: str | None,
+) -> None:
+    try:
+        ingestion = (
+            db.query(IngestionFile)
+            .filter(
+                IngestionFile.id == ingestion_id,
+                IngestionFile.tenant_id == tenant_id,
+            )
+            .first()
+        )
+
+        if ingestion is None:
+            return
+
+        ing = cast(Any, ingestion)
+
+        if ing.status in (
+            IngestionFile.STATUS_OK,
+            IngestionFile.STATUS_ERROR,
+        ) and ing.processed_at is None:
+            ing.processed_at = datetime.utcnow()
+            db.commit()
+            db.refresh(ingestion)
+
+        try:
+            settings = get_settings()
+            delete_after_ok = bool(getattr(settings, "INGESTION_DELETE_AFTER_OK", True))
+        except Exception:
+            delete_after_ok = True
+
+        if delete_after_ok and cast(str, ing.status) == IngestionFile.STATUS_OK:
+            _safe_unlink(storage_key_for_cleanup)
+    except Exception:
+        return
+
+
+def _dispatch_ingestion_processing_by_tipo(
+    *,
+    db: Session,
+    ingestion: IngestionFile,
+) -> Any | None:
+    ing = cast(Any, ingestion)
+
+    tipo = (ing.tipo or "").upper()
+    tenant_id = cast(int, ing.tenant_id)
+    empresa_id = cast(int, ing.empresa_id)
+    storage_key = cast(str, ing.storage_key)
+
+    if tipo == "BALD":
+        return procesar_fichero_bald(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "M1":
+        return procesar_fichero_m1_desde_csv(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "M1_AUTOCONSUMO":
+        return procesar_fichero_m1_autoconsumo_desde_csv(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "ACUMCIL":
+        return procesar_fichero_acumcil_generacion(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "ACUM_H2_GRD":
+        return procesar_fichero_acum_h2_grd_generacion(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "ACUM_H2_GEN":
+        return procesar_fichero_acum_h2_gen_generacion(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "ACUM_H2_RDD_P2":
+        return procesar_fichero_acum_h2_rdd_p2_frontera_dd(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "ACUM_H2_RDD_P1":
+        procesar_fichero_acum_h2_rdd_p1_frontera_dd(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+        return procesar_fichero_acum_h2_rdd_pf_kwh(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    if tipo == "PS":
+        return procesar_fichero_ps(
+            db=db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            fichero=ingestion,
+            file_path=storage_key,
+        )
+
+    raise ValueError(f"Tipo de fichero no soportado para procesado: {tipo}")
+
+
+def process_ingestion_file(
+    *,
+    db: Session,
+    ingestion: IngestionFile,
+    tenant_id: int,
+) -> IngestionFile:
+    ing = cast(Any, ingestion)
+
+    if ing.status not in (IngestionFile.STATUS_PENDING, IngestionFile.STATUS_ERROR):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede procesar un fichero en estado {ing.status}",
+        )
+
+    if not ing.storage_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El fichero no tiene storage_key; no se puede procesar",
+        )
+
+    ingestion = _mark_ingestion_processing(db, ingestion)
+    storage_key_for_cleanup = cast(str, getattr(ingestion, "storage_key", None) or "")
+
+    try:
+        result_obj = _dispatch_ingestion_processing_by_tipo(
+            db=db,
+            ingestion=ingestion,
+        )
+        ingestion = _mark_ingestion_ok(
+            db,
+            ingestion,
+            result_obj=result_obj,
+        )
+    except Exception as exc:
+        ingestion = _mark_ingestion_error(
+            db,
+            ingestion_id=cast(int, getattr(ingestion, "id")),
+            tenant_id=tenant_id,
+            exc=exc,
+        )
+    finally:
+        _finalize_ingestion_processing(
+            db,
+            ingestion_id=cast(int, getattr(ingestion, "id")),
+            tenant_id=tenant_id,
+            storage_key_for_cleanup=storage_key_for_cleanup,
+        )
+
+    refreshed = (
+        db.query(IngestionFile)
+        .filter(
+            IngestionFile.id == cast(int, getattr(ingestion, "id")),
+            IngestionFile.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if refreshed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Fichero de ingestion no encontrado tras el procesado",
+        )
+
+    return refreshed
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +661,7 @@ def procesar_fichero_acumcil_generacion(
     else:
         filas_local = list(filas_raw)
 
-    return procesar_acumcil_generacion(
+    return procesar_acumcil_generacion_core(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
@@ -398,7 +697,7 @@ def procesar_fichero_acum_h2_grd_generacion(
     else:
         filas_local = list(filas_raw)
 
-    return procesar_acum_h2_grd_generacion(
+    return procesar_acum_h2_grd_generacion_core(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
@@ -434,7 +733,7 @@ def procesar_fichero_acum_h2_gen_generacion(
     else:
         filas_local = list(filas_raw)
 
-    return procesar_acum_h2_gen_generacion(
+    return procesar_acum_h2_gen_generacion_core(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
@@ -470,7 +769,7 @@ def procesar_fichero_acum_h2_rdd_p2_frontera_dd(
     else:
         filas_local = list(filas_raw)
 
-    return procesar_acum_h2_rdd_frontera_dd(
+    return procesar_acum_h2_rdd_frontera_dd_core(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
@@ -502,7 +801,7 @@ def procesar_fichero_acum_h2_rdd_p1_frontera_dd(
     else:
         filas_local = list(filas_raw)
 
-    return procesar_acum_h2_rdd_frontera_dd(
+    return procesar_acum_h2_rdd_frontera_dd_core(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
@@ -539,7 +838,7 @@ def procesar_fichero_acum_h2_rdd_pf_kwh(
     else:
         filas_local = list(filas_raw)
 
-    return procesar_acum_h2_rdd_pf_kwh(
+    return procesar_acum_h2_rdd_pf_kwh_core(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
@@ -555,12 +854,12 @@ def procesar_fichero_acum_h2_rdd_pf_kwh(
 
 def _clasificar_bald_periodo(fichero: IngestionFile) -> str:
     nombre = str(getattr(fichero, "filename", ""))
-    m = re.search(r"BALD_\d+_(\d{6})_(\d{8})", nombre)
-    if not m:
+    match = re.search(r"BALD_\d+_(\d{6})_(\d{8})", nombre)
+    if not match:
         raise ValueError(f"No se reconoce el patrón BALD en el nombre: {nombre}")
 
-    periodo_str = m.group(1)
-    pub_str = m.group(2)
+    periodo_str = match.group(1)
+    pub_str = match.group(2)
 
     anio_periodo = int(periodo_str[:4])
     mes_periodo = int(periodo_str[4:6])

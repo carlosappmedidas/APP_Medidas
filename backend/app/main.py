@@ -3,24 +3,24 @@
 
 from pathlib import Path
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
+from app.alerts.routes import router as alerts_router
 from app.core.config import get_settings
 from app.core.db import get_db
-
-from app.tenants.routes import router as auth_router
+from app.dashboard.routes import router as dashboard_router
 from app.empresas.routes import router as empresas_router
 from app.ingestion.routes import router as ingestion_router
 from app.measures.routes import router as medidas_router
-from app.alerts.routes import router as alerts_router
+from app.tenants.routes import router as auth_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
-from app.measures.models import MedidaMicro, MedidaGeneral, MedidaPS  # noqa: F401
-from app.alerts.models import AlertRuleCatalog, EmpresaAlertRuleConfig, AlertResult  # noqa: F401
+from app.alerts.models import AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
+from app.measures.models import MedidaGeneral, MedidaMicro, MedidaPS  # noqa: F401
 
 settings = get_settings()
 
@@ -68,3 +68,4 @@ app.include_router(empresas_router)
 app.include_router(ingestion_router)
 app.include_router(medidas_router)
 app.include_router(alerts_router)
+app.include_router(dashboard_router)

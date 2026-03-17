@@ -7,12 +7,14 @@ type Props = {
   open: boolean;
   title?: string;
   description?: string;
+  error?: string | null;
 
-  confirmText?: string; // default: "Borrar"
-  cancelText?: string; // default: "Cancelar"
+  confirmText?: string;
+  cancelText?: string;
+  loadingText?: string;
 
-  loading?: boolean; // deshabilita botones y muestra estado
-  danger?: boolean; // si true, usa estilo danger en confirmar
+  loading?: boolean;
+  danger?: boolean;
 
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
@@ -22,8 +24,10 @@ export default function ConfirmDeleteModal({
   open,
   title = "Confirmar borrado",
   description = "¿Seguro que quieres borrar? Esta acción no se puede deshacer.",
+  error = null,
   confirmText = "Borrar",
   cancelText = "Cancelar",
+  loadingText = "Procesando...",
   loading = false,
   danger = true,
   onConfirm,
@@ -31,23 +35,23 @@ export default function ConfirmDeleteModal({
 }: Props) {
   const titleId = useId();
   const descId = useId();
+  const errorId = useId();
 
-  // ESC para cerrar (solo cuando está abierto)
   useEffect(() => {
     if (!open) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !loading) onClose();
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  }, [open, loading, onClose]);
 
   if (!open) return null;
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // solo cierra si el click fue en el backdrop, no dentro del modal
+    if (loading) return;
     if (e.target === e.currentTarget) onClose();
   };
 
@@ -56,7 +60,7 @@ export default function ConfirmDeleteModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      aria-describedby={descId}
+      aria-describedby={description ? descId : undefined}
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       onMouseDown={handleBackdropClick}
       style={{
@@ -72,10 +76,19 @@ export default function ConfirmDeleteModal({
           <h4 id={titleId} className="ui-card-title">
             {title}
           </h4>
-          <p id={descId} className="ui-card-subtitle">
-            {description}
-          </p>
+
+          {description ? (
+            <p id={descId} className="ui-card-subtitle">
+              {description}
+            </p>
+          ) : null}
         </div>
+
+        {error ? (
+          <div id={errorId} className="ui-alert ui-alert--danger mb-3">
+            {error}
+          </div>
+        ) : null}
 
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
@@ -93,7 +106,7 @@ export default function ConfirmDeleteModal({
             onClick={() => void onConfirm()}
             disabled={loading}
           >
-            {loading ? "Procesando..." : confirmText}
+            {loading ? loadingText : confirmText}
           </button>
         </div>
       </div>
