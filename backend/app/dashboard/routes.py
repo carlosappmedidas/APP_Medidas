@@ -224,46 +224,6 @@ def _find_previous_common_period(
     return int(row[0]), int(row[1])
 
 
-def _find_previous_ytd_same_month_last_year(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int | None,
-    current_anio: int,
-    current_mes: int,
-) -> tuple[int, int] | None:
-    previous_anio = current_anio - 1
-
-    general_exists = (
-        _apply_scope_filters(
-            db.query(MedidaGeneral.id),
-            MedidaGeneral,
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=previous_anio,
-            mes=current_mes,
-        ).first()
-        is not None
-    )
-
-    ps_exists = (
-        _apply_scope_filters(
-            db.query(MedidaPS.id),
-            MedidaPS,
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=previous_anio,
-            mes=current_mes,
-        ).first()
-        is not None
-    )
-
-    if not general_exists or not ps_exists:
-        return None
-
-    return previous_anio, current_mes
-
-
 def _sum_dashboard_values(
     db: Session,
     *,
@@ -313,6 +273,156 @@ def _sum_dashboard_values(
 
 def _absolute_change(current: float, previous: float) -> float:
     return current - previous
+
+
+def _build_energy_comparison_chart_series(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int | None,
+    anio: int,
+    max_mes: int,
+) -> list[dict[str, float | int | str]]:
+    rows_query = db.query(
+        MedidaGeneral.mes.label("mes"),
+        func.coalesce(func.sum(MedidaGeneral.energia_neta_facturada_kwh), 0.0).label(
+            "energia_neta_facturada_kwh"
+        ),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_m2_kwh), 0.0).label(
+            "energia_publicada_m2_kwh"
+        ),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_m7_kwh), 0.0).label(
+            "energia_publicada_m7_kwh"
+        ),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_m11_kwh), 0.0).label(
+            "energia_publicada_m11_kwh"
+        ),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_art15_kwh), 0.0).label(
+            "energia_publicada_art15_kwh"
+        ),
+        func.coalesce(func.sum(MedidaGeneral.energia_pf_final_kwh), 0.0).label(
+            "energia_pf_final_kwh"
+        ),
+    ).filter(
+        MedidaGeneral.tenant_id == tenant_id,
+        MedidaGeneral.anio == anio,
+        MedidaGeneral.mes <= max_mes,
+    )
+
+    if empresa_id is not None:
+        rows_query = rows_query.filter(MedidaGeneral.empresa_id == empresa_id)
+
+    rows = rows_query.group_by(MedidaGeneral.mes).order_by(MedidaGeneral.mes.asc()).all()
+    rows_by_mes: dict[int, Any] = {int(cast(int, row.mes)): row for row in rows}
+
+    series: list[dict[str, float | int | str]] = []
+    for month_number in range(1, max_mes + 1):
+        row = rows_by_mes.get(month_number)
+        series.append(
+            {
+                "mes": month_number,
+                "mes_label": str(month_number),
+                "energia_neta_facturada_kwh": float(
+                    cast(float | None, getattr(row, "energia_neta_facturada_kwh", 0.0)) or 0.0
+                ),
+                "energia_publicada_m2_kwh": float(
+                    cast(float | None, getattr(row, "energia_publicada_m2_kwh", 0.0)) or 0.0
+                ),
+                "energia_publicada_m7_kwh": float(
+                    cast(float | None, getattr(row, "energia_publicada_m7_kwh", 0.0)) or 0.0
+                ),
+                "energia_publicada_m11_kwh": float(
+                    cast(float | None, getattr(row, "energia_publicada_m11_kwh", 0.0)) or 0.0
+                ),
+                "energia_publicada_art15_kwh": float(
+                    cast(float | None, getattr(row, "energia_publicada_art15_kwh", 0.0)) or 0.0
+                ),
+                "energia_pf_final_kwh": float(
+                    cast(float | None, getattr(row, "energia_pf_final_kwh", 0.0)) or 0.0
+                ),
+            }
+        )
+
+    return series
+
+
+def _build_energy_trend_chart_series(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int | None,
+    anio: int,
+    max_mes: int,
+) -> list[dict[str, float | int | str]]:
+    rows_query = db.query(
+        MedidaGeneral.mes.label("mes"),
+        func.coalesce(func.sum(MedidaGeneral.energia_neta_facturada_kwh), 0.0).label(
+            "energia_neta_facturada_kwh"
+        ),
+    ).filter(
+        MedidaGeneral.tenant_id == tenant_id,
+        MedidaGeneral.anio == anio,
+        MedidaGeneral.mes <= max_mes,
+    )
+
+    if empresa_id is not None:
+        rows_query = rows_query.filter(MedidaGeneral.empresa_id == empresa_id)
+
+    rows = rows_query.group_by(MedidaGeneral.mes).order_by(MedidaGeneral.mes.asc()).all()
+    rows_by_mes: dict[int, Any] = {int(cast(int, row.mes)): row for row in rows}
+
+    series: list[dict[str, float | int | str]] = []
+    for month_number in range(1, max_mes + 1):
+        row = rows_by_mes.get(month_number)
+        series.append(
+            {
+                "mes": month_number,
+                "mes_label": str(month_number),
+                "energia_neta_facturada_kwh": float(
+                    cast(float | None, getattr(row, "energia_neta_facturada_kwh", 0.0)) or 0.0
+                ),
+            }
+        )
+
+    return series
+
+
+def _build_losses_trend_chart_series(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int | None,
+    anio: int,
+    max_mes: int,
+) -> list[dict[str, float | int | str]]:
+    rows_query = db.query(
+        MedidaGeneral.mes.label("mes"),
+        func.avg(MedidaGeneral.perdidas_e_facturada_pct).label("perdidas_e_facturada_pct"),
+    ).filter(
+        MedidaGeneral.tenant_id == tenant_id,
+        MedidaGeneral.anio == anio,
+        MedidaGeneral.mes <= max_mes,
+    )
+
+    if empresa_id is not None:
+        rows_query = rows_query.filter(MedidaGeneral.empresa_id == empresa_id)
+
+    rows = rows_query.group_by(MedidaGeneral.mes).order_by(MedidaGeneral.mes.asc()).all()
+    rows_by_mes: dict[int, Any] = {int(cast(int, row.mes)): row for row in rows}
+
+    series: list[dict[str, float | int | str]] = []
+    for month_number in range(1, max_mes + 1):
+        row = rows_by_mes.get(month_number)
+        value = cast(float | None, getattr(row, "perdidas_e_facturada_pct", None))
+        series.append(
+            {
+                "mes": month_number,
+                "mes_label": str(month_number),
+                "perdidas_e_facturada_pct": float(value) if value is not None else 0.0,
+            }
+        )
+
+    return series
 
 
 @router.get("/filters")
@@ -409,23 +519,14 @@ def get_dashboard_summary(
         aggregation_mode=aggregation_mode,
     )
 
-    if aggregation_mode == "ytd":
-        previous_period = _find_previous_ytd_same_month_last_year(
-            db,
-            tenant_id=tenant_id_int,
-            empresa_id=empresa_id,
-            current_anio=periodo_anio,
-            current_mes=periodo_mes,
-        )
-    else:
-        previous_period = _find_previous_common_period(
-            db,
-            tenant_id=tenant_id_int,
-            empresa_id=empresa_id,
-            current_anio=periodo_anio,
-            current_mes=periodo_mes,
-            same_year_only=False,
-        )
+    previous_period = _find_previous_common_period(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+        current_anio=periodo_anio,
+        current_mes=periodo_mes,
+        same_year_only=aggregation_mode == "ytd",
+    )
 
     energia_variation_kwh_delta: float | None = None
     energia_variation_eur_delta: float | None = None
@@ -434,11 +535,7 @@ def get_dashboard_summary(
     if previous_period is not None:
         previous_anio, previous_mes = previous_period
 
-        (
-            previous_energia_kwh,
-            previous_perdidas_kwh,
-            previous_importe_eur,
-        ) = _sum_dashboard_values(
+        previous_energia_kwh, previous_perdidas_kwh, previous_importe_eur = _sum_dashboard_values(
             db,
             tenant_id=tenant_id_int,
             empresa_id=empresa_id,
@@ -447,18 +544,9 @@ def get_dashboard_summary(
             aggregation_mode=aggregation_mode,
         )
 
-        energia_variation_kwh_delta = _absolute_change(
-            energia_neta_facturada_kwh,
-            previous_energia_kwh,
-        )
-        energia_variation_eur_delta = _absolute_change(
-            importe_total_eur,
-            previous_importe_eur,
-        )
-        perdidas_variation_kwh_delta = _absolute_change(
-            perdidas_e_facturada_kwh,
-            previous_perdidas_kwh,
-        )
+        energia_variation_kwh_delta = _absolute_change(energia_neta_facturada_kwh, previous_energia_kwh)
+        energia_variation_eur_delta = _absolute_change(importe_total_eur, previous_importe_eur)
+        perdidas_variation_kwh_delta = _absolute_change(perdidas_e_facturada_kwh, previous_perdidas_kwh)
 
     return {
         "filters": {
@@ -495,4 +583,187 @@ def get_dashboard_summary(
                 "perdidas_e_facturada_kwh_delta": perdidas_variation_kwh_delta,
             },
         },
+    }
+
+
+@router.get("/energy-comparison-chart")
+def get_dashboard_energy_comparison_chart(
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tenant_id_int = cast(int, current_user.tenant_id)
+
+    _ensure_empresa_belongs_to_tenant(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+    )
+
+    periodo_anio, periodo_mes = _resolve_common_period(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+        anio=anio,
+        mes=mes,
+    )
+
+    chart_anio = periodo_anio
+    chart_max_mes = int(mes) if mes is not None else periodo_mes
+
+    if chart_max_mes < 1 or chart_max_mes > 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mes no válido para construir la gráfica.",
+        )
+
+    series = _build_energy_comparison_chart_series(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+        anio=chart_anio,
+        max_mes=chart_max_mes,
+    )
+
+    return {
+        "filters": {
+            "tenant_id": tenant_id_int,
+            "empresa_id": empresa_id,
+            "anio": anio,
+            "mes": mes,
+        },
+        "resolved_period": {
+            "anio": periodo_anio,
+            "mes": periodo_mes,
+        },
+        "chart_scope": {
+            "anio": chart_anio,
+            "from_mes": 1,
+            "to_mes": chart_max_mes,
+        },
+        "series": series,
+    }
+
+
+@router.get("/energy-trend-chart")
+def get_dashboard_energy_trend_chart(
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tenant_id_int = cast(int, current_user.tenant_id)
+
+    _ensure_empresa_belongs_to_tenant(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+    )
+
+    periodo_anio, periodo_mes = _resolve_common_period(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+        anio=anio,
+        mes=mes,
+    )
+
+    chart_anio = periodo_anio
+    chart_max_mes = int(mes) if mes is not None else periodo_mes
+
+    if chart_max_mes < 1 or chart_max_mes > 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mes no válido para construir la gráfica.",
+        )
+
+    series = _build_energy_trend_chart_series(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+        anio=chart_anio,
+        max_mes=chart_max_mes,
+    )
+
+    return {
+        "filters": {
+            "tenant_id": tenant_id_int,
+            "empresa_id": empresa_id,
+            "anio": anio,
+            "mes": mes,
+        },
+        "resolved_period": {
+            "anio": periodo_anio,
+            "mes": periodo_mes,
+        },
+        "chart_scope": {
+            "anio": chart_anio,
+            "from_mes": 1,
+            "to_mes": chart_max_mes,
+        },
+        "series": series,
+    }
+
+
+@router.get("/losses-trend-chart")
+def get_dashboard_losses_trend_chart(
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tenant_id_int = cast(int, current_user.tenant_id)
+
+    _ensure_empresa_belongs_to_tenant(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+    )
+
+    periodo_anio, periodo_mes = _resolve_common_period(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+        anio=anio,
+        mes=mes,
+    )
+
+    chart_anio = periodo_anio
+    chart_max_mes = int(mes) if mes is not None else periodo_mes
+
+    if chart_max_mes < 1 or chart_max_mes > 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mes no válido para construir la gráfica.",
+        )
+
+    series = _build_losses_trend_chart_series(
+        db,
+        tenant_id=tenant_id_int,
+        empresa_id=empresa_id,
+        anio=chart_anio,
+        max_mes=chart_max_mes,
+    )
+
+    return {
+        "filters": {
+            "tenant_id": tenant_id_int,
+            "empresa_id": empresa_id,
+            "anio": anio,
+            "mes": mes,
+        },
+        "resolved_period": {
+            "anio": periodo_anio,
+            "mes": periodo_mes,
+        },
+        "chart_scope": {
+            "anio": chart_anio,
+            "from_mes": 1,
+            "to_mes": chart_max_mes,
+        },
+        "series": series,
     }

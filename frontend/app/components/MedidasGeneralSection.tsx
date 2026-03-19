@@ -157,7 +157,6 @@ export default function MedidasGeneralSection({
     clearFilters,
     loadFilters,
     handleLoadData,
-
     toggleVisible,
     resetOrder,
     hideAllColumns,
@@ -201,10 +200,12 @@ export default function MedidasGeneralSection({
     filtroMeses,
     opcionesEmpresa,
     resolveTenantId: (_empresaId, _empresas, tenantActual) => tenantActual || null,
+    previewTipo: "GENERAL",
+    deleteTipo: "GENERAL",
     previewMissingFiltersMessage:
       "Selecciona tenant, empresa, año y mes para habilitar la vista previa.",
     deleteErrorMessage:
-      "No se pudo completar el borrado por ingestion. Revisa filtros, endpoint y permisos.",
+      "No se pudo completar el borrado por ingestion de General. Revisa filtros, endpoint y permisos.",
     onAfterDelete: async () => {
       await loadFilters();
       setPage(0);
@@ -306,7 +307,7 @@ export default function MedidasGeneralSection({
           }}
           deletePreviewTitleEnabled="Ver impacto antes de borrar"
           deletePreviewTitleDisabled="Selecciona tenant, empresa, año y mes para ver la vista previa"
-          deleteTitleEnabled="Borrar por ingestion usando tenant + empresa + año + mes"
+          deleteTitleEnabled="Borrar por ingestion de la familia General usando tenant + empresa + año + mes"
           deleteTitleDisabled="Selecciona tenant, empresa, año y mes para borrar"
         />
       </header>
@@ -334,8 +335,9 @@ export default function MedidasGeneralSection({
 
       {isSistema && (
         <div className="mb-3 ui-alert ui-alert--warning">
-          En Sistema, el borrado se hace siempre por <strong>ingestion</strong> usando
-          <strong> tenant + empresa + año + mes</strong>. Así evitamos borrar datos de otro tenant por error.
+          En Sistema, el borrado de General se hace siempre por <strong>ingestion</strong> usando
+          <strong> tenant + empresa + año + mes</strong> y forzando la familia
+          <strong> GENERAL</strong>. Esto no borra PS.
         </div>
       )}
 
@@ -456,7 +458,7 @@ export default function MedidasGeneralSection({
         title="Borrar por ingestion · General · Sistema"
         description={
           canDeleteByFilters
-            ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion usando tenant + empresa + año + mes. Esto elimina también contribuciones, detalles y medidas derivadas asociadas.`
+            ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion de la familia GENERAL usando tenant + empresa + año + mes. Esto elimina contribuciones y medidas derivadas de General, sin tocar PS.`
             : "Selecciona tenant, empresa, año y mes para habilitar el borrado."
         }
         error={deleteError}

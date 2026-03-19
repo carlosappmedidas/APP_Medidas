@@ -743,51 +743,123 @@ def _ps_cups(f: Dict[str, Any]) -> str:
     return str(f.get("CUPS", "")).strip()
 
 
+def _empty_ps_aggregate() -> dict[str, float | int]:
+    return {
+        "energia_ps_tipo_1_kwh": 0.0,
+        "energia_ps_tipo_2_kwh": 0.0,
+        "energia_ps_tipo_3_kwh": 0.0,
+        "energia_ps_tipo_4_kwh": 0.0,
+        "energia_ps_tipo_5_kwh": 0.0,
+        "energia_ps_total_kwh": 0.0,
+        "cups_tipo_1": 0,
+        "cups_tipo_2": 0,
+        "cups_tipo_3": 0,
+        "cups_tipo_4": 0,
+        "cups_tipo_5": 0,
+        "cups_total": 0,
+        "importe_tipo_1_eur": 0.0,
+        "importe_tipo_2_eur": 0.0,
+        "importe_tipo_3_eur": 0.0,
+        "importe_tipo_4_eur": 0.0,
+        "importe_tipo_5_eur": 0.0,
+        "importe_total_eur": 0.0,
+        "energia_tarifa_20td_kwh": 0.0,
+        "cups_tarifa_20td": 0,
+        "importe_tarifa_20td_eur": 0.0,
+        "energia_tarifa_30td_kwh": 0.0,
+        "cups_tarifa_30td": 0,
+        "importe_tarifa_30td_eur": 0.0,
+        "energia_tarifa_30tdve_kwh": 0.0,
+        "cups_tarifa_30tdve": 0,
+        "importe_tarifa_30tdve_eur": 0.0,
+        "energia_tarifa_61td_kwh": 0.0,
+        "cups_tarifa_61td": 0,
+        "importe_tarifa_61td_eur": 0.0,
+        "energia_tarifa_62td_kwh": 0.0,
+        "cups_tarifa_62td": 0,
+        "importe_tarifa_62td_eur": 0.0,
+        "energia_tarifa_63td_kwh": 0.0,
+        "cups_tarifa_63td": 0,
+        "importe_tarifa_63td_eur": 0.0,
+        "energia_tarifa_64td_kwh": 0.0,
+        "cups_tarifa_64td": 0,
+        "importe_tarifa_64td_eur": 0.0,
+    }
+
+
 def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, float | int]:
-    energia_por_tipo: dict[int, float] = {}
-    cups_por_tipo: dict[int, int] = {}
-    importe_por_tipo: dict[int, float] = {}
+    energia_por_tipo: dict[int, float] = {i: 0.0 for i in range(1, 6)}
+    cups_por_tipo: dict[int, set[str]] = {i: set() for i in range(1, 6)}
+    importe_por_tipo: dict[int, float] = {i: 0.0 for i in range(1, 6)}
 
-    for tipo_int in range(1, 6):
-        tipo_str = str(tipo_int)
-        filas_tipo = [f for f in filas if _ps_poliza(f) == tipo_str]
+    energia_total = 0.0
+    importe_total = 0.0
+    cups_total_set: set[str] = set()
 
-        energia = sum(_to_float(f.get("Energia_facturada")) for f in filas_tipo)
-        cups_set = {_ps_cups(f) for f in filas_tipo if _ps_cups(f)}
-        importe = sum(_to_float(f.get("Total")) for f in filas_tipo)
+    energia_tarifa: dict[str, float] = {
+        "20td": 0.0,
+        "30td": 0.0,
+        "30tdve": 0.0,
+        "61td": 0.0,
+        "62td": 0.0,
+        "63td": 0.0,
+        "64td": 0.0,
+    }
+    cups_tarifa: dict[str, set[str]] = {
+        "20td": set(),
+        "30td": set(),
+        "30tdve": set(),
+        "61td": set(),
+        "62td": set(),
+        "63td": set(),
+        "64td": set(),
+    }
+    importe_tarifa: dict[str, float] = {
+        "20td": 0.0,
+        "30td": 0.0,
+        "30tdve": 0.0,
+        "61td": 0.0,
+        "62td": 0.0,
+        "63td": 0.0,
+        "64td": 0.0,
+    }
 
-        energia_por_tipo[tipo_int] = energia
-        cups_por_tipo[tipo_int] = len(cups_set)
-        importe_por_tipo[tipo_int] = importe
+    tarifa_map = {
+        "2.0TD": "20td",
+        "3.0TD": "30td",
+        "3.0TDVE": "30tdve",
+        "6.1TD": "61td",
+        "6.2TD": "62td",
+        "6.3TD": "63td",
+        "6.4TD": "64td",
+    }
 
-    energia_total = sum(energia_por_tipo.values())
-    cups_total = len({_ps_cups(f) for f in filas if _ps_cups(f)})
-    importe_total = sum(importe_por_tipo.values())
+    for f in filas:
+        cups = _ps_cups(f)
+        poliza = _ps_poliza(f)
+        tarifa = _ps_tarifa(f)
+        energia = _to_float(f.get("Energia_facturada"))
+        importe = _to_float(f.get("Total"))
 
-    tarifas: list[tuple[str, str]] = [
-        ("2.0TD", "20td"),
-        ("3.0TD", "30td"),
-        ("3.0TDVE", "30tdve"),
-        ("6.1TD", "61td"),
-        ("6.2TD", "62td"),
-        ("6.3TD", "63td"),
-        ("6.4TD", "64td"),
-    ]
+        energia_total += energia
+        importe_total += importe
 
-    energia_tarifa: dict[str, float] = {sufijo: 0.0 for _, sufijo in tarifas}
-    cups_tarifa: dict[str, int] = {sufijo: 0 for _, sufijo in tarifas}
-    importe_tarifa: dict[str, float] = {sufijo: 0.0 for _, sufijo in tarifas}
+        if cups:
+            cups_total_set.add(cups)
 
-    for codigo, sufijo in tarifas:
-        filas_tarifa = [f for f in filas if _ps_tarifa(f) == codigo]
+        if poliza in {"1", "2", "3", "4", "5"}:
+            tipo = int(poliza)
+            energia_por_tipo[tipo] += energia
+            importe_por_tipo[tipo] += importe
+            if cups:
+                cups_por_tipo[tipo].add(cups)
 
-        energia_t = sum(_to_float(f.get("Energia_facturada")) for f in filas_tarifa)
-        cups_set_t = {_ps_cups(f) for f in filas_tarifa if _ps_cups(f)}
-        importe_t = sum(_to_float(f.get("Total")) for f in filas_tarifa)
-
-        energia_tarifa[sufijo] = energia_t
-        cups_tarifa[sufijo] = len(cups_set_t)
-        importe_tarifa[sufijo] = importe_t
+        sufijo = tarifa_map.get(tarifa)
+        if sufijo:
+            energia_tarifa[sufijo] += energia
+            importe_tarifa[sufijo] += importe
+            if cups:
+                cups_tarifa[sufijo].add(cups)
 
     return {
         "energia_ps_tipo_1_kwh": energia_por_tipo[1],
@@ -796,12 +868,12 @@ def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, floa
         "energia_ps_tipo_4_kwh": energia_por_tipo[4],
         "energia_ps_tipo_5_kwh": energia_por_tipo[5],
         "energia_ps_total_kwh": energia_total,
-        "cups_tipo_1": cups_por_tipo[1],
-        "cups_tipo_2": cups_por_tipo[2],
-        "cups_tipo_3": cups_por_tipo[3],
-        "cups_tipo_4": cups_por_tipo[4],
-        "cups_tipo_5": cups_por_tipo[5],
-        "cups_total": cups_total,
+        "cups_tipo_1": len(cups_por_tipo[1]),
+        "cups_tipo_2": len(cups_por_tipo[2]),
+        "cups_tipo_3": len(cups_por_tipo[3]),
+        "cups_tipo_4": len(cups_por_tipo[4]),
+        "cups_tipo_5": len(cups_por_tipo[5]),
+        "cups_total": len(cups_total_set),
         "importe_tipo_1_eur": importe_por_tipo[1],
         "importe_tipo_2_eur": importe_por_tipo[2],
         "importe_tipo_3_eur": importe_por_tipo[3],
@@ -809,25 +881,25 @@ def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, floa
         "importe_tipo_5_eur": importe_por_tipo[5],
         "importe_total_eur": importe_total,
         "energia_tarifa_20td_kwh": energia_tarifa["20td"],
-        "cups_tarifa_20td": cups_tarifa["20td"],
+        "cups_tarifa_20td": len(cups_tarifa["20td"]),
         "importe_tarifa_20td_eur": importe_tarifa["20td"],
         "energia_tarifa_30td_kwh": energia_tarifa["30td"],
-        "cups_tarifa_30td": cups_tarifa["30td"],
+        "cups_tarifa_30td": len(cups_tarifa["30td"]),
         "importe_tarifa_30td_eur": importe_tarifa["30td"],
         "energia_tarifa_30tdve_kwh": energia_tarifa["30tdve"],
-        "cups_tarifa_30tdve": cups_tarifa["30tdve"],
+        "cups_tarifa_30tdve": len(cups_tarifa["30tdve"]),
         "importe_tarifa_30tdve_eur": importe_tarifa["30tdve"],
         "energia_tarifa_61td_kwh": energia_tarifa["61td"],
-        "cups_tarifa_61td": cups_tarifa["61td"],
+        "cups_tarifa_61td": len(cups_tarifa["61td"]),
         "importe_tarifa_61td_eur": importe_tarifa["61td"],
         "energia_tarifa_62td_kwh": energia_tarifa["62td"],
-        "cups_tarifa_62td": cups_tarifa["62td"],
+        "cups_tarifa_62td": len(cups_tarifa["62td"]),
         "importe_tarifa_62td_eur": importe_tarifa["62td"],
         "energia_tarifa_63td_kwh": energia_tarifa["63td"],
-        "cups_tarifa_63td": cups_tarifa["63td"],
+        "cups_tarifa_63td": len(cups_tarifa["63td"]),
         "importe_tarifa_63td_eur": importe_tarifa["63td"],
         "energia_tarifa_64td_kwh": energia_tarifa["64td"],
-        "cups_tarifa_64td": cups_tarifa["64td"],
+        "cups_tarifa_64td": len(cups_tarifa["64td"]),
         "importe_tarifa_64td_eur": importe_tarifa["64td"],
     }
 
@@ -1110,6 +1182,164 @@ def _load_ps_detail_rows_for_period(
         )
         .all(),
     )
+
+
+def _make_ps_period_detail_mapping(
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    ingestion_file_id: int,
+    anio: int,
+    mes: int,
+    is_principal: bool,
+    cups: str,
+    poliza: str | None,
+    tarifa_acceso: str | None,
+    energia_facturada_kwh: float,
+    importe_total_eur: float,
+) -> dict[str, Any]:
+    return {
+        "tenant_id": tenant_id,
+        "empresa_id": empresa_id,
+        "ingestion_file_id": ingestion_file_id,
+        "anio": anio,
+        "mes": mes,
+        "is_principal": is_principal,
+        "cups": cups,
+        "poliza": poliza,
+        "tarifa_acceso": tarifa_acceso,
+        "energia_facturada_kwh": energia_facturada_kwh,
+        "importe_total_eur": importe_total_eur,
+    }
+
+
+def _make_ps_period_contribution(
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    ingestion_file_id: int,
+    anio: int,
+    mes: int,
+    is_principal: bool,
+    agregado: dict[str, float | int],
+) -> PSPeriodContribution:
+    contrib = PSPeriodContribution(  # type: ignore[call-arg]
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        ingestion_file_id=ingestion_file_id,
+        anio=anio,
+        mes=mes,
+        is_principal=is_principal,
+    )
+
+    contrib.energia_ps_tipo_1_kwh = float(agregado["energia_ps_tipo_1_kwh"])  # type: ignore[assignment]
+    contrib.energia_ps_tipo_2_kwh = float(agregado["energia_ps_tipo_2_kwh"])  # type: ignore[assignment]
+    contrib.energia_ps_tipo_3_kwh = float(agregado["energia_ps_tipo_3_kwh"])  # type: ignore[assignment]
+    contrib.energia_ps_tipo_4_kwh = float(agregado["energia_ps_tipo_4_kwh"])  # type: ignore[assignment]
+    contrib.energia_ps_tipo_5_kwh = float(agregado["energia_ps_tipo_5_kwh"])  # type: ignore[assignment]
+    contrib.energia_ps_total_kwh = float(agregado["energia_ps_total_kwh"])  # type: ignore[assignment]
+
+    contrib.cups_tipo_1 = int(agregado["cups_tipo_1"])  # type: ignore[assignment]
+    contrib.cups_tipo_2 = int(agregado["cups_tipo_2"])  # type: ignore[assignment]
+    contrib.cups_tipo_3 = int(agregado["cups_tipo_3"])  # type: ignore[assignment]
+    contrib.cups_tipo_4 = int(agregado["cups_tipo_4"])  # type: ignore[assignment]
+    contrib.cups_tipo_5 = int(agregado["cups_tipo_5"])  # type: ignore[assignment]
+    contrib.cups_total = int(agregado["cups_total"])  # type: ignore[assignment]
+
+    contrib.importe_tipo_1_eur = float(agregado["importe_tipo_1_eur"])  # type: ignore[assignment]
+    contrib.importe_tipo_2_eur = float(agregado["importe_tipo_2_eur"])  # type: ignore[assignment]
+    contrib.importe_tipo_3_eur = float(agregado["importe_tipo_3_eur"])  # type: ignore[assignment]
+    contrib.importe_tipo_4_eur = float(agregado["importe_tipo_4_eur"])  # type: ignore[assignment]
+    contrib.importe_tipo_5_eur = float(agregado["importe_tipo_5_eur"])  # type: ignore[assignment]
+    contrib.importe_total_eur = float(agregado["importe_total_eur"])  # type: ignore[assignment]
+
+    contrib.energia_tarifa_20td_kwh = float(agregado["energia_tarifa_20td_kwh"])  # type: ignore[assignment]
+    contrib.cups_tarifa_20td = int(agregado["cups_tarifa_20td"])  # type: ignore[assignment]
+    contrib.importe_tarifa_20td_eur = float(agregado["importe_tarifa_20td_eur"])  # type: ignore[assignment]
+
+    contrib.energia_tarifa_30td_kwh = float(agregado["energia_tarifa_30td_kwh"])  # type: ignore[assignment]
+    contrib.cups_tarifa_30td = int(agregado["cups_tarifa_30td"])  # type: ignore[assignment]
+    contrib.importe_tarifa_30td_eur = float(agregado["importe_tarifa_30td_eur"])  # type: ignore[assignment]
+
+    contrib.energia_tarifa_30tdve_kwh = float(agregado["energia_tarifa_30tdve_kwh"])  # type: ignore[assignment]
+    contrib.cups_tarifa_30tdve = int(agregado["cups_tarifa_30tdve"])  # type: ignore[assignment]
+    contrib.importe_tarifa_30tdve_eur = float(agregado["importe_tarifa_30tdve_eur"])  # type: ignore[assignment]
+
+    contrib.energia_tarifa_61td_kwh = float(agregado["energia_tarifa_61td_kwh"])  # type: ignore[assignment]
+    contrib.cups_tarifa_61td = int(agregado["cups_tarifa_61td"])  # type: ignore[assignment]
+    contrib.importe_tarifa_61td_eur = float(agregado["importe_tarifa_61td_eur"])  # type: ignore[assignment]
+
+    contrib.energia_tarifa_62td_kwh = float(agregado["energia_tarifa_62td_kwh"])  # type: ignore[assignment]
+    contrib.cups_tarifa_62td = int(agregado["cups_tarifa_62td"])  # type: ignore[assignment]
+    contrib.importe_tarifa_62td_eur = float(agregado["importe_tarifa_62td_eur"])  # type: ignore[assignment]
+
+    contrib.energia_tarifa_63td_kwh = float(agregado["energia_tarifa_63td_kwh"])  # type: ignore[assignment]
+    contrib.cups_tarifa_63td = int(agregado["cups_tarifa_63td"])  # type: ignore[assignment]
+    contrib.importe_tarifa_63td_eur = float(agregado["importe_tarifa_63td_eur"])  # type: ignore[assignment]
+
+    contrib.energia_tarifa_64td_kwh = float(agregado["energia_tarifa_64td_kwh"])  # type: ignore[assignment]
+    contrib.cups_tarifa_64td = int(agregado["cups_tarifa_64td"])  # type: ignore[assignment]
+    contrib.importe_tarifa_64td_eur = float(agregado["importe_tarifa_64td_eur"])  # type: ignore[assignment]
+
+    return contrib
+
+
+def _apply_ps_aggregate_to_medida(
+    mp: MedidaPS,
+    *,
+    agregado: dict[str, float | int],
+    fichero: IngestionFile,
+) -> None:
+    mp.energia_ps_tipo_1_kwh = float(agregado["energia_ps_tipo_1_kwh"])  # type: ignore[assignment]
+    mp.energia_ps_tipo_2_kwh = float(agregado["energia_ps_tipo_2_kwh"])  # type: ignore[assignment]
+    mp.energia_ps_tipo_3_kwh = float(agregado["energia_ps_tipo_3_kwh"])  # type: ignore[assignment]
+    mp.energia_ps_tipo_4_kwh = float(agregado["energia_ps_tipo_4_kwh"])  # type: ignore[assignment]
+    mp.energia_ps_tipo_5_kwh = float(agregado["energia_ps_tipo_5_kwh"])  # type: ignore[assignment]
+    mp.energia_ps_total_kwh = float(agregado["energia_ps_total_kwh"])  # type: ignore[assignment]
+
+    mp.cups_tipo_1 = int(agregado["cups_tipo_1"])  # type: ignore[assignment]
+    mp.cups_tipo_2 = int(agregado["cups_tipo_2"])  # type: ignore[assignment]
+    mp.cups_tipo_3 = int(agregado["cups_tipo_3"])  # type: ignore[assignment]
+    mp.cups_tipo_4 = int(agregado["cups_tipo_4"])  # type: ignore[assignment]
+    mp.cups_tipo_5 = int(agregado["cups_tipo_5"])  # type: ignore[assignment]
+    mp.cups_total = int(agregado["cups_total"])  # type: ignore[assignment]
+
+    mp.importe_tipo_1_eur = float(agregado["importe_tipo_1_eur"])  # type: ignore[assignment]
+    mp.importe_tipo_2_eur = float(agregado["importe_tipo_2_eur"])  # type: ignore[assignment]
+    mp.importe_tipo_3_eur = float(agregado["importe_tipo_3_eur"])  # type: ignore[assignment]
+    mp.importe_tipo_4_eur = float(agregado["importe_tipo_4_eur"])  # type: ignore[assignment]
+    mp.importe_tipo_5_eur = float(agregado["importe_tipo_5_eur"])  # type: ignore[assignment]
+    mp.importe_total_eur = float(agregado["importe_total_eur"])  # type: ignore[assignment]
+
+    mp.energia_tarifa_20td_kwh = float(agregado["energia_tarifa_20td_kwh"])  # type: ignore[assignment]
+    mp.cups_tarifa_20td = int(agregado["cups_tarifa_20td"])  # type: ignore[assignment]
+    mp.importe_tarifa_20td_eur = float(agregado["importe_tarifa_20td_eur"])  # type: ignore[assignment]
+
+    mp.energia_tarifa_30td_kwh = float(agregado["energia_tarifa_30td_kwh"])  # type: ignore[assignment]
+    mp.cups_tarifa_30td = int(agregado["cups_tarifa_30td"])  # type: ignore[assignment]
+    mp.importe_tarifa_30td_eur = float(agregado["importe_tarifa_30td_eur"])  # type: ignore[assignment]
+
+    mp.energia_tarifa_30tdve_kwh = float(agregado["energia_tarifa_30tdve_kwh"])  # type: ignore[assignment]
+    mp.cups_tarifa_30tdve = int(agregado["cups_tarifa_30tdve"])  # type: ignore[assignment]
+    mp.importe_tarifa_30tdve_eur = float(agregado["importe_tarifa_30tdve_eur"])  # type: ignore[assignment]
+
+    mp.energia_tarifa_61td_kwh = float(agregado["energia_tarifa_61td_kwh"])  # type: ignore[assignment]
+    mp.cups_tarifa_61td = int(agregado["cups_tarifa_61td"])  # type: ignore[assignment]
+    mp.importe_tarifa_61td_eur = float(agregado["importe_tarifa_61td_eur"])  # type: ignore[assignment]
+
+    mp.energia_tarifa_62td_kwh = float(agregado["energia_tarifa_62td_kwh"])  # type: ignore[assignment]
+    mp.cups_tarifa_62td = int(agregado["cups_tarifa_62td"])  # type: ignore[assignment]
+    mp.importe_tarifa_62td_eur = float(agregado["importe_tarifa_62td_eur"])  # type: ignore[assignment]
+
+    mp.energia_tarifa_63td_kwh = float(agregado["energia_tarifa_63td_kwh"])  # type: ignore[assignment]
+    mp.cups_tarifa_63td = int(agregado["cups_tarifa_63td"])  # type: ignore[assignment]
+    mp.importe_tarifa_63td_eur = float(agregado["importe_tarifa_63td_eur"])  # type: ignore[assignment]
+
+    mp.energia_tarifa_64td_kwh = float(agregado["energia_tarifa_64td_kwh"])  # type: ignore[assignment]
+    mp.cups_tarifa_64td = int(agregado["cups_tarifa_64td"])  # type: ignore[assignment]
+    mp.importe_tarifa_64td_eur = float(agregado["importe_tarifa_64td_eur"])  # type: ignore[assignment]
+
+    mp.file_id = _file_id(fichero)  # type: ignore[assignment]
 
 
 # ---------- M1 facturación ----------
@@ -1745,8 +1975,22 @@ def procesar_ps(
     )
 
     detail_map: dict[tuple[int, int, str], dict[str, Any]] = {}
-    filas_por_periodo: dict[tuple[int, int], list[Dict[str, Any]]] = {}
+    aggregate_by_period: dict[tuple[int, int], dict[str, float | int]] = {}
     periodos_nuevos: set[tuple[int, int]] = set()
+
+    cups_sets_tipo_by_period: dict[tuple[int, int], dict[int, set[str]]] = {}
+    cups_total_set_by_period: dict[tuple[int, int], set[str]] = {}
+    cups_tarifa_by_period: dict[tuple[int, int], dict[str, set[str]]] = {}
+
+    tarifa_map = {
+        "2.0TD": "20td",
+        "3.0TD": "30td",
+        "3.0TDVE": "30tdve",
+        "6.1TD": "61td",
+        "6.2TD": "62td",
+        "6.3TD": "63td",
+        "6.4TD": "64td",
+    }
 
     for f in filas:
         try:
@@ -1780,8 +2024,8 @@ def procesar_ps(
                 }
             )
 
-        filas_por_periodo.setdefault((anio_obj, mes_obj), []).append(f)
-        periodos_nuevos.add((anio_obj, mes_obj))
+        period_key = (anio_obj, mes_obj)
+        periodos_nuevos.add(period_key)
 
         cups = _ps_cups(f)
         if not cups:
@@ -1798,11 +2042,63 @@ def procesar_ps(
         energia = _to_float(f.get("Energia_facturada"))
         importe = _to_float(f.get("Total"))
 
-        key = (anio_obj, mes_obj, cups)
-        existing = detail_map.get(key)
+        agregado = aggregate_by_period.get(period_key)
+        if agregado is None:
+            agregado = _empty_ps_aggregate()
+            aggregate_by_period[period_key] = agregado
+
+        cups_sets_tipo = cups_sets_tipo_by_period.get(period_key)
+        if cups_sets_tipo is None:
+            cups_sets_tipo = {i: set() for i in range(1, 6)}
+            cups_sets_tipo_by_period[period_key] = cups_sets_tipo
+
+        cups_total_set = cups_total_set_by_period.get(period_key)
+        if cups_total_set is None:
+            cups_total_set = set()
+            cups_total_set_by_period[period_key] = cups_total_set
+
+        cups_tarifa = cups_tarifa_by_period.get(period_key)
+        if cups_tarifa is None:
+            cups_tarifa = {
+                "20td": set(),
+                "30td": set(),
+                "30tdve": set(),
+                "61td": set(),
+                "62td": set(),
+                "63td": set(),
+                "64td": set(),
+            }
+            cups_tarifa_by_period[period_key] = cups_tarifa
+
+        agregado["energia_ps_total_kwh"] = float(agregado["energia_ps_total_kwh"]) + energia
+        agregado["importe_total_eur"] = float(agregado["importe_total_eur"]) + importe
+
+        if cups:
+            cups_total_set.add(cups)
+
+        if poliza in {"1", "2", "3", "4", "5"}:
+            tipo_int = int(poliza)
+            energia_key = f"energia_ps_tipo_{tipo_int}_kwh"
+            importe_key = f"importe_tipo_{tipo_int}_eur"
+
+            agregado[energia_key] = float(agregado[energia_key]) + energia
+            agregado[importe_key] = float(agregado[importe_key]) + importe
+            cups_sets_tipo[tipo_int].add(cups)
+
+        sufijo_tarifa = tarifa_map.get(tarifa)
+        if sufijo_tarifa is not None:
+            energia_tarifa_key = f"energia_tarifa_{sufijo_tarifa}_kwh"
+            importe_tarifa_key = f"importe_tarifa_{sufijo_tarifa}_eur"
+
+            agregado[energia_tarifa_key] = float(agregado[energia_tarifa_key]) + energia
+            agregado[importe_tarifa_key] = float(agregado[importe_tarifa_key]) + importe
+            cups_tarifa[sufijo_tarifa].add(cups)
+
+        detail_key = (anio_obj, mes_obj, cups)
+        existing = detail_map.get(detail_key)
 
         if existing is None:
-            detail_map[key] = {
+            detail_map[detail_key] = {
                 "anio": anio_obj,
                 "mes": mes_obj,
                 "cups": cups,
@@ -1810,11 +2106,11 @@ def procesar_ps(
                 "tarifa_acceso": tarifa,
                 "energia_facturada_kwh": energia,
                 "importe_total_eur": importe,
-                "is_principal": (anio_obj, mes_obj) == (anio_principal, mes_principal),
+                "is_principal": period_key == (anio_principal, mes_principal),
             }
         else:
-            old_poliza = existing.get("poliza")
-            old_tarifa = existing.get("tarifa_acceso")
+            old_poliza = cast(str | None, existing.get("poliza"))
+            old_tarifa = cast(str | None, existing.get("tarifa_acceso"))
 
             existing["energia_facturada_kwh"] = float(existing.get("energia_facturada_kwh", 0.0)) + energia
             existing["importe_total_eur"] = float(existing.get("importe_total_eur", 0.0)) + importe
@@ -1824,8 +2120,8 @@ def procesar_ps(
             if not old_tarifa and tarifa:
                 existing["tarifa_acceso"] = tarifa
 
-            current_poliza = existing.get("poliza")
-            current_tarifa = existing.get("tarifa_acceso")
+            current_poliza = cast(str | None, existing.get("poliza"))
+            current_tarifa = cast(str | None, existing.get("tarifa_acceso"))
 
             if poliza and current_poliza and poliza != current_poliza:
                 warnings.append(
@@ -1848,10 +2144,41 @@ def procesar_ps(
                     }
                 )
 
-    if not filas_por_periodo:
+    if not aggregate_by_period:
         raise ValueError(
             "No hay filas con Fecha_final válida para calcular PS (todas NaT/NaN/None/vacías)"
         )
+
+    for period_key, agregado in aggregate_by_period.items():
+        cups_sets_tipo = cups_sets_tipo_by_period.get(period_key, {i: set() for i in range(1, 6)})
+        cups_total_set = cups_total_set_by_period.get(period_key, set())
+        cups_tarifa = cups_tarifa_by_period.get(
+            period_key,
+            {
+                "20td": set(),
+                "30td": set(),
+                "30tdve": set(),
+                "61td": set(),
+                "62td": set(),
+                "63td": set(),
+                "64td": set(),
+            },
+        )
+
+        agregado["cups_tipo_1"] = len(cups_sets_tipo[1])
+        agregado["cups_tipo_2"] = len(cups_sets_tipo[2])
+        agregado["cups_tipo_3"] = len(cups_sets_tipo[3])
+        agregado["cups_tipo_4"] = len(cups_sets_tipo[4])
+        agregado["cups_tipo_5"] = len(cups_sets_tipo[5])
+        agregado["cups_total"] = len(cups_total_set)
+
+        agregado["cups_tarifa_20td"] = len(cups_tarifa["20td"])
+        agregado["cups_tarifa_30td"] = len(cups_tarifa["30td"])
+        agregado["cups_tarifa_30tdve"] = len(cups_tarifa["30tdve"])
+        agregado["cups_tarifa_61td"] = len(cups_tarifa["61td"])
+        agregado["cups_tarifa_62td"] = len(cups_tarifa["62td"])
+        agregado["cups_tarifa_63td"] = len(cups_tarifa["63td"])
+        agregado["cups_tarifa_64td"] = len(cups_tarifa["64td"])
 
     periodos_afectados = set(periodos_previos) | set(periodos_nuevos)
 
@@ -1877,86 +2204,39 @@ def procesar_ps(
 
     db.flush()
 
+    detail_mappings: list[dict[str, Any]] = []
     for item in detail_map.values():
-        row = PSPeriodDetail(  # type: ignore[call-arg]
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            ingestion_file_id=_file_id(fichero),
-            anio=int(item["anio"]),
-            mes=int(item["mes"]),
-            is_principal=bool(item["is_principal"]),
-            cups=str(item["cups"]),
-            poliza=str(item["poliza"]) if item.get("poliza") else None,
-            tarifa_acceso=str(item["tarifa_acceso"]) if item.get("tarifa_acceso") else None,
-            energia_facturada_kwh=float(item["energia_facturada_kwh"]),
-            importe_total_eur=float(item["importe_total_eur"]),
+        detail_mappings.append(
+            _make_ps_period_detail_mapping(
+                tenant_id=tenant_id,
+                empresa_id=empresa_id,
+                ingestion_file_id=_file_id(fichero),
+                anio=int(item["anio"]),
+                mes=int(item["mes"]),
+                is_principal=bool(item["is_principal"]),
+                cups=str(item["cups"]),
+                poliza=str(item["poliza"]) if item.get("poliza") else None,
+                tarifa_acceso=str(item["tarifa_acceso"]) if item.get("tarifa_acceso") else None,
+                energia_facturada_kwh=float(item["energia_facturada_kwh"]),
+                importe_total_eur=float(item["importe_total_eur"]),
+            )
         )
-        db.add(row)
 
-    db.flush()
+    if detail_mappings:
+        # Pylance no tipa bien bulk_insert_mappings con modelos declarativos SQLAlchemy
+        db.bulk_insert_mappings(cast(Any, PSPeriodDetail), detail_mappings)
 
-    for (anio, mes), filas_periodo in sorted(filas_por_periodo.items()):
-        agregado = _build_ps_aggregate_from_rows(filas_periodo)
+    for (anio, mes), agregado in sorted(aggregate_by_period.items()):
         es_principal = (anio, mes) == (anio_principal, mes_principal)
-
-        contrib = PSPeriodContribution(  # type: ignore[call-arg]
+        contrib = _make_ps_period_contribution(
             tenant_id=tenant_id,
             empresa_id=empresa_id,
             ingestion_file_id=_file_id(fichero),
             anio=anio,
             mes=mes,
             is_principal=bool(es_principal),
+            agregado=agregado,
         )
-
-        contrib.energia_ps_tipo_1_kwh = float(agregado["energia_ps_tipo_1_kwh"])  # type: ignore[assignment]
-        contrib.energia_ps_tipo_2_kwh = float(agregado["energia_ps_tipo_2_kwh"])  # type: ignore[assignment]
-        contrib.energia_ps_tipo_3_kwh = float(agregado["energia_ps_tipo_3_kwh"])  # type: ignore[assignment]
-        contrib.energia_ps_tipo_4_kwh = float(agregado["energia_ps_tipo_4_kwh"])  # type: ignore[assignment]
-        contrib.energia_ps_tipo_5_kwh = float(agregado["energia_ps_tipo_5_kwh"])  # type: ignore[assignment]
-        contrib.energia_ps_total_kwh = float(agregado["energia_ps_total_kwh"])  # type: ignore[assignment]
-
-        contrib.cups_tipo_1 = int(agregado["cups_tipo_1"])  # type: ignore[assignment]
-        contrib.cups_tipo_2 = int(agregado["cups_tipo_2"])  # type: ignore[assignment]
-        contrib.cups_tipo_3 = int(agregado["cups_tipo_3"])  # type: ignore[assignment]
-        contrib.cups_tipo_4 = int(agregado["cups_tipo_4"])  # type: ignore[assignment]
-        contrib.cups_tipo_5 = int(agregado["cups_tipo_5"])  # type: ignore[assignment]
-        contrib.cups_total = int(agregado["cups_total"])  # type: ignore[assignment]
-
-        contrib.importe_tipo_1_eur = float(agregado["importe_tipo_1_eur"])  # type: ignore[assignment]
-        contrib.importe_tipo_2_eur = float(agregado["importe_tipo_2_eur"])  # type: ignore[assignment]
-        contrib.importe_tipo_3_eur = float(agregado["importe_tipo_3_eur"])  # type: ignore[assignment]
-        contrib.importe_tipo_4_eur = float(agregado["importe_tipo_4_eur"])  # type: ignore[assignment]
-        contrib.importe_tipo_5_eur = float(agregado["importe_tipo_5_eur"])  # type: ignore[assignment]
-        contrib.importe_total_eur = float(agregado["importe_total_eur"])  # type: ignore[assignment]
-
-        contrib.energia_tarifa_20td_kwh = float(agregado["energia_tarifa_20td_kwh"])  # type: ignore[assignment]
-        contrib.cups_tarifa_20td = int(agregado["cups_tarifa_20td"])  # type: ignore[assignment]
-        contrib.importe_tarifa_20td_eur = float(agregado["importe_tarifa_20td_eur"])  # type: ignore[assignment]
-
-        contrib.energia_tarifa_30td_kwh = float(agregado["energia_tarifa_30td_kwh"])  # type: ignore[assignment]
-        contrib.cups_tarifa_30td = int(agregado["cups_tarifa_30td"])  # type: ignore[assignment]
-        contrib.importe_tarifa_30td_eur = float(agregado["importe_tarifa_30td_eur"])  # type: ignore[assignment]
-
-        contrib.energia_tarifa_30tdve_kwh = float(agregado["energia_tarifa_30tdve_kwh"])  # type: ignore[assignment]
-        contrib.cups_tarifa_30tdve = int(agregado["cups_tarifa_30tdve"])  # type: ignore[assignment]
-        contrib.importe_tarifa_30tdve_eur = float(agregado["importe_tarifa_30tdve_eur"])  # type: ignore[assignment]
-
-        contrib.energia_tarifa_61td_kwh = float(agregado["energia_tarifa_61td_kwh"])  # type: ignore[assignment]
-        contrib.cups_tarifa_61td = int(agregado["cups_tarifa_61td"])  # type: ignore[assignment]
-        contrib.importe_tarifa_61td_eur = float(agregado["importe_tarifa_61td_eur"])  # type: ignore[assignment]
-
-        contrib.energia_tarifa_62td_kwh = float(agregado["energia_tarifa_62td_kwh"])  # type: ignore[assignment]
-        contrib.cups_tarifa_62td = int(agregado["cups_tarifa_62td"])  # type: ignore[assignment]
-        contrib.importe_tarifa_62td_eur = float(agregado["importe_tarifa_62td_eur"])  # type: ignore[assignment]
-
-        contrib.energia_tarifa_63td_kwh = float(agregado["energia_tarifa_63td_kwh"])  # type: ignore[assignment]
-        contrib.cups_tarifa_63td = int(agregado["cups_tarifa_63td"])  # type: ignore[assignment]
-        contrib.importe_tarifa_63td_eur = float(agregado["importe_tarifa_63td_eur"])  # type: ignore[assignment]
-
-        contrib.energia_tarifa_64td_kwh = float(agregado["energia_tarifa_64td_kwh"])  # type: ignore[assignment]
-        contrib.cups_tarifa_64td = int(agregado["cups_tarifa_64td"])  # type: ignore[assignment]
-        contrib.importe_tarifa_64td_eur = float(agregado["importe_tarifa_64td_eur"])  # type: ignore[assignment]
-
         db.add(contrib)
 
     db.flush()
@@ -1964,14 +2244,15 @@ def procesar_ps(
     mp_principal: MedidaPS | None = None
 
     for (anio, mes) in sorted(periodos_afectados):
-        detail_rows = _load_ps_detail_rows_for_period(
-            db,
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            anio=anio,
-            mes=mes,
-        )
-        agregado = _aggregate_ps_detail_rows(detail_rows)
+        agregado = aggregate_by_period.get((anio, mes))
+        if agregado is None:
+            agregado = _sum_contribuciones_ps(
+                db,
+                tenant_id=tenant_id,
+                empresa_id=empresa_id,
+                anio=anio,
+                mes=mes,
+            )
 
         mp = (
             db.query(MedidaPS)
@@ -2008,56 +2289,11 @@ def procesar_ps(
                 }
             )
 
-        mp.energia_ps_tipo_1_kwh = float(agregado["energia_ps_tipo_1_kwh"])  # type: ignore[assignment]
-        mp.energia_ps_tipo_2_kwh = float(agregado["energia_ps_tipo_2_kwh"])  # type: ignore[assignment]
-        mp.energia_ps_tipo_3_kwh = float(agregado["energia_ps_tipo_3_kwh"])  # type: ignore[assignment]
-        mp.energia_ps_tipo_4_kwh = float(agregado["energia_ps_tipo_4_kwh"])  # type: ignore[assignment]
-        mp.energia_ps_tipo_5_kwh = float(agregado["energia_ps_tipo_5_kwh"])  # type: ignore[assignment]
-        mp.energia_ps_total_kwh = float(agregado["energia_ps_total_kwh"])  # type: ignore[assignment]
-
-        mp.cups_tipo_1 = int(agregado["cups_tipo_1"])  # type: ignore[assignment]
-        mp.cups_tipo_2 = int(agregado["cups_tipo_2"])  # type: ignore[assignment]
-        mp.cups_tipo_3 = int(agregado["cups_tipo_3"])  # type: ignore[assignment]
-        mp.cups_tipo_4 = int(agregado["cups_tipo_4"])  # type: ignore[assignment]
-        mp.cups_tipo_5 = int(agregado["cups_tipo_5"])  # type: ignore[assignment]
-        mp.cups_total = int(agregado["cups_total"])  # type: ignore[assignment]
-
-        mp.importe_tipo_1_eur = float(agregado["importe_tipo_1_eur"])  # type: ignore[assignment]
-        mp.importe_tipo_2_eur = float(agregado["importe_tipo_2_eur"])  # type: ignore[assignment]
-        mp.importe_tipo_3_eur = float(agregado["importe_tipo_3_eur"])  # type: ignore[assignment]
-        mp.importe_tipo_4_eur = float(agregado["importe_tipo_4_eur"])  # type: ignore[assignment]
-        mp.importe_tipo_5_eur = float(agregado["importe_tipo_5_eur"])  # type: ignore[assignment]
-        mp.importe_total_eur = float(agregado["importe_total_eur"])  # type: ignore[assignment]
-
-        mp.energia_tarifa_20td_kwh = float(agregado["energia_tarifa_20td_kwh"])  # type: ignore[assignment]
-        mp.cups_tarifa_20td = int(agregado["cups_tarifa_20td"])  # type: ignore[assignment]
-        mp.importe_tarifa_20td_eur = float(agregado["importe_tarifa_20td_eur"])  # type: ignore[assignment]
-
-        mp.energia_tarifa_30td_kwh = float(agregado["energia_tarifa_30td_kwh"])  # type: ignore[assignment]
-        mp.cups_tarifa_30td = int(agregado["cups_tarifa_30td"])  # type: ignore[assignment]
-        mp.importe_tarifa_30td_eur = float(agregado["importe_tarifa_30td_eur"])  # type: ignore[assignment]
-
-        mp.energia_tarifa_30tdve_kwh = float(agregado["energia_tarifa_30tdve_kwh"])  # type: ignore[assignment]
-        mp.cups_tarifa_30tdve = int(agregado["cups_tarifa_30tdve"])  # type: ignore[assignment]
-        mp.importe_tarifa_30tdve_eur = float(agregado["importe_tarifa_30tdve_eur"])  # type: ignore[assignment]
-
-        mp.energia_tarifa_61td_kwh = float(agregado["energia_tarifa_61td_kwh"])  # type: ignore[assignment]
-        mp.cups_tarifa_61td = int(agregado["cups_tarifa_61td"])  # type: ignore[assignment]
-        mp.importe_tarifa_61td_eur = float(agregado["importe_tarifa_61td_eur"])  # type: ignore[assignment]
-
-        mp.energia_tarifa_62td_kwh = float(agregado["energia_tarifa_62td_kwh"])  # type: ignore[assignment]
-        mp.cups_tarifa_62td = int(agregado["cups_tarifa_62td"])  # type: ignore[assignment]
-        mp.importe_tarifa_62td_eur = float(agregado["importe_tarifa_62td_eur"])  # type: ignore[assignment]
-
-        mp.energia_tarifa_63td_kwh = float(agregado["energia_tarifa_63td_kwh"])  # type: ignore[assignment]
-        mp.cups_tarifa_63td = int(agregado["cups_tarifa_63td"])  # type: ignore[assignment]
-        mp.importe_tarifa_63td_eur = float(agregado["importe_tarifa_63td_eur"])  # type: ignore[assignment]
-
-        mp.energia_tarifa_64td_kwh = float(agregado["energia_tarifa_64td_kwh"])  # type: ignore[assignment]
-        mp.cups_tarifa_64td = int(agregado["cups_tarifa_64td"])  # type: ignore[assignment]
-        mp.importe_tarifa_64td_eur = float(agregado["importe_tarifa_64td_eur"])  # type: ignore[assignment]
-
-        mp.file_id = _file_id(fichero)  # type: ignore[assignment]
+        _apply_ps_aggregate_to_medida(
+            mp,
+            agregado=agregado,
+            fichero=fichero,
+        )
 
         if es_principal:
             mp_principal = mp
@@ -2068,14 +2304,16 @@ def procesar_ps(
         mejor_periodo = max(
             periodos_afectados,
             key=lambda p: float(
-                _aggregate_ps_detail_rows(
-                    _load_ps_detail_rows_for_period(
+                cast(
+                    dict[str, float | int],
+                    aggregate_by_period.get(p)
+                    or _sum_contribuciones_ps(
                         db,
                         tenant_id=tenant_id,
                         empresa_id=empresa_id,
                         anio=p[0],
                         mes=p[1],
-                    )
+                    ),
                 )["energia_ps_total_kwh"]
             ),
         )

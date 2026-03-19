@@ -6,7 +6,6 @@ from __future__ import annotations
 from typing import Any, cast
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Query, Session
 
 from app.empresas.models import Empresa
@@ -17,6 +16,58 @@ from app.measures.m1_models import M1PeriodContribution
 from app.measures.models import MedidaGeneral, MedidaPS
 from app.measures.ps_detail_models import PSPeriodDetail
 from app.measures.ps_models import PSPeriodContribution
+
+GENERAL_DELETE_TYPES = {
+    "M1",
+    "M1_AUTOCONSUMO",
+    "BALD",
+    "ACUMCIL",
+    "ACUM_H2_GRD",
+    "ACUM_H2_GEN",
+    "ACUM_H2_RDD_P1",
+    "ACUM_H2_RDD_P2",
+}
+PS_DELETE_TYPES = {"PS"}
+
+GENERAL_DELETE_ALIASES = {"GENERAL"}
+PS_DELETE_ALIASES = {"PS"}
+
+
+def _normalize_tipo(tipo: str | None) -> str | None:
+    if tipo is None:
+        return None
+    tipo_norm = str(tipo).strip().upper()
+    return tipo_norm or None
+
+
+def _resolve_delete_family(tipo: str | None) -> str | None:
+    tipo_norm = _normalize_tipo(tipo)
+    if tipo_norm is None:
+        return None
+    if tipo_norm in GENERAL_DELETE_ALIASES or tipo_norm in GENERAL_DELETE_TYPES:
+        return "general"
+    if tipo_norm in PS_DELETE_ALIASES or tipo_norm in PS_DELETE_TYPES:
+        return "ps"
+    return None
+
+
+def _is_concrete_ingestion_tipo(tipo: str | None) -> bool:
+    tipo_norm = _normalize_tipo(tipo)
+    if tipo_norm is None:
+        return False
+    return tipo_norm in GENERAL_DELETE_TYPES or tipo_norm in PS_DELETE_TYPES
+
+
+def _apply_delete_family_ingestion_filter(
+    query: Query[Any],
+    *,
+    delete_family: str | None,
+) -> Query[Any]:
+    if delete_family == "general":
+        return query.filter(IngestionFile.tipo.in_(sorted(GENERAL_DELETE_TYPES)))
+    if delete_family == "ps":
+        return query.filter(IngestionFile.tipo.in_(sorted(PS_DELETE_TYPES)))
+    return query
 
 
 def apply_ingestion_filters(
@@ -36,7 +87,7 @@ def apply_ingestion_filters(
         query = query.filter(IngestionFile.empresa_id == empresa_id)
 
     if tipo is not None:
-        query = query.filter(IngestionFile.tipo == tipo)
+        query = query.filter(IngestionFile.tipo == _normalize_tipo(tipo))
 
     if status_ is not None:
         allowed = {
@@ -835,16 +886,26 @@ def build_delete_preview(
         empresa_id=empresa_id,
     )
 
+    tipo_norm = _normalize_tipo(tipo)
+    delete_family = _resolve_delete_family(tipo_norm)
+
     base_query = db.query(IngestionFile)
+
     base_query = apply_ingestion_filters(
         base_query,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
-        tipo=tipo,
+        tipo=tipo_norm if _is_concrete_ingestion_tipo(tipo_norm) else None,
         status_=status_,
         anio=anio,
         mes=mes,
     )
+
+    if not _is_concrete_ingestion_tipo(tipo_norm):
+        base_query = _apply_delete_family_ingestion_filter(
+            base_query,
+            delete_family=delete_family,
+        )
 
     ingestion_files = cast(
         list[IngestionFile],
@@ -857,92 +918,110 @@ def build_delete_preview(
     )
     ids_to_delete = [cast(int, row.id) for row in ingestion_files]
 
-    affected_general_periods = collect_general_affected_periods(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
-    affected_ps_periods = collect_ps_affected_periods(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
+    affected_general_periods: set[tuple[int, int, int, int]] = set()
+    affected_ps_periods: set[tuple[int, int, int, int]] = set()
 
-    deleted_m1_map = build_m1_delete_candidates(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
-    deleted_general_map = build_general_delete_candidates(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
-    deleted_bald_map = build_bald_delete_candidates(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
-    deleted_ps_detail_map = build_ps_detail_delete_candidates(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
-    deleted_ps_contrib_map = build_ps_contrib_delete_candidates(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
+    deleted_m1_map: dict[int, M1PeriodContribution] = {}
+    deleted_general_map: dict[int, GeneralPeriodContribution] = {}
+    deleted_bald_map: dict[int, BaldPeriodContribution] = {}
+    deleted_ps_detail_map: dict[int, PSPeriodDetail] = {}
+    deleted_ps_contrib_map: dict[int, PSPeriodContribution] = {}
+    orphan_general_candidates: list[dict[str, int]] = []
+    orphan_ps_candidates: list[dict[str, int]] = []
+    refacturas_m1: list[dict[str, Any]] = []
 
-    orphan_general_candidates = preview_orphan_general_periods(
-        db,
-        periods=affected_general_periods,
-        deleted_m1_ids=set(deleted_m1_map.keys()),
-        deleted_general_ids=set(deleted_general_map.keys()),
-        deleted_bald_ids=set(deleted_bald_map.keys()),
-    )
-    orphan_ps_candidates = preview_orphan_ps_periods(
-        db,
-        periods=affected_ps_periods,
-        deleted_ps_detail_ids=set(deleted_ps_detail_map.keys()),
-        deleted_ps_contrib_ids=set(deleted_ps_contrib_map.keys()),
-    )
+    if delete_family == "general":
+        affected_general_periods = collect_general_affected_periods(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
 
-    refacturas_m1 = build_refacturas_preview(
-        db,
-        deleted_m1_rows=list(deleted_m1_map.values()),
-    )
+        deleted_m1_map = build_m1_delete_candidates(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+        deleted_general_map = build_general_delete_candidates(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+        deleted_bald_map = build_bald_delete_candidates(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+
+        orphan_general_candidates = preview_orphan_general_periods(
+            db,
+            periods=affected_general_periods,
+            deleted_m1_ids=set(deleted_m1_map.keys()),
+            deleted_general_ids=set(deleted_general_map.keys()),
+            deleted_bald_ids=set(deleted_bald_map.keys()),
+        )
+
+        refacturas_m1 = build_refacturas_preview(
+            db,
+            deleted_m1_rows=list(deleted_m1_map.values()),
+        )
+
+    elif delete_family == "ps":
+        affected_ps_periods = collect_ps_affected_periods(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+
+        deleted_ps_detail_map = build_ps_detail_delete_candidates(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+        deleted_ps_contrib_map = build_ps_contrib_delete_candidates(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+
+        orphan_ps_candidates = preview_orphan_ps_periods(
+            db,
+            periods=affected_ps_periods,
+            deleted_ps_detail_ids=set(deleted_ps_detail_map.keys()),
+            deleted_ps_contrib_ids=set(deleted_ps_contrib_map.keys()),
+        )
 
     return {
         "filters": {
             "tenant_id": tenant_id,
             "empresa_id": empresa_id,
-            "tipo": tipo,
+            "tipo": tipo_norm,
             "status_": status_,
             "anio": anio,
             "mes": mes,
         },
+        "delete_family": delete_family,
         "summary": {
             "ingestion_files_count": len(ids_to_delete),
             "m1_period_contributions_count": len(deleted_m1_map),
@@ -954,14 +1033,14 @@ def build_delete_preview(
                 db.query(MedidaGeneral)
                 .filter(MedidaGeneral.file_id.in_(ids_to_delete))
                 .count()
-                if ids_to_delete
+                if ids_to_delete and delete_family == "general"
                 else 0
             ),
             "medidas_ps_direct_count": (
                 db.query(MedidaPS)
                 .filter(MedidaPS.file_id.in_(ids_to_delete))
                 .count()
-                if ids_to_delete
+                if ids_to_delete and delete_family == "ps"
                 else 0
             ),
             "affected_general_periods_count": len(affected_general_periods),
@@ -1013,36 +1092,32 @@ def execute_delete(
         empresa_id=empresa_id,
     )
 
+    tipo_norm = _normalize_tipo(tipo)
+    delete_family = _resolve_delete_family(tipo_norm)
+
     base_query = db.query(IngestionFile)
+
     base_query = apply_ingestion_filters(
         base_query,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
-        tipo=tipo,
+        tipo=tipo_norm if _is_concrete_ingestion_tipo(tipo_norm) else None,
         status_=status_,
         anio=anio,
         mes=mes,
     )
 
+    if not _is_concrete_ingestion_tipo(tipo_norm):
+        base_query = _apply_delete_family_ingestion_filter(
+            base_query,
+            delete_family=delete_family,
+        )
+
     rows_to_delete = cast(list[IngestionFile], base_query.all())
     ids_to_delete = [cast(int, row.id) for row in rows_to_delete]
 
-    affected_general_periods = collect_general_affected_periods(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
-    affected_ps_periods = collect_ps_affected_periods(
-        db,
-        ingestion_file_ids=ids_to_delete,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
+    affected_general_periods: set[tuple[int, int, int, int]] = set()
+    affected_ps_periods: set[tuple[int, int, int, int]] = set()
 
     deleted_m1_contrib_by_file = 0
     deleted_general_contrib_by_file = 0
@@ -1053,50 +1128,77 @@ def execute_delete(
     deleted_medidas_ps_direct = 0
     deleted_files = 0
 
+    deleted_m1_contrib_target = 0
+    deleted_general_contrib_target = 0
+    deleted_bald_contrib_target = 0
+    deleted_ps_detail_target = 0
+    deleted_ps_contrib_target = 0
+    deleted_medidas_general_orphan = 0
+    deleted_medidas_ps_orphan = 0
+
+    if delete_family == "general":
+        affected_general_periods = collect_general_affected_periods(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+    elif delete_family == "ps":
+        affected_ps_periods = collect_ps_affected_periods(
+            db,
+            ingestion_file_ids=ids_to_delete,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+
     if ids_to_delete:
-        ids_select = select(IngestionFile.id).where(IngestionFile.id.in_(ids_to_delete))
+        if delete_family == "general":
+            deleted_m1_contrib_by_file = (
+                db.query(M1PeriodContribution)
+                .filter(M1PeriodContribution.ingestion_file_id.in_(ids_to_delete))
+                .delete(synchronize_session=False)
+            )
 
-        deleted_m1_contrib_by_file = (
-            db.query(M1PeriodContribution)
-            .filter(M1PeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)))
-            .delete(synchronize_session=False)
-        )
+            deleted_general_contrib_by_file = (
+                db.query(GeneralPeriodContribution)
+                .filter(GeneralPeriodContribution.ingestion_file_id.in_(ids_to_delete))
+                .delete(synchronize_session=False)
+            )
 
-        deleted_general_contrib_by_file = (
-            db.query(GeneralPeriodContribution)
-            .filter(GeneralPeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)))
-            .delete(synchronize_session=False)
-        )
+            deleted_bald_contrib_by_file = (
+                db.query(BaldPeriodContribution)
+                .filter(BaldPeriodContribution.ingestion_file_id.in_(ids_to_delete))
+                .delete(synchronize_session=False)
+            )
 
-        deleted_bald_contrib_by_file = (
-            db.query(BaldPeriodContribution)
-            .filter(BaldPeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)))
-            .delete(synchronize_session=False)
-        )
+            deleted_medidas_general_direct = (
+                db.query(MedidaGeneral)
+                .filter(MedidaGeneral.file_id.in_(ids_to_delete))
+                .delete(synchronize_session=False)
+            )
 
-        deleted_ps_detail_by_file = (
-            db.query(PSPeriodDetail)
-            .filter(PSPeriodDetail.ingestion_file_id.in_(cast(Any, ids_select)))
-            .delete(synchronize_session=False)
-        )
+        elif delete_family == "ps":
+            deleted_ps_detail_by_file = (
+                db.query(PSPeriodDetail)
+                .filter(PSPeriodDetail.ingestion_file_id.in_(ids_to_delete))
+                .delete(synchronize_session=False)
+            )
 
-        deleted_ps_contrib_by_file = (
-            db.query(PSPeriodContribution)
-            .filter(PSPeriodContribution.ingestion_file_id.in_(cast(Any, ids_select)))
-            .delete(synchronize_session=False)
-        )
+            deleted_ps_contrib_by_file = (
+                db.query(PSPeriodContribution)
+                .filter(PSPeriodContribution.ingestion_file_id.in_(ids_to_delete))
+                .delete(synchronize_session=False)
+            )
 
-        deleted_medidas_general_direct = (
-            db.query(MedidaGeneral)
-            .filter(MedidaGeneral.file_id.in_(cast(Any, ids_select)))
-            .delete(synchronize_session=False)
-        )
-
-        deleted_medidas_ps_direct = (
-            db.query(MedidaPS)
-            .filter(MedidaPS.file_id.in_(cast(Any, ids_select)))
-            .delete(synchronize_session=False)
-        )
+            deleted_medidas_ps_direct = (
+                db.query(MedidaPS)
+                .filter(MedidaPS.file_id.in_(ids_to_delete))
+                .delete(synchronize_session=False)
+            )
 
         deleted_files = (
             db.query(IngestionFile)
@@ -1104,63 +1206,67 @@ def execute_delete(
             .delete(synchronize_session=False)
         )
 
-    deleted_m1_contrib_target = target_contribution_filters(
-        db.query(M1PeriodContribution),
-        M1PeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).delete(synchronize_session=False)
+    if delete_family == "general":
+        deleted_m1_contrib_target = target_contribution_filters(
+            db.query(M1PeriodContribution),
+            M1PeriodContribution,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ).delete(synchronize_session=False)
 
-    deleted_general_contrib_target = target_contribution_filters(
-        db.query(GeneralPeriodContribution),
-        GeneralPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).delete(synchronize_session=False)
+        deleted_general_contrib_target = target_contribution_filters(
+            db.query(GeneralPeriodContribution),
+            GeneralPeriodContribution,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ).delete(synchronize_session=False)
 
-    deleted_bald_contrib_target = target_contribution_filters(
-        db.query(BaldPeriodContribution),
-        BaldPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).delete(synchronize_session=False)
+        deleted_bald_contrib_target = target_contribution_filters(
+            db.query(BaldPeriodContribution),
+            BaldPeriodContribution,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ).delete(synchronize_session=False)
 
-    deleted_ps_detail_target = target_contribution_filters(
-        db.query(PSPeriodDetail),
-        PSPeriodDetail,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).delete(synchronize_session=False)
+        deleted_medidas_general_orphan = cleanup_orphan_medidas_general(
+            db,
+            periods=affected_general_periods,
+        )
 
-    deleted_ps_contrib_target = target_contribution_filters(
-        db.query(PSPeriodContribution),
-        PSPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).delete(synchronize_session=False)
+    elif delete_family == "ps":
+        deleted_ps_detail_target = target_contribution_filters(
+            db.query(PSPeriodDetail),
+            PSPeriodDetail,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ).delete(synchronize_session=False)
 
-    deleted_medidas_general_orphan = cleanup_orphan_medidas_general(
-        db,
-        periods=affected_general_periods,
-    )
-    deleted_medidas_ps_orphan = cleanup_orphan_medidas_ps(
-        db,
-        periods=affected_ps_periods,
-    )
+        deleted_ps_contrib_target = target_contribution_filters(
+            db.query(PSPeriodContribution),
+            PSPeriodContribution,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ).delete(synchronize_session=False)
+
+        deleted_medidas_ps_orphan = cleanup_orphan_medidas_ps(
+            db,
+            periods=affected_ps_periods,
+        )
 
     db.commit()
 
     return {
+        "delete_family": delete_family,
         "deleted_ingestion_files": deleted_files,
         "deleted_m1_period_contributions": deleted_m1_contrib_by_file + deleted_m1_contrib_target,
         "deleted_general_period_contributions": (
@@ -1180,7 +1286,7 @@ def execute_delete(
         "filters": {
             "tenant_id": tenant_id,
             "empresa_id": empresa_id,
-            "tipo": tipo,
+            "tipo": tipo_norm,
             "status_": status_,
             "anio": anio,
             "mes": mes,

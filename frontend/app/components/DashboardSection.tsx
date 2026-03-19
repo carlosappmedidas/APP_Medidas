@@ -4,152 +4,24 @@ import React, { useEffect, useMemo, useState } from "react";
 import EmpresasSection from "./EmpresasSection";
 import { useDashboardSummary } from "./hooks/useDashboardSummary";
 import { useDashboardFilters } from "./hooks/useDashboardFilters";
+import { useDashboardEnergyComparisonChart } from "./hooks/useDashboardEnergyComparisonChart";
+import { useDashboardEnergyTrendChart } from "./hooks/useDashboardEnergyTrendChart";
+import { useDashboardLossesTrendChart } from "./hooks/useDashboardLossesTrendChart";
+import DashboardMiniCard from "./dashboard/ui/DashboardMiniCard";
+import DashboardPlaceholderBox from "./dashboard/ui/DashboardPlaceholderBox";
+import DashboardEnergyComparisonChart from "./dashboard/charts/DashboardEnergyComparisonChart";
+import DashboardEnergyTrendChart from "./dashboard/charts/DashboardEnergyTrendChart";
+import DashboardLossesTrendChart from "./dashboard/charts/DashboardLossesTrendChart";
+import {
+  formatKwhEur,
+  formatKwhOnly,
+  formatMonthYear,
+  formatSignedNumberEs,
+} from "./dashboard/formatters";
 
 type Props = {
   token: string | null;
 };
-
-type MiniCardRow = {
-  label: string;
-  value: string;
-};
-
-type MiniCardProps = {
-  title: string;
-  rows: MiniCardRow[];
-  helpText?: string;
-  centered?: boolean;
-  tooltipTitle?: string;
-  tooltipRows?: MiniCardRow[];
-};
-
-function DashboardMiniCard({
-  title,
-  rows,
-  helpText,
-  centered = false,
-  tooltipTitle,
-  tooltipRows = [],
-}: MiniCardProps) {
-  const hasTooltip = Boolean(tooltipTitle && tooltipRows.length > 0);
-
-  return (
-    <div className="group relative ui-panel h-full overflow-visible p-0">
-      <div
-        className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.04em]"
-        style={{
-          background: "var(--btn-secondary-bg)",
-          color: "#ffffff",
-          borderBottom: "1px solid var(--card-border)",
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        className={[
-          "px-4 py-5",
-          centered ? "flex min-h-[146px] flex-col items-center justify-center text-center" : "",
-        ].join(" ")}
-      >
-        <div className={centered ? "w-full space-y-3" : "space-y-2"}>
-          {rows.map((row, index) => (
-            <div
-              key={`${row.label}-${index}`}
-              className={
-                centered
-                  ? "flex flex-col items-center justify-center gap-2"
-                  : "flex items-start justify-between gap-3 text-[11px]"
-              }
-            >
-              {row.label ? (
-                <span className={centered ? "text-[11px] ui-muted" : "ui-muted"}>
-                  {row.label}
-                </span>
-              ) : null}
-
-              <span
-                className={
-                  centered
-                    ? "max-w-full text-center text-[18px] font-semibold leading-snug md:text-[20px]"
-                    : "text-right font-semibold"
-                }
-              >
-                {row.value}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {helpText ? (
-          <div className="mt-3 text-[10px] leading-relaxed ui-muted">{helpText}</div>
-        ) : null}
-      </div>
-
-      {hasTooltip ? (
-        <div
-          className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[320px] max-w-[92vw] -translate-x-1/2 rounded-xl border px-4 py-3 shadow-lg group-hover:block"
-          style={{
-            background: "var(--card-bg)",
-            borderColor: "var(--card-border)",
-            color: "var(--text)",
-          }}
-        >
-          <div className="mb-3 text-[11px] font-semibold">{tooltipTitle}</div>
-
-          <div className="space-y-2">
-            {tooltipRows.map((row, index) => (
-              <div
-                key={`${row.label}-${index}`}
-                className="flex items-start justify-between gap-4 text-[11px]"
-              >
-                <span className="ui-muted">{row.label}</span>
-                <span className="max-w-[190px] text-right font-semibold leading-snug">
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function formatNumberEs(value: number | null | undefined, decimals = 2): string {
-  if (value == null || Number.isNaN(value)) return "—";
-
-  return new Intl.NumberFormat("es-ES", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
-}
-
-function formatSignedNumberEs(value: number | null | undefined, decimals = 2): string {
-  if (value == null || Number.isNaN(value)) return "—";
-
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${formatNumberEs(value, decimals)}`;
-}
-
-function formatKwhEur(
-  kwh: number | null | undefined,
-  eur: number | null | undefined
-): string {
-  return `${formatNumberEs(kwh, 2)} kWh / ${formatNumberEs(eur, 2)} €`;
-}
-
-function formatKwhOnly(value: number | null | undefined): string {
-  return `${formatNumberEs(value, 2)} kWh`;
-}
-
-function formatMonthYear(
-  anio: number | null | undefined,
-  mes: number | null | undefined
-): string {
-  if (!anio || !mes) return "—";
-  return `${String(mes).padStart(2, "0")}/${anio}`;
-}
 
 export default function DashboardSection({ token }: Props) {
   const isLogged = !!token;
@@ -174,6 +46,39 @@ export default function DashboardSection({ token }: Props) {
   });
 
   const { data, loading, error } = useDashboardSummary({
+    token,
+    empresaId,
+    anio: anioValue,
+    mes: mesValue,
+  });
+
+  const {
+    data: chartData,
+    loading: chartLoading,
+    error: chartError,
+  } = useDashboardEnergyComparisonChart({
+    token,
+    empresaId,
+    anio: anioValue,
+    mes: mesValue,
+  });
+
+  const {
+    data: energyTrendChartData,
+    loading: energyTrendChartLoading,
+    error: energyTrendChartError,
+  } = useDashboardEnergyTrendChart({
+    token,
+    empresaId,
+    anio: anioValue,
+    mes: mesValue,
+  });
+
+  const {
+    data: lossesTrendChartData,
+    loading: lossesTrendChartLoading,
+    error: lossesTrendChartError,
+  } = useDashboardLossesTrendChart({
     token,
     empresaId,
     anio: anioValue,
@@ -379,12 +284,14 @@ export default function DashboardSection({ token }: Props) {
           <div>
             <h3 className="ui-card-title text-base md:text-lg">DASHBOARD MEDIDAS</h3>
             <p className="ui-card-subtitle mt-1">{resumenSubtitle}</p>
+
             {isLogged && (
               <div className="mt-1 text-[11px] ui-muted">
                 {periodoInfoLabel.split(":")[0]}:
                 <span className="font-semibold"> {periodoComunLabel}</span>
               </div>
             )}
+
             {isLogged && comparisonHelpText ? (
               <div className="mt-1 text-[11px] ui-muted">{comparisonHelpText}</div>
             ) : null}
@@ -443,10 +350,7 @@ export default function DashboardSection({ token }: Props) {
 
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={[
-              "ui-btn ui-btn-xs",
-              isLogged ? "ui-btn-outline" : "ui-btn-danger",
-            ].join(" ")}
+            className={["ui-btn ui-btn-xs", isLogged ? "ui-btn-outline" : "ui-btn-danger"].join(" ")}
             title={isLogged ? "Sesión iniciada" : "No hay sesión activa"}
           >
             {isLogged ? "Con sesión" : "Sin sesión"}
@@ -507,46 +411,94 @@ export default function DashboardSection({ token }: Props) {
           </div>
         )}
 
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
-          <DashboardMiniCard
-            title={energiaCardTitle}
-            centered
-            rows={[{ label: "", value: energiaFacturadaTotal }]}
-            tooltipTitle={variationTooltipTitle}
-            tooltipRows={[
-              { label: "kWh", value: energiaFacturadaVariationKwh },
-              { label: "€", value: energiaFacturadaVariationEur },
-            ]}
-          />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div
+            className="rounded-xl border p-3"
+            style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <DashboardMiniCard
+                title={energiaCardTitle}
+                centered
+                rows={[{ label: "", value: energiaFacturadaTotal }]}
+                tooltipTitle={variationTooltipTitle}
+                tooltipRows={[
+                  { label: "kWh", value: energiaFacturadaVariationKwh },
+                  { label: "€", value: energiaFacturadaVariationEur },
+                ]}
+                minHeightClassName="min-h-[150px]"
+              />
 
-          <DashboardMiniCard
-            title={perdidasCardTitle}
-            centered
-            rows={[{ label: "", value: perdidasTotal }]}
-            tooltipTitle={variationTooltipTitle}
-            tooltipRows={[{ label: "kWh", value: perdidasVariation }]}
-          />
+              <DashboardMiniCard
+                title={perdidasCardTitle}
+                centered
+                rows={[{ label: "", value: perdidasTotal }]}
+                tooltipTitle={variationTooltipTitle}
+                tooltipRows={[{ label: "kWh", value: perdidasVariation }]}
+                minHeightClassName="min-h-[150px]"
+              />
 
-          <DashboardMiniCard
-            title="OBJECIONES"
-            rows={[
-              { label: "Total activas", value: "—" },
-              { label: "Total respondidas en plazo", value: "—" },
-              { label: "Total respondidas fuera plazo", value: "—" },
-            ]}
-            helpText="Al pasar el ratón por encima se abre ventana flotante con la info por empresa."
-          />
+              <DashboardMiniCard
+                title="EVOLUCIÓN DE ENERGÍA FACTURADA"
+                minHeightClassName="min-h-[180px]"
+              >
+                <DashboardEnergyTrendChart
+                  loading={energyTrendChartLoading}
+                  error={energyTrendChartError}
+                  points={energyTrendChartData?.series ?? []}
+                />
+              </DashboardMiniCard>
 
-          <DashboardMiniCard
-            title="CALENDARIO REE CON HITOS"
-            rows={[
-              { label: "Fecha publicación m-2", value: "—" },
-              { label: "Fecha publicación m-7", value: "—" },
-              { label: "Fecha límite respuesta de objeciones", value: "—" },
-              { label: "Fecha publicación m-11", value: "—" },
-              { label: "Fecha publicación art.15", value: "—" },
-            ]}
-          />
+              <DashboardMiniCard
+                title="EVOLUCIÓN DE PÉRDIDAS"
+                minHeightClassName="min-h-[180px]"
+              >
+                <DashboardLossesTrendChart
+                  loading={lossesTrendChartLoading}
+                  error={lossesTrendChartError}
+                  points={lossesTrendChartData?.series ?? []}
+                />
+              </DashboardMiniCard>
+            </div>
+          </div>
+
+          <div
+            className="rounded-xl border p-3"
+            style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <DashboardMiniCard
+                title="OBJECIONES"
+                rows={[
+                  { label: "Total activas", value: "—" },
+                  { label: "Total respondidas en plazo", value: "—" },
+                  { label: "Total respondidas fuera plazo", value: "—" },
+                ]}
+                helpText="Al pasar el ratón por encima se abre ventana flotante con la info por empresa."
+                minHeightClassName="min-h-[150px]"
+              />
+
+              <DashboardMiniCard
+                title="CALENDARIO REE CON HITOS"
+                rows={[
+                  { label: "Fecha publicación m-2", value: "—" },
+                  { label: "Fecha publicación m-7", value: "—" },
+                  { label: "Fecha límite respuesta de objeciones", value: "—" },
+                  { label: "Fecha publicación m-11", value: "—" },
+                  { label: "Fecha publicación art.15", value: "—" },
+                ]}
+                minHeightClassName="min-h-[150px]"
+              />
+
+              <DashboardMiniCard title="ALERTAS" minHeightClassName="min-h-[180px]">
+                <DashboardPlaceholderBox heightClassName="min-h-[120px]" />
+              </DashboardMiniCard>
+
+              <DashboardMiniCard title="PÉRDIDAS" minHeightClassName="min-h-[180px]">
+                <DashboardPlaceholderBox heightClassName="min-h-[120px]" />
+              </DashboardMiniCard>
+            </div>
+          </div>
         </div>
 
         <div className="ui-panel overflow-hidden p-0">
@@ -561,21 +513,12 @@ export default function DashboardSection({ token }: Props) {
             ENERGÍA FACTURADA VS. REE VS. PF
           </div>
 
-          <div className="min-h-[260px] px-4 py-4">
-            <div className="text-[11px] font-semibold">(Gráfica de comparativas en totales)</div>
-            <div className="mt-1 text-[11px] ui-muted">
-              Abre en otra ventana con las gráficas por empresa.
-            </div>
-
-            <div
-              className="mt-4 flex min-h-[180px] items-center justify-center rounded-lg border border-dashed text-[11px] ui-muted"
-              style={{
-                borderColor: "var(--card-border)",
-                background: "var(--main-bg)",
-              }}
-            >
-              Placeholder de gráfica
-            </div>
+          <div className="min-h-[320px] px-4 py-4">
+            <DashboardEnergyComparisonChart
+              loading={chartLoading}
+              error={chartError}
+              points={chartData?.series ?? []}
+            />
           </div>
         </div>
 

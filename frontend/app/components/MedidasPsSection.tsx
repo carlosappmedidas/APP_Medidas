@@ -493,18 +493,15 @@ export default function MedidasPsSection({
     return isSistema ? [systemTenantColumn, ...ALL_COLUMNS_PS] : ALL_COLUMNS_PS;
   }, [isSistema, systemTenantColumn]);
 
-  const empresaOptions = useMemo(
-    () => {
-      const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;
-      return source.map((e) => ({
-        value: String(e.id),
-        label:
-          `${e.nombre ?? e.codigo ?? `Empresa ${e.id}`}` +
-          (isSistema && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""),
-      }));
-    },
-    [isSistema, opcionesEmpresa, opcionesEmpresaFiltradas]
-  );
+  const empresaOptions = useMemo(() => {
+    const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;
+    return source.map((e) => ({
+      value: String(e.id),
+      label:
+        `${e.nombre ?? e.codigo ?? `Empresa ${e.id}`}` +
+        (isSistema && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""),
+    }));
+  }, [isSistema, opcionesEmpresa, opcionesEmpresaFiltradas]);
 
   const anioOptions = useMemo(
     () => opcionesAnio.map((anio) => ({ value: String(anio), label: String(anio) })),
@@ -575,13 +572,15 @@ export default function MedidasPsSection({
           }}
           deletePreviewTitleEnabled="Ver impacto antes de borrar"
           deletePreviewTitleDisabled="Selecciona al menos empresa, año y mes para ver la vista previa"
-          deleteTitleEnabled="Borrar por ingestion usando los filtros activos"
+          deleteTitleEnabled="Borrar por ingestion de la familia PS usando empresa + año + mes"
           deleteTitleDisabled="Selecciona al menos empresa, año y mes para borrar"
         />
       </header>
 
       {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
-      {deletePreviewError && <div className="ui-alert ui-alert--danger mb-4">{deletePreviewError}</div>}
+      {deletePreviewError && (
+        <div className="ui-alert ui-alert--danger mb-4">{deletePreviewError}</div>
+      )}
 
       <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
         <div className="ui-muted">
@@ -603,8 +602,9 @@ export default function MedidasPsSection({
 
       {isSistema && (
         <div className="mb-3 ui-alert ui-alert--warning">
-          En Sistema, el borrado de PS se hace siempre por <strong>ingestion</strong> usando los filtros activos
-          y forzando <strong>tipo=PS</strong>. Selecciona al menos <strong>empresa + año + mes</strong>.
+          En Sistema, el borrado de PS se hace siempre por <strong>ingestion</strong> usando los
+          filtros activos y forzando la familia <strong>PS</strong>. Selecciona al menos{" "}
+          <strong>empresa + año + mes</strong>. Esto no borra General.
         </div>
       )}
 
@@ -693,7 +693,10 @@ export default function MedidasPsSection({
 
             {!loading &&
               data.map((m: any) => (
-                <tr key={`${m.empresa_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`} className="ui-tr">
+                <tr
+                  key={`${m.empresa_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`}
+                  className="ui-tr"
+                >
                   {columnasOrdenadas.map((col) => (
                     <td
                       key={col.id}
@@ -727,7 +730,7 @@ export default function MedidasPsSection({
         title="Borrar por ingestion · PS · Sistema"
         description={
           canDeleteByFilters
-            ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion con tipo=PS usando empresa + año + mes. Esto elimina también detalles, contribuciones y medidas derivadas asociadas.`
+            ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion de la familia PS usando empresa + año + mes. Esto elimina detalles, contribuciones y medidas derivadas de PS, sin tocar General.`
             : "Selecciona al menos empresa, año y mes para habilitar el borrado."
         }
         error={deleteError}
