@@ -81,7 +81,6 @@ def _find_existing_ingestion_file(
     tipo: str,
     anio: int,
     mes: int,
-    filename: str | None = None,
 ) -> IngestionFile | None:
     query = (
         db.query(IngestionFile)
@@ -92,12 +91,10 @@ def _find_existing_ingestion_file(
             IngestionFile.anio == anio,
             IngestionFile.mes == mes,
         )
+        .order_by(IngestionFile.id.desc())
     )
 
-    if (tipo or "").upper() == "BALD" and filename:
-        query = query.filter(IngestionFile.filename == filename)
-
-    return query.order_by(IngestionFile.id.desc()).first()
+    return query.first()
 
 
 def _safe_unlink(storage_key: str | None) -> None:
@@ -162,7 +159,6 @@ async def upload_file(
         tipo=tipo_norm,
         anio=anio,
         mes=mes,
-        filename=file.filename if tipo_norm == "BALD" else None,
     )
 
     dest_dir = (
@@ -260,7 +256,6 @@ def register_file(
         tipo=tipo_norm,
         anio=data.anio,
         mes=data.mes,
-        filename=data.filename if tipo_norm == "BALD" else None,
     )
 
     if existing:

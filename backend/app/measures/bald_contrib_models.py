@@ -20,9 +20,8 @@ from app.core.models_base import Base
 
 class BaldPeriodContribution(Base):
     """
-    Guarda contribuciones BALD por periodo (año/mes), fichero de ingestion
-    y ventana de publicación, para evitar duplicidades al reprocesar
-    y permitir recálculo determinista.
+    Guarda contribuciones BALD por periodo (año/mes) y ventana de publicación,
+    manteniendo una única contribución vigente por tenant/empresa/periodo/ventana.
 
     Ventanas soportadas:
     - M2
@@ -72,11 +71,10 @@ class BaldPeriodContribution(Base):
         UniqueConstraint(
             "tenant_id",
             "empresa_id",
-            "ingestion_file_id",
             "anio",
             "mes",
             "ventana_publicacion",
-            name="uq_bald_contrib_file_period_window",
+            name="uq_bald_contrib_period_window",
         ),
         CheckConstraint(
             "ventana_publicacion IN ('M2', 'M7', 'M11', 'ART15')",
