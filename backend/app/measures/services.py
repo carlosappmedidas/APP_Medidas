@@ -1,6 +1,3 @@
-# app/measures/services.py
-# pyright: reportCallIssue=false, reportAttributeAccessIssue=false, reportMissingImports=false
-
 from __future__ import annotations
 
 from typing import Iterable, Dict, Any, Tuple, cast
@@ -561,6 +558,39 @@ def _get_existing_bald_file_period_windows(
     return result
 
 
+def _get_existing_bald_period_window(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    anio: int,
+    mes: int,
+    ventana_publicacion: str,
+) -> set[tuple[int, int, str]]:
+    rows = (
+        db.query(
+            BaldPeriodContribution.anio,
+            BaldPeriodContribution.mes,
+            BaldPeriodContribution.ventana_publicacion,
+        )
+        .filter(
+            BaldPeriodContribution.tenant_id == tenant_id,
+            BaldPeriodContribution.empresa_id == empresa_id,
+            BaldPeriodContribution.anio == anio,
+            BaldPeriodContribution.mes == mes,
+            BaldPeriodContribution.ventana_publicacion == ventana_publicacion,
+        )
+        .distinct()
+        .all()
+    )
+
+    result: set[tuple[int, int, str]] = set()
+    for anio_row, mes_row, ventana_row in rows:
+        if anio_row is not None and mes_row is not None and ventana_row:
+            result.add((int(anio_row), int(mes_row), str(ventana_row)))
+    return result
+
+
 def _rebuild_medida_general_bald_window(
     *,
     db: Session,
@@ -632,11 +662,15 @@ def _save_bald_period_contribution_and_rebuild(
     energia_frontera_dd_kwh: float,
     energia_generada_kwh: float,
 ) -> MedidaGeneral:
-    previos = _get_existing_bald_file_period_windows(
+    # Igual que en M1: sustituimos la contribución vigente del periodo/ventana,
+    # no acumulamos otra distinta solo por venir de otro ingestion_file_id.
+    previos = _get_existing_bald_period_window(
         db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
-        ingestion_file_id=_file_id(fichero),
+        anio=anio,
+        mes=mes,
+        ventana_publicacion=ventana_publicacion,
     )
 
     (
@@ -644,7 +678,8 @@ def _save_bald_period_contribution_and_rebuild(
         .filter(
             BaldPeriodContribution.tenant_id == tenant_id,
             BaldPeriodContribution.empresa_id == empresa_id,
-            BaldPeriodContribution.ingestion_file_id == _file_id(fichero),
+            BaldPeriodContribution.anio == anio,
+            BaldPeriodContribution.mes == mes,
             BaldPeriodContribution.ventana_publicacion == ventana_publicacion,
         )
         .delete(synchronize_session=False)
@@ -2223,7 +2258,6 @@ def procesar_ps(
         )
 
     if detail_mappings:
-        # Pylance no tipa bien bulk_insert_mappings con modelos declarativos SQLAlchemy
         db.bulk_insert_mappings(cast(Any, PSPeriodDetail), detail_mappings)
 
     for (anio, mes), agregado in sorted(aggregate_by_period.items()):
@@ -2336,6 +2370,6 @@ def procesar_ps(
         setattr(mp_principal, "_ingestion_warnings", warnings)
     except Exception:
         pass
-
+    
     _safe_refresh(db, mp_principal)
     return mp_principal
