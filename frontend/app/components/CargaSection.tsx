@@ -123,6 +123,23 @@ function formatWarningItem(item: IngestionWarningItem): string {
   return out || JSON.stringify(item);
 }
 
+async function extractErrorDetail(res: Response): Promise<string> {
+  try {
+    const errJson = await res.json();
+    if (typeof errJson?.detail === "string") {
+      return errJson.detail;
+    }
+    return JSON.stringify(errJson);
+  } catch {
+    try {
+      const text = await res.text();
+      return text || "";
+    } catch {
+      return "";
+    }
+  }
+}
+
 function InlineAccordion({
   title,
   subtitle,
@@ -214,7 +231,7 @@ export default function CargaSection({ token }: Props) {
       }
     };
 
-    loadEmpresas();
+    void loadEmpresas();
   }, [token, empresaId]);
 
   const appendLog = (line: string) => {
@@ -257,7 +274,8 @@ export default function CargaSection({ token }: Props) {
     }
 
     const totalErrores = erroresSubida + erroresProcesado;
-    const estado = loading ? "processing" : finalizado ? "done" : logLines.length > 0 ? "idle" : "empty";
+    const estado =
+      loading ? "processing" : finalizado ? "done" : logLines.length > 0 ? "idle" : "empty";
 
     return {
       totalSeleccionados,
@@ -288,7 +306,11 @@ export default function CargaSection({ token }: Props) {
       }
 
       if (logFilter === "ok") {
-        return line.includes("✅ Subido") || line.includes("✅ Procesado") || line.includes("✔ Carga y procesado");
+        return (
+          line.includes("✅ Subido") ||
+          line.includes("✅ Procesado") ||
+          line.includes("✔ Carga y procesado")
+        );
       }
 
       if (logFilter === "omitted") {
@@ -358,17 +380,20 @@ export default function CargaSection({ token }: Props) {
         });
 
         if (!res.ok) {
-          appendLog(`❌ Error subiendo "${file.name}": ${res.status} ${res.statusText}`);
+          const detail = await extractErrorDetail(res);
+          appendLog(
+            `❌ Error subiendo "${file.name}": ${res.status} ${res.statusText}${detail ? ` · ${detail}` : ""}`
+          );
           continue;
         }
 
         const json = (await res.json()) as IngestionFile;
         uploaded.push(json);
+
         appendLog(
-          `✅ Subido "${file.name}" (id ingestion=${json.id}, periodo=${json.anio}${String(json.mes).padStart(
-            2,
-            "0"
-          )}, tipo=${json.tipo}).`
+          `✅ Subido "${file.name}" (id ingestion=${json.id}, periodo=${json.anio}${String(
+            json.mes
+          ).padStart(2, "0")}, tipo=${json.tipo}).`
         );
       }
 
@@ -381,7 +406,10 @@ export default function CargaSection({ token }: Props) {
         });
 
         if (!res.ok) {
-          appendLog(`❌ Error procesando id=${ing.id}: ${res.status} ${res.statusText}`);
+          const detail = await extractErrorDetail(res);
+          appendLog(
+            `❌ Error procesando id=${ing.id}: ${res.status} ${res.statusText}${detail ? ` · ${detail}` : ""}`
+          );
           continue;
         }
 
@@ -390,10 +418,17 @@ export default function CargaSection({ token }: Props) {
         const filasOk = json.rows_ok ?? 0;
         const filasError = json.rows_error ?? 0;
 
-        appendLog(`✅ Procesado id=${json.id} (status=${json.status}, filas OK=${filasOk}, filas error=${filasError}).`);
+        appendLog(
+          `✅ Procesado id=${json.id} (status=${json.status}, filas OK=${filasOk}, filas error=${filasError}).`
+        );
 
-        const warnings = Array.isArray(json.warnings) ? json.warnings : [];
-        const notices = Array.isArray(json.notices) ? json.notices : [];
+        const warnings = Array.isArray((json as IngestionFile & { warnings?: unknown }).warnings)
+          ? ((json as IngestionFile & { warnings?: IngestionWarningItem[] }).warnings ?? [])
+          : [];
+
+        const notices = Array.isArray((json as IngestionFile & { notices?: unknown }).notices)
+          ? ((json as IngestionFile & { notices?: IngestionWarningItem[] }).notices ?? [])
+          : [];
 
         if (warnings.length > 0) {
           appendLog(`⚠ Avisos (${warnings.length}) detectados en el procesado:`);
@@ -405,8 +440,11 @@ export default function CargaSection({ token }: Props) {
           for (const n of notices) appendLog(`↳ ℹ️ ${formatWarningItem(n)}`);
         }
 
-        if (json.warnings_message) {
-          appendLog(`⚠ Avisos: ${json.warnings_message}`);
+        const warningsMessage =
+          (json as IngestionFile & { warnings_message?: string }).warnings_message ?? "";
+
+        if (warningsMessage) {
+          appendLog(`⚠ Avisos: ${warningsMessage}`);
         }
 
         if ((json.status || "").toLowerCase() === "error") {
@@ -518,20 +556,33 @@ export default function CargaSection({ token }: Props) {
   };
 
   const countAvisos = (h: IngestionFile) => {
-    const w = Array.isArray(h.warnings) ? h.warnings.length : 0;
-    const n = Array.isArray(h.notices) ? h.notices.length : 0;
-    const wm = h.warnings_message ? 1 : 0;
-    return w + n + wm;
+    const warnings = Array.isArray((h as IngestionFile & { warnings?: unknown }).warnings)
+      ? ((h as IngestionFile & { warnings?: unknown[] }).warnings ?? []).length
+      : 0;
+
+    const notices = Array.isArray((h as IngestionFile & { notices?: unknown }).notices)
+      ? ((h as IngestionFile & { notices?: unknown[] }).notices ?? []).length
+      : 0;
+
+    const warningsMessage = (h as IngestionFile & { warnings_message?: string }).warnings_message
+      ? 1
+      : 0;
+
+    return warnings + notices + warningsMessage;
   };
 
   const selectedWarnings = useMemo(() => {
     if (!selectedHistory) return [];
-    return Array.isArray(selectedHistory.warnings) ? selectedHistory.warnings : [];
+    return Array.isArray((selectedHistory as IngestionFile & { warnings?: unknown }).warnings)
+      ? ((selectedHistory as IngestionFile & { warnings?: IngestionWarningItem[] }).warnings ?? [])
+      : [];
   }, [selectedHistory]);
 
   const selectedNotices = useMemo(() => {
     if (!selectedHistory) return [];
-    return Array.isArray(selectedHistory.notices) ? selectedHistory.notices : [];
+    return Array.isArray((selectedHistory as IngestionFile & { notices?: unknown }).notices)
+      ? ((selectedHistory as IngestionFile & { notices?: IngestionWarningItem[] }).notices ?? [])
+      : [];
   }, [selectedHistory]);
 
   return (
@@ -543,7 +594,11 @@ export default function CargaSection({ token }: Props) {
         setOpen={setCargaOpen}
         contentId="carga-content"
       >
-        {!canUse && <div className="ui-alert ui-alert--danger mb-4">Necesitas iniciar sesión para cargar ficheros.</div>}
+        {!canUse && (
+          <div className="ui-alert ui-alert--danger mb-4">
+            Necesitas iniciar sesión para cargar ficheros.
+          </div>
+        )}
 
         <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
           <div>
@@ -552,7 +607,9 @@ export default function CargaSection({ token }: Props) {
               className="ui-select"
               value={empresaId ?? ""}
               disabled={!canUse || loading}
-              onChange={(e) => setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null)}
+              onChange={(e) =>
+                setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null)
+              }
             >
               {empresas.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -591,7 +648,13 @@ export default function CargaSection({ token }: Props) {
 
         <div className="mb-4">
           <label className="ui-label">Ficheros (puedes seleccionar varios)</label>
-          <input type="file" multiple onChange={handleFileChange} className="ui-file" disabled={!canUse || loading} />
+          <input
+            type="file"
+            multiple
+            onChange={handleFileChange}
+            className="ui-file"
+            disabled={!canUse || loading}
+          />
           {files && files.length > 0 && (
             <p className="mt-1 text-[10px] ui-muted">
               Seleccionados: {Array.from(files).map((f) => f.name).join(", ")}
@@ -601,7 +664,12 @@ export default function CargaSection({ token }: Props) {
 
         <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_320px] md:items-start">
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={handleProcess} disabled={!canUse || loading} className="ui-btn ui-btn-primary">
+            <button
+              type="button"
+              onClick={handleProcess}
+              disabled={!canUse || loading}
+              className="ui-btn ui-btn-primary"
+            >
               {loading ? "Procesando..." : "Subir y procesar ficheros"}
             </button>
 
@@ -633,10 +701,18 @@ export default function CargaSection({ token }: Props) {
               <div className="min-w-0">
                 <div className="text-[12px] font-semibold">Resumen de carga</div>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
-                  <span className="ui-badge ui-badge--neutral">Total {sessionSummary.totalSeleccionados}</span>
-                  <span className="ui-badge ui-badge--ok">OK {sessionSummary.procesadosOk}</span>
-                  <span className="ui-badge ui-badge--err">Error {sessionSummary.totalErrores}</span>
-                  <span className="ui-badge ui-badge--warn">Avisos {sessionSummary.avisos}</span>
+                  <span className="ui-badge ui-badge--neutral">
+                    Total {sessionSummary.totalSeleccionados}
+                  </span>
+                  <span className="ui-badge ui-badge--ok">
+                    OK {sessionSummary.procesadosOk}
+                  </span>
+                  <span className="ui-badge ui-badge--err">
+                    Error {sessionSummary.totalErrores}
+                  </span>
+                  <span className="ui-badge ui-badge--warn">
+                    Avisos {sessionSummary.avisos}
+                  </span>
                 </div>
               </div>
 
@@ -663,11 +739,18 @@ export default function CargaSection({ token }: Props) {
             </button>
 
             {summaryOpen && (
-              <div id="upload-session-summary" className="mt-3 border-t pt-3" style={{ borderColor: "var(--card-border)" }}>
+              <div
+                id="upload-session-summary"
+                className="mt-3 border-t pt-3"
+                style={{ borderColor: "var(--card-border)" }}
+              >
                 <div className="grid grid-cols-2 gap-2 text-[11px] md:grid-cols-2">
                   <div
                     className="rounded-lg border px-2 py-2"
-                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    style={{
+                      borderColor: "var(--field-border)",
+                      background: "var(--field-bg)",
+                    }}
                   >
                     <div className="ui-muted text-[10px]">Total seleccionados</div>
                     <div className="mt-1 font-mono">{sessionSummary.totalSeleccionados}</div>
@@ -677,7 +760,10 @@ export default function CargaSection({ token }: Props) {
                     type="button"
                     onClick={() => activateLogFilter("ok")}
                     className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
-                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    style={{
+                      borderColor: "var(--field-border)",
+                      background: "var(--field-bg)",
+                    }}
                     title="Ver logs OK"
                   >
                     <div className="ui-muted text-[10px]">Subidos / procesados OK</div>
@@ -688,7 +774,10 @@ export default function CargaSection({ token }: Props) {
                     type="button"
                     onClick={() => activateLogFilter("errors")}
                     className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
-                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    style={{
+                      borderColor: "var(--field-border)",
+                      background: "var(--field-bg)",
+                    }}
                     title="Ver logs con error"
                   >
                     <div className="ui-muted text-[10px]">Errores</div>
@@ -699,7 +788,10 @@ export default function CargaSection({ token }: Props) {
                     type="button"
                     onClick={() => activateLogFilter("warnings")}
                     className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
-                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    style={{
+                      borderColor: "var(--field-border)",
+                      background: "var(--field-bg)",
+                    }}
                     title="Ver logs con avisos"
                   >
                     <div className="ui-muted text-[10px]">Avisos</div>
@@ -710,7 +802,10 @@ export default function CargaSection({ token }: Props) {
                     type="button"
                     onClick={() => activateLogFilter("omitted")}
                     className="rounded-lg border px-2 py-2 text-left hover:opacity-90"
-                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    style={{
+                      borderColor: "var(--field-border)",
+                      background: "var(--field-bg)",
+                    }}
                     title="Ver ficheros omitidos"
                   >
                     <div className="ui-muted text-[10px]">Omitidos</div>
@@ -719,7 +814,10 @@ export default function CargaSection({ token }: Props) {
 
                   <div
                     className="rounded-lg border px-2 py-2"
-                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    style={{
+                      borderColor: "var(--field-border)",
+                      background: "var(--field-bg)",
+                    }}
                   >
                     <div className="ui-muted text-[10px]">Notas</div>
                     <div className="mt-1 font-mono">{sessionSummary.notas}</div>
@@ -750,7 +848,9 @@ export default function CargaSection({ token }: Props) {
             <div className="flex items-center gap-2">
               {logFilter !== "all" && (
                 <>
-                  <span className="ui-badge ui-badge--neutral">Filtro: {logFilterLabel}</span>
+                  <span className="ui-badge ui-badge--neutral">
+                    Filtro: {logFilterLabel}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setLogFilter("all")}
@@ -775,7 +875,9 @@ export default function CargaSection({ token }: Props) {
             }}
           >
             {logLines.length === 0 ? (
-              <div className="ui-muted">Aquí aparecerán los logs de subida y procesado.</div>
+              <div className="ui-muted">
+                Aquí aparecerán los logs de subida y procesado.
+              </div>
             ) : filteredLogLines.length === 0 ? (
               <div className="ui-muted">No hay líneas para el filtro seleccionado.</div>
             ) : (
@@ -788,8 +890,8 @@ export default function CargaSection({ token }: Props) {
           </div>
 
           <div className="mt-2 text-[10px] ui-muted">
-            Con la normativa (±3 días + refacturas), aquí verás avisos tipo “mes no existente” o “refactura detectada”,
-            pero la carga NO se bloqueará.
+            Con la normativa (±3 días + refacturas), aquí verás avisos tipo “mes no existente” o
+            “refactura detectada”, pero la carga NO se bloqueará.
           </div>
         </div>
       </InlineAccordion>
@@ -803,7 +905,11 @@ export default function CargaSection({ token }: Props) {
       >
         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={handleClearHistoryFilters} className="ui-btn ui-btn-outline">
+            <button
+              type="button"
+              onClick={handleClearHistoryFilters}
+              className="ui-btn ui-btn-outline"
+            >
               Limpiar filtros
             </button>
 
@@ -840,7 +946,11 @@ export default function CargaSection({ token }: Props) {
                 className="ui-select"
                 value={histEmpresaId}
                 disabled={!canUse || historyLoading}
-                onChange={(e) => setHistEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : "")}
+                onChange={(e) =>
+                  setHistEmpresaId(
+                    e.target.value ? Number.parseInt(e.target.value, 10) : ""
+                  )
+                }
               >
                 <option value="">(todas)</option>
                 {empresas.map((e) => (
@@ -891,7 +1001,9 @@ export default function CargaSection({ token }: Props) {
                 className="ui-select"
                 value={histAnio}
                 disabled={!canUse || historyLoading}
-                onChange={(e) => setHistAnio(e.target.value ? Number.parseInt(e.target.value, 10) : "")}
+                onChange={(e) =>
+                  setHistAnio(e.target.value ? Number.parseInt(e.target.value, 10) : "")
+                }
               >
                 <option value="">(todos)</option>
                 {histAniosDisponibles.map((y) => (
@@ -908,7 +1020,9 @@ export default function CargaSection({ token }: Props) {
                 className="ui-select"
                 value={histMes}
                 disabled={!canUse || historyLoading}
-                onChange={(e) => setHistMes(e.target.value ? Number.parseInt(e.target.value, 10) : "")}
+                onChange={(e) =>
+                  setHistMes(e.target.value ? Number.parseInt(e.target.value, 10) : "")
+                }
               >
                 <option value="">(todos)</option>
                 {histMesesDisponibles.map((m) => (
@@ -970,7 +1084,10 @@ export default function CargaSection({ token }: Props) {
                       <td className="ui-td ui-td-right font-mono">{h.rows_error ?? 0}</td>
                       <td className="ui-td">{fmtDateMadrid(h.created_at)}</td>
                       <td className="ui-td">{fmtDateMadrid(h.processed_at)}</td>
-                      <td className="ui-td ui-td-right font-mono" title={avisos ? "Hay avisos/notas" : "Sin avisos"}>
+                      <td
+                        className="ui-td ui-td-right font-mono"
+                        title={avisos ? "Hay avisos/notas" : "Sin avisos"}
+                      >
                         {avisos}
                       </td>
                       <td className="ui-td">
@@ -995,17 +1112,27 @@ export default function CargaSection({ token }: Props) {
           <div className="mt-4 ui-card ui-card--border">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-semibold">Detalle de carga #{selectedHistory.id}</div>
+                <div className="text-sm font-semibold">
+                  Detalle de carga #{selectedHistory.id}
+                </div>
                 <div className="mt-1 text-[11px] ui-muted">
                   {empresaLabelById(selectedHistory.empresa_id)} ·{" "}
                   <span className="font-mono">{selectedHistory.tipo}</span> ·{" "}
-                  <span className="font-mono">{fmtPeriodo(selectedHistory.anio, selectedHistory.mes)}</span>
+                  <span className="font-mono">
+                    {fmtPeriodo(selectedHistory.anio, selectedHistory.mes)}
+                  </span>
                 </div>
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <span className={statusBadgeClass(selectedHistory.status)}>{selectedHistory.status}</span>
-                <button type="button" className="ui-btn ui-btn-outline" onClick={() => setSelectedHistory(null)}>
+                <span className={statusBadgeClass(selectedHistory.status)}>
+                  {selectedHistory.status}
+                </span>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-outline"
+                  onClick={() => setSelectedHistory(null)}
+                >
                   Cerrar
                 </button>
               </div>
@@ -1040,7 +1167,9 @@ export default function CargaSection({ token }: Props) {
                   <div className="ui-muted text-[10px]">Error (si aplica)</div>
                   <div className="mt-0.5">
                     {selectedHistory.error_message ? (
-                      <span className="ui-text-danger">{selectedHistory.error_message}</span>
+                      <span className="ui-text-danger">
+                        {selectedHistory.error_message}
+                      </span>
                     ) : (
                       <span className="ui-muted">-</span>
                     )}
@@ -1051,17 +1180,28 @@ export default function CargaSection({ token }: Props) {
               <div className="mt-4">
                 <div className="text-xs font-semibold">Avisos / notas</div>
 
-                {selectedHistory.warnings_message ? (
-                  <div className="mt-2 ui-alert ui-alert--warning text-[11px]">{selectedHistory.warnings_message}</div>
+                {(selectedHistory as IngestionFile & { warnings_message?: string })
+                  .warnings_message ? (
+                  <div className="mt-2 ui-alert ui-alert--warning text-[11px]">
+                    {
+                      (selectedHistory as IngestionFile & { warnings_message?: string })
+                        .warnings_message
+                    }
+                  </div>
                 ) : null}
 
-                {selectedWarnings.length === 0 && selectedNotices.length === 0 && !selectedHistory.warnings_message ? (
+                {selectedWarnings.length === 0 &&
+                selectedNotices.length === 0 &&
+                !(selectedHistory as IngestionFile & { warnings_message?: string })
+                  .warnings_message ? (
                   <div className="mt-2 ui-muted text-[11px]">Sin avisos.</div>
                 ) : (
                   <div className="mt-2 space-y-3">
                     {selectedWarnings.length > 0 && (
                       <div>
-                        <div className="ui-muted text-[10px] mb-1">Warnings ({selectedWarnings.length})</div>
+                        <div className="ui-muted text-[10px] mb-1">
+                          Warnings ({selectedWarnings.length})
+                        </div>
                         <ul className="list-disc pl-5 text-[11px] space-y-1">
                           {selectedWarnings.map((w, idx) => (
                             <li key={`w-${idx}`}>{formatWarningItem(w)}</li>
@@ -1072,7 +1212,9 @@ export default function CargaSection({ token }: Props) {
 
                     {selectedNotices.length > 0 && (
                       <div>
-                        <div className="ui-muted text-[10px] mb-1">Notas ({selectedNotices.length})</div>
+                        <div className="ui-muted text-[10px] mb-1">
+                          Notas ({selectedNotices.length})
+                        </div>
                         <ul className="list-disc pl-5 text-[11px] space-y-1">
                           {selectedNotices.map((n, idx) => (
                             <li key={`n-${idx}`}>{formatWarningItem(n)}</li>

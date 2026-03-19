@@ -636,8 +636,6 @@ def _save_bald_period_contribution_and_rebuild(
     energia_frontera_dd_kwh: float,
     energia_generada_kwh: float,
 ) -> MedidaGeneral:
-    # Igual que en M1: sustituimos la contribución vigente del periodo/ventana,
-    # no acumulamos otra distinta solo por venir de otro ingestion_file_id.
     previos = _get_existing_bald_period_window(
         db,
         tenant_id=tenant_id,
@@ -2252,15 +2250,16 @@ def procesar_ps(
     mp_principal: MedidaPS | None = None
 
     for (anio, mes) in sorted(periodos_afectados):
-        agregado = aggregate_by_period.get((anio, mes))
-        if agregado is None:
-            agregado = _sum_contribuciones_ps(
-                db,
-                tenant_id=tenant_id,
-                empresa_id=empresa_id,
-                anio=anio,
-                mes=mes,
-            )
+        # IMPORTANTE:
+        # reconstruimos SIEMPRE desde las contribuciones persistidas de BD,
+        # no desde el agregado parcial del fichero actual.
+        agregado = _sum_contribuciones_ps(
+            db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
 
         mp = (
             db.query(MedidaPS)
@@ -2314,8 +2313,7 @@ def procesar_ps(
             key=lambda p: float(
                 cast(
                     dict[str, float | int],
-                    aggregate_by_period.get(p)
-                    or _sum_contribuciones_ps(
+                    _sum_contribuciones_ps(
                         db,
                         tenant_id=tenant_id,
                         empresa_id=empresa_id,

@@ -81,20 +81,43 @@ def _find_existing_ingestion_file(
     tipo: str,
     anio: int,
     mes: int,
+    filename: str | None = None,
 ) -> IngestionFile | None:
-    query = (
+    tipo_norm = (tipo or "").upper()
+
+    # BALD:
+    # - mismo periodo + distinto filename => ficheros distintos
+    # - mismo filename exacto => reutilizamos ese ingestion_file
+    if tipo_norm == "BALD":
+        if not filename:
+            return None
+
+        return (
+            db.query(IngestionFile)
+            .filter(
+                IngestionFile.tenant_id == tenant_id,
+                IngestionFile.empresa_id == empresa_id,
+                IngestionFile.tipo == tipo_norm,
+                IngestionFile.anio == anio,
+                IngestionFile.mes == mes,
+                IngestionFile.filename == filename,
+            )
+            .order_by(IngestionFile.id.desc())
+            .first()
+        )
+
+    return (
         db.query(IngestionFile)
         .filter(
             IngestionFile.tenant_id == tenant_id,
             IngestionFile.empresa_id == empresa_id,
-            IngestionFile.tipo == tipo,
+            IngestionFile.tipo == tipo_norm,
             IngestionFile.anio == anio,
             IngestionFile.mes == mes,
         )
         .order_by(IngestionFile.id.desc())
+        .first()
     )
-
-    return query.first()
 
 
 def _safe_unlink(storage_key: str | None) -> None:
@@ -159,6 +182,7 @@ async def upload_file(
         tipo=tipo_norm,
         anio=anio,
         mes=mes,
+        filename=file.filename if tipo_norm == "BALD" else None,
     )
 
     dest_dir = (
@@ -256,6 +280,7 @@ def register_file(
         tipo=tipo_norm,
         anio=data.anio,
         mes=data.mes,
+        filename=data.filename if tipo_norm == "BALD" else None,
     )
 
     if existing:
