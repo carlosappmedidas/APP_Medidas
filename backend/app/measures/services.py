@@ -1,3 +1,6 @@
+# app/measures/services.py
+# pyright: reportCallIssue=false, reportAttributeAccessIssue=false, reportMissingImports=false
+
 from __future__ import annotations
 
 from typing import Iterable, Dict, Any, Tuple, cast
@@ -527,35 +530,6 @@ def _sum_contribuciones_bald(
         "energia_frontera_dd_kwh": float(row[3] or 0.0),
         "energia_generada_kwh": float(row[4] or 0.0),
     }
-
-
-def _get_existing_bald_file_period_windows(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    ingestion_file_id: int,
-) -> set[tuple[int, int, str]]:
-    rows = (
-        db.query(
-            BaldPeriodContribution.anio,
-            BaldPeriodContribution.mes,
-            BaldPeriodContribution.ventana_publicacion,
-        )
-        .filter(
-            BaldPeriodContribution.tenant_id == tenant_id,
-            BaldPeriodContribution.empresa_id == empresa_id,
-            BaldPeriodContribution.ingestion_file_id == ingestion_file_id,
-        )
-        .distinct()
-        .all()
-    )
-
-    result: set[tuple[int, int, str]] = set()
-    for anio, mes, ventana in rows:
-        if anio is not None and mes is not None and ventana:
-            result.add((int(anio), int(mes), str(ventana)))
-    return result
 
 
 def _get_existing_bald_period_window(
@@ -2370,6 +2344,6 @@ def procesar_ps(
         setattr(mp_principal, "_ingestion_warnings", warnings)
     except Exception:
         pass
-    
+
     _safe_refresh(db, mp_principal)
     return mp_principal
