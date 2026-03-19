@@ -1,13 +1,10 @@
 # app/ingestion/routes.py
 # pyright: reportMissingImports=false
-
 from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
-import re
-import shutil
 
 from fastapi import (
     APIRouter,
@@ -31,105 +28,16 @@ from app.ingestion.delete_services import (
 from app.ingestion.models import IngestionFile
 from app.ingestion.schemas import IngestionFileCreate, IngestionFileRead
 from app.ingestion.services import process_ingestion_file
+from app.ingestion.utils import (
+    infer_period_from_filename,
+    find_existing_ingestion_file,
+    safe_unlink,
+)
 from app.tenants.models import User
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
 UPLOAD_BASE_PATH = Path("data/ingestion")
-
-
-def _infer_period_from_filename(tipo: str, filename: str) -> tuple[int, int]:
-    tipo_norm = (tipo or "").upper()
-    name = str(filename)
-
-    if tipo_norm in {"M1_AUTOCONSUMO", "ACUMCIL"}:
-        match = re.search(r"_(\d{4})(\d{2})_", name)
-        if match:
-            return int(match.group(1)), int(match.group(2))
-
-    if tipo_norm == "M1":
-        match = re.search(r"_(\d{4})(\d{2})", name)
-        if match:
-            return int(match.group(1)), int(match.group(2))
-
-    if tipo_norm == "BALD":
-        match = re.search(r"BALD_\d+_(\d{6})_", name.upper())
-        if match:
-            periodo_str = match.group(1)
-            return int(periodo_str[:4]), int(periodo_str[4:6])
-
-    if tipo_norm in {"ACUM_H2_GRD", "ACUM_H2_GEN", "ACUM_H2_RDD_P1", "ACUM_H2_RDD_P2"}:
-        match = re.search(r"_(\d{4})(\d{2})", name)
-        if match:
-            return int(match.group(1)), int(match.group(2))
-
-    match = re.search(r"_(\d{4})(\d{2})", name)
-    if match:
-        return int(match.group(1)), int(match.group(2))
-
-    raise ValueError(
-        f"No se ha podido inferir el periodo AAAAMM del nombre de fichero "
-        f"'{name}' para el tipo '{tipo_norm}'."
-    )
-
-
-def _find_existing_ingestion_file(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    tipo: str,
-    anio: int,
-    mes: int,
-    filename: str | None = None,
-) -> IngestionFile | None:
-    tipo_norm = (tipo or "").upper()
-
-    # BALD:
-    # - mismo periodo + distinto filename => ficheros distintos
-    # - mismo filename exacto => reutilizamos ese ingestion_file
-    if tipo_norm == "BALD":
-        if not filename:
-            return None
-
-        return (
-            db.query(IngestionFile)
-            .filter(
-                IngestionFile.tenant_id == tenant_id,
-                IngestionFile.empresa_id == empresa_id,
-                IngestionFile.tipo == tipo_norm,
-                IngestionFile.anio == anio,
-                IngestionFile.mes == mes,
-                IngestionFile.filename == filename,
-            )
-            .order_by(IngestionFile.id.desc())
-            .first()
-        )
-
-    return (
-        db.query(IngestionFile)
-        .filter(
-            IngestionFile.tenant_id == tenant_id,
-            IngestionFile.empresa_id == empresa_id,
-            IngestionFile.tipo == tipo_norm,
-            IngestionFile.anio == anio,
-            IngestionFile.mes == mes,
-        )
-        .order_by(IngestionFile.id.desc())
-        .first()
-    )
-
-
-def _safe_unlink(storage_key: str | None) -> None:
-    if not storage_key:
-        return
-
-    try:
-        path = Path(storage_key)
-        if path.exists() and path.is_file():
-            path.unlink()
-    except Exception:
-        return
 
 
 @router.post(
@@ -160,7 +68,6 @@ async def upload_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Empresa no encontrada para este tenant",
         )
-
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -168,14 +75,14 @@ async def upload_file(
         )
 
     try:
-        anio, mes = _infer_period_from_filename(tipo_norm, file.filename)
+        anio, mes = infer_period_from_filename(tipo_norm, file.filename)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
 
-    existing = _find_existing_ingestion_file(
+    existing = find_existing_ingestion_file(
         db,
         tenant_id=tenant_id_int,
         empresa_id=empresa_id,
@@ -193,16 +100,16 @@ async def upload_file(
         / f"{anio}{mes:02d}"
     )
     dest_dir.mkdir(parents=True, exist_ok=True)
-
     dest_path = dest_dir / file.filename
+
     with dest_path.open("wb") as buffer:
+        import shutil
         shutil.copyfileobj(file.file, buffer)
 
     storage_key = str(dest_path)
 
     if existing:
         old_storage_key = cast(str, getattr(existing, "storage_key", None) or "")
-
         ex = cast(Any, existing)
         ex.filename = file.filename
         ex.storage_key = storage_key
@@ -216,13 +123,10 @@ async def upload_file(
         ex.processed_at = None
         ex.updated_at = datetime.utcnow()
         ex.warnings_json = None
-
         db.commit()
         db.refresh(existing)
-
         if old_storage_key and old_storage_key != storage_key:
-            _safe_unlink(old_storage_key)
-
+            safe_unlink(old_storage_key)
         return existing
 
     ingestion_data: dict[str, Any] = {
@@ -237,7 +141,6 @@ async def upload_file(
         "uploaded_by": cast(int, current_user.id),
         "warnings_json": None,
     }
-
     ingestion = IngestionFile(**ingestion_data)  # type: ignore[arg-type]
     db.add(ingestion)
     db.commit()
@@ -273,7 +176,7 @@ def register_file(
 
     tipo_norm = str(data.tipo).upper()
 
-    existing = _find_existing_ingestion_file(
+    existing = find_existing_ingestion_file(
         db,
         tenant_id=tenant_id_int,
         empresa_id=data.empresa_id,
@@ -297,7 +200,6 @@ def register_file(
         ex.processed_at = None
         ex.updated_at = datetime.utcnow()
         ex.warnings_json = None
-
         db.commit()
         db.refresh(existing)
         return existing
@@ -314,7 +216,6 @@ def register_file(
         "uploaded_by": cast(int, current_user.id),
         "warnings_json": None,
     }
-
     ingestion = IngestionFile(**ingestion_data)  # type: ignore[arg-type]
     db.add(ingestion)
     db.commit()
@@ -333,11 +234,9 @@ def list_files(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = cast(int, current_user.tenant_id)
-
     query = db.query(IngestionFile).filter(
         IngestionFile.tenant_id == tenant_id_int,
     )
-
     query = apply_ingestion_filters(
         query,
         empresa_id=empresa_id,
@@ -346,13 +245,11 @@ def list_files(
         anio=anio,
         mes=mes,
     )
-
     query = query.order_by(
         IngestionFile.anio.desc(),
         IngestionFile.mes.desc(),
         IngestionFile.id.desc(),
     )
-
     return query.all()
 
 
@@ -368,7 +265,6 @@ def delete_files_preview(
     current_user: User = Depends(get_current_active_superuser),
 ):
     _ = current_user
-
     return build_delete_preview(
         db,
         tenant_id=tenant_id,
@@ -392,7 +288,6 @@ def delete_files(
     current_user: User = Depends(get_current_active_superuser),
 ):
     _ = current_user
-
     return execute_delete(
         db,
         tenant_id=tenant_id,
@@ -415,7 +310,6 @@ def process_file(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = cast(int, current_user.tenant_id)
-
     ingestion = (
         db.query(IngestionFile)
         .filter(
@@ -429,7 +323,6 @@ def process_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Fichero de ingestion no encontrado",
         )
-
     return process_ingestion_file(
         db=db,
         ingestion=ingestion,

@@ -1,6 +1,5 @@
 # app/main.py
 # pyright: reportMissingImports=false
-
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -21,6 +20,11 @@ from app.tenants.routes import router as auth_router
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
 from app.measures.models import MedidaGeneral, MedidaMicro, MedidaPS  # noqa: F401
+from app.measures.m1_models import M1PeriodContribution  # noqa: F401
+from app.measures.general_contrib_models import GeneralPeriodContribution  # noqa: F401
+from app.measures.bald_contrib_models import BaldPeriodContribution  # noqa: F401
+from app.measures.ps_models import PSPeriodContribution  # noqa: F401
+from app.measures.ps_detail_models import PSPeriodDetail  # noqa: F401
 
 settings = get_settings()
 
@@ -30,21 +34,19 @@ app = FastAPI(title=settings.APP_NAME)
 BASE_DIR = Path(__file__).resolve().parent
 PLANTILLAS_DIR = BASE_DIR / "static" / "plantillas"
 PLANTILLAS_DIR.mkdir(parents=True, exist_ok=True)
-
 app.mount("/plantillas", StaticFiles(directory=str(PLANTILLAS_DIR)), name="plantillas")
 
 # ---------- CORS ----------
-default_origins = [
+_default_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://100.106.206.66:3000",
 ]
 
-cors_env = (getattr(settings, "CORS_ORIGINS", None) or "").strip()
 origins = (
-    [o.strip() for o in cors_env.split(",") if o.strip()]
-    if cors_env
-    else default_origins
+    [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+    if settings.CORS_ORIGINS.strip()
+    else _default_origins
 )
 
 app.add_middleware(
@@ -54,6 +56,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ---------- Healthcheck ----------
 @app.get("/health")

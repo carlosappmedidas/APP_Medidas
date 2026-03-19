@@ -1,5 +1,5 @@
+# app/core/config.py
 from functools import lru_cache
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,15 +15,19 @@ class Settings(BaseSettings):
 
     # ⚠️ En prod, DEBE venir del .env (clave larga y aleatoria)
     SECRET_KEY: str = "DEV_SECRET_KEY_CAMBIALA_LUEGO"
-
     ALGORITHM: str = "HS256"
 
     # dev: 60 ok | prod: recomendado 15–30
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    # ✅ NUEVO: borrado de ficheros de ingestion tras procesar OK
-    # Por defecto: True (modo “servidor”: no acumular ficheros)
+    # Borrado de ficheros de ingestion tras procesar OK
+    # Por defecto: True (modo "servidor": no acumular ficheros)
     INGESTION_DELETE_AFTER_OK: bool = True
+
+    # ✅ NUEVO: orígenes CORS permitidos, separados por coma
+    # Ejemplo prod: CORS_ORIGINS=http://100.106.206.66:3000,https://midominio.com
+    # Si está vacío, main.py usa los defaults de desarrollo
+    CORS_ORIGINS: str = ""
 
     # Leer variables de entorno desde .env
     model_config = SettingsConfigDict(
@@ -47,7 +51,6 @@ def get_settings() -> Settings:
             raise RuntimeError(
                 "SECRET_KEY insegura en producción. Define SECRET_KEY real en el .env del servidor."
             )
-
         # Expiración recomendada en producción
         if s.ACCESS_TOKEN_EXPIRE_MINUTES > 30:
             raise RuntimeError(

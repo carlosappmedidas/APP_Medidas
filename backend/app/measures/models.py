@@ -1,6 +1,5 @@
 # app/measures/models.py
 # pyright: reportMissingImports=false
-
 from sqlalchemy import (
     Column,
     Integer,
@@ -19,7 +18,6 @@ class MedidaMicro(TimestampMixin, Base):
     __tablename__ = "medidas_micro"
 
     id = Column(Integer, primary_key=True)
-
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
 
@@ -32,7 +30,6 @@ class MedidaMicro(TimestampMixin, Base):
     # Valores ya normalizados
     energia_kwh = Column(Float, nullable=True)
     potencia_kw = Column(Float, nullable=True)
-
     calidad = Column(String(20), nullable=True)  # p.e. "OK", "EST", "FALLO"
 
     # De qué fichero viene
@@ -71,7 +68,6 @@ class MedidaGeneral(TimestampMixin, Base):
     __tablename__ = "medidas_general"
 
     id = Column(Integer, primary_key=True)
-
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
 
@@ -94,7 +90,6 @@ class MedidaGeneral(TimestampMixin, Base):
     perdidas_e_facturada_pct = Column(Float, nullable=True)
 
     # ⚡ MÉTRICAS BALD POR "VENTANA DE PUBLICACIÓN"
-
     # --- M2 ---
     energia_publicada_m2_kwh = Column(Float, nullable=True)
     energia_autoconsumo_m2_kwh = Column(Float, nullable=True)
@@ -104,7 +99,6 @@ class MedidaGeneral(TimestampMixin, Base):
     energia_neta_facturada_m2_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_m2_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_m2_pct = Column(Float, nullable=True)
-
     # --- M7 ---
     energia_publicada_m7_kwh = Column(Float, nullable=True)
     energia_autoconsumo_m7_kwh = Column(Float, nullable=True)
@@ -114,7 +108,6 @@ class MedidaGeneral(TimestampMixin, Base):
     energia_neta_facturada_m7_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_m7_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_m7_pct = Column(Float, nullable=True)
-
     # --- M11 ---
     energia_publicada_m11_kwh = Column(Float, nullable=True)
     energia_autoconsumo_m11_kwh = Column(Float, nullable=True)
@@ -124,7 +117,6 @@ class MedidaGeneral(TimestampMixin, Base):
     energia_neta_facturada_m11_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_m11_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_m11_pct = Column(Float, nullable=True)
-
     # --- ART15 ---
     energia_publicada_art15_kwh = Column(Float, nullable=True)
     energia_autoconsumo_art15_kwh = Column(Float, nullable=True)
@@ -172,19 +164,14 @@ class MedidaGeneral(TimestampMixin, Base):
 class MedidaPS(TimestampMixin, Base):
     """
     Agregado mensual por empresa / punto de los ficheros PS_*.
-
-    Clave lógica:
-      tenant_id + empresa_id + punto_id + anio + mes
+    Clave lógica: tenant_id + empresa_id + punto_id + anio + mes
     """
-
     __tablename__ = "medidas_ps"
 
     id = Column(Integer, primary_key=True)
-
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False)
     punto_id = Column(String(50), nullable=False)
-
     anio = Column(Integer, nullable=False)
     mes = Column(Integer, nullable=False)
 
@@ -217,32 +204,26 @@ class MedidaPS(TimestampMixin, Base):
     energia_tarifa_20td_kwh = Column(Float, nullable=True)
     cups_tarifa_20td = Column(Integer, nullable=True)
     importe_tarifa_20td_eur = Column(Float, nullable=True)
-
     # 3.0TD
     energia_tarifa_30td_kwh = Column(Float, nullable=True)
     cups_tarifa_30td = Column(Integer, nullable=True)
     importe_tarifa_30td_eur = Column(Float, nullable=True)
-
     # 3.0TDVE
     energia_tarifa_30tdve_kwh = Column(Float, nullable=True)
     cups_tarifa_30tdve = Column(Integer, nullable=True)
     importe_tarifa_30tdve_eur = Column(Float, nullable=True)
-
     # 6.1TD
     energia_tarifa_61td_kwh = Column(Float, nullable=True)
     cups_tarifa_61td = Column(Integer, nullable=True)
     importe_tarifa_61td_eur = Column(Float, nullable=True)
-
     # 6.2TD
     energia_tarifa_62td_kwh = Column(Float, nullable=True)
     cups_tarifa_62td = Column(Integer, nullable=True)
     importe_tarifa_62td_eur = Column(Float, nullable=True)
-
     # 6.3TD
     energia_tarifa_63td_kwh = Column(Float, nullable=True)
     cups_tarifa_63td = Column(Integer, nullable=True)
     importe_tarifa_63td_eur = Column(Float, nullable=True)
-
     # 6.4TD
     energia_tarifa_64td_kwh = Column(Float, nullable=True)
     cups_tarifa_64td = Column(Integer, nullable=True)
@@ -280,19 +261,3 @@ class MedidaPS(TimestampMixin, Base):
             "punto_id",
         ),
     )
-
-
-# ✅ Import “side-effect” para registrar el modelo de contribuciones M1 en metadata
-from app.measures.m1_models import M1PeriodContribution  # noqa: F401,E402
-
-# ✅ contribuciones deterministas para medidas_general no-M1
-from app.measures.general_contrib_models import GeneralPeriodContribution  # noqa: F401,E402
-
-# ✅ contribuciones deterministas BALD por ventana
-from app.measures.bald_contrib_models import BaldPeriodContribution  # noqa: F401,E402
-
-# ✅ Import “side-effect” para registrar el modelo de contribuciones PS en metadata
-from app.measures.ps_models import PSPeriodContribution  # noqa: F401,E402
-
-# ✅ Import “side-effect” para registrar el modelo de detalle PS en metadata
-from app.measures.ps_detail_models import PSPeriodDetail  # noqa: F401,E402
