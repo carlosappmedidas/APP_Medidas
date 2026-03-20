@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import EmpresasSection from "../admin/EmpresasSection";
 import { useDashboardSummary } from "./hooks/useDashboardSummary";
 import { useDashboardFilters } from "./hooks/useDashboardFilters";
 import { useDashboardEnergyComparisonChart } from "./hooks/useDashboardEnergyComparisonChart";
@@ -32,7 +31,6 @@ const NOMBRES_MES: Record<number, string> = {
 
 export default function DashboardSection({ token }: Props) {
   const isLogged = !!token;
-  const [showEmpresas, setShowEmpresas] = useState(false);
   const [empresa, setEmpresa] = useState("");
   const [anio, setAnio] = useState("");
   const [mes, setMes] = useState("");
@@ -229,11 +227,13 @@ export default function DashboardSection({ token }: Props) {
     return `Comparando ${periodoComunLabel} contra ${previousPeriodoLabel}.`;
   }, [aggregationMode, data, periodoComunLabel, previousPeriodoLabel]);
 
+  const hayFiltrosActivos = !!(empresa || anio || mes);
+
   return (
     <section className="ui-card text-sm">
       <div className="flex flex-col gap-4">
 
-        {/* Cabecera: título a la izquierda, filtros a la derecha en la misma fila */}
+        {/* Cabecera: título a la izquierda, filtros a la derecha */}
         <div className="flex flex-row items-start justify-between gap-4">
           <div>
             <h3 className="ui-card-title text-base md:text-lg">DASHBOARD MEDIDAS</h3>
@@ -249,95 +249,68 @@ export default function DashboardSection({ token }: Props) {
             ) : null}
           </div>
 
-          {/* Filtros: 3 en horizontal, compactos, alineados al inicio del bloque derecho */}
-          <div className="flex flex-row gap-2 items-end flex-shrink-0">
-            <div className="flex flex-col gap-0.5">
-              <label className="ui-label">Empresa</label>
-              <select
-                className="ui-select text-[11px] w-auto"
-                value={empresa}
-                onChange={(e) => setEmpresa(e.target.value)}
-                disabled={!isLogged || filtersLoading}
-              >
-                {empresaOptions.map((option) => (
-                  <option key={`empresa-${option.value || "all"}`} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <label className="ui-label">Año</label>
-              <select
-                className="ui-select text-[11px] w-auto"
-                value={anio}
-                onChange={(e) => setAnio(e.target.value)}
-                disabled={!isLogged || filtersLoading}
-              >
-                {anioOptions.map((option) => (
-                  <option key={`anio-${option.value || "all"}`} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <label className="ui-label">Mes</label>
-              <select
-                className="ui-select text-[11px] w-auto"
-                value={mes}
-                onChange={(e) => setMes(e.target.value)}
-                disabled={!isLogged || filtersLoading || !anio}
-              >
-                {mesOptions.map((option) => (
-                  <option key={`mes-${option.value || "all"}`} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={["ui-btn ui-btn-xs", isLogged ? "ui-btn-outline" : "ui-btn-danger"].join(" ")}
-            title={isLogged ? "Sesión iniciada" : "No hay sesión activa"}
-          >
-            {isLogged ? "Con sesión" : "Sin sesión"}
-          </span>
-          <button
-            type="button"
-            onClick={() => setShowEmpresas((prev) => !prev)}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-            disabled={!isLogged}
-            title={isLogged ? "Ver información de empresas asociadas" : "Inicia sesión para ver empresas"}
-          >
-            {showEmpresas ? "Ocultar empresas" : "Empresas (info)"}
-          </button>
-          {(empresa || anio || mes) && (
-            <button
-              type="button"
-              className="ui-btn ui-btn-outline ui-btn-xs"
-              onClick={() => { setEmpresa(""); setAnio(""); setMes(""); }}
-              disabled={!isLogged}
-            >
-              Limpiar filtros
-            </button>
-          )}
-        </div>
-
-        {showEmpresas && (
-          <div className="ui-panel">
-            <div className="mb-3">
-              <div className="text-xs font-semibold">Empresas</div>
-              <div className="mt-0.5 text-[11px] ui-muted">
-                Información de empresas asociadas al cliente.
+          {/* Bloque derecho: filtros en horizontal + limpiar debajo del grupo, independiente del mes */}
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <div className="flex flex-row gap-2 items-end">
+              <div className="flex flex-col gap-0.5">
+                <label className="ui-label">Empresa</label>
+                <select
+                  className="ui-select text-[11px] w-auto"
+                  value={empresa}
+                  onChange={(e) => setEmpresa(e.target.value)}
+                  disabled={!isLogged || filtersLoading}
+                >
+                  {empresaOptions.map((option) => (
+                    <option key={`empresa-${option.value || "all"}`} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="ui-label">Año</label>
+                <select
+                  className="ui-select text-[11px] w-auto"
+                  value={anio}
+                  onChange={(e) => setAnio(e.target.value)}
+                  disabled={!isLogged || filtersLoading}
+                >
+                  {anioOptions.map((option) => (
+                    <option key={`anio-${option.value || "all"}`} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="ui-label">Mes</label>
+                <select
+                  className="ui-select text-[11px] w-auto"
+                  value={mes}
+                  onChange={(e) => setMes(e.target.value)}
+                  disabled={!isLogged || filtersLoading || !anio}
+                >
+                  {mesOptions.map((option) => (
+                    <option key={`mes-${option.value || "all"}`} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-            <EmpresasSection token={token} />
+            {/* Limpiar filtros: siempre debajo del grupo de selects, visible solo si hay filtros activos */}
+            {hayFiltrosActivos && (
+              <button
+                type="button"
+                className="ui-btn ui-btn-outline ui-btn-xs"
+                onClick={() => { setEmpresa(""); setAnio(""); setMes(""); }}
+                disabled={!isLogged}
+              >
+                Limpiar filtros
+              </button>
+            )}
           </div>
-        )}
+        </div>
 
         {filtersErrorText && (
           <div className="ui-alert ui-alert--danger">
