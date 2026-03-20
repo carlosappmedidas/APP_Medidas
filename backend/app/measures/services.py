@@ -136,11 +136,12 @@ def _recalcular_energia_neta_y_perdidas(mg: MedidaGeneral) -> None:
     energia_auto = cast(float | None, mg.energia_autoconsumo_kwh) or 0.0
     energia_pf_final = cast(float | None, mg.energia_pf_final_kwh) or 0.0
     energia_frontera_dd = cast(float | None, mg.energia_frontera_dd_kwh) or 0.0
+    energia_gen = cast(float | None, mg.energia_generada_kwh) or 0.0  # ✅ añadir esta línea
 
     energia_neta = energia_bruta - energia_auto
     mg.energia_neta_facturada_kwh = energia_neta  # type: ignore[assignment]
 
-    perdidas_kwh = energia_pf_final - energia_neta
+    perdidas_kwh = (energia_pf_final + energia_gen - energia_frontera_dd) - energia_neta
     mg.perdidas_e_facturada_kwh = perdidas_kwh  # type: ignore[assignment]
 
     denom = energia_neta + energia_frontera_dd
@@ -174,11 +175,10 @@ def _recalcular_energia_neta_y_perdidas(mg: MedidaGeneral) -> None:
 
 
 def _recalcular_energia_pf_final(mg: MedidaGeneral) -> None:
+    # ✅ E PF FINAL = solo energia_pf_kwh (ACUM_H2_RDD_P1(AE) + ACUM_H2_TRD_PF(AE))
     energia_pf = cast(float | None, mg.energia_pf_kwh) or 0.0
-    energia_gen = cast(float | None, mg.energia_generada_kwh) or 0.0
-    energia_frontera = cast(float | None, mg.energia_frontera_dd_kwh) or 0.0
 
-    mg.energia_pf_final_kwh = energia_pf + energia_gen - energia_frontera  # type: ignore[assignment]
+    mg.energia_pf_final_kwh = energia_pf  # type: ignore[assignment]
     _recalcular_energia_neta_y_perdidas(mg)
 
 

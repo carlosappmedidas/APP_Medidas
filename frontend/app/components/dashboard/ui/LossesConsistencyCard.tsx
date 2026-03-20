@@ -4,11 +4,11 @@ import type { LossesConsistencyResponse } from "../../hooks/useDashboardLossesCo
 
 function getArrowColor(diff: number | null): string {
   if (diff === null) return "#888";
-  if (diff < -3) return "#ef4444";       // baja demasiado — rojo
-  if (diff < -1) return "#f59e0b";       // baja algo — amarillo
-  if (diff <= 5) return "#22c55e";       // zona normal — verde
-  if (diff <= 7) return "#f59e0b";       // sube bastante — amarillo
-  return "#ef4444";                       // sube demasiado — rojo
+  if (diff < -3) return "#ef4444";
+  if (diff < -1) return "#f59e0b";
+  if (diff <= 5) return "#22c55e";
+  if (diff <= 7) return "#f59e0b";
+  return "#ef4444";
 }
 
 function formatPct(v: number | null): string {
@@ -38,9 +38,12 @@ type RowData = {
   fromLabel: string;
   fromKwh: number | null;
   fromPct: number | null;
+  fromPfKwh: number | null;  // ✅ NUEVO
   toLabel: string;
   toKwh: number | null;
   toPct: number | null;
+  toPfKwh: number | null;    // ✅ NUEVO
+  toPfLabel: string;         // ✅ NUEVO — etiqueta del PF de la ventana destino
 };
 
 type Props = {
@@ -79,9 +82,12 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
       fromLabel: "E NETA FACTURADA",
       fromKwh: ventanas.m1.kwh,
       fromPct: ventanas.m1.perdidas_pct,
+      fromPfKwh: ventanas.m1.pf_kwh,
       toLabel: "E PUBL M2",
       toKwh: ventanas.m2.kwh,
       toPct: ventanas.m2.perdidas_pct,
+      toPfKwh: ventanas.m2.pf_kwh,
+      toPfLabel: "E PF M2",
     },
     {
       label: "m-2 vs m-7",
@@ -89,9 +95,12 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
       fromLabel: "E PUBL M2",
       fromKwh: ventanas.m2.kwh,
       fromPct: ventanas.m2.perdidas_pct,
+      fromPfKwh: ventanas.m2.pf_kwh,
       toLabel: "E PUBL M7",
       toKwh: ventanas.m7.kwh,
       toPct: ventanas.m7.perdidas_pct,
+      toPfKwh: ventanas.m7.pf_kwh,
+      toPfLabel: "E PF M7",
     },
     {
       label: "m-7 vs m-11",
@@ -99,9 +108,12 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
       fromLabel: "E PUBL M7",
       fromKwh: ventanas.m7.kwh,
       fromPct: ventanas.m7.perdidas_pct,
+      fromPfKwh: ventanas.m7.pf_kwh,
       toLabel: "E PUBL M11",
       toKwh: ventanas.m11.kwh,
       toPct: ventanas.m11.perdidas_pct,
+      toPfKwh: ventanas.m11.pf_kwh,
+      toPfLabel: "E PF M11",
     },
     {
       label: "m-11 vs Art15",
@@ -109,15 +121,17 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
       fromLabel: "E PUBL M11",
       fromKwh: ventanas.m11.kwh,
       fromPct: ventanas.m11.perdidas_pct,
+      fromPfKwh: ventanas.m11.pf_kwh,
       toLabel: "E PUBL ART15",
       toKwh: ventanas.art15.kwh,
       toPct: ventanas.art15.perdidas_pct,
+      toPfKwh: ventanas.art15.pf_kwh,
+      toPfLabel: "E PF ART15",
     },
   ];
 
   return (
     <div className="w-full space-y-1">
-      {/* Filas con recuadro gris ajustado */}
       {rows.map((row) => {
         const color = getArrowColor(row.diff);
         const arrow = row.diff === null ? null : row.diff >= 0 ? "▲" : "▼";
@@ -153,7 +167,7 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
       {/* Tooltip único fixed */}
       {tooltip && (
         <div
-          className="fixed z-50 w-[260px] rounded-xl border px-4 py-3 shadow-xl text-[11px]"
+          className="fixed z-50 w-[280px] rounded-xl border px-4 py-3 shadow-xl text-[11px]"
           style={{
             top: tooltip.y + 6,
             right: 16,
@@ -165,6 +179,8 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
         >
           <div className="mb-2 font-semibold">{tooltip.row.label}</div>
           <div className="space-y-1.5">
+
+            {/* FROM */}
             <div className="flex justify-between gap-4">
               <span className="ui-muted">{tooltip.row.fromLabel} kWh</span>
               <span className="font-semibold">{formatKwh(tooltip.row.fromKwh)}</span>
@@ -173,10 +189,14 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
               <span className="ui-muted">{tooltip.row.fromLabel} % pérd.</span>
               <span className="font-semibold">{formatPctVal(tooltip.row.fromPct)}</span>
             </div>
-            <div
-              className="my-1 border-t"
-              style={{ borderColor: "var(--card-border)" }}
-            />
+            <div className="flex justify-between gap-4">
+              <span className="ui-muted">E PF FINAL kWh</span>
+              <span className="font-semibold">{formatKwh(tooltip.row.fromPfKwh)}</span>
+            </div>
+
+            <div className="my-1 border-t" style={{ borderColor: "var(--card-border)" }} />
+
+            {/* TO */}
             <div className="flex justify-between gap-4">
               <span className="ui-muted">{tooltip.row.toLabel} kWh</span>
               <span className="font-semibold">{formatKwh(tooltip.row.toKwh)}</span>
@@ -185,10 +205,14 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
               <span className="ui-muted">{tooltip.row.toLabel} % pérd.</span>
               <span className="font-semibold">{formatPctVal(tooltip.row.toPct)}</span>
             </div>
-            <div
-              className="my-1 border-t"
-              style={{ borderColor: "var(--card-border)" }}
-            />
+            <div className="flex justify-between gap-4">
+              <span className="ui-muted">{tooltip.row.toPfLabel} kWh</span>
+              <span className="font-semibold">{formatKwh(tooltip.row.toPfKwh)}</span>
+            </div>
+
+            <div className="my-1 border-t" style={{ borderColor: "var(--card-border)" }} />
+
+            {/* DIFERENCIA */}
             <div className="flex justify-between gap-4">
               <span className="ui-muted">Diferencia</span>
               <span
@@ -199,6 +223,7 @@ export default function LossesConsistencyCard({ data, loading, error }: Props) {
               </span>
             </div>
           </div>
+
           <div className="mt-2 flex gap-3 text-[10px] ui-muted">
             <span style={{ color: "#ef4444" }}>&lt;-3pp</span>
             <span style={{ color: "#f59e0b" }}>-3 a -1pp</span>

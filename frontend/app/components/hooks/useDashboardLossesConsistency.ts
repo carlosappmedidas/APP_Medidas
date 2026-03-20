@@ -5,6 +5,7 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 export type VentanaData = {
   kwh: number | null;
   perdidas_pct: number | null;
+  pf_kwh: number | null;
 };
 
 export type LossesConsistencyResponse = {
