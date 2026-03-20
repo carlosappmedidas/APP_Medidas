@@ -24,6 +24,12 @@ type Props = {
   token: string | null;
 };
 
+const NOMBRES_MES: Record<number, string> = {
+  1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr",
+  5: "May", 6: "Jun", 7: "Jul", 8: "Ago",
+  9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
+};
+
 export default function DashboardSection({ token }: Props) {
   const isLogged = !!token;
   const [showEmpresas, setShowEmpresas] = useState(false);
@@ -36,7 +42,7 @@ export default function DashboardSection({ token }: Props) {
   const mesValue = anio && mes ? Number(mes) : null;
 
   const { data: filtersData, loading: filtersLoading, error: filtersError } =
-    useDashboardFilters({ token, empresaId, anio: anioValue });
+    useDashboardFilters({ token, empresaId });
 
   const { data, loading, error } = useDashboardSummary({
     token,
@@ -54,14 +60,10 @@ export default function DashboardSection({ token }: Props) {
   const { data: lossesTrendChartData, loading: lossesTrendChartLoading, error: lossesTrendChartError } =
     useDashboardLossesTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
 
-  // ✅ Para la tarjeta de consistencia: si el usuario no ha seleccionado año,
-  // usamos el año anterior al último periodo común disponible (ytd completo).
-  // Si el usuario sí ha seleccionado año/mes, respetamos su selección.
   const lossesConsistencyAnio = useMemo(() => {
     if (anioValue !== null) return anioValue;
     const lastAnio = data?.common_period?.anio;
     if (!lastAnio) return null;
-    // Si el último mes común es enero (mes=1), el año anterior tiene más datos publicados
     const lastMes = data?.common_period?.mes;
     if (lastMes !== undefined && lastMes !== null && lastMes <= 3) {
       return lastAnio - 1;
@@ -117,7 +119,7 @@ export default function DashboardSection({ token }: Props) {
       ...base,
       ...mesesDisponibles.map((mesItem) => ({
         value: String(mesItem),
-        label: String(mesItem).padStart(2, "0"),
+        label: NOMBRES_MES[mesItem] ?? String(mesItem).padStart(2, "0"),
       })),
     ];
   }, [mesesDisponibles]);
@@ -230,7 +232,9 @@ export default function DashboardSection({ token }: Props) {
   return (
     <section className="ui-card text-sm">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+
+        {/* Cabecera: título a la izquierda, filtros a la derecha en la misma fila */}
+        <div className="flex flex-row items-start justify-between gap-4">
           <div>
             <h3 className="ui-card-title text-base md:text-lg">DASHBOARD MEDIDAS</h3>
             <p className="ui-card-subtitle mt-1">{resumenSubtitle}</p>
@@ -244,11 +248,13 @@ export default function DashboardSection({ token }: Props) {
               <div className="mt-1 text-[11px] ui-muted">{comparisonHelpText}</div>
             ) : null}
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[560px]">
-            <div>
+
+          {/* Filtros: 3 en horizontal, compactos, alineados al inicio del bloque derecho */}
+          <div className="flex flex-row gap-2 items-end flex-shrink-0">
+            <div className="flex flex-col gap-0.5">
               <label className="ui-label">Empresa</label>
               <select
-                className="ui-select text-[11px]"
+                className="ui-select text-[11px] w-auto"
                 value={empresa}
                 onChange={(e) => setEmpresa(e.target.value)}
                 disabled={!isLogged || filtersLoading}
@@ -260,10 +266,10 @@ export default function DashboardSection({ token }: Props) {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="flex flex-col gap-0.5">
               <label className="ui-label">Año</label>
               <select
-                className="ui-select text-[11px]"
+                className="ui-select text-[11px] w-auto"
                 value={anio}
                 onChange={(e) => setAnio(e.target.value)}
                 disabled={!isLogged || filtersLoading}
@@ -275,10 +281,10 @@ export default function DashboardSection({ token }: Props) {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="flex flex-col gap-0.5">
               <label className="ui-label">Mes</label>
               <select
-                className="ui-select text-[11px]"
+                className="ui-select text-[11px] w-auto"
                 value={mes}
                 onChange={(e) => setMes(e.target.value)}
                 disabled={!isLogged || filtersLoading || !anio}
