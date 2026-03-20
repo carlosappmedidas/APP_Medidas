@@ -5,7 +5,7 @@ import { useDashboardQuery } from "./useDashboardQuery";
 export type DashboardEnergyComparisonChartPoint = {
   mes: number;
   mes_label: string;
-  energia_neta_facturada_kwh: number;
+  energia_bruta_facturada: number;
   energia_publicada_m2_kwh: number;
   energia_publicada_m7_kwh: number;
   energia_publicada_m11_kwh: number;

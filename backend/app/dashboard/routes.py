@@ -281,8 +281,8 @@ def _build_energy_comparison_chart_series(
     rows_query = db.query(
         MedidaGeneral.mes.label("mes"),
         func.coalesce(
-            func.sum(MedidaGeneral.energia_neta_facturada_kwh), 0.0
-        ).label("energia_neta_facturada_kwh"),
+            func.sum(MedidaGeneral.energia_bruta_facturada), 0.0
+        ).label("energia_bruta_facturada"),
         func.coalesce(
             func.sum(MedidaGeneral.energia_publicada_m2_kwh), 0.0
         ).label("energia_publicada_m2_kwh"),
@@ -323,46 +323,22 @@ def _build_energy_comparison_chart_series(
                 "mes": month_number,
                 "mes_label": str(month_number),
                 "energia_neta_facturada_kwh": float(
-                    cast(
-                        float | None,
-                        getattr(row, "energia_neta_facturada_kwh", 0.0),
-                    )
-                    or 0.0
+                    cast(float | None, getattr(row, "energia_bruta_facturada", 0.0)) or 0.0
                 ),
                 "energia_publicada_m2_kwh": float(
-                    cast(
-                        float | None,
-                        getattr(row, "energia_publicada_m2_kwh", 0.0),
-                    )
-                    or 0.0
+                    cast(float | None, getattr(row, "energia_publicada_m2_kwh", 0.0)) or 0.0
                 ),
                 "energia_publicada_m7_kwh": float(
-                    cast(
-                        float | None,
-                        getattr(row, "energia_publicada_m7_kwh", 0.0),
-                    )
-                    or 0.0
+                    cast(float | None, getattr(row, "energia_publicada_m7_kwh", 0.0)) or 0.0
                 ),
                 "energia_publicada_m11_kwh": float(
-                    cast(
-                        float | None,
-                        getattr(row, "energia_publicada_m11_kwh", 0.0),
-                    )
-                    or 0.0
+                    cast(float | None, getattr(row, "energia_publicada_m11_kwh", 0.0)) or 0.0
                 ),
                 "energia_publicada_art15_kwh": float(
-                    cast(
-                        float | None,
-                        getattr(row, "energia_publicada_art15_kwh", 0.0),
-                    )
-                    or 0.0
+                    cast(float | None, getattr(row, "energia_publicada_art15_kwh", 0.0)) or 0.0
                 ),
                 "energia_pf_final_kwh": float(
-                    cast(
-                        float | None,
-                        getattr(row, "energia_pf_final_kwh", 0.0),
-                    )
-                    or 0.0
+                    cast(float | None, getattr(row, "energia_pf_final_kwh", 0.0)) or 0.0
                 ),
             }
         )
@@ -407,11 +383,7 @@ def _build_energy_trend_chart_series(
                 "mes": month_number,
                 "mes_label": str(month_number),
                 "energia_neta_facturada_kwh": float(
-                    cast(
-                        float | None,
-                        getattr(row, "energia_neta_facturada_kwh", 0.0),
-                    )
-                    or 0.0
+                    cast(float | None, getattr(row, "energia_neta_facturada_kwh", 0.0)) or 0.0
                 ),
             }
         )
@@ -451,17 +423,12 @@ def _build_losses_trend_chart_series(
     series: list[dict[str, float | int | str]] = []
     for month_number in range(1, max_mes + 1):
         row = rows_by_mes.get(month_number)
-        value = cast(
-            float | None,
-            getattr(row, "perdidas_e_facturada_pct", None),
-        )
+        value = cast(float | None, getattr(row, "perdidas_e_facturada_pct", None))
         series.append(
             {
                 "mes": month_number,
                 "mes_label": str(month_number),
-                "perdidas_e_facturada_pct": float(value)
-                if value is not None
-                else 0.0,
+                "perdidas_e_facturada_pct": float(value) if value is not None else 0.0,
             }
         )
     return series
@@ -511,10 +478,7 @@ def get_dashboard_filters(
             {
                 "id": cast(int, empresa.id),
                 "nombre": cast(str | None, empresa.nombre),
-                "codigo": cast(
-                    str | None,
-                    empresa.codigo_ree or empresa.codigo_cnmc,
-                ),
+                "codigo": cast(str | None, empresa.codigo_ree or empresa.codigo_cnmc),
             }
             for empresa in empresas
         ],
@@ -790,7 +754,6 @@ def get_dashboard_losses_trend_chart(
     }
 
 
-# ✅ NUEVO: consistencia de pérdidas entre ventanas de publicación
 @router.get("/losses-consistency")
 def get_dashboard_losses_consistency(
     empresa_id: int | None = None,
@@ -800,9 +763,8 @@ def get_dashboard_losses_consistency(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Devuelve los kWh y % de pérdidas por ventana de publicación para el
-    periodo común seleccionado. Usado en la tarjeta de consistencia de pérdidas.
-    Sigue los mismos filtros que el resto de endpoints del dashboard.
+    Devuelve kWh, % pérdidas y kWh PF por ventana de publicación.
+    Usado en la tarjeta de consistencia de pérdidas del dashboard.
     """
     tenant_id_int = cast(int, current_user.tenant_id)
     _ensure_empresa_belongs_to_tenant(
@@ -825,6 +787,12 @@ def get_dashboard_losses_consistency(
         func.sum(MedidaGeneral.energia_publicada_m7_kwh).label("m7_kwh"),
         func.sum(MedidaGeneral.energia_publicada_m11_kwh).label("m11_kwh"),
         func.sum(MedidaGeneral.energia_publicada_art15_kwh).label("art15_kwh"),
+        # ✅ NUEVO: PF por ventana
+        func.sum(MedidaGeneral.energia_pf_final_kwh).label("pf_final_kwh"),
+        func.sum(MedidaGeneral.energia_pf_m2_kwh).label("pf_m2_kwh"),
+        func.sum(MedidaGeneral.energia_pf_m7_kwh).label("pf_m7_kwh"),
+        func.sum(MedidaGeneral.energia_pf_m11_kwh).label("pf_m11_kwh"),
+        func.sum(MedidaGeneral.energia_pf_art15_kwh).label("pf_art15_kwh"),
         func.avg(MedidaGeneral.perdidas_e_facturada_pct).label("perdidas_m1_pct"),
         func.avg(MedidaGeneral.perdidas_e_facturada_m2_pct).label("perdidas_m2_pct"),
         func.avg(MedidaGeneral.perdidas_e_facturada_m7_pct).label("perdidas_m7_pct"),
@@ -856,6 +824,11 @@ def get_dashboard_losses_consistency(
     m7_kwh = _f(getattr(row, "m7_kwh", None))
     m11_kwh = _f(getattr(row, "m11_kwh", None))
     art15_kwh = _f(getattr(row, "art15_kwh", None))
+    pf_final_kwh = _f(getattr(row, "pf_final_kwh", None))
+    pf_m2_kwh = _f(getattr(row, "pf_m2_kwh", None))
+    pf_m7_kwh = _f(getattr(row, "pf_m7_kwh", None))
+    pf_m11_kwh = _f(getattr(row, "pf_m11_kwh", None))
+    pf_art15_kwh = _f(getattr(row, "pf_art15_kwh", None))
     perdidas_m1_pct = _f(getattr(row, "perdidas_m1_pct", None))
     perdidas_m2_pct = _f(getattr(row, "perdidas_m2_pct", None))
     perdidas_m7_pct = _f(getattr(row, "perdidas_m7_pct", None))
@@ -880,16 +853,16 @@ def get_dashboard_losses_consistency(
         },
         "aggregation_mode": aggregation_mode,
         "ventanas": {
-            "m1": {"kwh": m1_kwh, "perdidas_pct": perdidas_m1_pct},
-            "m2": {"kwh": m2_kwh, "perdidas_pct": perdidas_m2_pct},
-            "m7": {"kwh": m7_kwh, "perdidas_pct": perdidas_m7_pct},
-            "m11": {"kwh": m11_kwh, "perdidas_pct": perdidas_m11_pct},
-            "art15": {"kwh": art15_kwh, "perdidas_pct": perdidas_art15_pct},
+            "m1":    {"kwh": m1_kwh,    "perdidas_pct": perdidas_m1_pct,    "pf_kwh": pf_final_kwh},
+            "m2":    {"kwh": m2_kwh,    "perdidas_pct": perdidas_m2_pct,    "pf_kwh": pf_m2_kwh},
+            "m7":    {"kwh": m7_kwh,    "perdidas_pct": perdidas_m7_pct,    "pf_kwh": pf_m7_kwh},
+            "m11":   {"kwh": m11_kwh,   "perdidas_pct": perdidas_m11_pct,   "pf_kwh": pf_m11_kwh},
+            "art15": {"kwh": art15_kwh, "perdidas_pct": perdidas_art15_pct, "pf_kwh": pf_art15_kwh},
         },
         "comparaciones": {
-            "m1_vs_m2": _diff(perdidas_m1_pct, perdidas_m2_pct),
-            "m2_vs_m7": _diff(perdidas_m2_pct, perdidas_m7_pct),
-            "m7_vs_m11": _diff(perdidas_m7_pct, perdidas_m11_pct),
+            "m1_vs_m2":    _diff(perdidas_m1_pct,  perdidas_m2_pct),
+            "m2_vs_m7":    _diff(perdidas_m2_pct,  perdidas_m7_pct),
+            "m7_vs_m11":   _diff(perdidas_m7_pct,  perdidas_m11_pct),
             "m11_vs_art15": _diff(perdidas_m11_pct, perdidas_art15_pct),
         },
     }

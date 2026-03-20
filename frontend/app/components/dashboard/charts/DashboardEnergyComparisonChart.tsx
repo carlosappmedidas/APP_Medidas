@@ -19,7 +19,7 @@ import { formatNumberEs } from "../formatters";
 export type DashboardEnergyComparisonPoint = {
   mes: number;
   mes_label: string;
-  energia_neta_facturada_kwh: number;
+  energia_bruta_facturada: number;
   energia_publicada_m2_kwh: number;
   energia_publicada_m7_kwh: number;
   energia_publicada_m11_kwh: number;
@@ -35,8 +35,8 @@ type DashboardEnergyComparisonChartProps = {
 
 const LEGEND_ITEMS: DashboardLegendItem[] = [
   {
-    key: "energia_neta_facturada_kwh",
-    label: "E NETA FACTURADA",
+    key: "energia_bruta_facturada",
+    label: "E BRUTA FACTURADA",
     color: "#9fd3ff",
     type: "bar",
   },
@@ -73,7 +73,7 @@ const LEGEND_ITEMS: DashboardLegendItem[] = [
 ];
 
 const TOOLTIP_LABEL_MAP: Record<string, string> = {
-  energia_neta_facturada_kwh: "Facturada",
+  energia_bruta_facturada: "Facturada",
   energia_publicada_m2_kwh: "M2",
   energia_publicada_m7_kwh: "M7",
   energia_publicada_m11_kwh: "M11",
@@ -82,7 +82,7 @@ const TOOLTIP_LABEL_MAP: Record<string, string> = {
 };
 
 const TOOLTIP_ORDER: Record<string, number> = {
-  energia_neta_facturada_kwh: 1,
+  energia_bruta_facturada: 1,
   energia_publicada_m2_kwh: 2,
   energia_publicada_m7_kwh: 3,
   energia_publicada_m11_kwh: 4,
@@ -159,7 +159,7 @@ export default function DashboardEnergyComparisonChart({
               />
 
               <Bar
-                dataKey="energia_neta_facturada_kwh"
+                dataKey="energia_bruta_facturada"
                 fill="#9fd3ff"
                 barSize={8}
                 radius={[2, 2, 0, 0]}
