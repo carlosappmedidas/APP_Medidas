@@ -270,6 +270,23 @@ def _absolute_change(current: float, previous: float) -> float:
     return current - previous
 
 
+def _resolve_pf_kwh(row: Any) -> float:
+    """Devuelve el valor PF más reciente disponible siguiendo la jerarquía:
+    art15 → m11 → m7 → m2 → pf_final (ACUM).
+    Usa el primero que sea distinto de cero."""
+    for field in (
+        "energia_pf_art15_kwh",
+        "energia_pf_m11_kwh",
+        "energia_pf_m7_kwh",
+        "energia_pf_m2_kwh",
+        "energia_pf_final_kwh",
+    ):
+        val = float(cast(float | None, getattr(row, field, None)) or 0.0)
+        if val != 0.0:
+            return val
+    return 0.0
+
+
 def _build_energy_comparison_chart_series(
     db: Session,
     *,
@@ -295,9 +312,21 @@ def _build_energy_comparison_chart_series(
         func.coalesce(
             func.sum(MedidaGeneral.energia_publicada_art15_kwh), 0.0
         ).label("energia_publicada_art15_kwh"),
-        func.coalesce(func.sum(MedidaGeneral.energia_pf_final_kwh), 0.0).label(
-            "energia_pf_final_kwh"
-        ),
+        func.coalesce(
+            func.sum(MedidaGeneral.energia_pf_final_kwh), 0.0
+        ).label("energia_pf_final_kwh"),
+        func.coalesce(
+            func.sum(MedidaGeneral.energia_pf_m2_kwh), 0.0
+        ).label("energia_pf_m2_kwh"),
+        func.coalesce(
+            func.sum(MedidaGeneral.energia_pf_m7_kwh), 0.0
+        ).label("energia_pf_m7_kwh"),
+        func.coalesce(
+            func.sum(MedidaGeneral.energia_pf_m11_kwh), 0.0
+        ).label("energia_pf_m11_kwh"),
+        func.coalesce(
+            func.sum(MedidaGeneral.energia_pf_art15_kwh), 0.0
+        ).label("energia_pf_art15_kwh"),
     ).filter(
         MedidaGeneral.tenant_id == tenant_id,
         MedidaGeneral.anio == anio,
@@ -322,7 +351,7 @@ def _build_energy_comparison_chart_series(
             {
                 "mes": month_number,
                 "mes_label": str(month_number),
-                "energia_neta_facturada_kwh": float(
+                "energia_bruta_facturada": float(
                     cast(float | None, getattr(row, "energia_bruta_facturada", 0.0)) or 0.0
                 ),
                 "energia_publicada_m2_kwh": float(
@@ -337,9 +366,7 @@ def _build_energy_comparison_chart_series(
                 "energia_publicada_art15_kwh": float(
                     cast(float | None, getattr(row, "energia_publicada_art15_kwh", 0.0)) or 0.0
                 ),
-                "energia_pf_final_kwh": float(
-                    cast(float | None, getattr(row, "energia_pf_final_kwh", 0.0)) or 0.0
-                ),
+                "energia_pf_final_kwh": _resolve_pf_kwh(row) if row is not None else 0.0,
             }
         )
     return series
@@ -787,7 +814,6 @@ def get_dashboard_losses_consistency(
         func.sum(MedidaGeneral.energia_publicada_m7_kwh).label("m7_kwh"),
         func.sum(MedidaGeneral.energia_publicada_m11_kwh).label("m11_kwh"),
         func.sum(MedidaGeneral.energia_publicada_art15_kwh).label("art15_kwh"),
-        # ✅ NUEVO: PF por ventana
         func.sum(MedidaGeneral.energia_pf_final_kwh).label("pf_final_kwh"),
         func.sum(MedidaGeneral.energia_pf_m2_kwh).label("pf_m2_kwh"),
         func.sum(MedidaGeneral.energia_pf_m7_kwh).label("pf_m7_kwh"),
