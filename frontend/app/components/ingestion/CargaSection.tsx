@@ -65,6 +65,28 @@ function inferTipoFromFilename(filename: string): string | null {
   return null;
 }
 
+// ── NUEVO: extrae el código REE del nombre del fichero según tipo ──────────
+// Ignora prefijos numéricos del sistema (ej. 1774047141200_)
+function extractCodigoFromFilename(tipo: string, filename: string): string | null {
+  const stem = filename.replace(/\.[^/.]+$/, "");
+  const name = stem.replace(/^\d{10,}_/, "");
+  const parts = name.split("_");
+  const t = tipo.toUpperCase();
+
+  try {
+    if (t === "PS") return parts[1] ?? null;
+    if (t === "M1" || t === "M1_AUTOCONSUMO") return parts[0] ?? null;
+    if (t === "BALD") return parts[1] ?? null;
+    if (t === "ACUMCIL") return parts[2] ?? null;
+    if (t === "ACUM_H2_RDD_P1" || t === "ACUM_H2_RDD_P2") return parts[3] ?? null;
+    if (t === "ACUM_H2_GRD" || t === "ACUM_H2_GEN") return parts[3] ?? null;
+  } catch {
+    return null;
+  }
+  return null;
+}
+// ── FIN NUEVO ─────────────────────────────────────────────────────────────
+
 function fmtPeriodo(anio: number, mes: number) {
   return `${anio}-${String(mes).padStart(2, "0")}`;
 }
@@ -195,6 +217,10 @@ export default function CargaSection({ token }: Props) {
   const [logLines, setLogLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // ── NUEVO: ficheros rechazados por mismatch de código REE ─────────────
+  const [mismatchErrors, setMismatchErrors] = useState<string[]>([]);
+  // ── FIN NUEVO ─────────────────────────────────────────────────────────
+
   const [history, setHistory] = useState<IngestionFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -240,6 +266,7 @@ export default function CargaSection({ token }: Props) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files);
+    setMismatchErrors([]); // ── NUEVO: limpiar errores al cambiar ficheros
   };
 
   const sessionSummary = useMemo(() => {
@@ -347,6 +374,32 @@ export default function CargaSection({ token }: Props) {
       appendLog("No has seleccionado ningún fichero.");
       return;
     }
+
+    // ── NUEVO: validación previa de código REE ─────────────────────────
+    const empresaSeleccionada = empresas.find((e) => e.id === empresaId);
+    const codigoReeEmpresa = empresaSeleccionada?.codigo_ree ?? null;
+
+    if (codigoReeEmpresa) {
+      const errores: string[] = [];
+      for (const file of Array.from(files)) {
+        const tipo = inferTipoFromFilename(file.name);
+        if (!tipo) continue; // se omitirá más adelante por tipo desconocido
+        const codigoFichero = extractCodigoFromFilename(tipo, file.name);
+        if (codigoFichero !== null && codigoFichero !== codigoReeEmpresa) {
+          errores.push(
+            `"${file.name}" → código detectado: ${codigoFichero} (empresa seleccionada: ${codigoReeEmpresa})`
+          );
+        }
+      }
+
+      if (errores.length > 0) {
+        setMismatchErrors(errores);
+        return; // CANCELAR — no se sube nada
+      }
+    }
+
+    setMismatchErrors([]);
+    // ── FIN NUEVO ──────────────────────────────────────────────────────
 
     setLoading(true);
     appendLog(`Iniciando carga de ${files.length} fichero(s)...`);
@@ -600,6 +653,31 @@ export default function CargaSection({ token }: Props) {
           </div>
         )}
 
+        {/* ── NUEVO: Alert mismatch REE ──────────────────────────────────── */}
+        {mismatchErrors.length > 0 && (
+          <div className="ui-alert ui-alert--danger mb-4">
+            <div className="font-semibold mb-1">
+              ⛔ Carga cancelada — los siguientes ficheros no pertenecen a la empresa seleccionada:
+            </div>
+            <ul className="mt-1 space-y-0.5 text-[11px] font-mono">
+              {mismatchErrors.map((err, idx) => (
+                <li key={idx}>• {err}</li>
+              ))}
+            </ul>
+            <div className="mt-2 text-[11px]">
+              Selecciona la empresa correcta o sube los ficheros correspondientes a esta empresa.
+            </div>
+            <button
+              type="button"
+              className="mt-2 ui-btn ui-btn-outline ui-btn-xs"
+              onClick={() => setMismatchErrors([])}
+            >
+              Cerrar aviso
+            </button>
+          </div>
+        )}
+        {/* ── FIN NUEVO ─────────────────────────────────────────────────── */}
+
         <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
           <div>
             <label className="ui-label">Empresa</label>
@@ -607,9 +685,10 @@ export default function CargaSection({ token }: Props) {
               className="ui-select"
               value={empresaId ?? ""}
               disabled={!canUse || loading}
-              onChange={(e) =>
-                setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null)
-              }
+              onChange={(e) => {
+                setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null);
+                setMismatchErrors([]); // ── NUEVO: limpiar al cambiar empresa
+              }}
             >
               {empresas.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -890,8 +969,8 @@ export default function CargaSection({ token }: Props) {
           </div>
 
           <div className="mt-2 text-[10px] ui-muted">
-            Con la normativa (±3 días + refacturas), aquí verás avisos tipo “mes no existente” o
-            “refactura detectada”, pero la carga NO se bloqueará.
+            Con la normativa (±3 días + refacturas), aquí verás avisos tipo "mes no existente" o
+            "refactura detectada", pero la carga NO se bloqueará.
           </div>
         </div>
       </InlineAccordion>
