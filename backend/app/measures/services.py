@@ -136,7 +136,7 @@ def _recalcular_energia_neta_y_perdidas(mg: MedidaGeneral) -> None:
     energia_auto = cast(float | None, mg.energia_autoconsumo_kwh) or 0.0
     energia_pf_final = cast(float | None, mg.energia_pf_final_kwh) or 0.0
     energia_frontera_dd = cast(float | None, mg.energia_frontera_dd_kwh) or 0.0
-    energia_gen = cast(float | None, mg.energia_generada_kwh) or 0.0  # ✅ añadir esta línea
+    energia_gen = cast(float | None, mg.energia_generada_kwh) or 0.0
 
     energia_neta = energia_bruta - energia_auto
     mg.energia_neta_facturada_kwh = energia_neta  # type: ignore[assignment]
@@ -175,9 +175,7 @@ def _recalcular_energia_neta_y_perdidas(mg: MedidaGeneral) -> None:
 
 
 def _recalcular_energia_pf_final(mg: MedidaGeneral) -> None:
-    # ✅ E PF FINAL = solo energia_pf_kwh (ACUM_H2_RDD_P1(AE) + ACUM_H2_TRD_PF(AE))
     energia_pf = cast(float | None, mg.energia_pf_kwh) or 0.0
-
     mg.energia_pf_final_kwh = energia_pf  # type: ignore[assignment]
     _recalcular_energia_neta_y_perdidas(mg)
 
@@ -794,7 +792,31 @@ def _empty_ps_aggregate() -> dict[str, float | int]:
     }
 
 
-def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, float | int]:
+# ---------- Ítem 5 — agregador PS genérico ----------
+
+_TARIFA_MAP: dict[str, str] = {
+    "2.0TD": "20td",
+    "3.0TD": "30td",
+    "3.0TDVE": "30tdve",
+    "6.1TD": "61td",
+    "6.2TD": "62td",
+    "6.3TD": "63td",
+    "6.4TD": "64td",
+}
+
+
+def _aggregate_ps_items(
+    items: list[Any],
+    *,
+    get_cups: Any,
+    get_poliza: Any,
+    get_tarifa: Any,
+    get_energia: Any,
+    get_importe: Any,
+) -> dict[str, float | int]:
+    """Núcleo de agregación PS reutilizado por _build_ps_aggregate_from_rows
+    y _aggregate_ps_detail_rows. Recibe callables de extracción para cada campo."""
+
     energia_por_tipo: dict[int, float] = {i: 0.0 for i in range(1, 6)}
     cups_por_tipo: dict[int, set[str]] = {i: set() for i in range(1, 6)}
     importe_por_tipo: dict[int, float] = {i: 0.0 for i in range(1, 6)}
@@ -803,50 +825,16 @@ def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, floa
     importe_total = 0.0
     cups_total_set: set[str] = set()
 
-    energia_tarifa: dict[str, float] = {
-        "20td": 0.0,
-        "30td": 0.0,
-        "30tdve": 0.0,
-        "61td": 0.0,
-        "62td": 0.0,
-        "63td": 0.0,
-        "64td": 0.0,
-    }
-    cups_tarifa: dict[str, set[str]] = {
-        "20td": set(),
-        "30td": set(),
-        "30tdve": set(),
-        "61td": set(),
-        "62td": set(),
-        "63td": set(),
-        "64td": set(),
-    }
-    importe_tarifa: dict[str, float] = {
-        "20td": 0.0,
-        "30td": 0.0,
-        "30tdve": 0.0,
-        "61td": 0.0,
-        "62td": 0.0,
-        "63td": 0.0,
-        "64td": 0.0,
-    }
+    energia_tarifa: dict[str, float] = {k: 0.0 for k in _TARIFA_MAP.values()}
+    cups_tarifa: dict[str, set[str]] = {k: set() for k in _TARIFA_MAP.values()}
+    importe_tarifa: dict[str, float] = {k: 0.0 for k in _TARIFA_MAP.values()}
 
-    tarifa_map = {
-        "2.0TD": "20td",
-        "3.0TD": "30td",
-        "3.0TDVE": "30tdve",
-        "6.1TD": "61td",
-        "6.2TD": "62td",
-        "6.3TD": "63td",
-        "6.4TD": "64td",
-    }
-
-    for f in filas:
-        cups = _ps_cups(f)
-        poliza = _ps_poliza(f)
-        tarifa = _ps_tarifa(f)
-        energia = _to_float(f.get("Energia_facturada"))
-        importe = _to_float(f.get("Total"))
+    for item in items:
+        cups = get_cups(item)
+        poliza = get_poliza(item)
+        tarifa = get_tarifa(item)
+        energia = get_energia(item)
+        importe = get_importe(item)
 
         energia_total += energia
         importe_total += importe
@@ -861,7 +849,7 @@ def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, floa
             if cups:
                 cups_por_tipo[tipo].add(cups)
 
-        sufijo = tarifa_map.get(tarifa)
+        sufijo = _TARIFA_MAP.get(tarifa)
         if sufijo:
             energia_tarifa[sufijo] += energia
             importe_tarifa[sufijo] += importe
@@ -909,123 +897,28 @@ def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, floa
         "cups_tarifa_64td": len(cups_tarifa["64td"]),
         "importe_tarifa_64td_eur": importe_tarifa["64td"],
     }
+
+
+def _build_ps_aggregate_from_rows(filas: list[Dict[str, Any]]) -> dict[str, float | int]:
+    return _aggregate_ps_items(
+        filas,
+        get_cups=_ps_cups,
+        get_poliza=_ps_poliza,
+        get_tarifa=_ps_tarifa,
+        get_energia=lambda f: _to_float(f.get("Energia_facturada")),
+        get_importe=lambda f: _to_float(f.get("Total")),
+    )
 
 
 def _aggregate_ps_detail_rows(detail_rows: list[PSPeriodDetail]) -> dict[str, float | int]:
-    energia_por_tipo: dict[int, float] = {i: 0.0 for i in range(1, 6)}
-    cups_por_tipo: dict[int, set[str]] = {i: set() for i in range(1, 6)}
-    importe_por_tipo: dict[int, float] = {i: 0.0 for i in range(1, 6)}
-
-    energia_total = 0.0
-    importe_total = 0.0
-    cups_total_set: set[str] = set()
-
-    energia_tarifa: dict[str, float] = {
-        "20td": 0.0,
-        "30td": 0.0,
-        "30tdve": 0.0,
-        "61td": 0.0,
-        "62td": 0.0,
-        "63td": 0.0,
-        "64td": 0.0,
-    }
-    cups_tarifa: dict[str, set[str]] = {
-        "20td": set(),
-        "30td": set(),
-        "30tdve": set(),
-        "61td": set(),
-        "62td": set(),
-        "63td": set(),
-        "64td": set(),
-    }
-    importe_tarifa: dict[str, float] = {
-        "20td": 0.0,
-        "30td": 0.0,
-        "30tdve": 0.0,
-        "61td": 0.0,
-        "62td": 0.0,
-        "63td": 0.0,
-        "64td": 0.0,
-    }
-
-    tarifa_map = {
-        "2.0TD": "20td",
-        "3.0TD": "30td",
-        "3.0TDVE": "30tdve",
-        "6.1TD": "61td",
-        "6.2TD": "62td",
-        "6.3TD": "63td",
-        "6.4TD": "64td",
-    }
-
-    for row in detail_rows:
-        cups = str(getattr(row, "cups", "") or "").strip()
-        poliza = str(getattr(row, "poliza", "") or "").strip()
-        tarifa = str(getattr(row, "tarifa_acceso", "") or "").strip().upper()
-        energia = float(getattr(row, "energia_facturada_kwh", 0.0) or 0.0)
-        importe = float(getattr(row, "importe_total_eur", 0.0) or 0.0)
-
-        energia_total += energia
-        importe_total += importe
-
-        if cups:
-            cups_total_set.add(cups)
-
-        if poliza in {"1", "2", "3", "4", "5"}:
-            tipo = int(poliza)
-            energia_por_tipo[tipo] += energia
-            importe_por_tipo[tipo] += importe
-            if cups:
-                cups_por_tipo[tipo].add(cups)
-
-        sufijo = tarifa_map.get(tarifa)
-        if sufijo:
-            energia_tarifa[sufijo] += energia
-            importe_tarifa[sufijo] += importe
-            if cups:
-                cups_tarifa[sufijo].add(cups)
-
-    return {
-        "energia_ps_tipo_1_kwh": energia_por_tipo[1],
-        "energia_ps_tipo_2_kwh": energia_por_tipo[2],
-        "energia_ps_tipo_3_kwh": energia_por_tipo[3],
-        "energia_ps_tipo_4_kwh": energia_por_tipo[4],
-        "energia_ps_tipo_5_kwh": energia_por_tipo[5],
-        "energia_ps_total_kwh": energia_total,
-        "cups_tipo_1": len(cups_por_tipo[1]),
-        "cups_tipo_2": len(cups_por_tipo[2]),
-        "cups_tipo_3": len(cups_por_tipo[3]),
-        "cups_tipo_4": len(cups_por_tipo[4]),
-        "cups_tipo_5": len(cups_por_tipo[5]),
-        "cups_total": len(cups_total_set),
-        "importe_tipo_1_eur": importe_por_tipo[1],
-        "importe_tipo_2_eur": importe_por_tipo[2],
-        "importe_tipo_3_eur": importe_por_tipo[3],
-        "importe_tipo_4_eur": importe_por_tipo[4],
-        "importe_tipo_5_eur": importe_por_tipo[5],
-        "importe_total_eur": importe_total,
-        "energia_tarifa_20td_kwh": energia_tarifa["20td"],
-        "cups_tarifa_20td": len(cups_tarifa["20td"]),
-        "importe_tarifa_20td_eur": importe_tarifa["20td"],
-        "energia_tarifa_30td_kwh": energia_tarifa["30td"],
-        "cups_tarifa_30td": len(cups_tarifa["30td"]),
-        "importe_tarifa_30td_eur": importe_tarifa["30td"],
-        "energia_tarifa_30tdve_kwh": energia_tarifa["30tdve"],
-        "cups_tarifa_30tdve": len(cups_tarifa["30tdve"]),
-        "importe_tarifa_30tdve_eur": importe_tarifa["30tdve"],
-        "energia_tarifa_61td_kwh": energia_tarifa["61td"],
-        "cups_tarifa_61td": len(cups_tarifa["61td"]),
-        "importe_tarifa_61td_eur": importe_tarifa["61td"],
-        "energia_tarifa_62td_kwh": energia_tarifa["62td"],
-        "cups_tarifa_62td": len(cups_tarifa["62td"]),
-        "importe_tarifa_62td_eur": importe_tarifa["62td"],
-        "energia_tarifa_63td_kwh": energia_tarifa["63td"],
-        "cups_tarifa_63td": len(cups_tarifa["63td"]),
-        "importe_tarifa_63td_eur": importe_tarifa["63td"],
-        "energia_tarifa_64td_kwh": energia_tarifa["64td"],
-        "cups_tarifa_64td": len(cups_tarifa["64td"]),
-        "importe_tarifa_64td_eur": importe_tarifa["64td"],
-    }
+    return _aggregate_ps_items(
+        detail_rows,
+        get_cups=lambda r: str(getattr(r, "cups", "") or "").strip(),
+        get_poliza=lambda r: str(getattr(r, "poliza", "") or "").strip(),
+        get_tarifa=lambda r: str(getattr(r, "tarifa_acceso", "") or "").strip().upper(),
+        get_energia=lambda r: float(getattr(r, "energia_facturada_kwh", 0.0) or 0.0),
+        get_importe=lambda r: float(getattr(r, "importe_total_eur", 0.0) or 0.0),
+    )
 
 
 def _sum_contribuciones_ps(
@@ -1349,6 +1242,82 @@ def _apply_ps_aggregate_to_medida(
     mp.file_id = _file_id(fichero)  # type: ignore[assignment]
 
 
+# ---------- Ítem 4 — procesador ACUM genérico ----------
+
+
+def _procesar_acum_generico(
+    *,
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    fichero: IngestionFile,
+    filas_raw: Iterable[Dict[str, Any]],
+    nombre_fichero_log: str,
+    magnitud_objetivo: str,
+    regex_periodo: str,
+    source_tipo: str,
+    punto_id_default: str,
+    energia_generada: bool = False,
+    energia_frontera_dd: bool = False,
+    energia_pf: bool = False,
+) -> MedidaGeneral:
+    """Núcleo común para todos los procesadores de ficheros ACUM H2 y ACUMCIL.
+
+    Parámetros de destino energético (exactamente uno debe ser True):
+      energia_generada    → rellena energia_generada_kwh
+      energia_frontera_dd → rellena energia_frontera_dd_kwh
+      energia_pf          → rellena energia_pf_kwh
+    """
+    filas = list(filas_raw)
+
+    if not filas:
+        raise ValueError(f"El fichero {nombre_fichero_log} no contiene filas de datos")
+
+    magnitud_norm = str(magnitud_objetivo).strip().upper()
+    filas_filtradas = [
+        f for f in filas
+        if str(f.get("Magnitud", "")).strip().upper() == magnitud_norm
+    ]
+    if not filas_filtradas:
+        raise ValueError(
+            f"No hay filas con Magnitud '{magnitud_norm}' en el fichero {nombre_fichero_log}"
+        )
+
+    try:
+        energia_total = sum(
+            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
+            for f in filas_filtradas
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Valores no numéricos en 'Valor_Acumulado_Total_Energia' en {nombre_fichero_log}"
+        ) from exc
+
+    filename = str(getattr(fichero, "filename", "") or "")
+    m = re.search(regex_periodo, filename)
+    if not m:
+        raise ValueError(
+            f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {filename}"
+        )
+
+    anio = int(m.group(1))
+    mes = int(m.group(2))
+
+    return _save_general_period_contribution_and_rebuild(
+        db=db,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        fichero=fichero,
+        anio=anio,
+        mes=mes,
+        source_tipo=source_tipo,
+        energia_generada_kwh=float(energia_total) if energia_generada else 0.0,
+        energia_frontera_dd_kwh=float(energia_total) if energia_frontera_dd else 0.0,
+        energia_pf_kwh=float(energia_total) if energia_pf else 0.0,
+        punto_id_default=punto_id_default,
+    )
+
+
 # ---------- M1 facturación ----------
 
 
@@ -1603,7 +1572,7 @@ def procesar_m1_autoconsumo(
     return mg
 
 
-# ---------- ACUMCIL ----------
+# ---------- ACUMCIL y ACUM H2 (usando _procesar_acum_generico) ----------
 
 
 def procesar_acumcil_generacion(
@@ -1614,52 +1583,19 @@ def procesar_acumcil_generacion(
     fichero: IngestionFile,
     filas_raw: Iterable[Dict[str, Any]],
 ) -> MedidaGeneral:
-    filas = list(filas_raw)
-
-    if not filas:
-        raise ValueError("El fichero ACUMCIL no contiene filas de datos")
-
-    for f in filas:
-        mag = f.get("Magnitud", "")
-        f["Magnitud_normalizada"] = str(mag).strip().upper()
-
-    filas_as = [f for f in filas if f["Magnitud_normalizada"] == "AS"]
-    if not filas_as:
-        raise ValueError("No hay filas con Magnitud 'AS' en el fichero ACUMCIL")
-
-    try:
-        energia_total = sum(
-            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
-            for f in filas_as
-        )
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUMCIL") from exc
-
-    filename = getattr(fichero, "filename", "") or ""
-    nombre = str(filename)
-    m = re.search(r"_(\d{4})(\d{2})_", nombre)
-    if not m:
-        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
-
-    anio = int(m.group(1))
-    mes = int(m.group(2))
-
-    return _save_general_period_contribution_and_rebuild(
+    return _procesar_acum_generico(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
-        anio=anio,
-        mes=mes,
+        filas_raw=filas_raw,
+        nombre_fichero_log="ACUMCIL",
+        magnitud_objetivo="AS",
+        regex_periodo=r"_(\d{4})(\d{2})_",
         source_tipo="ACUMCIL",
-        energia_generada_kwh=float(energia_total),
-        energia_frontera_dd_kwh=0.0,
-        energia_pf_kwh=0.0,
         punto_id_default="ACUMCIL",
+        energia_generada=True,
     )
-
-
-# ---------- ACUM H2 GRD ----------
 
 
 def procesar_acum_h2_grd_generacion(
@@ -1670,44 +1606,18 @@ def procesar_acum_h2_grd_generacion(
     fichero: IngestionFile,
     filas_raw: Iterable[Dict[str, Any]],
 ) -> MedidaGeneral:
-    filas = list(filas_raw)
-
-    if not filas:
-        raise ValueError("El fichero ACUM H2 GRD no contiene filas de datos")
-
-    filas_as = [f for f in filas if str(f.get("Magnitud", "")).strip().upper() == "AS"]
-    if not filas_as:
-        raise ValueError("No hay filas con Magnitud 'AS' en el fichero ACUM H2 GRD")
-
-    try:
-        energia_total = sum(
-            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
-            for f in filas_as
-        )
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 GRD") from exc
-
-    filename = getattr(fichero, "filename", "") or ""
-    nombre = str(filename)
-    m = re.search(r"_(\d{4})(\d{2})", nombre)
-    if not m:
-        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
-
-    anio = int(m.group(1))
-    mes = int(m.group(2))
-
-    return _save_general_period_contribution_and_rebuild(
+    return _procesar_acum_generico(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
-        anio=anio,
-        mes=mes,
+        filas_raw=filas_raw,
+        nombre_fichero_log="ACUM H2 GRD",
+        magnitud_objetivo="AS",
+        regex_periodo=r"_(\d{4})(\d{2})",
         source_tipo="ACUM_H2_GRD",
-        energia_generada_kwh=float(energia_total),
-        energia_frontera_dd_kwh=0.0,
-        energia_pf_kwh=0.0,
         punto_id_default="ACUM_H2_GRD",
+        energia_generada=True,
     )
 
 
@@ -1719,44 +1629,18 @@ def procesar_acum_h2_gen_generacion(
     fichero: IngestionFile,
     filas_raw: Iterable[Dict[str, Any]],
 ) -> MedidaGeneral:
-    filas = list(filas_raw)
-
-    if not filas:
-        raise ValueError("El fichero ACUM H2 GEN no contiene filas de datos")
-
-    filas_as = [f for f in filas if str(f.get("Magnitud", "")).strip().upper() == "AS"]
-    if not filas_as:
-        raise ValueError("No hay filas con Magnitud 'AS' en el fichero ACUM H2 GEN")
-
-    try:
-        energia_total = sum(
-            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
-            for f in filas_as
-        )
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 GEN") from exc
-
-    filename = getattr(fichero, "filename", "") or ""
-    nombre = str(filename)
-    m = re.search(r"_(\d{4})(\d{2})", nombre)
-    if not m:
-        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
-
-    anio = int(m.group(1))
-    mes = int(m.group(2))
-
-    return _save_general_period_contribution_and_rebuild(
+    return _procesar_acum_generico(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
-        anio=anio,
-        mes=mes,
+        filas_raw=filas_raw,
+        nombre_fichero_log="ACUM H2 GEN",
+        magnitud_objetivo="AS",
+        regex_periodo=r"_(\d{4})(\d{2})",
         source_tipo="ACUM_H2_GEN",
-        energia_generada_kwh=float(energia_total),
-        energia_frontera_dd_kwh=0.0,
-        energia_pf_kwh=0.0,
         punto_id_default="ACUM_H2_GEN",
+        energia_generada=True,
     )
 
 
@@ -1771,49 +1655,18 @@ def procesar_acum_h2_rdd_frontera_dd(
     source_tipo: str = "ACUM_H2_RDD_FRONTERA_DD",
     punto_id_default: str = "ACUM_H2_RDD",
 ) -> MedidaGeneral:
-    filas = list(filas_raw)
-
-    if not filas:
-        raise ValueError("El fichero ACUM H2 RDD no contiene filas de datos")
-
-    magnitud_objetivo_norm = str(magnitud_objetivo).strip().upper()
-
-    filas_filtradas = [
-        f for f in filas
-        if str(f.get("Magnitud", "")).strip().upper() == magnitud_objetivo_norm
-    ]
-    if not filas_filtradas:
-        raise ValueError(f"No hay filas con Magnitud '{magnitud_objetivo_norm}' en el fichero ACUM H2 RDD")
-
-    try:
-        energia_total = sum(
-            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
-            for f in filas_filtradas
-        )
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 RDD") from exc
-
-    filename = getattr(fichero, "filename", "") or ""
-    nombre = str(filename)
-    m = re.search(r"_(\d{4})(\d{2})", nombre)
-    if not m:
-        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
-
-    anio = int(m.group(1))
-    mes = int(m.group(2))
-
-    return _save_general_period_contribution_and_rebuild(
+    return _procesar_acum_generico(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
-        anio=anio,
-        mes=mes,
+        filas_raw=filas_raw,
+        nombre_fichero_log="ACUM H2 RDD",
+        magnitud_objetivo=magnitud_objetivo,
+        regex_periodo=r"_(\d{4})(\d{2})",
         source_tipo=source_tipo,
-        energia_generada_kwh=0.0,
-        energia_frontera_dd_kwh=float(energia_total),
-        energia_pf_kwh=0.0,
         punto_id_default=punto_id_default,
+        energia_frontera_dd=True,
     )
 
 
@@ -1825,44 +1678,18 @@ def procesar_acum_h2_rdd_pf_kwh(
     fichero: IngestionFile,
     filas_raw: Iterable[Dict[str, Any]],
 ) -> MedidaGeneral:
-    filas = list(filas_raw)
-
-    if not filas:
-        raise ValueError("El fichero ACUM H2 RDD (PF) no contiene filas de datos")
-
-    filas_ae = [f for f in filas if str(f.get("Magnitud", "")).strip().upper() == "AE"]
-    if not filas_ae:
-        raise ValueError("No hay filas con Magnitud 'AE' en el fichero ACUM H2 RDD (PF)")
-
-    try:
-        energia_total = sum(
-            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
-            for f in filas_ae
-        )
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 RDD (PF)") from exc
-
-    filename = getattr(fichero, "filename", "") or ""
-    nombre = str(filename)
-    m = re.search(r"_(\d{4})(\d{2})", nombre)
-    if not m:
-        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
-
-    anio = int(m.group(1))
-    mes = int(m.group(2))
-
-    return _save_general_period_contribution_and_rebuild(
+    return _procesar_acum_generico(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
-        anio=anio,
-        mes=mes,
+        filas_raw=filas_raw,
+        nombre_fichero_log="ACUM H2 RDD (PF)",
+        magnitud_objetivo="AE",
+        regex_periodo=r"_(\d{4})(\d{2})",
         source_tipo="ACUM_H2_RDD_PF",
-        energia_generada_kwh=0.0,
-        energia_frontera_dd_kwh=0.0,
-        energia_pf_kwh=float(energia_total),
         punto_id_default="ACUM_H2_RDD_PF",
+        energia_pf=True,
     )
 
 
@@ -1874,44 +1701,18 @@ def procesar_acum_h2_trd_pf_kwh(
     fichero: IngestionFile,
     filas_raw: Iterable[Dict[str, Any]],
 ) -> MedidaGeneral:
-    filas = list(filas_raw)
-
-    if not filas:
-        raise ValueError("El fichero ACUM H2 TRD (PF) no contiene filas de datos")
-
-    filas_ae = [f for f in filas if str(f.get("Magnitud", "")).strip().upper() == "AE"]
-    if not filas_ae:
-        raise ValueError("No hay filas con Magnitud 'AE' en el fichero ACUM H2 TRD (PF)")
-
-    try:
-        energia_total = sum(
-            float(str(f.get("Valor_Acumulado_Total_Energia", "0")).replace(",", "."))
-            for f in filas_ae
-        )
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Valores no numéricos en 'Valor_Acumulado_Total_Energia' en ACUM H2 TRD (PF)") from exc
-
-    filename = getattr(fichero, "filename", "") or ""
-    nombre = str(filename)
-    m = re.search(r"_(\d{4})(\d{2})", nombre)
-    if not m:
-        raise ValueError(f"No se ha podido extraer el periodo AAAAMM del nombre de fichero: {nombre}")
-
-    anio = int(m.group(1))
-    mes = int(m.group(2))
-
-    return _save_general_period_contribution_and_rebuild(
+    return _procesar_acum_generico(
         db=db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
         fichero=fichero,
-        anio=anio,
-        mes=mes,
+        filas_raw=filas_raw,
+        nombre_fichero_log="ACUM H2 TRD (PF)",
+        magnitud_objetivo="AE",
+        regex_periodo=r"_(\d{4})(\d{2})",
         source_tipo="ACUM_H2_TRD_PF",
-        energia_generada_kwh=0.0,
-        energia_frontera_dd_kwh=0.0,
-        energia_pf_kwh=float(energia_total),
         punto_id_default="ACUM_H2_TRD_PF",
+        energia_pf=True,
     )
 
 
@@ -1989,16 +1790,6 @@ def procesar_ps(
     cups_total_set_by_period: dict[tuple[int, int], set[str]] = {}
     cups_tarifa_by_period: dict[tuple[int, int], dict[str, set[str]]] = {}
 
-    tarifa_map = {
-        "2.0TD": "20td",
-        "3.0TD": "30td",
-        "3.0TDVE": "30tdve",
-        "6.1TD": "61td",
-        "6.2TD": "62td",
-        "6.3TD": "63td",
-        "6.4TD": "64td",
-    }
-
     for f in filas:
         try:
             fecha_final = _to_date(f.get("Fecha_final"))
@@ -2066,15 +1857,7 @@ def procesar_ps(
 
         cups_tarifa = cups_tarifa_by_period.get(period_key)
         if cups_tarifa is None:
-            cups_tarifa = {
-                "20td": set(),
-                "30td": set(),
-                "30tdve": set(),
-                "61td": set(),
-                "62td": set(),
-                "63td": set(),
-                "64td": set(),
-            }
+            cups_tarifa = {k: set() for k in _TARIFA_MAP.values()}
             cups_tarifa_by_period[period_key] = cups_tarifa
 
         agregado["energia_ps_total_kwh"] = float(agregado["energia_ps_total_kwh"]) + energia
@@ -2092,7 +1875,7 @@ def procesar_ps(
             agregado[importe_key] = float(agregado[importe_key]) + importe
             cups_sets_tipo[tipo_int].add(cups)
 
-        sufijo_tarifa = tarifa_map.get(tarifa)
+        sufijo_tarifa = _TARIFA_MAP.get(tarifa)
         if sufijo_tarifa is not None:
             energia_tarifa_key = f"energia_tarifa_{sufijo_tarifa}_kwh"
             importe_tarifa_key = f"importe_tarifa_{sufijo_tarifa}_eur"
@@ -2161,15 +1944,7 @@ def procesar_ps(
         cups_total_set = cups_total_set_by_period.get(period_key, set())
         cups_tarifa = cups_tarifa_by_period.get(
             period_key,
-            {
-                "20td": set(),
-                "30td": set(),
-                "30tdve": set(),
-                "61td": set(),
-                "62td": set(),
-                "63td": set(),
-                "64td": set(),
-            },
+            {k: set() for k in _TARIFA_MAP.values()},
         )
 
         agregado["cups_tipo_1"] = len(cups_sets_tipo[1])
@@ -2250,9 +2025,6 @@ def procesar_ps(
     mp_principal: MedidaPS | None = None
 
     for (anio, mes) in sorted(periodos_afectados):
-        # IMPORTANTE:
-        # reconstruimos SIEMPRE desde las contribuciones persistidas de BD,
-        # no desde el agregado parcial del fichero actual.
         agregado = _sum_contribuciones_ps(
             db,
             tenant_id=tenant_id,
