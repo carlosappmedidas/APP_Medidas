@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import type {
   Empresa,
@@ -65,7 +65,7 @@ function inferTipoFromFilename(filename: string): string | null {
   return null;
 }
 
-// ── NUEVO: extrae el código REE del nombre del fichero según tipo ──────────
+// ── extrae el código REE del nombre del fichero según tipo ──────────
 // Ignora prefijos numéricos del sistema (ej. 1774047141200_)
 function extractCodigoFromFilename(tipo: string, filename: string): string | null {
   const stem = filename.replace(/\.[^/.]+$/, "");
@@ -85,7 +85,6 @@ function extractCodigoFromFilename(tipo: string, filename: string): string | nul
   }
   return null;
 }
-// ── FIN NUEVO ─────────────────────────────────────────────────────────────
 
 function fmtPeriodo(anio: number, mes: number) {
   return `${anio}-${String(mes).padStart(2, "0")}`;
@@ -217,8 +216,10 @@ export default function CargaSection({ token }: Props) {
   const [logLines, setLogLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // ── NUEVO: ficheros rechazados por mismatch de código REE ─────────────
   const [mismatchErrors, setMismatchErrors] = useState<string[]>([]);
+
+  // ── NUEVO: ref para limpiar el input de ficheros al terminar ──────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   const [history, setHistory] = useState<IngestionFile[]>([]);
@@ -266,7 +267,7 @@ export default function CargaSection({ token }: Props) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files);
-    setMismatchErrors([]); // ── NUEVO: limpiar errores al cambiar ficheros
+    setMismatchErrors([]);
   };
 
   const sessionSummary = useMemo(() => {
@@ -375,7 +376,7 @@ export default function CargaSection({ token }: Props) {
       return;
     }
 
-    // ── NUEVO: validación previa de código REE ─────────────────────────
+    // Validación previa de código REE
     const empresaSeleccionada = empresas.find((e) => e.id === empresaId);
     const codigoReeEmpresa = empresaSeleccionada?.codigo_ree ?? null;
 
@@ -383,7 +384,7 @@ export default function CargaSection({ token }: Props) {
       const errores: string[] = [];
       for (const file of Array.from(files)) {
         const tipo = inferTipoFromFilename(file.name);
-        if (!tipo) continue; // se omitirá más adelante por tipo desconocido
+        if (!tipo) continue;
         const codigoFichero = extractCodigoFromFilename(tipo, file.name);
         if (codigoFichero !== null && codigoFichero !== codigoReeEmpresa) {
           errores.push(
@@ -394,13 +395,11 @@ export default function CargaSection({ token }: Props) {
 
       if (errores.length > 0) {
         setMismatchErrors(errores);
-        return; // CANCELAR — no se sube nada
+        return;
       }
     }
 
     setMismatchErrors([]);
-    // ── FIN NUEVO ──────────────────────────────────────────────────────
-
     setLoading(true);
     appendLog(`Iniciando carga de ${files.length} fichero(s)...`);
 
@@ -506,6 +505,12 @@ export default function CargaSection({ token }: Props) {
       }
 
       appendLog("✔ Carga y procesado de ficheros finalizados.");
+
+      // ── NUEVO: limpiar selección de ficheros al terminar ──────────────
+      setFiles(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      // ── FIN NUEVO ─────────────────────────────────────────────────────
+
     } catch (err) {
       console.error("Error en handleProcess:", err);
       appendLog(`❌ Error general en la carga: ${(err as Error).message}`);
@@ -653,7 +658,6 @@ export default function CargaSection({ token }: Props) {
           </div>
         )}
 
-        {/* ── NUEVO: Alert mismatch REE ──────────────────────────────────── */}
         {mismatchErrors.length > 0 && (
           <div className="ui-alert ui-alert--danger mb-4">
             <div className="font-semibold mb-1">
@@ -676,7 +680,6 @@ export default function CargaSection({ token }: Props) {
             </button>
           </div>
         )}
-        {/* ── FIN NUEVO ─────────────────────────────────────────────────── */}
 
         <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
           <div>
@@ -687,7 +690,7 @@ export default function CargaSection({ token }: Props) {
               disabled={!canUse || loading}
               onChange={(e) => {
                 setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null);
-                setMismatchErrors([]); // ── NUEVO: limpiar al cambiar empresa
+                setMismatchErrors([]);
               }}
             >
               {empresas.map((e) => (
@@ -727,7 +730,9 @@ export default function CargaSection({ token }: Props) {
 
         <div className="mb-4">
           <label className="ui-label">Ficheros (puedes seleccionar varios)</label>
+          {/* ── NUEVO: ref añadido al input ── */}
           <input
+            ref={fileInputRef}
             type="file"
             multiple
             onChange={handleFileChange}
