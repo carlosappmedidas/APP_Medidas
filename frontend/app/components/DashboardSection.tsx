@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useMemo, useState } from "react";
 import EmpresasSection from "./EmpresasSection";
 import { useDashboardSummary } from "./hooks/useDashboardSummary";
@@ -7,11 +6,13 @@ import { useDashboardFilters } from "./hooks/useDashboardFilters";
 import { useDashboardEnergyComparisonChart } from "./hooks/useDashboardEnergyComparisonChart";
 import { useDashboardEnergyTrendChart } from "./hooks/useDashboardEnergyTrendChart";
 import { useDashboardLossesTrendChart } from "./hooks/useDashboardLossesTrendChart";
+import { useDashboardLossesConsistency } from "./hooks/useDashboardLossesConsistency";
 import DashboardMiniCard from "./dashboard/ui/DashboardMiniCard";
 import DashboardPlaceholderBox from "./dashboard/ui/DashboardPlaceholderBox";
 import DashboardEnergyComparisonChart from "./dashboard/charts/DashboardEnergyComparisonChart";
 import DashboardEnergyTrendChart from "./dashboard/charts/DashboardEnergyTrendChart";
 import DashboardLossesTrendChart from "./dashboard/charts/DashboardLossesTrendChart";
+import LossesConsistencyCard from "./dashboard/ui/LossesConsistencyCard";
 import {
   formatKwhEur,
   formatKwhOnly,
@@ -26,7 +27,6 @@ type Props = {
 export default function DashboardSection({ token }: Props) {
   const isLogged = !!token;
   const [showEmpresas, setShowEmpresas] = useState(false);
-
   const [empresa, setEmpresa] = useState("");
   const [anio, setAnio] = useState("");
   const [mes, setMes] = useState("");
@@ -35,15 +35,8 @@ export default function DashboardSection({ token }: Props) {
   const anioValue = anio ? Number(anio) : null;
   const mesValue = anio && mes ? Number(mes) : null;
 
-  const {
-    data: filtersData,
-    loading: filtersLoading,
-    error: filtersError,
-  } = useDashboardFilters({
-    token,
-    empresaId,
-    anio: anioValue,
-  });
+  const { data: filtersData, loading: filtersLoading, error: filtersError } =
+    useDashboardFilters({ token, empresaId, anio: anioValue });
 
   const { data, loading, error } = useDashboardSummary({
     token,
@@ -52,53 +45,44 @@ export default function DashboardSection({ token }: Props) {
     mes: mesValue,
   });
 
-  const {
-    data: chartData,
-    loading: chartLoading,
-    error: chartError,
-  } = useDashboardEnergyComparisonChart({
-    token,
-    empresaId,
-    anio: anioValue,
-    mes: mesValue,
-  });
+  const { data: chartData, loading: chartLoading, error: chartError } =
+    useDashboardEnergyComparisonChart({ token, empresaId, anio: anioValue, mes: mesValue });
 
-  const {
-    data: energyTrendChartData,
-    loading: energyTrendChartLoading,
-    error: energyTrendChartError,
-  } = useDashboardEnergyTrendChart({
-    token,
-    empresaId,
-    anio: anioValue,
-    mes: mesValue,
-  });
+  const { data: energyTrendChartData, loading: energyTrendChartLoading, error: energyTrendChartError } =
+    useDashboardEnergyTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
 
-  const {
-    data: lossesTrendChartData,
-    loading: lossesTrendChartLoading,
-    error: lossesTrendChartError,
-  } = useDashboardLossesTrendChart({
-    token,
-    empresaId,
-    anio: anioValue,
-    mes: mesValue,
-  });
+  const { data: lossesTrendChartData, loading: lossesTrendChartLoading, error: lossesTrendChartError } =
+    useDashboardLossesTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
 
-  useEffect(() => {
-    setAnio("");
-    setMes("");
-  }, [empresa]);
+  // ✅ Para la tarjeta de consistencia: si el usuario no ha seleccionado año,
+  // usamos el año anterior al último periodo común disponible (ytd completo).
+  // Si el usuario sí ha seleccionado año/mes, respetamos su selección.
+  const lossesConsistencyAnio = useMemo(() => {
+    if (anioValue !== null) return anioValue;
+    const lastAnio = data?.common_period?.anio;
+    if (!lastAnio) return null;
+    // Si el último mes común es enero (mes=1), el año anterior tiene más datos publicados
+    const lastMes = data?.common_period?.mes;
+    if (lastMes !== undefined && lastMes !== null && lastMes <= 3) {
+      return lastAnio - 1;
+    }
+    return lastAnio;
+  }, [anioValue, data]);
 
-  useEffect(() => {
-    setMes("");
-  }, [anio]);
+  const { data: lossesConsistencyData, loading: lossesConsistencyLoading, error: lossesConsistencyError } =
+    useDashboardLossesConsistency({
+      token,
+      empresaId,
+      anio: lossesConsistencyAnio,
+      mes: mesValue,
+    });
+
+  useEffect(() => { setAnio(""); setMes(""); }, [empresa]);
+  useEffect(() => { setMes(""); }, [anio]);
 
   const empresaOptions = useMemo(() => {
     const base = [{ value: "", label: "Todas" }];
-
     if (!filtersData?.empresas?.length) return base;
-
     return [
       ...base,
       ...filtersData.empresas.map((empresaItem) => ({
@@ -110,9 +94,7 @@ export default function DashboardSection({ token }: Props) {
 
   const anioOptions = useMemo(() => {
     const base = [{ value: "", label: "Último disponible" }];
-
     if (!filtersData?.anios?.length) return base;
-
     return [
       ...base,
       ...filtersData.anios.map((anioItem) => ({
@@ -130,9 +112,7 @@ export default function DashboardSection({ token }: Props) {
 
   const mesOptions = useMemo(() => {
     const base = [{ value: "", label: "Último disponible" }];
-
     if (!mesesDisponibles.length) return base;
-
     return [
       ...base,
       ...mesesDisponibles.map((mesItem) => ({
@@ -144,63 +124,46 @@ export default function DashboardSection({ token }: Props) {
 
   useEffect(() => {
     if (!mes) return;
-
     const mesNumero = Number(mes);
-    if (!mesesDisponibles.includes(mesNumero)) {
-      setMes("");
-    }
+    if (!mesesDisponibles.includes(mesNumero)) setMes("");
   }, [mes, mesesDisponibles]);
 
   const aggregationMode = data?.aggregation_mode ?? "month";
 
-  const periodoComunLabel = useMemo(() => {
-    return formatMonthYear(data?.common_period?.anio, data?.common_period?.mes);
-  }, [data]);
+  const periodoComunLabel = useMemo(
+    () => formatMonthYear(data?.common_period?.anio, data?.common_period?.mes),
+    [data]
+  );
 
-  const previousPeriodoLabel = useMemo(() => {
-    return formatMonthYear(
-      data?.previous_common_period?.anio,
-      data?.previous_common_period?.mes
-    );
-  }, [data]);
+  const previousPeriodoLabel = useMemo(
+    () => formatMonthYear(data?.previous_common_period?.anio, data?.previous_common_period?.mes),
+    [data]
+  );
 
   const resumenSubtitle = useMemo(() => {
-    if (!isLogged) {
-      return "Resumen inicial del dashboard.";
-    }
-
-    if (aggregationMode === "ytd") {
+    if (!isLogged) return "Resumen inicial del dashboard.";
+    if (aggregationMode === "ytd")
       return "Resumen acumulado del año hasta el último mes común disponible entre Medidas General y PS.";
-    }
-
     return "Resumen inicial del último mes común disponible entre Medidas General y PS.";
   }, [isLogged, aggregationMode]);
 
   const periodoInfoLabel = useMemo(() => {
-    if (aggregationMode === "ytd") {
-      return `Acumulado hasta: ${periodoComunLabel}`;
-    }
+    if (aggregationMode === "ytd") return `Acumulado hasta: ${periodoComunLabel}`;
     return `Periodo común actual: ${periodoComunLabel}`;
   }, [aggregationMode, periodoComunLabel]);
 
   const variationTooltipTitle = useMemo(() => {
-    if (aggregationMode === "ytd") {
-      return "Variación vs mismo acumulado año anterior";
-    }
+    if (aggregationMode === "ytd") return "Variación vs mismo acumulado año anterior";
     return "Variación vs mes anterior";
   }, [aggregationMode]);
 
   const energiaCardTitle = useMemo(() => {
-    if (aggregationMode === "ytd") {
-      return "ENERGÍA FACTURADA ACUMULADA DEL AÑO";
-    }
+    if (aggregationMode === "ytd") return "ENERGÍA FACTURADA ACUMULADA DEL AÑO";
     return "ENERGÍA FACTURADA EN EL ÚLTIMO MES";
   }, [aggregationMode]);
 
   const perdidasCardTitle = useMemo(() => {
-    if (aggregationMode === "ytd") {
-      return "PÉRDIDAS ACUMULADAS DEL AÑO";
-    }
+    if (aggregationMode === "ytd") return "PÉRDIDAS ACUMULADAS DEL AÑO";
     return "PÉRDIDAS EN EL ÚLTIMO MES";
   }, [aggregationMode]);
 
@@ -208,7 +171,6 @@ export default function DashboardSection({ token }: Props) {
     if (!isLogged) return "—";
     if (loading) return "Cargando...";
     if (!data?.common_period) return "Sin datos";
-
     return formatKwhEur(
       data.energia_facturada.energia_neta_facturada_kwh_total,
       data.energia_facturada.importe_total_eur_total
@@ -217,7 +179,6 @@ export default function DashboardSection({ token }: Props) {
 
   const energiaFacturadaVariationKwh = useMemo(() => {
     if (!isLogged || loading || !data?.previous_common_period) return "—";
-
     return formatSignedNumberEs(
       data.energia_facturada.variation_vs_previous.energia_neta_facturada_kwh_delta
     );
@@ -225,7 +186,6 @@ export default function DashboardSection({ token }: Props) {
 
   const energiaFacturadaVariationEur = useMemo(() => {
     if (!isLogged || loading || !data?.previous_common_period) return "—";
-
     return formatSignedNumberEs(
       data.energia_facturada.variation_vs_previous.importe_total_eur_delta
     );
@@ -235,7 +195,6 @@ export default function DashboardSection({ token }: Props) {
     if (!isLogged) return "—";
     if (loading) return "Cargando...";
     if (!data?.common_period) return "Sin datos";
-
     return formatKwhOnly(data.perdidas.perdidas_e_facturada_kwh_total);
   }, [isLogged, loading, data]);
 
@@ -243,17 +202,11 @@ export default function DashboardSection({ token }: Props) {
     if (!isLogged) return "—";
     if (loading) return "Cargando...";
     if (!data?.previous_common_period) return "—";
-
     const currentLosses = data.perdidas.perdidas_e_facturada_kwh_total;
     const rawDelta = data.perdidas.variation_vs_previous.perdidas_e_facturada_kwh_delta;
-
-    if (rawDelta == null || Number.isNaN(rawDelta)) {
-      return "—";
-    }
-
+    if (rawDelta == null || Number.isNaN(rawDelta)) return "—";
     const previousLosses = currentLosses - rawDelta;
     const displayDelta = Math.abs(currentLosses) - Math.abs(previousLosses);
-
     return formatSignedNumberEs(displayDelta);
   }, [isLogged, loading, data]);
 
@@ -269,11 +222,8 @@ export default function DashboardSection({ token }: Props) {
 
   const comparisonHelpText = useMemo(() => {
     if (!data?.previous_common_period) return null;
-
-    if (aggregationMode === "ytd") {
+    if (aggregationMode === "ytd")
       return `Comparando hasta ${periodoComunLabel} contra el acumulado hasta ${previousPeriodoLabel}.`;
-    }
-
     return `Comparando ${periodoComunLabel} contra ${previousPeriodoLabel}.`;
   }, [aggregationMode, data, periodoComunLabel, previousPeriodoLabel]);
 
@@ -284,19 +234,16 @@ export default function DashboardSection({ token }: Props) {
           <div>
             <h3 className="ui-card-title text-base md:text-lg">DASHBOARD MEDIDAS</h3>
             <p className="ui-card-subtitle mt-1">{resumenSubtitle}</p>
-
             {isLogged && (
               <div className="mt-1 text-[11px] ui-muted">
-                {periodoInfoLabel.split(":")[0]}:
-                <span className="font-semibold"> {periodoComunLabel}</span>
+                {periodoInfoLabel.split(":")[0]}:{" "}
+                <span className="font-semibold">{periodoComunLabel}</span>
               </div>
             )}
-
             {isLogged && comparisonHelpText ? (
               <div className="mt-1 text-[11px] ui-muted">{comparisonHelpText}</div>
             ) : null}
           </div>
-
           <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[560px]">
             <div>
               <label className="ui-label">Empresa</label>
@@ -313,7 +260,6 @@ export default function DashboardSection({ token }: Props) {
                 ))}
               </select>
             </div>
-
             <div>
               <label className="ui-label">Año</label>
               <select
@@ -329,7 +275,6 @@ export default function DashboardSection({ token }: Props) {
                 ))}
               </select>
             </div>
-
             <div>
               <label className="ui-label">Mes</label>
               <select
@@ -355,30 +300,20 @@ export default function DashboardSection({ token }: Props) {
           >
             {isLogged ? "Con sesión" : "Sin sesión"}
           </span>
-
           <button
             type="button"
             onClick={() => setShowEmpresas((prev) => !prev)}
             className="ui-btn ui-btn-outline ui-btn-xs"
             disabled={!isLogged}
-            title={
-              isLogged
-                ? "Ver información de empresas asociadas"
-                : "Inicia sesión para ver empresas"
-            }
+            title={isLogged ? "Ver información de empresas asociadas" : "Inicia sesión para ver empresas"}
           >
             {showEmpresas ? "Ocultar empresas" : "Empresas (info)"}
           </button>
-
           {(empresa || anio || mes) && (
             <button
               type="button"
               className="ui-btn ui-btn-outline ui-btn-xs"
-              onClick={() => {
-                setEmpresa("");
-                setAnio("");
-                setMes("");
-              }}
+              onClick={() => { setEmpresa(""); setAnio(""); setMes(""); }}
               disabled={!isLogged}
             >
               Limpiar filtros
@@ -394,7 +329,6 @@ export default function DashboardSection({ token }: Props) {
                 Información de empresas asociadas al cliente.
               </div>
             </div>
-
             <EmpresasSection token={token} />
           </div>
         )}
@@ -404,7 +338,6 @@ export default function DashboardSection({ token }: Props) {
             Error cargando filtros del dashboard: {filtersErrorText}
           </div>
         )}
-
         {dashboardErrorText && (
           <div className="ui-alert ui-alert--danger">
             Error cargando el resumen del dashboard: {dashboardErrorText}
@@ -428,7 +361,6 @@ export default function DashboardSection({ token }: Props) {
                 ]}
                 minHeightClassName="min-h-[150px]"
               />
-
               <DashboardMiniCard
                 title={perdidasCardTitle}
                 centered
@@ -437,22 +369,14 @@ export default function DashboardSection({ token }: Props) {
                 tooltipRows={[{ label: "kWh", value: perdidasVariation }]}
                 minHeightClassName="min-h-[150px]"
               />
-
-              <DashboardMiniCard
-                title="EVOLUCIÓN DE ENERGÍA FACTURADA"
-                minHeightClassName="min-h-[180px]"
-              >
+              <DashboardMiniCard title="EVOLUCIÓN DE ENERGÍA FACTURADA" minHeightClassName="min-h-[180px]">
                 <DashboardEnergyTrendChart
                   loading={energyTrendChartLoading}
                   error={energyTrendChartError}
                   points={energyTrendChartData?.series ?? []}
                 />
               </DashboardMiniCard>
-
-              <DashboardMiniCard
-                title="EVOLUCIÓN DE PÉRDIDAS"
-                minHeightClassName="min-h-[180px]"
-              >
+              <DashboardMiniCard title="EVOLUCIÓN DE PÉRDIDAS" minHeightClassName="min-h-[180px]">
                 <DashboardLossesTrendChart
                   loading={lossesTrendChartLoading}
                   error={lossesTrendChartError}
@@ -477,7 +401,6 @@ export default function DashboardSection({ token }: Props) {
                 helpText="Al pasar el ratón por encima se abre ventana flotante con la info por empresa."
                 minHeightClassName="min-h-[150px]"
               />
-
               <DashboardMiniCard
                 title="CALENDARIO REE CON HITOS"
                 rows={[
@@ -489,13 +412,15 @@ export default function DashboardSection({ token }: Props) {
                 ]}
                 minHeightClassName="min-h-[150px]"
               />
-
               <DashboardMiniCard title="ALERTAS" minHeightClassName="min-h-[180px]">
                 <DashboardPlaceholderBox heightClassName="min-h-[120px]" />
               </DashboardMiniCard>
-
-              <DashboardMiniCard title="PÉRDIDAS" minHeightClassName="min-h-[180px]">
-                <DashboardPlaceholderBox heightClassName="min-h-[120px]" />
+              <DashboardMiniCard title="CONSISTENCIA DE PÉRDIDAS" minHeightClassName="min-h-[180px]">
+                <LossesConsistencyCard
+                  data={lossesConsistencyData}
+                  loading={lossesConsistencyLoading}
+                  error={lossesConsistencyError}
+                />
               </DashboardMiniCard>
             </div>
           </div>
@@ -512,7 +437,6 @@ export default function DashboardSection({ token }: Props) {
           >
             ENERGÍA FACTURADA VS. REE VS. PF
           </div>
-
           <div className="min-h-[320px] px-4 py-4">
             <DashboardEnergyComparisonChart
               loading={chartLoading}
