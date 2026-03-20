@@ -140,6 +140,14 @@ export default function DashboardSection({ token }: Props) {
     [data]
   );
 
+  // Etiqueta de periodo para títulos de tarjetas: año si YTD, mes/año si mes concreto
+  const periodoTituloLabel = useMemo(() => {
+    if (!data?.common_period) return "";
+    const { anio: a, mes: m } = data.common_period;
+    if (aggregationMode === "ytd") return String(a);
+    return `${NOMBRES_MES[m] ?? m} ${a}`;
+  }, [data, aggregationMode]);
+
   const resumenSubtitle = useMemo(() => {
     if (!isLogged) return "Resumen inicial del dashboard.";
     if (aggregationMode === "ytd")
@@ -157,15 +165,22 @@ export default function DashboardSection({ token }: Props) {
     return "Variación vs mes anterior";
   }, [aggregationMode]);
 
+  // Títulos de tarjetas con periodo real visible
   const energiaCardTitle = useMemo(() => {
-    if (aggregationMode === "ytd") return "ENERGÍA FACTURADA ACUMULADA DEL AÑO";
-    return "ENERGÍA FACTURADA EN EL ÚLTIMO MES";
-  }, [aggregationMode]);
+    if (aggregationMode === "ytd") return `ENERGÍA FACTURADA ACUMULADA ${periodoTituloLabel}`.trim();
+    return `ENERGÍA FACTURADA ${periodoTituloLabel}`.trim();
+  }, [aggregationMode, periodoTituloLabel]);
 
   const perdidasCardTitle = useMemo(() => {
-    if (aggregationMode === "ytd") return "PÉRDIDAS ACUMULADAS DEL AÑO";
-    return "PÉRDIDAS EN EL ÚLTIMO MES";
-  }, [aggregationMode]);
+    if (aggregationMode === "ytd") return `PÉRDIDAS ACUMULADAS ${periodoTituloLabel}`.trim();
+    return `PÉRDIDAS ${periodoTituloLabel}`.trim();
+  }, [aggregationMode, periodoTituloLabel]);
+
+  // Título del gráfico principal y evoluciones con año real
+  const anioGraficoLabel = useMemo(() => {
+    if (data?.common_period?.anio) return String(data.common_period.anio);
+    return "";
+  }, [data]);
 
   const energiaFacturadaTotal = useMemo(() => {
     if (!isLogged) return "—";
@@ -233,7 +248,6 @@ export default function DashboardSection({ token }: Props) {
     <section className="ui-card text-sm">
       <div className="flex flex-col gap-4">
 
-        {/* Cabecera: título a la izquierda, filtros a la derecha */}
         <div className="flex flex-row items-start justify-between gap-4">
           <div>
             <h3 className="ui-card-title text-base md:text-lg">DASHBOARD MEDIDAS</h3>
@@ -249,7 +263,6 @@ export default function DashboardSection({ token }: Props) {
             ) : null}
           </div>
 
-          {/* Bloque derecho: filtros en horizontal + limpiar debajo del grupo, independiente del mes */}
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
             <div className="flex flex-row gap-2 items-end">
               <div className="flex flex-col gap-0.5">
@@ -298,7 +311,6 @@ export default function DashboardSection({ token }: Props) {
                 </select>
               </div>
             </div>
-            {/* Limpiar filtros: siempre debajo del grupo de selects, visible solo si hay filtros activos */}
             {hayFiltrosActivos && (
               <button
                 type="button"
@@ -348,14 +360,20 @@ export default function DashboardSection({ token }: Props) {
                 tooltipRows={[{ label: "kWh", value: perdidasVariation }]}
                 minHeightClassName="min-h-[150px]"
               />
-              <DashboardMiniCard title="EVOLUCIÓN DE ENERGÍA FACTURADA" minHeightClassName="min-h-[180px]">
+              <DashboardMiniCard
+                title={`EVOLUCIÓN DE ENERGÍA FACTURADA ${anioGraficoLabel}`.trim()}
+                minHeightClassName="min-h-[180px]"
+              >
                 <DashboardEnergyTrendChart
                   loading={energyTrendChartLoading}
                   error={energyTrendChartError}
                   points={energyTrendChartData?.series ?? []}
                 />
               </DashboardMiniCard>
-              <DashboardMiniCard title="EVOLUCIÓN DE PÉRDIDAS" minHeightClassName="min-h-[180px]">
+              <DashboardMiniCard
+                title={`EVOLUCIÓN DE PÉRDIDAS ${anioGraficoLabel}`.trim()}
+                minHeightClassName="min-h-[180px]"
+              >
                 <DashboardLossesTrendChart
                   loading={lossesTrendChartLoading}
                   error={lossesTrendChartError}
@@ -394,7 +412,10 @@ export default function DashboardSection({ token }: Props) {
               <DashboardMiniCard title="ALERTAS" minHeightClassName="min-h-[180px]">
                 <DashboardPlaceholderBox heightClassName="min-h-[120px]" />
               </DashboardMiniCard>
-              <DashboardMiniCard title="CONSISTENCIA DE PÉRDIDAS" minHeightClassName="min-h-[180px]">
+              <DashboardMiniCard
+                title={`CONSISTENCIA DE PÉRDIDAS ${lossesConsistencyAnio ?? ""}`.trim()}
+                minHeightClassName="min-h-[180px]"
+              >
                 <LossesConsistencyCard
                   data={lossesConsistencyData}
                   loading={lossesConsistencyLoading}
@@ -414,7 +435,7 @@ export default function DashboardSection({ token }: Props) {
               borderBottom: "1px solid var(--card-border)",
             }}
           >
-            ENERGÍA FACTURADA VS. REE VS. PF
+            {`ENERGÍA FACTURADA VS. REE VS. PF ${anioGraficoLabel}`.trim()}
           </div>
           <div className="min-h-[320px] px-4 py-4">
             <DashboardEnergyComparisonChart
