@@ -2,8 +2,8 @@
 "use client";
 
 import { useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import type { Empresa } from "../types";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import type { Empresa } from "../../types";
 
 type EmpresasProps = {
   token: string | null;

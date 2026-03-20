@@ -2,9 +2,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import type { User, Empresa } from "../types";
-import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import AccordionCard from "./ui/AccordionCard";
+import type { User, Empresa } from "../../types";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import AccordionCard from "../ui/AccordionCard";
 
 type AdminEmpresasSectionProps = {
   token: string | null;

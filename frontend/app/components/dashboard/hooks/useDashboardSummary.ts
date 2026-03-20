@@ -1,64 +1,64 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
 
-export type DashboardLossesTrendChartPoint = {
-  mes: number;
-  mes_label: string;
-  perdidas_e_facturada_pct: number;
-};
-
-export type DashboardLossesTrendChartResponse = {
+export type DashboardSummaryResponse = {
   filters: {
     tenant_id?: number | null;
     empresa_id: number | null;
     anio: number | null;
     mes: number | null;
   };
-  resolved_period: {
+  common_period: {
     anio: number;
     mes: number;
   } | null;
-  chart_scope: {
+  previous_common_period: {
     anio: number;
-    from_mes: number;
-    to_mes: number;
+    mes: number;
   } | null;
-  series: DashboardLossesTrendChartPoint[];
+  aggregation_mode: "month" | "ytd";
+  energia_facturada: {
+    energia_neta_facturada_kwh_total: number;
+    importe_total_eur_total: number;
+    variation_vs_previous: {
+      energia_neta_facturada_kwh_delta: number | null;
+      importe_total_eur_delta: number | null;
+    };
+  };
+  perdidas: {
+    perdidas_e_facturada_kwh_total: number;
+    perdidas_e_facturada_eur_total?: number | null;
+    variation_vs_previous: {
+      perdidas_e_facturada_kwh_delta: number | null;
+    };
+  };
 };
 
-type UseDashboardLossesTrendChartParams = {
+type UseDashboardSummaryParams = {
   token: string | null;
   empresaId?: number | null;
   anio?: number | null;
   mes?: number | null;
 };
 
-export function useDashboardLossesTrendChart({
+export function useDashboardSummary({
   token,
   empresaId = null,
   anio = null,
   mes = null,
-}: UseDashboardLossesTrendChartParams) {
-  const [data, setData] = useState<DashboardLossesTrendChartResponse | null>(null);
+}: UseDashboardSummaryParams) {
+  const [data, setData] = useState<DashboardSummaryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
 
-    if (empresaId != null) {
-      params.set("empresa_id", String(empresaId));
-    }
-
-    if (anio != null) {
-      params.set("anio", String(anio));
-    }
-
-    if (mes != null) {
-      params.set("mes", String(mes));
-    }
+    if (empresaId != null) params.set("empresa_id", String(empresaId));
+    if (anio != null) params.set("anio", String(anio));
+    if (mes != null) params.set("mes", String(mes));
 
     const qs = params.toString();
     return qs ? `?${qs}` : "";
@@ -76,36 +76,31 @@ export function useDashboardLossesTrendChart({
     setError(null);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/dashboard/losses-trend-chart${queryString}`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(token),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/dashboard/summary${queryString}`, {
+        method: "GET",
+        headers: getAuthHeaders(token),
+      });
 
       if (!response.ok) {
-        let detail = "No se pudo cargar la evolución de pérdidas.";
+        let detail = "No se pudo cargar el resumen del dashboard.";
 
         try {
           const body = (await response.json()) as { detail?: string };
-          if (body?.detail) {
-            detail = body.detail;
-          }
+          if (body?.detail) detail = body.detail;
         } catch {
-          // ignore json parse error
+          //
         }
 
         throw new Error(detail);
       }
 
-      const json = (await response.json()) as DashboardLossesTrendChartResponse;
+      const json = (await response.json()) as DashboardSummaryResponse;
       setData(json);
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : "Error inesperado cargando la evolución de pérdidas.";
+          : "Error inesperado cargando el dashboard.";
       setError(message);
       setData(null);
     } finally {

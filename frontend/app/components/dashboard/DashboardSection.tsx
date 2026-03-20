@@ -1,24 +1,24 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import EmpresasSection from "./EmpresasSection";
+import EmpresasSection from "../admin/EmpresasSection";
 import { useDashboardSummary } from "./hooks/useDashboardSummary";
 import { useDashboardFilters } from "./hooks/useDashboardFilters";
 import { useDashboardEnergyComparisonChart } from "./hooks/useDashboardEnergyComparisonChart";
 import { useDashboardEnergyTrendChart } from "./hooks/useDashboardEnergyTrendChart";
 import { useDashboardLossesTrendChart } from "./hooks/useDashboardLossesTrendChart";
 import { useDashboardLossesConsistency } from "./hooks/useDashboardLossesConsistency";
-import DashboardMiniCard from "./dashboard/ui/DashboardMiniCard";
-import DashboardPlaceholderBox from "./dashboard/ui/DashboardPlaceholderBox";
-import DashboardEnergyComparisonChart from "./dashboard/charts/DashboardEnergyComparisonChart";
-import DashboardEnergyTrendChart from "./dashboard/charts/DashboardEnergyTrendChart";
-import DashboardLossesTrendChart from "./dashboard/charts/DashboardLossesTrendChart";
-import LossesConsistencyCard from "./dashboard/ui/LossesConsistencyCard";
+import DashboardMiniCard from "./ui/DashboardMiniCard";
+import DashboardPlaceholderBox from "./ui/DashboardPlaceholderBox";
+import DashboardEnergyComparisonChart from "./charts/DashboardEnergyComparisonChart";
+import DashboardEnergyTrendChart from "./charts/DashboardEnergyTrendChart";
+import DashboardLossesTrendChart from "./charts/DashboardLossesTrendChart";
+import LossesConsistencyCard from "./ui/LossesConsistencyCard";
 import {
   formatKwhEur,
   formatKwhOnly,
   formatMonthYear,
   formatSignedNumberEs,
-} from "./dashboard/formatters";
+} from "./formatters";
 
 type Props = {
   token: string | null;

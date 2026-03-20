@@ -3,9 +3,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import type { User } from "../types";
-import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import AccordionCard from "./ui/AccordionCard";
+import type { User } from "../../types";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import AccordionCard from "../ui/AccordionCard";
 
 type AdminUsersSectionProps = {
   token: string | null;

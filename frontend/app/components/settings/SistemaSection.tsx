@@ -2,8 +2,8 @@
 "use client";
 
 import React, { useState } from "react";
-import MedidasPsSection from "./MedidasPsSection";
-import MedidasGeneralSection from "./MedidasGeneralSection";
+import MedidasPsSection from "../medidas/MedidasPsSection";
+import MedidasGeneralSection from "../medidas/MedidasGeneralSection";
 
 type Props = {
   token: string | null;

@@ -2,8 +2,8 @@
 "use client";
 
 import { useState } from "react";
-import { API_BASE_URL } from "../apiConfig";
-import type { User } from "../types";
+import { API_BASE_URL } from "../../apiConfig";
+import type { User } from "../../types";
 
 type LoginProps = {
   token: string | null;

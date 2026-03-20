@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
-import type { DeleteImpactPreview } from "../../types";
-import { aggregateDeletePreviews } from "../utils/deletePreviewAggregation";
+import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
+import type { DeleteImpactPreview } from "../../../types";
+import { aggregateDeletePreviews } from "../../utils/deletePreviewAggregation";
 
 type UseDeleteByIngestionParams<TEmpresaOption> = {
   token: string | null;

@@ -2,8 +2,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import type { Empresa, User } from "../types";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import type { Empresa, User } from "../../types";
 
 type UsersSectionProps = {
   token: string | null;

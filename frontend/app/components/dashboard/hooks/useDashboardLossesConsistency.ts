@@ -1,57 +1,59 @@
 "use client";
-
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
 
-export type DashboardEnergyTrendChartPoint = {
-  mes: number;
-  mes_label: string;
-  energia_neta_facturada_kwh: number;
+export type VentanaData = {
+  kwh: number | null;
+  perdidas_pct: number | null;
+  pf_kwh: number | null;  // ✅ NUEVO
 };
 
-export type DashboardEnergyTrendChartResponse = {
+export type LossesConsistencyResponse = {
   filters: {
     tenant_id?: number | null;
     empresa_id: number | null;
     anio: number | null;
     mes: number | null;
   };
-  resolved_period: {
-    anio: number;
-    mes: number;
-  } | null;
-  chart_scope: {
-    anio: number;
-    from_mes: number;
-    to_mes: number;
-  } | null;
-  series: DashboardEnergyTrendChartPoint[];
+  common_period: { anio: number; mes: number } | null;
+  aggregation_mode: string;
+  ventanas: {
+    m1: VentanaData;
+    m2: VentanaData;
+    m7: VentanaData;
+    m11: VentanaData;
+    art15: VentanaData;
+  };
+  comparaciones: {
+    m1_vs_m2: number | null;
+    m2_vs_m7: number | null;
+    m7_vs_m11: number | null;
+    m11_vs_art15: number | null;
+  };
 };
 
-type UseDashboardEnergyTrendChartParams = {
+type Params = {
   token: string | null;
   empresaId?: number | null;
   anio?: number | null;
   mes?: number | null;
 };
 
-export function useDashboardEnergyTrendChart({
+export function useDashboardLossesConsistency({
   token,
   empresaId = null,
   anio = null,
   mes = null,
-}: UseDashboardEnergyTrendChartParams) {
-  const [data, setData] = useState<DashboardEnergyTrendChartResponse | null>(null);
+}: Params) {
+  const [data, setData] = useState<LossesConsistencyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
-
     if (empresaId != null) params.set("empresa_id", String(empresaId));
     if (anio != null) params.set("anio", String(anio));
     if (mes != null) params.set("mes", String(mes));
-
     const qs = params.toString();
     return qs ? `?${qs}` : "";
   }, [empresaId, anio, mes]);
@@ -63,36 +65,30 @@ export function useDashboardEnergyTrendChart({
       setLoading(false);
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboard/energy-trend-chart${queryString}`, {
-        method: "GET",
-        headers: getAuthHeaders(token),
-      });
-
+      const response = await fetch(
+        `${API_BASE_URL}/dashboard/losses-consistency${queryString}`,
+        { method: "GET", headers: getAuthHeaders(token) }
+      );
       if (!response.ok) {
-        let detail = "No se pudo cargar la gráfica de evolución de energía.";
-
+        let detail = "No se pudo cargar la consistencia de pérdidas.";
         try {
           const body = (await response.json()) as { detail?: string };
           if (body?.detail) detail = body.detail;
         } catch {
-          //
+          // ignore
         }
-
         throw new Error(detail);
       }
-
-      const json = (await response.json()) as DashboardEnergyTrendChartResponse;
+      const json = (await response.json()) as LossesConsistencyResponse;
       setData(json);
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : "Error inesperado cargando la gráfica de evolución de energía.";
+          : "Error inesperado cargando la consistencia de pérdidas.";
       setError(message);
       setData(null);
     } finally {
@@ -104,10 +100,5 @@ export function useDashboardEnergyTrendChart({
     void load();
   }, [load]);
 
-  return {
-    data,
-    loading,
-    error,
-    reload: load,
-  };
+  return { data, loading, error, reload: load };
 }

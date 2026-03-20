@@ -1,6 +1,6 @@
 "use client";
 
-import type { VarKey, ThemeOverrides } from "../hooks/useAppearanceTheme";
+import type { VarKey, ThemeOverrides } from "../settings/hooks/useAppearanceTheme";
 
 export function normalizeHexColor(input: string): string | null {
   const v = (input || "").trim();

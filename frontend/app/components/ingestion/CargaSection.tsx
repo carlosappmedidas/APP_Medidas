@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import type {
   Empresa,
   IngestionFile,
   IngestionWarningItem,
-} from "../types";
+} from "../../types";
 
 type Props = {
   token: string | null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
 
 export type DashboardFiltersResponse = {
   empresas: Array<{

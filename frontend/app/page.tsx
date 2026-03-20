@@ -2,16 +2,16 @@
 
 import React, { useEffect, useState } from "react";
 
-import LoginSection from "./components/Login-section";
-import DashboardSection from "./components/DashboardSection";
-import AlertsSection from "./components/AlertsSection";
-import MedidasGeneralSection from "./components/MedidasGeneralSection";
-import CargaSection from "./components/CargaSection";
-import UsersSection from "./components/UsersSection";
-import SistemaSection from "./components/SistemaSection";
-import ClientesSection from "./components/ClientesSection";
-import MedidasPsSection, { COLUMNS_PS_META } from "./components/MedidasPsSection";
-import AppearanceSettingsSection from "./components/AppearanceSettingsSection";
+import LoginSection from "./components/auth/Login-section";
+import DashboardSection from "./components/dashboard/DashboardSection";
+import AlertsSection from "./components/admin/AlertsSection";
+import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
+import CargaSection from "./components/ingestion/CargaSection";
+import UsersSection from "./components/admin/UsersSection";
+import SistemaSection from "./components/settings/SistemaSection";
+import ClientesSection from "./components/admin/ClientesSection";
+import MedidasPsSection, { COLUMNS_PS_META } from "./components/medidas/MedidasPsSection";
+import AppearanceSettingsSection from "./components/settings/AppearanceSettingsSection";
 
 import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";

@@ -1,15 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
-import type { MedidaPS } from "../types";
-import DeletePreviewModal from "./ui/DeletePreviewModal";
-import ConfirmDeleteModal from "./ui/ConfirmDeleteModal";
-import ColumnVisibilityOrderPanel from "./ui/ColumnVisibilityOrderPanel";
-import TablePaginationFooter from "./ui/TablePaginationFooter";
-import MedidasFiltersBar from "./ui/MedidasFiltersBar";
-import MedidasTableActions from "./ui/MedidasTableActions";
+import type { MedidaPS } from "../../types";
+import DeletePreviewModal from "../ui/DeletePreviewModal";
+import ConfirmDeleteModal from "../ui/ConfirmDeleteModal";
+import ColumnVisibilityOrderPanel from "../ui/ColumnVisibilityOrderPanel";
+import TablePaginationFooter from "../ui/TablePaginationFooter";
+import MedidasFiltersBar from "../ui/MedidasFiltersBar";
+import MedidasTableActions from "../ui/MedidasTableActions";
 import { useMedidasTable } from "./hooks/useMedidasTable";
-import { useDeleteByIngestion } from "./hooks/useDeleteByIngestion";
+import { useDeleteByIngestion } from "../ingestion/hooks/useDeleteByIngestion";
 
 type MedidasPsProps = {
   token: string | null;

@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
-import type { User } from "../types";
+import type { User } from "../../types";
 import AdminTenantsSection from "./AdminTenantsSection";
 import AdminEmpresasSection from "./AdminEmpresasSection";
 import AdminUsersSection from "./AdminUsersSection";

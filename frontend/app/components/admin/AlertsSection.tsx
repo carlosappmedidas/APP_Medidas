@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, getAuthHeaders } from "../apiConfig";
-import type { User } from "../types";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import type { User } from "../../types";
 
 type Props = {
   token: string | null;
