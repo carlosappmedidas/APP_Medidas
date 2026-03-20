@@ -185,6 +185,216 @@ def period_sort_key(item: tuple[int, int, int, int]) -> tuple[int, int, int, int
     return (empresa_id, anio, mes, tenant_id)
 
 
+# ---------------------------------------------------------------------------
+# Ítem 2 — función genérica para construir candidatos a borrar
+# ---------------------------------------------------------------------------
+
+def _build_delete_candidates(
+    db: Session,
+    model: Any,
+    *,
+    ingestion_file_ids: list[int],
+    tenant_id: int | None = None,
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> dict[int, Any]:
+    result: dict[int, Any] = {}
+
+    if ingestion_file_ids:
+        rows = (
+            db.query(model)
+            .filter(model.ingestion_file_id.in_(ingestion_file_ids))
+            .all()
+        )
+        for row in rows:
+            result[cast(int, row.id)] = row
+
+    rows_target = target_contribution_filters(
+        db.query(model),
+        model,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        anio=anio,
+        mes=mes,
+    ).all()
+    for row in rows_target:
+        result[cast(int, row.id)] = row
+
+    return result
+
+
+def build_m1_delete_candidates(
+    db: Session,
+    *,
+    ingestion_file_ids: list[int],
+    tenant_id: int | None = None,
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> dict[int, M1PeriodContribution]:
+    return cast(
+        dict[int, M1PeriodContribution],
+        _build_delete_candidates(
+            db,
+            M1PeriodContribution,
+            ingestion_file_ids=ingestion_file_ids,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ),
+    )
+
+
+def build_general_delete_candidates(
+    db: Session,
+    *,
+    ingestion_file_ids: list[int],
+    tenant_id: int | None = None,
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> dict[int, GeneralPeriodContribution]:
+    return cast(
+        dict[int, GeneralPeriodContribution],
+        _build_delete_candidates(
+            db,
+            GeneralPeriodContribution,
+            ingestion_file_ids=ingestion_file_ids,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ),
+    )
+
+
+def build_bald_delete_candidates(
+    db: Session,
+    *,
+    ingestion_file_ids: list[int],
+    tenant_id: int | None = None,
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> dict[int, BaldPeriodContribution]:
+    return cast(
+        dict[int, BaldPeriodContribution],
+        _build_delete_candidates(
+            db,
+            BaldPeriodContribution,
+            ingestion_file_ids=ingestion_file_ids,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ),
+    )
+
+
+def build_ps_detail_delete_candidates(
+    db: Session,
+    *,
+    ingestion_file_ids: list[int],
+    tenant_id: int | None = None,
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> dict[int, PSPeriodDetail]:
+    return cast(
+        dict[int, PSPeriodDetail],
+        _build_delete_candidates(
+            db,
+            PSPeriodDetail,
+            ingestion_file_ids=ingestion_file_ids,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ),
+    )
+
+
+def build_ps_contrib_delete_candidates(
+    db: Session,
+    *,
+    ingestion_file_ids: list[int],
+    tenant_id: int | None = None,
+    empresa_id: int | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> dict[int, PSPeriodContribution]:
+    return cast(
+        dict[int, PSPeriodContribution],
+        _build_delete_candidates(
+            db,
+            PSPeriodContribution,
+            ingestion_file_ids=ingestion_file_ids,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ítem 3 — función genérica para recoger periodos afectados
+# ---------------------------------------------------------------------------
+
+def _collect_periods_from_model(
+    db: Session,
+    model: Any,
+    *,
+    file_id_field: str,
+    ingestion_file_ids: list[int],
+    tenant_id: int | None,
+    empresa_id: int | None,
+    anio: int | None,
+    mes: int | None,
+    result: set[tuple[int, int, int, int]],
+) -> None:
+    """Añade al set `result` los periodos (t_id, e_id, anio, mes) del modelo dado.
+
+    Recoge dos fuentes:
+    - Filas vinculadas a `ingestion_file_ids` via `file_id_field`.
+    - Filas que coincidan con los filtros tenant/empresa/anio/mes.
+    """
+    file_col = getattr(model, file_id_field)
+
+    if ingestion_file_ids:
+        rows = (
+            db.query(
+                model.tenant_id,
+                model.empresa_id,
+                model.anio,
+                model.mes,
+            )
+            .filter(file_col.in_(ingestion_file_ids))
+            .distinct()
+            .all()
+        )
+        for t_id, e_id, a, m in rows:
+            result.add((int(t_id), int(e_id), int(a), int(m)))
+
+    rows_target = target_contribution_filters(
+        db.query(
+            model.tenant_id,
+            model.empresa_id,
+            model.anio,
+            model.mes,
+        ).distinct(),
+        model,
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        anio=anio,
+        mes=mes,
+    ).all()
+    for t_id, e_id, a, m in rows_target:
+        result.add((int(t_id), int(e_id), int(a), int(m)))
+
+
 def collect_general_affected_periods(
     db: Session,
     *,
@@ -196,126 +406,34 @@ def collect_general_affected_periods(
 ) -> set[tuple[int, int, int, int]]:
     result: set[tuple[int, int, int, int]] = set()
 
-    if ingestion_file_ids:
-        rows_m1 = (
-            db.query(
-                M1PeriodContribution.tenant_id,
-                M1PeriodContribution.empresa_id,
-                M1PeriodContribution.anio,
-                M1PeriodContribution.mes,
-            )
-            .filter(M1PeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .distinct()
-            .all()
-        )
-        for t_id, e_id, a, m in rows_m1:
-            result.add((int(t_id), int(e_id), int(a), int(m)))
-
-        rows_general = (
-            db.query(
-                GeneralPeriodContribution.tenant_id,
-                GeneralPeriodContribution.empresa_id,
-                GeneralPeriodContribution.anio,
-                GeneralPeriodContribution.mes,
-            )
-            .filter(GeneralPeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .distinct()
-            .all()
-        )
-        for t_id, e_id, a, m in rows_general:
-            result.add((int(t_id), int(e_id), int(a), int(m)))
-
-        rows_bald = (
-            db.query(
-                BaldPeriodContribution.tenant_id,
-                BaldPeriodContribution.empresa_id,
-                BaldPeriodContribution.anio,
-                BaldPeriodContribution.mes,
-            )
-            .filter(BaldPeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .distinct()
-            .all()
-        )
-        for t_id, e_id, a, m in rows_bald:
-            result.add((int(t_id), int(e_id), int(a), int(m)))
-
-        rows_medidas = (
-            db.query(
-                MedidaGeneral.tenant_id,
-                MedidaGeneral.empresa_id,
-                MedidaGeneral.anio,
-                MedidaGeneral.mes,
-            )
-            .filter(MedidaGeneral.file_id.in_(ingestion_file_ids))
-            .distinct()
-            .all()
-        )
-        for t_id, e_id, a, m in rows_medidas:
-            result.add((int(t_id), int(e_id), int(a), int(m)))
-
-    rows_m1_target = target_contribution_filters(
-        db.query(
-            M1PeriodContribution.tenant_id,
-            M1PeriodContribution.empresa_id,
-            M1PeriodContribution.anio,
-            M1PeriodContribution.mes,
-        ).distinct(),
-        M1PeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for t_id, e_id, a, m in rows_m1_target:
-        result.add((int(t_id), int(e_id), int(a), int(m)))
-
-    rows_general_target = target_contribution_filters(
-        db.query(
-            GeneralPeriodContribution.tenant_id,
-            GeneralPeriodContribution.empresa_id,
-            GeneralPeriodContribution.anio,
-            GeneralPeriodContribution.mes,
-        ).distinct(),
-        GeneralPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for t_id, e_id, a, m in rows_general_target:
-        result.add((int(t_id), int(e_id), int(a), int(m)))
-
-    rows_bald_target = target_contribution_filters(
-        db.query(
-            BaldPeriodContribution.tenant_id,
-            BaldPeriodContribution.empresa_id,
-            BaldPeriodContribution.anio,
-            BaldPeriodContribution.mes,
-        ).distinct(),
-        BaldPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for t_id, e_id, a, m in rows_bald_target:
-        result.add((int(t_id), int(e_id), int(a), int(m)))
-
-    rows_medidas_target = target_contribution_filters(
-        db.query(
-            MedidaGeneral.tenant_id,
-            MedidaGeneral.empresa_id,
-            MedidaGeneral.anio,
-            MedidaGeneral.mes,
-        ).distinct(),
-        MedidaGeneral,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for t_id, e_id, a, m in rows_medidas_target:
-        result.add((int(t_id), int(e_id), int(a), int(m)))
+    _collect_periods_from_model(
+        db, M1PeriodContribution,
+        file_id_field="ingestion_file_id",
+        ingestion_file_ids=ingestion_file_ids,
+        tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes,
+        result=result,
+    )
+    _collect_periods_from_model(
+        db, GeneralPeriodContribution,
+        file_id_field="ingestion_file_id",
+        ingestion_file_ids=ingestion_file_ids,
+        tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes,
+        result=result,
+    )
+    _collect_periods_from_model(
+        db, BaldPeriodContribution,
+        file_id_field="ingestion_file_id",
+        ingestion_file_ids=ingestion_file_ids,
+        tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes,
+        result=result,
+    )
+    _collect_periods_from_model(
+        db, MedidaGeneral,
+        file_id_field="file_id",
+        ingestion_file_ids=ingestion_file_ids,
+        tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes,
+        result=result,
+    )
 
     return result
 
@@ -331,99 +449,34 @@ def collect_ps_affected_periods(
 ) -> set[tuple[int, int, int, int]]:
     result: set[tuple[int, int, int, int]] = set()
 
-    if ingestion_file_ids:
-        rows_detail = (
-            db.query(
-                PSPeriodDetail.tenant_id,
-                PSPeriodDetail.empresa_id,
-                PSPeriodDetail.anio,
-                PSPeriodDetail.mes,
-            )
-            .filter(PSPeriodDetail.ingestion_file_id.in_(ingestion_file_ids))
-            .distinct()
-            .all()
-        )
-        for t_id, e_id, a, m in rows_detail:
-            result.add((int(t_id), int(e_id), int(a), int(m)))
-
-        rows_contrib = (
-            db.query(
-                PSPeriodContribution.tenant_id,
-                PSPeriodContribution.empresa_id,
-                PSPeriodContribution.anio,
-                PSPeriodContribution.mes,
-            )
-            .filter(PSPeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .distinct()
-            .all()
-        )
-        for t_id, e_id, a, m in rows_contrib:
-            result.add((int(t_id), int(e_id), int(a), int(m)))
-
-        rows_medidas = (
-            db.query(
-                MedidaPS.tenant_id,
-                MedidaPS.empresa_id,
-                MedidaPS.anio,
-                MedidaPS.mes,
-            )
-            .filter(MedidaPS.file_id.in_(ingestion_file_ids))
-            .distinct()
-            .all()
-        )
-        for t_id, e_id, a, m in rows_medidas:
-            result.add((int(t_id), int(e_id), int(a), int(m)))
-
-    rows_detail_target = target_contribution_filters(
-        db.query(
-            PSPeriodDetail.tenant_id,
-            PSPeriodDetail.empresa_id,
-            PSPeriodDetail.anio,
-            PSPeriodDetail.mes,
-        ).distinct(),
-        PSPeriodDetail,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for t_id, e_id, a, m in rows_detail_target:
-        result.add((int(t_id), int(e_id), int(a), int(m)))
-
-    rows_contrib_target = target_contribution_filters(
-        db.query(
-            PSPeriodContribution.tenant_id,
-            PSPeriodContribution.empresa_id,
-            PSPeriodContribution.anio,
-            PSPeriodContribution.mes,
-        ).distinct(),
-        PSPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for t_id, e_id, a, m in rows_contrib_target:
-        result.add((int(t_id), int(e_id), int(a), int(m)))
-
-    rows_medidas_target = target_contribution_filters(
-        db.query(
-            MedidaPS.tenant_id,
-            MedidaPS.empresa_id,
-            MedidaPS.anio,
-            MedidaPS.mes,
-        ).distinct(),
-        MedidaPS,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for t_id, e_id, a, m in rows_medidas_target:
-        result.add((int(t_id), int(e_id), int(a), int(m)))
+    _collect_periods_from_model(
+        db, PSPeriodDetail,
+        file_id_field="ingestion_file_id",
+        ingestion_file_ids=ingestion_file_ids,
+        tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes,
+        result=result,
+    )
+    _collect_periods_from_model(
+        db, PSPeriodContribution,
+        file_id_field="ingestion_file_id",
+        ingestion_file_ids=ingestion_file_ids,
+        tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes,
+        result=result,
+    )
+    _collect_periods_from_model(
+        db, MedidaPS,
+        file_id_field="file_id",
+        ingestion_file_ids=ingestion_file_ids,
+        tenant_id=tenant_id, empresa_id=empresa_id, anio=anio, mes=mes,
+        result=result,
+    )
 
     return result
 
+
+# ---------------------------------------------------------------------------
+# Resto del fichero — sin cambios
+# ---------------------------------------------------------------------------
 
 def cleanup_orphan_medidas_general(
     db: Session,
@@ -529,176 +582,6 @@ def cleanup_orphan_medidas_ps(
             )
 
     return deleted
-
-
-def build_m1_delete_candidates(
-    db: Session,
-    *,
-    ingestion_file_ids: list[int],
-    tenant_id: int | None = None,
-    empresa_id: int | None = None,
-    anio: int | None = None,
-    mes: int | None = None,
-) -> dict[int, M1PeriodContribution]:
-    result: dict[int, M1PeriodContribution] = {}
-
-    if ingestion_file_ids:
-        rows = (
-            db.query(M1PeriodContribution)
-            .filter(M1PeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .all()
-        )
-        for row in rows:
-            result[cast(int, row.id)] = row
-
-    rows_target = target_contribution_filters(
-        db.query(M1PeriodContribution),
-        M1PeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for row in rows_target:
-        result[cast(int, row.id)] = row
-
-    return result
-
-
-def build_general_delete_candidates(
-    db: Session,
-    *,
-    ingestion_file_ids: list[int],
-    tenant_id: int | None = None,
-    empresa_id: int | None = None,
-    anio: int | None = None,
-    mes: int | None = None,
-) -> dict[int, GeneralPeriodContribution]:
-    result: dict[int, GeneralPeriodContribution] = {}
-
-    if ingestion_file_ids:
-        rows = (
-            db.query(GeneralPeriodContribution)
-            .filter(GeneralPeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .all()
-        )
-        for row in rows:
-            result[cast(int, row.id)] = row
-
-    rows_target = target_contribution_filters(
-        db.query(GeneralPeriodContribution),
-        GeneralPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for row in rows_target:
-        result[cast(int, row.id)] = row
-
-    return result
-
-
-def build_bald_delete_candidates(
-    db: Session,
-    *,
-    ingestion_file_ids: list[int],
-    tenant_id: int | None = None,
-    empresa_id: int | None = None,
-    anio: int | None = None,
-    mes: int | None = None,
-) -> dict[int, BaldPeriodContribution]:
-    result: dict[int, BaldPeriodContribution] = {}
-
-    if ingestion_file_ids:
-        rows = (
-            db.query(BaldPeriodContribution)
-            .filter(BaldPeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .all()
-        )
-        for row in rows:
-            result[cast(int, row.id)] = row
-
-    rows_target = target_contribution_filters(
-        db.query(BaldPeriodContribution),
-        BaldPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for row in rows_target:
-        result[cast(int, row.id)] = row
-
-    return result
-
-
-def build_ps_detail_delete_candidates(
-    db: Session,
-    *,
-    ingestion_file_ids: list[int],
-    tenant_id: int | None = None,
-    empresa_id: int | None = None,
-    anio: int | None = None,
-    mes: int | None = None,
-) -> dict[int, PSPeriodDetail]:
-    result: dict[int, PSPeriodDetail] = {}
-
-    if ingestion_file_ids:
-        rows = (
-            db.query(PSPeriodDetail)
-            .filter(PSPeriodDetail.ingestion_file_id.in_(ingestion_file_ids))
-            .all()
-        )
-        for row in rows:
-            result[cast(int, row.id)] = row
-
-    rows_target = target_contribution_filters(
-        db.query(PSPeriodDetail),
-        PSPeriodDetail,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for row in rows_target:
-        result[cast(int, row.id)] = row
-
-    return result
-
-
-def build_ps_contrib_delete_candidates(
-    db: Session,
-    *,
-    ingestion_file_ids: list[int],
-    tenant_id: int | None = None,
-    empresa_id: int | None = None,
-    anio: int | None = None,
-    mes: int | None = None,
-) -> dict[int, PSPeriodContribution]:
-    result: dict[int, PSPeriodContribution] = {}
-
-    if ingestion_file_ids:
-        rows = (
-            db.query(PSPeriodContribution)
-            .filter(PSPeriodContribution.ingestion_file_id.in_(ingestion_file_ids))
-            .all()
-        )
-        for row in rows:
-            result[cast(int, row.id)] = row
-
-    rows_target = target_contribution_filters(
-        db.query(PSPeriodContribution),
-        PSPeriodContribution,
-        tenant_id=tenant_id,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    ).all()
-    for row in rows_target:
-        result[cast(int, row.id)] = row
-
-    return result
 
 
 def preview_orphan_general_periods(
