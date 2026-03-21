@@ -66,8 +66,6 @@ function inferTipoFromFilename(filename: string): string | null {
   return null;
 }
 
-// ── extrae el código REE del nombre del fichero según tipo ──────────
-// Ignora prefijos numéricos del sistema (ej. 1774047141200_)
 function extractCodigoFromFilename(tipo: string, filename: string): string | null {
   const stem = filename.replace(/\.[^/.]+$/, "");
   const name = stem.replace(/^\d{10,}_/, "");
@@ -93,8 +91,8 @@ function fmtPeriodo(anio: number, mes: number) {
 
 function fmtDateMadrid(value?: string | null) {
   if (!value) return "-";
-  const raw = value.endsWith("Z") || value.includes("+") ? value : value + "Z";
-  const d = new Date(raw);
+  const clean = value.replace(/\+[\d:]+$/, "").replace(/Z$/, "");
+  const d = new Date(clean + "Z");
   if (Number.isNaN(d.getTime())) return "-";
 
   return new Intl.DateTimeFormat("es-ES", {
@@ -243,6 +241,9 @@ export default function CargaSection({ token }: Props) {
 
   const [cargaOpen, setCargaOpen] = useState<boolean>(false);
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
+  // ── NUEVO: ref para leer historyOpen desde dentro de closures async ──
+  const historyOpenRef = useRef<boolean>(false);
+  // ── FIN NUEVO ─────────────────────────────────────────────────────────
   const [summaryOpen, setSummaryOpen] = useState<boolean>(false);
   const [logFilter, setLogFilter] = useState<SessionLogFilter>("all");
 
@@ -382,7 +383,6 @@ export default function CargaSection({ token }: Props) {
       return;
     }
 
-    // Validación previa de código REE
     const empresaSeleccionada = empresas.find((e) => e.id === empresaId);
     const codigoReeEmpresa = empresaSeleccionada?.codigo_ree ?? null;
 
@@ -513,12 +513,12 @@ export default function CargaSection({ token }: Props) {
       appendLog("✔ Carga y procesado de ficheros finalizados.");
       setFiles(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      // ── NUEVO: recargar histórico automáticamente si está abierto ─────
-      if (historyOpen) {
+      // ── NUEVO: usar ref para evitar closure stale ──────────────────────
+      if (historyOpenRef.current) {
         setHistPage(0);
         void handleLoadHistory(0);
       }
-      // ── FIN NUEVO ─────────────────────────────────────────────────────
+      // ── FIN NUEVO ──────────────────────────────────────────────────────
 
     } catch (err) {
       console.error("Error en handleProcess:", err);
@@ -533,7 +533,6 @@ export default function CargaSection({ token }: Props) {
     return e ? `${e.id} – ${e.nombre}` : String(id);
   };
 
-  // ── handleLoadHistory paginado ────────────────────────────────────────
   const handleLoadHistory = async (targetPage?: number) => {
     if (!token) {
       setHistoryError("Haz login para poder cargar el histórico.");
@@ -598,7 +597,6 @@ export default function CargaSection({ token }: Props) {
     }
   };
 
-  // Recargar automáticamente al cambiar página o tamaño de página
   useEffect(() => {
     if (!histHasLoadedOnce) return;
     void handleLoadHistory(histPage);
@@ -649,7 +647,6 @@ export default function CargaSection({ token }: Props) {
       : [];
   }, [selectedHistory]);
 
-  // ── cálculos de paginación para el footer ─────────────────────────────
   const histStartIndex = histTotal === 0 ? 0 : histPage * histPageSize;
   const histEndIndex = Math.min(histStartIndex + histPageSize, histTotal);
   const histCurrentPage = Math.min(histPage, Math.max(0, histTotalPages - 1));
@@ -994,7 +991,13 @@ export default function CargaSection({ token }: Props) {
         title="Histórico de cargas"
         subtitle="Listado de cargas (ingestion_files) del tenant. Fechas en horario de Madrid."
         open={historyOpen}
-        setOpen={setHistoryOpen}
+        // ── NUEVO: actualizar el ref al mismo tiempo que el state ─────────
+        setOpen={(v) => {
+          const val = typeof v === "function" ? v(historyOpen) : v;
+          historyOpenRef.current = val;
+          setHistoryOpen(val);
+        }}
+        // ── FIN NUEVO ──────────────────────────────────────────────────────
         contentId="history-content"
       >
         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
