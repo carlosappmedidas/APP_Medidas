@@ -12,9 +12,11 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_active_superuser, get_current_user
@@ -40,6 +42,14 @@ router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 UPLOAD_BASE_PATH = Path("data/ingestion")
 
 
+class IngestionFilePage(BaseModel):
+    items: list[IngestionFileRead]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
 def _extract_codigo_from_filename(tipo: str, filename: str) -> str | None:
     """
     Extrae el código REE del nombre del fichero según el tipo.
@@ -57,37 +67,24 @@ def _extract_codigo_from_filename(tipo: str, filename: str) -> str | None:
     """
     import re
 
-    # Quitar extensión y prefijo numérico del sistema (ej. 1774047141200_)
     name = Path(filename).stem
-    name = re.sub(r"^\d{10,}_", "", name)  # prefijo timestamp del sistema
+    name = re.sub(r"^\d{10,}_", "", name)
     tipo_norm = (tipo or "").upper()
     parts = name.split("_")
 
     try:
         if tipo_norm == "PS":
-            # PS_0277_202512 → parts[1]
             return parts[1] if len(parts) > 1 else None
-
         if tipo_norm in {"M1", "M1_AUTOCONSUMO"}:
-            # 0277_202405_Facturacion → parts[0]
             return parts[0] if len(parts) > 0 else None
-
         if tipo_norm == "BALD":
-            # BALD_0277_202407_... → parts[1]
             return parts[1] if len(parts) > 1 else None
-
         if tipo_norm == "ACUMCIL":
-            # ACUMCIL_H2_0277_202407_... → parts[2]
             return parts[2] if len(parts) > 2 else None
-
         if tipo_norm in {"ACUM_H2_RDD_P1", "ACUM_H2_RDD_P2"}:
-            # ACUM_H2_RDD_0277_P1_202407 → parts[3]
             return parts[3] if len(parts) > 3 else None
-
         if tipo_norm in {"ACUM_H2_GRD", "ACUM_H2_GEN"}:
-            # ACUM_H2_GRD_0277_202407 → parts[3]
             return parts[3] if len(parts) > 3 else None
-
     except (IndexError, AttributeError):
         return None
 
@@ -128,7 +125,6 @@ async def upload_file(
             detail="El fichero debe tener un nombre",
         )
 
-    # ── Validación código REE ──────────────────────────────────────────────
     codigo_ree_empresa = cast(str | None, empresa.codigo_ree)
     if codigo_ree_empresa:
         codigo_fichero = _extract_codigo_from_filename(tipo_norm, file.filename)
@@ -142,7 +138,6 @@ async def upload_file(
                     f"Verifica que estás subiendo el fichero correcto."
                 ),
             )
-    # ── Fin validación REE ─────────────────────────────────────────────────
 
     try:
         anio, mes = infer_period_from_filename(tipo_norm, file.filename)
@@ -321,6 +316,47 @@ def list_files(
         IngestionFile.id.desc(),
     )
     return query.all()
+
+
+@router.get("/files/page", response_model=IngestionFilePage)
+def list_files_page(
+    empresa_id: int | None = None,
+    tipo: str | None = None,
+    status_: str | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+    page: int = Query(default=0, ge=0),
+    page_size: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tenant_id_int = cast(int, current_user.tenant_id)
+    query = db.query(IngestionFile).filter(
+        IngestionFile.tenant_id == tenant_id_int,
+    )
+    query = apply_ingestion_filters(
+        query,
+        empresa_id=empresa_id,
+        tipo=tipo,
+        status_=status_,
+        anio=anio,
+        mes=mes,
+    )
+    query = query.order_by(
+        IngestionFile.anio.desc(),
+        IngestionFile.mes.desc(),
+        IngestionFile.id.desc(),
+    )
+    total = query.count()
+    total_pages = max(1, -(-total // page_size))
+    items = query.offset(page * page_size).limit(page_size).all()
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+    }
 
 
 @router.get("/files/delete-preview")

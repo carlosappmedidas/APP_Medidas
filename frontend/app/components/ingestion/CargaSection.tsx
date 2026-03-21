@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import TablePaginationFooter from "../ui/TablePaginationFooter";
 import type {
   Empresa,
   IngestionFile,
@@ -92,7 +93,8 @@ function fmtPeriodo(anio: number, mes: number) {
 
 function fmtDateMadrid(value?: string | null) {
   if (!value) return "-";
-  const d = new Date(value);
+  const raw = value.endsWith("Z") || value.includes("+") ? value : value + "Z";
+  const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return "-";
 
   return new Intl.DateTimeFormat("es-ES", {
@@ -218,13 +220,12 @@ export default function CargaSection({ token }: Props) {
 
   const [mismatchErrors, setMismatchErrors] = useState<string[]>([]);
 
-  // ── NUEVO: ref para limpiar el input de ficheros al terminar ──────────
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   const [history, setHistory] = useState<IngestionFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [histHasLoadedOnce, setHistHasLoadedOnce] = useState(false); // ── NUEVO
   const [selectedHistory, setSelectedHistory] = useState<IngestionFile | null>(null);
 
   const [histEmpresaId, setHistEmpresaId] = useState<number | "">("");
@@ -232,6 +233,13 @@ export default function CargaSection({ token }: Props) {
   const [histStatus, setHistStatus] = useState<string>("");
   const [histAnio, setHistAnio] = useState<number | "">("");
   const [histMes, setHistMes] = useState<number | "">("");
+
+  // ── NUEVO: estados de paginación del histórico ────────────────────────
+  const [histPage, setHistPage] = useState<number>(0);
+  const [histPageSize, setHistPageSize] = useState<number>(20);
+  const [histTotal, setHistTotal] = useState<number>(0);
+  const [histTotalPages, setHistTotalPages] = useState<number>(1);
+  // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   const [plantillaSel, setPlantillaSel] = useState<string>("");
 
@@ -506,10 +514,8 @@ export default function CargaSection({ token }: Props) {
 
       appendLog("✔ Carga y procesado de ficheros finalizados.");
 
-      // ── NUEVO: limpiar selección de ficheros al terminar ──────────────
       setFiles(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      // ── FIN NUEVO ─────────────────────────────────────────────────────
 
     } catch (err) {
       console.error("Error en handleProcess:", err);
@@ -524,25 +530,8 @@ export default function CargaSection({ token }: Props) {
     return e ? `${e.id} – ${e.nombre}` : String(id);
   };
 
-  const histTiposDisponibles = useMemo(() => {
-    const set = new Set<string>(EXPECTED_TYPES);
-    for (const h of history) set.add((h.tipo || "").toUpperCase());
-    return Array.from(set).filter(Boolean).sort();
-  }, [history]);
-
-  const histAniosDisponibles = useMemo(() => {
-    const set = new Set<number>();
-    for (const h of history) set.add(h.anio);
-    return Array.from(set).sort((a, b) => b - a);
-  }, [history]);
-
-  const histMesesDisponibles = useMemo(() => {
-    const set = new Set<number>();
-    for (const h of history) set.add(h.mes);
-    return Array.from(set).sort((a, b) => a - b);
-  }, [history]);
-
-  const handleLoadHistory = async () => {
+  // ── NUEVO: handleLoadHistory paginado ─────────────────────────────────
+  const handleLoadHistory = async (targetPage?: number) => {
     if (!token) {
       setHistoryError("Haz login para poder cargar el histórico.");
       setHistory([]);
@@ -550,11 +539,14 @@ export default function CargaSection({ token }: Props) {
       return;
     }
 
+    const pageToLoad = targetPage ?? histPage;
     setHistoryLoading(true);
     setHistoryError(null);
 
     try {
       const params = new URLSearchParams();
+      params.set("page", String(pageToLoad));
+      params.set("page_size", String(histPageSize));
 
       if (histEmpresaId !== "") params.set("empresa_id", String(histEmpresaId));
       if (histTipo.trim() !== "") params.set("tipo", histTipo.trim());
@@ -562,7 +554,7 @@ export default function CargaSection({ token }: Props) {
       if (histAnio !== "") params.set("anio", String(histAnio));
       if (histMes !== "") params.set("mes", String(histMes));
 
-      const url = `${API_BASE_URL}/ingestion/files${params.toString() ? `?${params}` : ""}`;
+      const url = `${API_BASE_URL}/ingestion/files/page?${params.toString()}`;
 
       const res = await fetch(url, {
         headers: getAuthHeaders(token),
@@ -570,35 +562,46 @@ export default function CargaSection({ token }: Props) {
 
       if (!res.ok) {
         const text = await res.text();
-        console.error("Respuesta backend /ingestion/files:", text);
+        console.error("Respuesta backend /ingestion/files/page:", text);
         throw new Error(`Error ${res.status}`);
       }
 
-      const json = (await res.json()) as IngestionFile[];
-      const arr = Array.isArray(json) ? json : [];
+      const json = await res.json() as {
+        items: IngestionFile[];
+        page: number;
+        page_size: number;
+        total: number;
+        total_pages: number;
+      };
 
-      arr.sort((a, b) => {
-        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return tb - ta;
-      });
-
-      setHistory(arr);
+      setHistory(Array.isArray(json?.items) ? json.items : []);
+      setHistTotal(typeof json?.total === "number" ? json.total : 0);
+      setHistTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
+      setHistHasLoadedOnce(true);
 
       setSelectedHistory((prev) => {
         if (!prev) return null;
-        const still = arr.find((x) => x.id === prev.id);
-        return still ?? null;
+        return json.items.find((x) => x.id === prev.id) ?? null;
       });
     } catch (err) {
       console.error("Error cargando histórico de ingestion:", err);
       setHistoryError("No se pudo cargar el histórico de cargas.");
       setHistory([]);
-      setSelectedHistory(null);
+      setHistTotal(0);
+      setHistTotalPages(1);
+      setHistHasLoadedOnce(true);
     } finally {
       setHistoryLoading(false);
     }
   };
+
+  // Recargar automáticamente al cambiar página o tamaño de página
+  useEffect(() => {
+    if (!histHasLoadedOnce) return;
+    void handleLoadHistory(histPage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [histPage, histPageSize]);
+  // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   const handleClearHistoryFilters = () => {
     setHistEmpresaId("");
@@ -606,6 +609,7 @@ export default function CargaSection({ token }: Props) {
     setHistStatus("");
     setHistAnio("");
     setHistMes("");
+    setHistPage(0); // ── NUEVO: resetear página al limpiar filtros
   };
 
   const handleDownloadPlantilla = (fileName: string) => {
@@ -642,6 +646,12 @@ export default function CargaSection({ token }: Props) {
       ? ((selectedHistory as IngestionFile & { notices?: IngestionWarningItem[] }).notices ?? [])
       : [];
   }, [selectedHistory]);
+
+  // ── NUEVO: cálculos de paginación para el footer ──────────────────────
+  const histStartIndex = histTotal === 0 ? 0 : histPage * histPageSize;
+  const histEndIndex = Math.min(histStartIndex + histPageSize, histTotal);
+  const histCurrentPage = Math.min(histPage, Math.max(0, histTotalPages - 1));
+  // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-8">
@@ -730,7 +740,6 @@ export default function CargaSection({ token }: Props) {
 
         <div className="mb-4">
           <label className="ui-label">Ficheros (puedes seleccionar varios)</label>
-          {/* ── NUEVO: ref añadido al input ── */}
           <input
             ref={fileInputRef}
             type="file"
@@ -997,9 +1006,10 @@ export default function CargaSection({ token }: Props) {
               Limpiar filtros
             </button>
 
+            {/* ── NUEVO: botón carga histórico resetea a página 0 ── */}
             <button
               type="button"
-              onClick={handleLoadHistory}
+              onClick={() => { setHistPage(0); void handleLoadHistory(0); }}
               disabled={!canUse || historyLoading}
               className="ui-btn ui-btn-secondary"
             >
@@ -1017,9 +1027,20 @@ export default function CargaSection({ token }: Props) {
             </button>
           </div>
 
-          <div className="text-[10px] ui-muted">
-            El borrado y su vista previa están disponibles en la pestaña Sistema.
-          </div>
+          {/* ── NUEVO: total de registros ── */}
+          {histHasLoadedOnce ? (
+            <div className="text-[10px] ui-muted">
+              Total:{" "}
+              <span className="font-medium" style={{ color: "var(--text)" }}>
+                {histTotal}
+              </span>{" "}
+              registros
+            </div>
+          ) : (
+            <div className="text-[10px] ui-muted">
+              El borrado y su vista previa están disponibles en la pestaña Sistema.
+            </div>
+          )}
         </div>
 
         <div className="ui-panel mb-4 text-[11px]">
@@ -1054,7 +1075,8 @@ export default function CargaSection({ token }: Props) {
                 onChange={(e) => setHistTipo(e.target.value)}
               >
                 <option value="">(todos)</option>
-                {histTiposDisponibles.map((t) => (
+                {/* ── NUEVO: tipos fijos, no dependen de los datos cargados ── */}
+                {EXPECTED_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
@@ -1090,7 +1112,8 @@ export default function CargaSection({ token }: Props) {
                 }
               >
                 <option value="">(todos)</option>
-                {histAniosDisponibles.map((y) => (
+                {/* ── NUEVO: años fijos últimos 10 años ── */}
+                {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map((y) => (
                   <option key={y} value={y}>
                     {y}
                   </option>
@@ -1109,7 +1132,8 @@ export default function CargaSection({ token }: Props) {
                 }
               >
                 <option value="">(todos)</option>
-                {histMesesDisponibles.map((m) => (
+                {/* ── NUEVO: meses fijos 01-12 ── */}
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                   <option key={m} value={m}>
                     {String(m).padStart(2, "0")}
                   </option>
@@ -1141,16 +1165,26 @@ export default function CargaSection({ token }: Props) {
             </thead>
 
             <tbody>
-              {history.length === 0 ? (
+              {/* ── NUEVO: skeleton de carga ── */}
+              {historyLoading && Array.from({ length: 5 }).map((_, i) => (
+                <tr key={`sk-${i}`} className="ui-tr">
+                  {Array.from({ length: 12 }).map((__, j) => (
+                    <td key={j} className="ui-td">
+                      <span className="inline-block h-3 w-full rounded-md" style={{ background: "var(--field-bg-soft)", border: "1px solid var(--field-border)", opacity: 0.6 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {!historyLoading && history.length === 0 ? (
                 <tr className="ui-tr">
                   <td colSpan={12} className="ui-td text-center ui-muted">
-                    {historyLoading
-                      ? "Cargando histórico..."
-                      : "Aún no has cargado el histórico o no hay registros con esos filtros."}
+                    {histHasLoadedOnce
+                      ? "No hay registros con esos filtros."
+                      : "Pulsa 'Cargar histórico' para ver los registros."}
                   </td>
                 </tr>
               ) : (
-                history.map((h) => {
+                !historyLoading && history.map((h) => {
                   const avisos = countAvisos(h);
                   const isSelected = selectedHistory?.id === h.id;
 
@@ -1190,6 +1224,21 @@ export default function CargaSection({ token }: Props) {
               )}
             </tbody>
           </table>
+
+          {/* ── NUEVO: footer de paginación ── */}
+          <TablePaginationFooter
+            loading={historyLoading}
+            hasLoadedOnce={histHasLoadedOnce}
+            totalFilas={histTotal}
+            startIndex={histStartIndex}
+            endIndex={histEndIndex}
+            pageSize={histPageSize}
+            setPageSize={(size) => { setHistPageSize(size); setHistPage(0); }}
+            currentPage={histCurrentPage}
+            totalPages={histTotalPages}
+            setPage={setHistPage}
+            compact
+          />
         </div>
 
         {selectedHistory && (
