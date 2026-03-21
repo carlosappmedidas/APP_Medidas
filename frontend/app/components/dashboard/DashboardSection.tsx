@@ -77,7 +77,7 @@ export default function DashboardSection({ token }: Props) {
       mes: mesValue,
     });
 
-  useEffect(() => { setAnio(""); setMes(""); }, [empresa]);
+  useEffect(() => { setMes(""); }, [empresa]);
   useEffect(() => { setMes(""); }, [anio]);
 
   const empresaOptions = useMemo(() => {
