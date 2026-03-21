@@ -225,7 +225,7 @@ export default function CargaSection({ token }: Props) {
   const [history, setHistory] = useState<IngestionFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [histHasLoadedOnce, setHistHasLoadedOnce] = useState(false); // ── NUEVO
+  const [histHasLoadedOnce, setHistHasLoadedOnce] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<IngestionFile | null>(null);
 
   const [histEmpresaId, setHistEmpresaId] = useState<number | "">("");
@@ -234,12 +234,10 @@ export default function CargaSection({ token }: Props) {
   const [histAnio, setHistAnio] = useState<number | "">("");
   const [histMes, setHistMes] = useState<number | "">("");
 
-  // ── NUEVO: estados de paginación del histórico ────────────────────────
   const [histPage, setHistPage] = useState<number>(0);
   const [histPageSize, setHistPageSize] = useState<number>(20);
   const [histTotal, setHistTotal] = useState<number>(0);
   const [histTotalPages, setHistTotalPages] = useState<number>(1);
-  // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   const [plantillaSel, setPlantillaSel] = useState<string>("");
 
@@ -513,9 +511,14 @@ export default function CargaSection({ token }: Props) {
       }
 
       appendLog("✔ Carga y procesado de ficheros finalizados.");
-
       setFiles(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      // ── NUEVO: recargar histórico automáticamente si está abierto ─────
+      if (historyOpen) {
+        setHistPage(0);
+        void handleLoadHistory(0);
+      }
+      // ── FIN NUEVO ─────────────────────────────────────────────────────
 
     } catch (err) {
       console.error("Error en handleProcess:", err);
@@ -530,7 +533,7 @@ export default function CargaSection({ token }: Props) {
     return e ? `${e.id} – ${e.nombre}` : String(id);
   };
 
-  // ── NUEVO: handleLoadHistory paginado ─────────────────────────────────
+  // ── handleLoadHistory paginado ────────────────────────────────────────
   const handleLoadHistory = async (targetPage?: number) => {
     if (!token) {
       setHistoryError("Haz login para poder cargar el histórico.");
@@ -601,7 +604,6 @@ export default function CargaSection({ token }: Props) {
     void handleLoadHistory(histPage);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [histPage, histPageSize]);
-  // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   const handleClearHistoryFilters = () => {
     setHistEmpresaId("");
@@ -609,7 +611,7 @@ export default function CargaSection({ token }: Props) {
     setHistStatus("");
     setHistAnio("");
     setHistMes("");
-    setHistPage(0); // ── NUEVO: resetear página al limpiar filtros
+    setHistPage(0);
   };
 
   const handleDownloadPlantilla = (fileName: string) => {
@@ -647,11 +649,10 @@ export default function CargaSection({ token }: Props) {
       : [];
   }, [selectedHistory]);
 
-  // ── NUEVO: cálculos de paginación para el footer ──────────────────────
+  // ── cálculos de paginación para el footer ─────────────────────────────
   const histStartIndex = histTotal === 0 ? 0 : histPage * histPageSize;
   const histEndIndex = Math.min(histStartIndex + histPageSize, histTotal);
   const histCurrentPage = Math.min(histPage, Math.max(0, histTotalPages - 1));
-  // ── FIN NUEVO ─────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-8">
@@ -1006,7 +1007,6 @@ export default function CargaSection({ token }: Props) {
               Limpiar filtros
             </button>
 
-            {/* ── NUEVO: botón carga histórico resetea a página 0 ── */}
             <button
               type="button"
               onClick={() => { setHistPage(0); void handleLoadHistory(0); }}
@@ -1027,7 +1027,6 @@ export default function CargaSection({ token }: Props) {
             </button>
           </div>
 
-          {/* ── NUEVO: total de registros ── */}
           {histHasLoadedOnce ? (
             <div className="text-[10px] ui-muted">
               Total:{" "}
@@ -1075,7 +1074,6 @@ export default function CargaSection({ token }: Props) {
                 onChange={(e) => setHistTipo(e.target.value)}
               >
                 <option value="">(todos)</option>
-                {/* ── NUEVO: tipos fijos, no dependen de los datos cargados ── */}
                 {EXPECTED_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -1112,7 +1110,6 @@ export default function CargaSection({ token }: Props) {
                 }
               >
                 <option value="">(todos)</option>
-                {/* ── NUEVO: años fijos últimos 10 años ── */}
                 {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map((y) => (
                   <option key={y} value={y}>
                     {y}
@@ -1132,7 +1129,6 @@ export default function CargaSection({ token }: Props) {
                 }
               >
                 <option value="">(todos)</option>
-                {/* ── NUEVO: meses fijos 01-12 ── */}
                 {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                   <option key={m} value={m}>
                     {String(m).padStart(2, "0")}
@@ -1165,7 +1161,6 @@ export default function CargaSection({ token }: Props) {
             </thead>
 
             <tbody>
-              {/* ── NUEVO: skeleton de carga ── */}
               {historyLoading && Array.from({ length: 5 }).map((_, i) => (
                 <tr key={`sk-${i}`} className="ui-tr">
                   {Array.from({ length: 12 }).map((__, j) => (
@@ -1225,7 +1220,6 @@ export default function CargaSection({ token }: Props) {
             </tbody>
           </table>
 
-          {/* ── NUEVO: footer de paginación ── */}
           <TablePaginationFooter
             loading={historyLoading}
             hasLoadedOnce={histHasLoadedOnce}
