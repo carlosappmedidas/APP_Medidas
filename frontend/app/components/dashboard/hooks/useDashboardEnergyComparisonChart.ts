@@ -11,6 +11,8 @@ export type DashboardEnergyComparisonChartPoint = {
   energia_publicada_m11_kwh: number;
   energia_publicada_art15_kwh: number;
   energia_pf_final_kwh: number;
+  pf_source: string;
+  pf_label: string;
 };
 
 export type DashboardEnergyComparisonChartResponse = {
