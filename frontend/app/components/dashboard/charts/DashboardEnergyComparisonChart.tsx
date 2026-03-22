@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Bar,
   ComposedChart,
@@ -112,6 +112,22 @@ export default function DashboardEnergyComparisonChart({
   points,
 }: DashboardEnergyComparisonChartProps) {
   const hasData = points.length > 0;
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  if (!ready) {
+    return (
+      <DashboardChartState loading={loading} error={error} hasData={hasData}>
+        <div className="mt-4 p-0">
+          <div className="h-[280px] w-full" />
+        </div>
+      </DashboardChartState>
+    );
+  }
 
   return (
     <DashboardChartState loading={loading} error={error} hasData={hasData}>

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -56,6 +56,22 @@ export default function DashboardEnergyTrendChart({
   points,
 }: DashboardEnergyTrendChartProps) {
   const hasData = points.length > 0;
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  if (!ready) {
+    return (
+      <DashboardChartState loading={loading} error={error} hasData={hasData}>
+        <div className="mt-2 p-0">
+          <div className="h-[180px] w-full" />
+        </div>
+      </DashboardChartState>
+    );
+  }
 
   return (
     <DashboardChartState loading={loading} error={error} hasData={hasData}>

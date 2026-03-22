@@ -4,6 +4,7 @@ import { useDashboardQuery } from "./useDashboardQuery";
 
 export type VentanaData = {
   kwh: number | null;
+  perdidas_kwh: number | null;
   perdidas_pct: number | null;
   pf_kwh: number | null;
 };
