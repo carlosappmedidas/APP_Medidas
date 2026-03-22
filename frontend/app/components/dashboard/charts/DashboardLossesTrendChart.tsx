@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -77,53 +76,53 @@ export default function DashboardLossesTrendChart({
     <DashboardChartState loading={loading} error={error} hasData={hasData}>
       <div className="mt-2 p-0">
         <div className="h-[180px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={points}
-              margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
-            >
-              <Tooltip
-                formatter={tooltipFormatter}
-                contentStyle={{
-                  background: "var(--card-bg)",
-                  border: "1px solid var(--card-border)",
-                  borderRadius: 12,
-                  color: "var(--text)",
-                  fontSize: 11,
-                }}
-                labelStyle={{ color: "var(--text)", fontWeight: 600 }}
-              />
+          <AreaChart
+            responsive
+            style={{ width: "100%", height: "100%" }}
+            data={points}
+            margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+          >
+            <Tooltip
+              formatter={tooltipFormatter}
+              contentStyle={{
+                background: "var(--card-bg)",
+                border: "1px solid var(--card-border)",
+                borderRadius: 12,
+                color: "var(--text)",
+                fontSize: 11,
+              }}
+              labelStyle={{ color: "var(--text)", fontWeight: 600 }}
+            />
 
-              <XAxis
-                dataKey="mes"
-                type="number"
-                domain={[1, 12]}
-                allowDecimals={false}
-                tickCount={12}
-                tick={{ fontSize: 11, fill: "var(--text)" }}
-                axisLine={{ stroke: "var(--card-border)" }}
-                tickLine={false}
-              />
+            <XAxis
+              dataKey="mes"
+              type="number"
+              domain={[1, 12]}
+              allowDecimals={false}
+              tickCount={12}
+              tick={{ fontSize: 11, fill: "var(--text)" }}
+              axisLine={{ stroke: "var(--card-border)" }}
+              tickLine={false}
+            />
 
-              <YAxis
-                tick={false}
-                axisLine={false}
-                tickLine={false}
-                width={0}
-              />
+            <YAxis
+              tick={false}
+              axisLine={false}
+              tickLine={false}
+              width={0}
+            />
 
-              <Area
-                type="monotone"
-                dataKey="perdidas_e_facturada_pct"
-                stroke="#f5b341"
-                fill="#f5b341"
-                fillOpacity={0.18}
-                strokeWidth={2}
-                dot={{ r: 3 }}
-                activeDot={{ r: 5 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+            <Area
+              type="monotone"
+              dataKey="perdidas_e_facturada_pct"
+              stroke="#f5b341"
+              fill="#f5b341"
+              fillOpacity={0.18}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              activeDot={{ r: 5 }}
+            />
+          </AreaChart>
         </div>
 
         <DashboardChartLegend items={LEGEND_ITEMS} centered />

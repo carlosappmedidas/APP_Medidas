@@ -270,21 +270,23 @@ def _absolute_change(current: float, previous: float) -> float:
     return current - previous
 
 
-def _resolve_pf_kwh(row: Any) -> float:
+def _resolve_pf_kwh(row: Any) -> tuple[float, str, str]:
     """Devuelve el valor PF más reciente disponible siguiendo la jerarquía:
     art15 → m11 → m7 → m2 → pf_final (ACUM).
-    Usa el primero que sea distinto de cero."""
-    for field in (
-        "energia_pf_art15_kwh",
-        "energia_pf_m11_kwh",
-        "energia_pf_m7_kwh",
-        "energia_pf_m2_kwh",
-        "energia_pf_final_kwh",
-    ):
+    Usa el primero que sea distinto de cero y devuelve también su origen.
+    """
+    hierarchy = (
+        ("energia_pf_art15_kwh", "art15", "PF ART15"),
+        ("energia_pf_m11_kwh", "m11", "PF M11"),
+        ("energia_pf_m7_kwh", "m7", "PF M7"),
+        ("energia_pf_m2_kwh", "m2", "PF M2"),
+        ("energia_pf_final_kwh", "final", "PF FINAL"),
+    )
+    for field, source, label in hierarchy:
         val = float(cast(float | None, getattr(row, field, None)) or 0.0)
         if val != 0.0:
-            return val
-    return 0.0
+            return val, source, label
+    return 0.0, "final", "PF FINAL"
 
 
 def _build_energy_comparison_chart_series(
@@ -347,6 +349,11 @@ def _build_energy_comparison_chart_series(
     series: list[dict[str, float | int | str]] = []
     for month_number in range(1, max_mes + 1):
         row = rows_by_mes.get(month_number)
+        pf_value, pf_source, pf_label = (
+            _resolve_pf_kwh(row)
+            if row is not None
+            else (0.0, "final", "PF FINAL")
+        )
         series.append(
             {
                 "mes": month_number,
@@ -386,9 +393,9 @@ def _build_energy_comparison_chart_series(
                     )
                     or 0.0
                 ),
-                "energia_pf_final_kwh": (
-                    _resolve_pf_kwh(row) if row is not None else 0.0
-                ),
+                "energia_pf_final_kwh": pf_value,
+                "pf_source": pf_source,
+                "pf_label": pf_label,
             }
         )
     return series
