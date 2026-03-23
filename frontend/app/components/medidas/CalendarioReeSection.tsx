@@ -211,8 +211,8 @@ export default function CalendarioReeSection({ token, currentUser }: Props) {
   }, [selectedFile]);
 
   return (
-    <section className="ui-card text-sm">
-      <div className="flex flex-col gap-4">
+    <section className="text-sm">
+      <div className="flex flex-col gap-8">
         <CollapsibleCard
           title="CALENDARIO REE"
           subtitle="Carga el calendario anual de REE en Excel y gestiona su versión activa."

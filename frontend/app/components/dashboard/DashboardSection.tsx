@@ -18,9 +18,31 @@ import {
   formatMonthYear,
   formatSignedNumberEs,
 } from "./formatters";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
 type Props = {
   token: string | null;
+};
+
+type ReeDashboardHitosResponse = {
+  anio: number | null;
+  mes: number | null;
+  mes_label: string | null;
+
+  fecha_publicacion_m2: string | null;
+  mes_afectado_publicacion_m2: string | null;
+
+  fecha_publicacion_m7: string | null;
+  mes_afectado_publicacion_m7: string | null;
+
+  fecha_limite_respuesta_objeciones: string | null;
+  mes_afectado_limite_respuesta_objeciones: string | null;
+
+  fecha_publicacion_m11: string | null;
+  mes_afectado_publicacion_m11: string | null;
+
+  fecha_publicacion_art15: string | null;
+  mes_afectado_publicacion_art15: string | null;
 };
 
 const NOMBRES_MES: Record<number, string> = {
@@ -29,11 +51,38 @@ const NOMBRES_MES: Record<number, string> = {
   9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
 };
 
+function formatDashboardDate(value: string | null): string {
+  if (!value) return "—";
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatDashboardDateWithMesAfectado(
+  fecha: string | null,
+  mesAfectado: string | null
+): string {
+  if (!fecha) return "—";
+  const fechaFormateada = formatDashboardDate(fecha);
+  if (!mesAfectado) return fechaFormateada;
+  return `${fechaFormateada} → ${mesAfectado}`;
+}
+
 export default function DashboardSection({ token }: Props) {
   const isLogged = !!token;
   const [empresa, setEmpresa] = useState("");
   const [anio, setAnio] = useState("");
   const [mes, setMes] = useState("");
+
+  const [reeHitosData, setReeHitosData] = useState<ReeDashboardHitosResponse | null>(null);
+  const [reeHitosLoading, setReeHitosLoading] = useState(false);
+  const [reeHitosError, setReeHitosError] = useState<string | null>(null);
 
   const empresaId = empresa ? Number(empresa) : null;
   const anioValue = anio ? Number(anio) : null;
@@ -52,11 +101,17 @@ export default function DashboardSection({ token }: Props) {
   const { data: chartData, loading: chartLoading, error: chartError } =
     useDashboardEnergyComparisonChart({ token, empresaId, anio: anioValue, mes: mesValue });
 
-  const { data: energyTrendChartData, loading: energyTrendChartLoading, error: energyTrendChartError } =
-    useDashboardEnergyTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
+  const {
+    data: energyTrendChartData,
+    loading: energyTrendChartLoading,
+    error: energyTrendChartError,
+  } = useDashboardEnergyTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
 
-  const { data: lossesTrendChartData, loading: lossesTrendChartLoading, error: lossesTrendChartError } =
-    useDashboardLossesTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
+  const {
+    data: lossesTrendChartData,
+    loading: lossesTrendChartLoading,
+    error: lossesTrendChartError,
+  } = useDashboardLossesTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
 
   const lossesConsistencyAnio = useMemo(() => {
     if (anioValue !== null) return anioValue;
@@ -69,16 +124,77 @@ export default function DashboardSection({ token }: Props) {
     return lastAnio;
   }, [anioValue, data]);
 
-  const { data: lossesConsistencyData, loading: lossesConsistencyLoading, error: lossesConsistencyError } =
-    useDashboardLossesConsistency({
-      token,
-      empresaId,
-      anio: lossesConsistencyAnio,
-      mes: mesValue,
-    });
+  const {
+    data: lossesConsistencyData,
+    loading: lossesConsistencyLoading,
+    error: lossesConsistencyError,
+  } = useDashboardLossesConsistency({
+    token,
+    empresaId,
+    anio: lossesConsistencyAnio,
+    mes: mesValue,
+  });
 
-  useEffect(() => { setMes(""); }, [empresa]);
-  useEffect(() => { setMes(""); }, [anio]);
+  useEffect(() => {
+    setMes("");
+  }, [empresa]);
+
+  useEffect(() => {
+    setMes("");
+  }, [anio]);
+
+  useEffect(() => {
+    const loadReeDashboardHitos = async () => {
+      if (!token) {
+        setReeHitosData(null);
+        setReeHitosError(null);
+        return;
+      }
+
+      setReeHitosLoading(true);
+      setReeHitosError(null);
+
+      try {
+        const searchParams = new URLSearchParams();
+
+        if (anioValue !== null) {
+          searchParams.set("anio", String(anioValue));
+        }
+
+        if (mesValue !== null) {
+          searchParams.set("mes", String(mesValue));
+        }
+
+        const url = `${API_BASE_URL}/calendario-ree/dashboard-hitos${
+          searchParams.toString() ? `?${searchParams.toString()}` : ""
+        }`;
+
+        const response = await fetch(url, {
+          method: "GET",
+          headers: getAuthHeaders(token),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "No se pudieron cargar los hitos REE del dashboard.");
+        }
+
+        const json = (await response.json()) as ReeDashboardHitosResponse;
+        setReeHitosData(json);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No se pudieron cargar los hitos REE del dashboard.";
+        setReeHitosError(message);
+        setReeHitosData(null);
+      } finally {
+        setReeHitosLoading(false);
+      }
+    };
+
+    void loadReeDashboardHitos();
+  }, [token, anioValue, mesValue]);
 
   const empresaOptions = useMemo(() => {
     const base = [{ value: "", label: "Todas" }];
@@ -140,7 +256,6 @@ export default function DashboardSection({ token }: Props) {
     [data]
   );
 
-  // Etiqueta de periodo para títulos de tarjetas: año si YTD, mes/año si mes concreto
   const periodoTituloLabel = useMemo(() => {
     if (!data?.common_period) return "";
     const { anio: a, mes: m } = data.common_period;
@@ -150,8 +265,9 @@ export default function DashboardSection({ token }: Props) {
 
   const resumenSubtitle = useMemo(() => {
     if (!isLogged) return "Resumen inicial del dashboard.";
-    if (aggregationMode === "ytd")
+    if (aggregationMode === "ytd") {
       return "Resumen acumulado del año hasta el último mes común disponible entre Medidas General y PS.";
+    }
     return "Resumen inicial del último mes común disponible entre Medidas General y PS.";
   }, [isLogged, aggregationMode]);
 
@@ -165,18 +281,20 @@ export default function DashboardSection({ token }: Props) {
     return "Variación vs mes anterior";
   }, [aggregationMode]);
 
-  // Títulos de tarjetas con periodo real visible
   const energiaCardTitle = useMemo(() => {
-    if (aggregationMode === "ytd") return `ENERGÍA FACTURADA ACUMULADA ${periodoTituloLabel}`.trim();
+    if (aggregationMode === "ytd") {
+      return `ENERGÍA FACTURADA ACUMULADA ${periodoTituloLabel}`.trim();
+    }
     return `ENERGÍA FACTURADA ${periodoTituloLabel}`.trim();
   }, [aggregationMode, periodoTituloLabel]);
 
   const perdidasCardTitle = useMemo(() => {
-    if (aggregationMode === "ytd") return `PÉRDIDAS ACUMULADAS ${periodoTituloLabel}`.trim();
+    if (aggregationMode === "ytd") {
+      return `PÉRDIDAS ACUMULADAS ${periodoTituloLabel}`.trim();
+    }
     return `PÉRDIDAS ${periodoTituloLabel}`.trim();
   }, [aggregationMode, periodoTituloLabel]);
 
-  // Título del gráfico principal y evoluciones con año real
   const anioGraficoLabel = useMemo(() => {
     if (data?.common_period?.anio) return String(data.common_period.anio);
     return "";
@@ -237,17 +355,24 @@ export default function DashboardSection({ token }: Props) {
 
   const comparisonHelpText = useMemo(() => {
     if (!data?.previous_common_period) return null;
-    if (aggregationMode === "ytd")
+    if (aggregationMode === "ytd") {
       return `Comparando hasta ${periodoComunLabel} contra el acumulado hasta ${previousPeriodoLabel}.`;
+    }
     return `Comparando ${periodoComunLabel} contra ${previousPeriodoLabel}.`;
   }, [aggregationMode, data, periodoComunLabel, previousPeriodoLabel]);
 
   const hayFiltrosActivos = !!(empresa || anio || mes);
 
+  const reeCardHelpText = useMemo(() => {
+    if (reeHitosLoading) return "Cargando hitos REE del mes vigente...";
+    if (reeHitosError) return "No se pudieron cargar los hitos REE.";
+    if (reeHitosData?.mes_label) return `Mes vigente: ${reeHitosData.mes_label}`;
+    return "Hitos clave del calendario REE para el mes vigente.";
+  }, [reeHitosLoading, reeHitosError, reeHitosData]);
+
   return (
     <section className="ui-card text-sm">
       <div className="flex flex-col gap-4">
-
         <div className="flex flex-row items-start justify-between gap-4">
           <div>
             <h3 className="ui-card-title text-base md:text-lg">DASHBOARD MEDIDAS</h3>
@@ -315,7 +440,11 @@ export default function DashboardSection({ token }: Props) {
               <button
                 type="button"
                 className="ui-btn ui-btn-outline ui-btn-xs"
-                onClick={() => { setEmpresa(""); setAnio(""); setMes(""); }}
+                onClick={() => {
+                  setEmpresa("");
+                  setAnio("");
+                  setMes("");
+                }}
                 disabled={!isLogged}
               >
                 Limpiar filtros
@@ -401,12 +530,53 @@ export default function DashboardSection({ token }: Props) {
               <DashboardMiniCard
                 title="CALENDARIO REE CON HITOS"
                 rows={[
-                  { label: "Fecha publicación m-2", value: "—" },
-                  { label: "Fecha publicación m-7", value: "—" },
-                  { label: "Fecha límite respuesta de objeciones", value: "—" },
-                  { label: "Fecha publicación m-11", value: "—" },
-                  { label: "Fecha publicación art.15", value: "—" },
+                  {
+                    label: "Fecha publicación m-2",
+                    value: reeHitosLoading
+                      ? "Cargando..."
+                      : formatDashboardDateWithMesAfectado(
+                          reeHitosData?.fecha_publicacion_m2 ?? null,
+                          reeHitosData?.mes_afectado_publicacion_m2 ?? null
+                        ),
+                  },
+                  {
+                    label: "Fecha publicación m-7",
+                    value: reeHitosLoading
+                      ? "Cargando..."
+                      : formatDashboardDateWithMesAfectado(
+                          reeHitosData?.fecha_publicacion_m7 ?? null,
+                          reeHitosData?.mes_afectado_publicacion_m7 ?? null
+                        ),
+                  },
+                  {
+                    label: "Fecha límite de objeciones",
+                    value: reeHitosLoading
+                      ? "Cargando..."
+                      : formatDashboardDateWithMesAfectado(
+                          reeHitosData?.fecha_limite_respuesta_objeciones ?? null,
+                          reeHitosData?.mes_afectado_limite_respuesta_objeciones ?? null
+                        ),
+                  },
+                  {
+                    label: "Fecha publicación m-11",
+                    value: reeHitosLoading
+                      ? "Cargando..."
+                      : formatDashboardDateWithMesAfectado(
+                          reeHitosData?.fecha_publicacion_m11 ?? null,
+                          reeHitosData?.mes_afectado_publicacion_m11 ?? null
+                        ),
+                  },
+                  {
+                    label: "Fecha publicación art.15",
+                    value: reeHitosLoading
+                      ? "Cargando..."
+                      : formatDashboardDateWithMesAfectado(
+                          reeHitosData?.fecha_publicacion_art15 ?? null,
+                          reeHitosData?.mes_afectado_publicacion_art15 ?? null
+                        ),
+                  },
                 ]}
+                helpText={reeCardHelpText}
                 minHeightClassName="min-h-[150px]"
               />
               <DashboardMiniCard title="ALERTAS" minHeightClassName="min-h-[180px]">

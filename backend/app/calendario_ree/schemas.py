@@ -51,6 +51,16 @@ class ReeCalendarOperativoItemRead(BaseModel):
 class ReeCalendarOperativoResponse(BaseModel):
     anio: int | None
     source: str
+    page: int
+    page_size: int
+    total: int
+    pages: int
+    total_hitos: int
+    hitos_pendientes: int
+    hitos_cerrados: int
+    categoria_actual: str | None
+    proximo_hito: ReeCalendarOperativoItemRead | None
+    proximos_hitos: list[ReeCalendarOperativoItemRead]
     items: list[ReeCalendarOperativoItemRead]
 
 
@@ -77,3 +87,24 @@ class ReeCalendarWorkbookSheetRead(BaseModel):
 
 class ReeCalendarWorkbookPreviewResponse(BaseModel):
     sheets: list[ReeCalendarWorkbookSheetRead]
+
+
+class ReeCalendarDashboardHitosResponse(BaseModel):
+    anio: int | None
+    mes: int | None
+    mes_label: str | None
+
+    fecha_publicacion_m2: date | None
+    mes_afectado_publicacion_m2: str | None
+
+    fecha_publicacion_m7: date | None
+    mes_afectado_publicacion_m7: str | None
+
+    fecha_limite_respuesta_objeciones: date | None
+    mes_afectado_limite_respuesta_objeciones: str | None
+
+    fecha_publicacion_m11: date | None
+    mes_afectado_publicacion_m11: str | None
+
+    fecha_publicacion_art15: date | None
+    mes_afectado_publicacion_art15: str | None
