@@ -5,6 +5,9 @@ import React, { useEffect, useState } from "react";
 import LoginSection from "./components/auth/Login-section";
 import DashboardSection from "./components/dashboard/DashboardSection";
 import AlertsSection from "./components/admin/AlertsSection";
+import MedidasSection from "./components/medidas/MedidasSection";
+import ObjecionesSection from "./components/medidas/ObjecionesSection";
+import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
 import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
 import CargaSection from "./components/ingestion/CargaSection";
 import UsersSection from "./components/admin/UsersSection";
@@ -18,6 +21,9 @@ import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
 type MainTab =
   | "dashboard"
+  | "medidas"
+  | "objeciones"
+  | "calendario-ree"
   | "alertas"
   | "usuarios"
   | "clientes"
@@ -93,6 +99,8 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
 
 const SIDEBAR_STORAGE_KEY = "ui_sidebar_collapsed";
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
+const MEDIDAS_OPEN_STORAGE_KEY = "ui_medidas_open";
+const TABLAS_OPEN_STORAGE_KEY = "ui_tablas_open";
 
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(() => {
@@ -108,6 +116,7 @@ export default function HomePage() {
   const [authReady, setAuthReady] = useState(false);
 
   const [activeTab, setActiveTab] = useState<MainTab>("dashboard");
+  const [medidasOpen, setMedidasOpen] = useState(false);
   const [tablasOpen, setTablasOpen] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -128,6 +137,9 @@ export default function HomePage() {
       const savedTab = localStorage.getItem("ui_active_tab");
       if (
         savedTab === "dashboard" ||
+        savedTab === "medidas" ||
+        savedTab === "objeciones" ||
+        savedTab === "calendario-ree" ||
         savedTab === "alertas" ||
         savedTab === "usuarios" ||
         savedTab === "clientes" ||
@@ -140,7 +152,8 @@ export default function HomePage() {
         setActiveTab(savedTab);
       }
 
-      setTablasOpen(localStorage.getItem("ui_tablas_open") === "1");
+      setMedidasOpen(localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1");
+      setTablasOpen(localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1");
 
       const colOrder = localStorage.getItem("medidas_column_order");
       if (colOrder) setColumnOrder(JSON.parse(colOrder));
@@ -173,7 +186,15 @@ export default function HomePage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("ui_tablas_open", tablasOpen ? "1" : "0");
+      localStorage.setItem(MEDIDAS_OPEN_STORAGE_KEY, medidasOpen ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [medidasOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0");
     } catch {
       // ignore
     }
@@ -218,6 +239,23 @@ export default function HomePage() {
       // ignore
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (
+      activeTab === "tablas-general" ||
+      activeTab === "tablas-ps" ||
+      activeTab === "objeciones" ||
+      activeTab === "calendario-ree"
+    ) {
+      setMedidasOpen(true);
+    }
+    if (activeTab === "tablas-general" || activeTab === "tablas-ps") {
+      setTablasOpen(true);
+    }
+    if (activeTab === "medidas") {
+      setMedidasOpen(true);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!token) {
@@ -284,6 +322,28 @@ export default function HomePage() {
   const handleGoHome = () => {
     setActiveTab("dashboard");
     setHomeMenuOpen(false);
+  };
+
+  const handleMedidasClick = () => {
+    setMedidasOpen((prev) => !prev);
+
+    if (
+      activeTab !== "medidas" &&
+      activeTab !== "tablas-general" &&
+      activeTab !== "tablas-ps" &&
+      activeTab !== "objeciones" &&
+      activeTab !== "calendario-ree"
+    ) {
+      setActiveTab("medidas");
+    }
+  };
+
+  const handleTablasClick = () => {
+    setTablasOpen((prev) => !prev);
+
+    if (activeTab !== "tablas-general" && activeTab !== "tablas-ps") {
+      setActiveTab("tablas-general");
+    }
   };
 
   if (!authReady) {
@@ -361,6 +421,91 @@ export default function HomePage() {
               <span>Dashboard</span>
             </button>
 
+            <div>
+              <button
+                onClick={handleMedidasClick}
+                className={[
+                  "ui-nav-item",
+                  activeTab === "medidas" ||
+                  activeTab === "tablas-general" ||
+                  activeTab === "tablas-ps" ||
+                  activeTab === "objeciones" ||
+                  activeTab === "calendario-ree"
+                    ? "ui-nav-item--active"
+                    : "",
+                ].join(" ")}
+              >
+                <span>Medidas</span>
+                <span className="text-[10px] ui-muted">{medidasOpen ? "▾" : "▸"}</span>
+              </button>
+
+              {medidasOpen && (
+                <div className="ui-nav-sub">
+                  <button
+                    type="button"
+                    onClick={handleTablasClick}
+                    className={[
+                      "ui-nav-subitem",
+                      activeTab === "tablas-general" || activeTab === "tablas-ps"
+                        ? "ui-nav-subitem--active"
+                        : "",
+                    ].join(" ")}
+                  >
+                    <span>Tablas</span>
+                    <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
+                  </button>
+
+                  {tablasOpen && (
+                    <div className="ui-nav-sub">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("tablas-general")}
+                        className={[
+                          "ui-nav-subitem",
+                          activeTab === "tablas-general" ? "ui-nav-subitem--active" : "",
+                        ].join(" ")}
+                      >
+                        <span>Medidas general</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("tablas-ps")}
+                        className={[
+                          "ui-nav-subitem",
+                          activeTab === "tablas-ps" ? "ui-nav-subitem--active" : "",
+                        ].join(" ")}
+                      >
+                        <span>Medidas PS</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("objeciones")}
+                    className={[
+                      "ui-nav-subitem",
+                      activeTab === "objeciones" ? "ui-nav-subitem--active" : "",
+                    ].join(" ")}
+                  >
+                    <span>Objeciones</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("calendario-ree")}
+                    className={[
+                      "ui-nav-subitem",
+                      activeTab === "calendario-ree" ? "ui-nav-subitem--active" : "",
+                    ].join(" ")}
+                  >
+                    <span>Calendario REE</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setActiveTab("alertas")}
               className={[
@@ -394,52 +539,6 @@ export default function HomePage() {
                 <span>Clientes</span>
               </button>
             )}
-
-            <div>
-              <button
-                onClick={() => {
-                  setTablasOpen((prev) => !prev);
-                  if (activeTab !== "tablas-general" && activeTab !== "tablas-ps") {
-                    setActiveTab("tablas-general");
-                  }
-                }}
-                className={[
-                  "ui-nav-item",
-                  activeTab === "tablas-general" || activeTab === "tablas-ps"
-                    ? "ui-nav-item--active"
-                    : "",
-                ].join(" ")}
-              >
-                <span>Tablas</span>
-                <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
-              </button>
-
-              {tablasOpen && (
-                <div className="ui-nav-sub">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("tablas-general")}
-                    className={[
-                      "ui-nav-subitem",
-                      activeTab === "tablas-general" ? "ui-nav-subitem--active" : "",
-                    ].join(" ")}
-                  >
-                    <span>Medidas general</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("tablas-ps")}
-                    className={[
-                      "ui-nav-subitem",
-                      activeTab === "tablas-ps" ? "ui-nav-subitem--active" : "",
-                    ].join(" ")}
-                  >
-                    <span>Medidas PS</span>
-                  </button>
-                </div>
-              )}
-            </div>
 
             <button
               onClick={() => setActiveTab("carga")}
@@ -547,6 +646,16 @@ export default function HomePage() {
         </header>
 
         {activeTab === "dashboard" && <DashboardSection token={token} />}
+
+        {activeTab === "medidas" && <MedidasSection token={token} currentUser={currentUser} />}
+
+        {activeTab === "objeciones" && (
+          <ObjecionesSection token={token} currentUser={currentUser} />
+        )}
+
+        {activeTab === "calendario-ree" && (
+          <CalendarioReeSection token={token} currentUser={currentUser} />
+        )}
 
         {activeTab === "alertas" && <AlertsSection token={token} currentUser={currentUser} />}
 

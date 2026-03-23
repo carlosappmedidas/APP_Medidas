@@ -1,5 +1,6 @@
 # app/main.py
 # pyright: reportMissingImports=false
+
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -9,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.alerts.routes import router as alerts_router
+from app.calendario_ree.routes import router as calendario_ree_router
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.dashboard.routes import router as dashboard_router
@@ -19,6 +21,7 @@ from app.tenants.routes import router as auth_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
+from app.calendario_ree.models import ReeCalendarFile  # noqa: F401
 from app.measures.models import MedidaGeneral, MedidaMicro, MedidaPS  # noqa: F401
 from app.measures.m1_models import M1PeriodContribution  # noqa: F401
 from app.measures.general_contrib_models import GeneralPeriodContribution  # noqa: F401
@@ -57,13 +60,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ---------- Healthcheck ----------
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
     return {"status": "ok"}
-
 
 # ---------- Routers ----------
 app.include_router(auth_router)
@@ -72,3 +73,4 @@ app.include_router(ingestion_router)
 app.include_router(medidas_router)
 app.include_router(alerts_router)
 app.include_router(dashboard_router)
+app.include_router(calendario_ree_router)
