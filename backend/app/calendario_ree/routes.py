@@ -28,7 +28,8 @@ from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.tenants.models import User
 
-router = APIRouter(prefix="/calendario-ree", tags=["calendario-ree"])
+router: APIRouter = APIRouter(prefix="/calendario-ree", tags=["calendario-ree"])
+__all__ = ["router"]
 
 UPLOAD_BASE_PATH = Path("data/calendario_ree")
 ALLOWED_EXTENSIONS = {".xlsx"}
@@ -137,17 +138,44 @@ def _set_calendar_event_values(
     event_any.sort_order = sort_order
 
 
+def _estado_from_fecha(fecha: date) -> str:
+    today = date.today()
+
+    if fecha < today:
+        return "cerrado"
+    if fecha == today:
+        return "hoy"
+    if (fecha - today).days <= 15:
+        return "proximo"
+    return "pendiente"
+
+
+def _matches_estado_filter(
+    estado_value: str,
+    estado_filter: str | None,
+) -> bool:
+    if not estado_filter or estado_filter == "todos":
+        return True
+    return estado_value == estado_filter
+
+
+def _is_open_estado(estado_value: str) -> bool:
+    return estado_value in {"pendiente", "proximo", "hoy"}
+
+
 def _to_operativo_schema(item: ReeCalendarEvent) -> ReeCalendarOperativoItemRead:
     item_any = _event_any(item)
+    fecha_value = cast(date, item_any.fecha)
+
     return ReeCalendarOperativoItemRead(
         id=cast(int, item_any.id),
         anio=cast(int, item_any.anio),
-        fecha=cast(date, item_any.fecha),
+        fecha=fecha_value,
         mes_visual=cast(str, item_any.mes_visual),
         categoria=cast(str, item_any.categoria),
         evento=cast(str, item_any.evento),
         mes_afectado=cast(str, item_any.mes_afectado),
-        estado=cast(str, item_any.estado),
+        estado=_estado_from_fecha(fecha_value),
         sort_order=cast(int, item_any.sort_order),
     )
 
@@ -519,9 +547,6 @@ def _apply_operativo_filters(
     if categoria and categoria != "todas":
         query = query.filter(ReeCalendarEvent.categoria == categoria)
 
-    if estado and estado != "todos":
-        query = query.filter(ReeCalendarEvent.estado == estado)
-
     if search:
         search_value = f"%{search.strip()}%"
         query = query.filter(
@@ -559,21 +584,17 @@ def _build_empty_operativo_response(
 
 
 def _get_proximos_hitos(
-    query: SAQuery,
+    items: list[ReeCalendarEvent],
     *,
     limit: int = 3,
 ) -> list[ReeCalendarOperativoItemRead]:
-    proximos = (
-        query.filter(ReeCalendarEvent.estado.in_(["pendiente", "proximo", "hoy"]))
-        .order_by(
-            ReeCalendarEvent.fecha.asc(),
-            ReeCalendarEvent.sort_order.asc(),
-            ReeCalendarEvent.id.asc(),
-        )
-        .limit(limit)
-        .all()
-    )
-    return [_to_operativo_schema(item) for item in proximos]
+    proximos_models = [
+        item
+        for item in items
+        if _is_open_estado(_estado_from_fecha(cast(date, _event_any(item).fecha)))
+    ][:limit]
+
+    return [_to_operativo_schema(item) for item in proximos_models]
 
 
 def _parse_mes_afectado(value: str) -> tuple[int | None, int | None]:
@@ -886,14 +907,6 @@ def seed_calendar_operativo(
         workbook_path=Path(storage_key),
     )
 
-    total_hitos = len(items)
-    hitos_pendientes = len(
-        [item for item in items if cast(str, _event_any(item).estado) in {"pendiente", "proximo", "hoy"}]
-    )
-    hitos_cerrados = len(
-        [item for item in items if cast(str, _event_any(item).estado) == "cerrado"]
-    )
-
     sorted_items = sorted(
         items,
         key=lambda item: (
@@ -903,23 +916,38 @@ def seed_calendar_operativo(
         ),
     )
 
+    hitos_pendientes = len(
+        [
+            item
+            for item in sorted_items
+            if _is_open_estado(_estado_from_fecha(cast(date, _event_any(item).fecha)))
+        ]
+    )
+    hitos_cerrados = len(
+        [
+            item
+            for item in sorted_items
+            if _estado_from_fecha(cast(date, _event_any(item).fecha)) == "cerrado"
+        ]
+    )
+
     proximos_hitos_models = [
         item
         for item in sorted_items
-        if cast(str, _event_any(item).estado) in {"pendiente", "proximo", "hoy"}
+        if _is_open_estado(_estado_from_fecha(cast(date, _event_any(item).fecha)))
     ][:3]
 
     proximo_hito_model = proximos_hitos_models[0] if proximos_hitos_models else None
-
     proximo_hito = (
         _to_operativo_schema(proximo_hito_model) if proximo_hito_model is not None else None
     )
-
     categoria_actual = (
         cast(str, _event_any(proximo_hito_model).categoria)
         if proximo_hito_model is not None
         else None
     )
+
+    total_hitos = len(sorted_items)
 
     return ReeCalendarOperativoResponse(
         anio=anio,
@@ -988,59 +1016,52 @@ def get_calendar_operativo(
         search=search,
     )
 
-    total = filtered_query.count()
-    pages = max(1, (total + page_size - 1) // page_size)
-
-    safe_page = page if page <= pages else pages
-    offset = (safe_page - 1) * page_size
-
-    items = (
+    db_items = (
         filtered_query.order_by(
             ReeCalendarEvent.fecha.asc(),
             ReeCalendarEvent.sort_order.asc(),
             ReeCalendarEvent.id.asc(),
         )
-        .offset(offset)
-        .limit(page_size)
         .all()
     )
 
-    hitos_pendientes = (
-        _apply_operativo_filters(
-            base_query,
-            categoria=categoria,
-            estado=estado,
-            search=search,
+    estado_filtered_items = [
+        item
+        for item in db_items
+        if _matches_estado_filter(
+            _estado_from_fecha(cast(date, _event_any(item).fecha)),
+            estado,
         )
-        .filter(ReeCalendarEvent.estado.in_(["pendiente", "proximo", "hoy"]))
-        .count()
+    ]
+
+    total = len(estado_filtered_items)
+    pages = max(1, (total + page_size - 1) // page_size)
+    safe_page = page if page <= pages else pages
+    offset = (safe_page - 1) * page_size
+    paged_items = estado_filtered_items[offset : offset + page_size]
+
+    hitos_pendientes = len(
+        [
+            item
+            for item in estado_filtered_items
+            if _is_open_estado(_estado_from_fecha(cast(date, _event_any(item).fecha)))
+        ]
+    )
+    hitos_cerrados = len(
+        [
+            item
+            for item in estado_filtered_items
+            if _estado_from_fecha(cast(date, _event_any(item).fecha)) == "cerrado"
+        ]
     )
 
-    hitos_cerrados = (
-        _apply_operativo_filters(
-            base_query,
-            categoria=categoria,
-            estado=estado,
-            search=search,
-        )
-        .filter(ReeCalendarEvent.estado == "cerrado")
-        .count()
-    )
-
-    proximo_hito_model = (
-        _apply_operativo_filters(
-            base_query,
-            categoria=categoria,
-            estado=estado,
-            search=search,
-        )
-        .filter(ReeCalendarEvent.estado.in_(["pendiente", "proximo", "hoy"]))
-        .order_by(
-            ReeCalendarEvent.fecha.asc(),
-            ReeCalendarEvent.sort_order.asc(),
-            ReeCalendarEvent.id.asc(),
-        )
-        .first()
+    proximo_hito_model = next(
+        (
+            item
+            for item in estado_filtered_items
+            if _is_open_estado(_estado_from_fecha(cast(date, _event_any(item).fecha)))
+        ),
+        None,
     )
 
     proximo_hito = (
@@ -1053,15 +1074,7 @@ def get_calendar_operativo(
         else None
     )
 
-    proximos_hitos = _get_proximos_hitos(
-        _apply_operativo_filters(
-            base_query,
-            categoria=categoria,
-            estado=estado,
-            search=search,
-        ),
-        limit=3,
-    )
+    proximos_hitos = _get_proximos_hitos(estado_filtered_items, limit=3)
 
     return ReeCalendarOperativoResponse(
         anio=selected_anio,
@@ -1076,7 +1089,7 @@ def get_calendar_operativo(
         categoria_actual=categoria_actual,
         proximo_hito=proximo_hito,
         proximos_hitos=proximos_hitos,
-        items=[_to_operativo_schema(item) for item in items],
+        items=[_to_operativo_schema(item) for item in paged_items],
     )
 
 
@@ -1144,27 +1157,22 @@ def get_dashboard_hitos(
         anio=target_anio,
         mes=target_mes,
         mes_label=target_mes_label,
-
         fecha_publicacion_m2=cast(date | None, _event_any(item_m2).fecha) if item_m2 else None,
         mes_afectado_publicacion_m2=_format_mes_afectado_short(
             cast(str | None, _event_any(item_m2).mes_afectado) if item_m2 else None
         ),
-
         fecha_publicacion_m7=cast(date | None, _event_any(item_m7).fecha) if item_m7 else None,
         mes_afectado_publicacion_m7=_format_mes_afectado_short(
             cast(str | None, _event_any(item_m7).mes_afectado) if item_m7 else None
         ),
-
         fecha_limite_respuesta_objeciones=cast(date | None, _event_any(item_limite_obj).fecha) if item_limite_obj else None,
         mes_afectado_limite_respuesta_objeciones=_format_mes_afectado_short(
             cast(str | None, _event_any(item_limite_obj).mes_afectado) if item_limite_obj else None
         ),
-
         fecha_publicacion_m11=cast(date | None, _event_any(item_m11).fecha) if item_m11 else None,
         mes_afectado_publicacion_m11=_format_mes_afectado_short(
             cast(str | None, _event_any(item_m11).mes_afectado) if item_m11 else None
         ),
-
         fecha_publicacion_art15=cast(date | None, _event_any(item_art15).fecha) if item_art15 else None,
         mes_afectado_publicacion_art15=_format_mes_afectado_short(
             cast(str | None, _event_any(item_art15).mes_afectado) if item_art15 else None
