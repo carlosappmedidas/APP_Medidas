@@ -19,10 +19,9 @@ router = APIRouter(prefix="/medidas-graficos", tags=["medidas-graficos"])
 
 
 def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
-    user_role = str(getattr(current_user, "rol", "") or "").lower()
     tenant_id = int(cast(int, current_user.tenant_id))
 
-    if user_role in {"admin", "owner"}:
+    if bool(getattr(current_user, "is_superuser", False)):
         rows = (
             db.query(Empresa.id)
             .filter(Empresa.tenant_id == tenant_id)
@@ -32,10 +31,11 @@ def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
         return [int(row[0]) for row in rows if row and row[0] is not None]
 
     raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
-    if not raw_ids:
-        return []
+    explicit_ids = [int(x) for x in raw_ids if x is not None] if raw_ids else []
+    if explicit_ids:
+        return explicit_ids
 
-    return [int(x) for x in raw_ids if x is not None]
+    return []
 
 
 def _period_key(anio: int, mes: int) -> str:
@@ -44,18 +44,8 @@ def _period_key(anio: int, mes: int) -> str:
 
 def _period_label(anio: int, mes: int) -> str:
     month_names = {
-        1: "Ene",
-        2: "Feb",
-        3: "Mar",
-        4: "Abr",
-        5: "May",
-        6: "Jun",
-        7: "Jul",
-        8: "Ago",
-        9: "Sep",
-        10: "Oct",
-        11: "Nov",
-        12: "Dic",
+        1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
+        7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
     }
     return f"{month_names.get(mes, str(mes))} {anio}"
 
@@ -80,10 +70,8 @@ def _base_general_query(
 
     if empresa_ids:
         query = query.filter(MedidaGeneral.empresa_id.in_(empresa_ids))
-
     if anios:
         query = query.filter(MedidaGeneral.anio.in_(anios))
-
     if meses:
         query = query.filter(MedidaGeneral.mes.in_(meses))
 
@@ -146,10 +134,7 @@ def _build_series_aggregated(
     points: list[graficos_schemas.GraficoPoint] = [
         graficos_schemas.GraficoPoint(
             period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
-            period_label=_period_label(
-                int(cast(Any, row).anio),
-                int(cast(Any, row).mes),
-            ),
+            period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
             value=float(cast(Any, row).value or 0.0),
         )
         for row in rows
@@ -220,7 +205,6 @@ def _build_series_by_empresa(
     )
 
     points_by_empresa: dict[int, list[graficos_schemas.GraficoPoint]] = {}
-
     for row in rows:
         row_any = cast(Any, row)
         empresa_id = int(row_any.empresa_id)
@@ -317,6 +301,7 @@ def get_medidas_graficos_series(
         tenant_id=tenant_id_int,
         allowed_empresa_ids=allowed_empresa_ids,
     )
+
     tenant_empresa_ids = [cast(int, empresa.id) for empresa in tenant_empresas]
 
     selected_empresa_ids = [
@@ -441,7 +426,6 @@ def get_medidas_graficos_series(
             anios=anios,
             meses=meses,
         )[0]
-
         energias_publicadas_series.append(
             graficos_schemas.GraficoSerie(
                 serie_key=key,
