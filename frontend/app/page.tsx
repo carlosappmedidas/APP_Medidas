@@ -155,9 +155,6 @@ export default function HomePage() {
         setActiveTab(savedTab);
       }
 
-      setMedidasOpen(localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1");
-      setTablasOpen(localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1");
-
       const colOrder = localStorage.getItem("medidas_column_order");
       if (colOrder) setColumnOrder(JSON.parse(colOrder));
 
@@ -244,24 +241,6 @@ export default function HomePage() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
-    if (
-      activeTab === "tablas-general" ||
-      activeTab === "tablas-ps" ||
-      activeTab === "objeciones" ||
-      activeTab === "calendario-ree" ||
-      activeTab === "graficos"
-    ) {
-      setMedidasOpen(true);
-    }
-    if (activeTab === "tablas-general" || activeTab === "tablas-ps") {
-      setTablasOpen(true);
-    }
-    if (activeTab === "medidas") {
-      setMedidasOpen(true);
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
     if (!token) {
       setCurrentUser(null);
       return;
@@ -345,10 +324,6 @@ export default function HomePage() {
 
   const handleTablasClick = () => {
     setTablasOpen((prev) => !prev);
-
-    if (activeTab !== "tablas-general" && activeTab !== "tablas-ps") {
-      setActiveTab("tablas-general");
-    }
   };
 
   if (!authReady) {
