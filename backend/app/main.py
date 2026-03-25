@@ -17,6 +17,7 @@ from app.dashboard.routes import router as dashboard_router
 from app.empresas.routes import router as empresas_router
 from app.ingestion.routes import router as ingestion_router
 from app.measures.routes import router as medidas_router
+from app.medidas_graficos.routes import router as medidas_graficos_router
 from app.tenants.routes import router as auth_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
@@ -74,3 +75,4 @@ app.include_router(medidas_router)
 app.include_router(alerts_router)
 app.include_router(dashboard_router)
 app.include_router(calendario_ree_router)
+app.include_router(medidas_graficos_router)

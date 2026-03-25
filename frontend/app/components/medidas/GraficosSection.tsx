@@ -1,0 +1,834 @@
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import type { User } from "../../types";
+import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+
+type Props = {
+  token: string | null;
+  currentUser?: User | null;
+};
+
+type GraficoEmpresaOption = {
+  id: number;
+  nombre: string;
+};
+
+type GraficoFiltersResponse = {
+  empresas: GraficoEmpresaOption[];
+  anios: number[];
+  meses: number[];
+};
+
+type GraficoPoint = {
+  period_key: string;
+  period_label: string;
+  value: number;
+};
+
+type GraficoSerie = {
+  serie_key: string;
+  serie_label: string;
+  points: GraficoPoint[];
+};
+
+type GraficoSeriesGroup = {
+  series: GraficoSerie[];
+};
+
+type GraficosSeriesResponse = {
+  filters: {
+    empresa_ids: number[];
+    anios: number[];
+    meses: number[];
+    aggregation: string;
+  };
+  scope: {
+    all_empresas_selected: boolean;
+    aggregation: string;
+  };
+  energia_facturada: GraficoSeriesGroup;
+  perdidas: GraficoSeriesGroup;
+  energias_publicadas: GraficoSeriesGroup;
+  autoconsumo: GraficoSeriesGroup;
+  energia_generada: GraficoSeriesGroup;
+};
+
+type ChartRow = {
+  period_key: string;
+  period_label: string;
+  [key: string]: string | number;
+};
+
+type CustomTooltipEntry = {
+  value?: number | string;
+  name?: number | string;
+  dataKey?: number | string;
+};
+
+type CustomTooltipProps = {
+  active?: boolean;
+  payload?: readonly CustomTooltipEntry[];
+  label?: number | string;
+};
+
+type MultiCheckOption = {
+  value: number;
+  label: string;
+};
+
+type ElementSize = {
+  width: number;
+  height: number;
+};
+
+type FilterDropdownProps = {
+  title: string;
+  options: MultiCheckOption[];
+  selectedValues: number[];
+  onToggle: (value: number) => void;
+  onSelectAll: () => void;
+  allLabel?: string;
+};
+
+type ChartCardProps = {
+  title: string;
+  subtitle: string;
+  data: ChartRow[];
+  series: GraficoSerie[];
+  companyLabel: string;
+  yAxisFormatter?: (value: number) => string;
+};
+
+const MESES_LABEL: Record<number, string> = {
+  1: "Ene",
+  2: "Feb",
+  3: "Mar",
+  4: "Abr",
+  5: "May",
+  6: "Jun",
+  7: "Jul",
+  8: "Ago",
+  9: "Sep",
+  10: "Oct",
+  11: "Nov",
+  12: "Dic",
+};
+
+const LINE_COLORS = [
+  "#6D5EF8",
+  "#22C55E",
+  "#F59E0B",
+  "#EF4444",
+  "#06B6D4",
+  "#A855F7",
+  "#84CC16",
+  "#F97316",
+];
+
+function formatNumberEs(value: number | string | null | undefined): string {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : null;
+
+  if (numericValue === null || Number.isNaN(numericValue)) {
+    return "—";
+  }
+
+  return new Intl.NumberFormat("es-ES", {
+    maximumFractionDigits: 2,
+  }).format(numericValue);
+}
+
+function buildChartRows(group: GraficoSeriesGroup | null): ChartRow[] {
+  if (!group?.series?.length) {
+    return [];
+  }
+
+  const map = new Map<string, ChartRow>();
+
+  for (const serie of group.series) {
+    for (const point of serie.points) {
+      const current = map.get(point.period_key) ?? {
+        period_key: point.period_key,
+        period_label: point.period_label,
+      };
+
+      current[serie.serie_key] = point.value;
+      map.set(point.period_key, current);
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    String(a.period_key).localeCompare(String(b.period_key))
+  );
+}
+
+function relabelSeries(series: GraficoSerie[], legendLabel: string): GraficoSerie[] {
+  if (series.length !== 1) {
+    return series;
+  }
+
+  return [
+    {
+      ...series[0],
+      serie_label: legendLabel,
+    },
+  ];
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="rounded-lg border px-3 py-2 text-xs shadow-lg"
+      style={{
+        borderColor: "var(--card-border)",
+        background: "var(--card-bg)",
+        color: "var(--text)",
+      }}
+    >
+      <div className="mb-2 font-semibold">{String(label ?? "—")}</div>
+
+      <div className="flex flex-col gap-1">
+        {payload.map((entry, index) => (
+          <div
+            key={`${String(entry.dataKey ?? "serie")}-${index}`}
+            className="flex items-center justify-between gap-3"
+          >
+            <span>{String(entry.name ?? entry.dataKey ?? "Serie")}</span>
+            <span className="font-medium">
+              {formatNumberEs(
+                typeof entry.value === "number" || typeof entry.value === "string"
+                  ? entry.value
+                  : null
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!mounted || !element) {
+      return;
+    }
+
+    const updateSize = () => {
+      const rect = element.getBoundingClientRect();
+      const nextWidth = Math.max(0, Math.round(rect.width));
+      const nextHeight = Math.max(0, Math.round(rect.height));
+
+      setSize((prev) => {
+        if (prev.width === nextWidth && prev.height === nextHeight) {
+          return prev;
+        }
+
+        return {
+          width: nextWidth,
+          height: nextHeight,
+        };
+      });
+    };
+
+    updateSize();
+
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [mounted]);
+
+  return {
+    ref,
+    mounted,
+    width: size.width,
+    height: size.height,
+  };
+}
+
+function FilterDropdown({
+  title,
+  options,
+  selectedValues,
+  onToggle,
+  onSelectAll,
+  allLabel = "Todas",
+}: FilterDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const allSelected =
+    options.length > 0 && selectedValues.length === options.length;
+
+  const summary = useMemo(() => {
+    if (options.length === 0) {
+      return "Sin opciones";
+    }
+
+    if (allSelected) {
+      return allLabel;
+    }
+
+    if (selectedValues.length === 0) {
+      return "Ninguna";
+    }
+
+    if (selectedValues.length === 1) {
+      const selected = options.find((option) => option.value === selectedValues[0]);
+      return selected?.label ?? "1 seleccionada";
+    }
+
+    return `${selectedValues.length} seleccionadas`;
+  }, [allLabel, allSelected, options, selectedValues]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const targetNode = event.target;
+      if (!(targetNode instanceof Node)) {
+        return;
+      }
+
+      if (containerRef.current && !containerRef.current.contains(targetNode)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative min-w-0">
+      <div
+        className="min-w-0 rounded-xl border p-3"
+        style={{
+          borderColor: "var(--card-border)",
+          background: "var(--card-bg)",
+        }}
+      >
+        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em]">
+          {title}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs"
+          style={{
+            borderColor: "var(--field-border)",
+            background: "var(--field-bg)",
+            color: "var(--field-text)",
+          }}
+        >
+          <span className="truncate">{summary}</span>
+          <span className="ml-3 shrink-0">{open ? "▴" : "▾"}</span>
+        </button>
+      </div>
+
+      {open && (
+        <div
+          className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border p-3 shadow-lg"
+          style={{
+            borderColor: "var(--card-border)",
+            background: "var(--card-bg)",
+          }}
+        >
+          <label className="mb-2 flex cursor-pointer items-center gap-2 text-xs">
+            <input type="checkbox" checked={allSelected} onChange={onSelectAll} />
+            <span>{allLabel}</span>
+          </label>
+
+          <div className="grid gap-1">
+            {options.map((option) => (
+              <label
+                key={`${title}-${option.value}`}
+                className="ui-muted flex cursor-pointer items-center gap-2 text-xs"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedValues.includes(option.value)}
+                  onChange={() => onToggle(option.value)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  subtitle,
+  data,
+  series,
+  companyLabel,
+  yAxisFormatter,
+}: ChartCardProps) {
+  const { ref, mounted, width, height } = useElementSize<HTMLDivElement>();
+  const canRenderChart = mounted && width > 0 && height > 0;
+
+  return (
+    <div
+      className="min-w-0 rounded-xl border p-4"
+      style={{
+        borderColor: "var(--card-border)",
+        background: "var(--card-bg)",
+      }}
+    >
+      <div className="mb-2">
+        <div className="text-sm font-semibold">{title}</div>
+        <div className="ui-muted mt-1 text-xs">{subtitle}</div>
+      </div>
+
+      <div className="mb-4 text-center text-xs font-medium" style={{ color: "var(--text)" }}>
+        {companyLabel}
+      </div>
+
+      <div ref={ref} className="h-[320px] min-w-0 w-full">
+        {data.length === 0 ? (
+          <div className="ui-muted flex h-full items-center justify-center text-sm">
+            Sin datos para los filtros seleccionados.
+          </div>
+        ) : !canRenderChart ? (
+          <div className="ui-muted flex h-full items-center justify-center text-sm">
+            Preparando gráfica...
+          </div>
+        ) : (
+          <LineChart
+            width={width}
+            height={height}
+            data={data}
+            margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+            <XAxis dataKey="period_label" tick={{ fontSize: 12 }} />
+            <YAxis tick={{ fontSize: 12 }} tickFormatter={yAxisFormatter} />
+            <Tooltip
+              content={(props) => (
+                <CustomTooltip
+                  active={props.active}
+                  payload={props.payload as readonly CustomTooltipEntry[] | undefined}
+                  label={props.label as string | number | undefined}
+                />
+              )}
+            />
+            <Legend />
+
+            {series.map((serie, index) => (
+              <Line
+                key={serie.serie_key}
+                type="monotone"
+                dataKey={serie.serie_key}
+                name={serie.serie_label}
+                stroke={LINE_COLORS[index % LINE_COLORS.length]}
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function GraficosSection({ token, currentUser }: Props) {
+  const [filtersData, setFiltersData] = useState<GraficoFiltersResponse | null>(null);
+  const [seriesData, setSeriesData] = useState<GraficosSeriesResponse | null>(null);
+
+  const [filtersLoading, setFiltersLoading] = useState(false);
+  const [seriesLoading, setSeriesLoading] = useState(false);
+
+  const [filtersError, setFiltersError] = useState<string | null>(null);
+  const [seriesError, setSeriesError] = useState<string | null>(null);
+
+  const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
+  const [selectedAnios, setSelectedAnios] = useState<number[]>([]);
+  const [selectedMeses, setSelectedMeses] = useState<number[]>([]);
+
+  useEffect(() => {
+    const loadFilters = async () => {
+      if (!token) {
+        setFiltersData(null);
+        return;
+      }
+
+      setFiltersLoading(true);
+      setFiltersError(null);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/medidas-graficos/filters`, {
+          method: "GET",
+          headers: getAuthHeaders(token),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "No se pudieron cargar los filtros.");
+        }
+
+        const json = (await response.json()) as GraficoFiltersResponse;
+        setFiltersData(json);
+        setSelectedEmpresas(json.empresas.map((item) => item.id));
+        setSelectedAnios(json.anios);
+        setSelectedMeses(json.meses);
+      } catch (err) {
+        setFiltersError(
+          err instanceof Error ? err.message : "No se pudieron cargar los filtros."
+        );
+        setFiltersData(null);
+      } finally {
+        setFiltersLoading(false);
+      }
+    };
+
+    void loadFilters();
+  }, [token]);
+
+  useEffect(() => {
+    const loadSeries = async () => {
+      if (!token) {
+        setSeriesData(null);
+        return;
+      }
+
+      if (!filtersData) {
+        return;
+      }
+
+      setSeriesLoading(true);
+      setSeriesError(null);
+
+      try {
+        const searchParams = new URLSearchParams();
+
+        for (const empresaId of selectedEmpresas) {
+          searchParams.append("empresa_ids", String(empresaId));
+        }
+
+        for (const anio of selectedAnios) {
+          searchParams.append("anios", String(anio));
+        }
+
+        for (const mes of selectedMeses) {
+          searchParams.append("meses", String(mes));
+        }
+
+        searchParams.set("aggregation", "avg");
+
+        const response = await fetch(
+          `${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`,
+          {
+            method: "GET",
+            headers: getAuthHeaders(token),
+          }
+        );
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "No se pudieron cargar las gráficas.");
+        }
+
+        const json = (await response.json()) as GraficosSeriesResponse;
+        setSeriesData(json);
+      } catch (err) {
+        setSeriesError(
+          err instanceof Error ? err.message : "No se pudieron cargar las gráficas."
+        );
+        setSeriesData(null);
+      } finally {
+        setSeriesLoading(false);
+      }
+    };
+
+    void loadSeries();
+  }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
+
+  const empresaOptions = useMemo<MultiCheckOption[]>(
+    () =>
+      (filtersData?.empresas ?? []).map((item) => ({
+        value: item.id,
+        label: item.nombre,
+      })),
+    [filtersData]
+  );
+
+  const anioOptions = useMemo<MultiCheckOption[]>(
+    () =>
+      (filtersData?.anios ?? []).map((item) => ({
+        value: item,
+        label: String(item),
+      })),
+    [filtersData]
+  );
+
+  const mesOptions = useMemo<MultiCheckOption[]>(
+    () =>
+      (filtersData?.meses ?? []).map((item) => ({
+        value: item,
+        label: MESES_LABEL[item] ?? String(item),
+      })),
+    [filtersData]
+  );
+
+  const selectedEmpresaNames = useMemo(() => {
+    if (!filtersData?.empresas?.length) {
+      return "Todas las empresas";
+    }
+
+    if (selectedEmpresas.length === 0 || selectedEmpresas.length === filtersData.empresas.length) {
+      return "Todas las empresas";
+    }
+
+    const names = filtersData.empresas
+      .filter((empresa) => selectedEmpresas.includes(empresa.id))
+      .map((empresa) => empresa.nombre);
+
+    if (names.length === 0) {
+      return "Todas las empresas";
+    }
+
+    return names.join(" · ");
+  }, [filtersData, selectedEmpresas]);
+
+  const energiaFacturadaRows = useMemo(
+    () => buildChartRows(seriesData?.energia_facturada ?? null),
+    [seriesData]
+  );
+
+  const perdidasRows = useMemo(
+    () => buildChartRows(seriesData?.perdidas ?? null),
+    [seriesData]
+  );
+
+  const energiasPublicadasRows = useMemo(
+    () => buildChartRows(seriesData?.energias_publicadas ?? null),
+    [seriesData]
+  );
+
+  const autoconsumoRows = useMemo(
+    () => buildChartRows(seriesData?.autoconsumo ?? null),
+    [seriesData]
+  );
+
+  const energiaGeneradaRows = useMemo(
+    () => buildChartRows(seriesData?.energia_generada ?? null),
+    [seriesData]
+  );
+
+  const energiaFacturadaSeries = useMemo(
+    () => relabelSeries(
+      seriesData?.energia_facturada.series ?? [],
+      "E neta facturada"
+    ),
+    [seriesData]
+  );
+
+  const perdidasSeries = useMemo(
+    () => relabelSeries(
+      seriesData?.perdidas.series ?? [],
+      "Pérdidas E facturada (%)"
+    ),
+    [seriesData]
+  );
+
+  const autoconsumoSeries = useMemo(
+    () => relabelSeries(
+      seriesData?.autoconsumo.series ?? [],
+      "E autoconsumo"
+    ),
+    [seriesData]
+  );
+
+  const energiaGeneradaSeries = useMemo(
+    () => relabelSeries(
+      seriesData?.energia_generada.series ?? [],
+      "E generada"
+    ),
+    [seriesData]
+  );
+
+  const toggleSelection = (
+    value: number,
+    setter: React.Dispatch<React.SetStateAction<number[]>>
+  ) => {
+    setter((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
+    );
+  };
+
+  const selectAll = (
+    values: number[],
+    selected: number[],
+    setter: React.Dispatch<React.SetStateAction<number[]>>
+  ) => {
+    if (selected.length === values.length) {
+      setter([]);
+      return;
+    }
+
+    setter(values);
+  };
+
+  return (
+    <section className="ui-card min-w-0 text-sm">
+      <div className="flex min-w-0 flex-col gap-4">
+        <div>
+          <h3 className="ui-card-title text-base md:text-lg">GRÁFICOS</h3>
+          <p className="ui-card-subtitle mt-1">
+            Histórico visual de medidas por empresa, año y mes.
+          </p>
+          <div className="ui-muted mt-1 text-[11px]">
+            Usuario: {currentUser?.email ?? "—"} · Tenant: {currentUser?.tenant_id ?? "—"}
+          </div>
+        </div>
+
+        {filtersError && (
+          <div className="ui-alert ui-alert--danger">
+            Error cargando filtros: {filtersError}
+          </div>
+        )}
+
+        {seriesError && (
+          <div className="ui-alert ui-alert--danger">
+            Error cargando gráficas: {seriesError}
+          </div>
+        )}
+
+        <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+          <FilterDropdown
+            title="Empresa"
+            options={empresaOptions}
+            selectedValues={selectedEmpresas}
+            onToggle={(value) => toggleSelection(value, setSelectedEmpresas)}
+            onSelectAll={() =>
+              selectAll(
+                empresaOptions.map((item) => item.value),
+                selectedEmpresas,
+                setSelectedEmpresas
+              )
+            }
+          />
+
+          <FilterDropdown
+            title="Año"
+            options={anioOptions}
+            selectedValues={selectedAnios}
+            onToggle={(value) => toggleSelection(value, setSelectedAnios)}
+            onSelectAll={() =>
+              selectAll(
+                anioOptions.map((item) => item.value),
+                selectedAnios,
+                setSelectedAnios
+              )
+            }
+            allLabel="Todos"
+          />
+
+          <FilterDropdown
+            title="Mes"
+            options={mesOptions}
+            selectedValues={selectedMeses}
+            onToggle={(value) => toggleSelection(value, setSelectedMeses)}
+            onSelectAll={() =>
+              selectAll(
+                mesOptions.map((item) => item.value),
+                selectedMeses,
+                setSelectedMeses
+              )
+            }
+            allLabel="Todos"
+          />
+        </div>
+
+        {(filtersLoading || seriesLoading) && (
+          <div className="ui-alert ui-alert--info">Cargando gráficos...</div>
+        )}
+
+        <div className="grid min-w-0 gap-4">
+          <ChartCard
+            title="Gráfica 1. Evolución de energía facturada"
+            subtitle="Histórico de E neta facturada."
+            companyLabel={selectedEmpresaNames}
+            data={energiaFacturadaRows}
+            series={energiaFacturadaSeries}
+          />
+
+          <ChartCard
+            title="Gráfica 2. Evolución de pérdidas"
+            subtitle="Histórico de Pérdidas E facturada (%)."
+            companyLabel={selectedEmpresaNames}
+            data={perdidasRows}
+            series={perdidasSeries}
+            yAxisFormatter={(value) => `${formatNumberEs(value)}%`}
+          />
+
+          <ChartCard
+            title="Gráfica 3. Evolución de energías publicadas"
+            subtitle="Histórico de E neta publicada M2, M7, M11 y ART15."
+            companyLabel={selectedEmpresaNames}
+            data={energiasPublicadasRows}
+            series={seriesData?.energias_publicadas.series ?? []}
+          />
+
+          <ChartCard
+            title="Gráfica 4. Evolución de energía autoconsumos"
+            subtitle="Histórico de E autoconsumo."
+            companyLabel={selectedEmpresaNames}
+            data={autoconsumoRows}
+            series={autoconsumoSeries}
+          />
+
+          <ChartCard
+            title="Gráfica 5. Evolución de energía generada"
+            subtitle="Histórico de E generada."
+            companyLabel={selectedEmpresaNames}
+            data={energiaGeneradaRows}
+            series={energiaGeneradaSeries}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}

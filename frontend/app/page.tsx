@@ -8,6 +8,7 @@ import AlertsSection from "./components/admin/AlertsSection";
 import MedidasSection from "./components/medidas/MedidasSection";
 import ObjecionesSection from "./components/medidas/ObjecionesSection";
 import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
+import GraficosSection from "./components/medidas/GraficosSection";
 import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
 import CargaSection from "./components/ingestion/CargaSection";
 import UsersSection from "./components/admin/UsersSection";
@@ -24,6 +25,7 @@ type MainTab =
   | "medidas"
   | "objeciones"
   | "calendario-ree"
+  | "graficos"
   | "alertas"
   | "usuarios"
   | "clientes"
@@ -140,6 +142,7 @@ export default function HomePage() {
         savedTab === "medidas" ||
         savedTab === "objeciones" ||
         savedTab === "calendario-ree" ||
+        savedTab === "graficos" ||
         savedTab === "alertas" ||
         savedTab === "usuarios" ||
         savedTab === "clientes" ||
@@ -245,7 +248,8 @@ export default function HomePage() {
       activeTab === "tablas-general" ||
       activeTab === "tablas-ps" ||
       activeTab === "objeciones" ||
-      activeTab === "calendario-ree"
+      activeTab === "calendario-ree" ||
+      activeTab === "graficos"
     ) {
       setMedidasOpen(true);
     }
@@ -332,7 +336,8 @@ export default function HomePage() {
       activeTab !== "tablas-general" &&
       activeTab !== "tablas-ps" &&
       activeTab !== "objeciones" &&
-      activeTab !== "calendario-ree"
+      activeTab !== "calendario-ree" &&
+      activeTab !== "graficos"
     ) {
       setActiveTab("medidas");
     }
@@ -430,7 +435,8 @@ export default function HomePage() {
                   activeTab === "tablas-general" ||
                   activeTab === "tablas-ps" ||
                   activeTab === "objeciones" ||
-                  activeTab === "calendario-ree"
+                  activeTab === "calendario-ree" ||
+                  activeTab === "graficos"
                     ? "ui-nav-item--active"
                     : "",
                 ].join(" ")}
@@ -501,6 +507,17 @@ export default function HomePage() {
                     ].join(" ")}
                   >
                     <span>Calendario REE</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("graficos")}
+                    className={[
+                      "ui-nav-subitem",
+                      activeTab === "graficos" ? "ui-nav-subitem--active" : "",
+                    ].join(" ")}
+                  >
+                    <span>Gráficos</span>
                   </button>
                 </div>
               )}
@@ -655,6 +672,10 @@ export default function HomePage() {
 
         {activeTab === "calendario-ree" && (
           <CalendarioReeSection token={token} currentUser={currentUser} />
+        )}
+
+        {activeTab === "graficos" && (
+          <GraficosSection token={token} currentUser={currentUser} />
         )}
 
         {activeTab === "alertas" && <AlertsSection token={token} currentUser={currentUser} />}
