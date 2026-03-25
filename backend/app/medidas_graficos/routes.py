@@ -5,26 +5,37 @@ from __future__ import annotations
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, false as sql_false
+from sqlalchemy.orm import Query as SAQuery, Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.empresas.models import Empresa
 from app.measures.models import MedidaGeneral
-from app.medidas_graficos.schemas import (
-    GraficoEmpresaOption,
-    GraficoFiltersResponse,
-    GraficoPoint,
-    GraficoSerie,
-    GraficoSeriesGroup,
-    GraficosFiltersApplied,
-    GraficosScope,
-    GraficosSeriesResponse,
-)
+from app.medidas_graficos import schemas as graficos_schemas
 from app.tenants.models import User
 
 router = APIRouter(prefix="/medidas-graficos", tags=["medidas-graficos"])
+
+
+def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
+    user_role = str(getattr(current_user, "rol", "") or "").lower()
+    tenant_id = int(cast(int, current_user.tenant_id))
+
+    if user_role in {"admin", "owner"}:
+        rows = (
+            db.query(Empresa.id)
+            .filter(Empresa.tenant_id == tenant_id)
+            .order_by(Empresa.id.asc())
+            .all()
+        )
+        return [int(row[0]) for row in rows if row and row[0] is not None]
+
+    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
+    if not raw_ids:
+        return []
+
+    return [int(x) for x in raw_ids if x is not None]
 
 
 def _period_key(anio: int, mes: int) -> str:
@@ -53,11 +64,19 @@ def _base_general_query(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_ids: list[int] | None = None,
     anios: list[int] | None = None,
     meses: list[int] | None = None,
-):
-    query = db.query(MedidaGeneral).filter(MedidaGeneral.tenant_id == tenant_id)
+) -> SAQuery[Any]:
+    query: SAQuery[Any] = db.query(MedidaGeneral).filter(
+        MedidaGeneral.tenant_id == tenant_id
+    )
+
+    if not allowed_empresa_ids:
+        return query.filter(sql_false())
+
+    query = query.filter(MedidaGeneral.empresa_id.in_(allowed_empresa_ids))
 
     if empresa_ids:
         query = query.filter(MedidaGeneral.empresa_id.in_(empresa_ids))
@@ -75,31 +94,41 @@ def _get_tenant_empresas(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
 ) -> list[Empresa]:
-    return (
+    if not allowed_empresa_ids:
+        return []
+
+    empresas = (
         db.query(Empresa)
-        .filter(Empresa.tenant_id == tenant_id)
+        .filter(
+            Empresa.tenant_id == tenant_id,
+            Empresa.id.in_(allowed_empresa_ids),
+        )
         .order_by(Empresa.nombre.asc(), Empresa.id.asc())
         .all()
     )
+    return cast(list[Empresa], empresas)
 
 
 def _build_series_aggregated(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     field_name: str,
     label: str,
     empresa_ids: list[int] | None,
     anios: list[int] | None,
     meses: list[int] | None,
-) -> list[GraficoSerie]:
+) -> list[graficos_schemas.GraficoSerie]:
     field = getattr(MedidaGeneral, field_name)
 
     rows = (
         _base_general_query(
             db,
             tenant_id=tenant_id,
+            allowed_empresa_ids=allowed_empresa_ids,
             empresa_ids=empresa_ids,
             anios=anios,
             meses=meses,
@@ -114,40 +143,54 @@ def _build_series_aggregated(
         .all()
     )
 
-    points = [
-        GraficoPoint(
+    points: list[graficos_schemas.GraficoPoint] = [
+        graficos_schemas.GraficoPoint(
             period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
-            period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+            period_label=_period_label(
+                int(cast(Any, row).anio),
+                int(cast(Any, row).mes),
+            ),
             value=float(cast(Any, row).value or 0.0),
         )
         for row in rows
     ]
 
-    return [GraficoSerie(serie_key="all", serie_label=label, points=points)]
+    return [
+        graficos_schemas.GraficoSerie(
+            serie_key="all",
+            serie_label=label,
+            points=points,
+        )
+    ]
 
 
 def _build_series_by_empresa(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     field_name: str,
     empresa_ids: list[int],
     anios: list[int] | None,
     meses: list[int] | None,
-) -> list[GraficoSerie]:
+) -> list[graficos_schemas.GraficoSerie]:
     field = getattr(MedidaGeneral, field_name)
+
+    safe_empresa_ids = [eid for eid in empresa_ids if eid in allowed_empresa_ids]
+    if not safe_empresa_ids:
+        return []
 
     empresas = (
         db.query(Empresa)
         .filter(
             Empresa.tenant_id == tenant_id,
-            Empresa.id.in_(empresa_ids),
+            Empresa.id.in_(safe_empresa_ids),
         )
         .order_by(Empresa.nombre.asc(), Empresa.id.asc())
         .all()
     )
 
-    empresa_name_by_id = {
+    empresa_name_by_id: dict[int, str] = {
         cast(int, empresa.id): cast(str | None, empresa.nombre) or f"Empresa {cast(int, empresa.id)}"
         for empresa in empresas
     }
@@ -156,7 +199,8 @@ def _build_series_by_empresa(
         _base_general_query(
             db,
             tenant_id=tenant_id,
-            empresa_ids=empresa_ids,
+            allowed_empresa_ids=allowed_empresa_ids,
+            empresa_ids=safe_empresa_ids,
             anios=anios,
             meses=meses,
         )
@@ -175,23 +219,24 @@ def _build_series_by_empresa(
         .all()
     )
 
-    points_by_empresa: dict[int, list[GraficoPoint]] = {}
+    points_by_empresa: dict[int, list[graficos_schemas.GraficoPoint]] = {}
+
     for row in rows:
         row_any = cast(Any, row)
         empresa_id = int(row_any.empresa_id)
         points_by_empresa.setdefault(empresa_id, []).append(
-            GraficoPoint(
+            graficos_schemas.GraficoPoint(
                 period_key=_period_key(int(row_any.anio), int(row_any.mes)),
                 period_label=_period_label(int(row_any.anio), int(row_any.mes)),
                 value=float(row_any.value or 0.0),
             )
         )
 
-    series: list[GraficoSerie] = []
+    series: list[graficos_schemas.GraficoSerie] = []
     for empresa in empresas:
         empresa_id = cast(int, empresa.id)
         series.append(
-            GraficoSerie(
+            graficos_schemas.GraficoSerie(
                 serie_key=f"empresa_{empresa_id}",
                 serie_label=empresa_name_by_id.get(empresa_id, f"Empresa {empresa_id}"),
                 points=points_by_empresa.get(empresa_id, []),
@@ -201,18 +246,36 @@ def _build_series_by_empresa(
     return series
 
 
-@router.get("/filters", response_model=GraficoFiltersResponse)
+@router.get(
+    "/filters",
+    response_model=graficos_schemas.GraficoFiltersResponse,
+)
 def get_medidas_graficos_filters(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    tenant_id_int = cast(int, current_user.tenant_id)
+) -> graficos_schemas.GraficoFiltersResponse:
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
-    empresas = _get_tenant_empresas(db, tenant_id=tenant_id_int)
+    empresas = _get_tenant_empresas(
+        db,
+        tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
+    )
+
+    if not allowed_empresa_ids:
+        return graficos_schemas.GraficoFiltersResponse(
+            empresas=[],
+            anios=[],
+            meses=[],
+        )
 
     period_rows = (
         db.query(MedidaGeneral.anio, MedidaGeneral.mes)
-        .filter(MedidaGeneral.tenant_id == tenant_id_int)
+        .filter(
+            MedidaGeneral.tenant_id == tenant_id_int,
+            MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
+        )
         .distinct()
         .order_by(MedidaGeneral.anio.desc(), MedidaGeneral.mes.asc())
         .all()
@@ -221,9 +284,9 @@ def get_medidas_graficos_filters(
     anios = sorted({int(cast(Any, row).anio) for row in period_rows}, reverse=True)
     meses = sorted({int(cast(Any, row).mes) for row in period_rows})
 
-    return GraficoFiltersResponse(
+    return graficos_schemas.GraficoFiltersResponse(
         empresas=[
-            GraficoEmpresaOption(
+            graficos_schemas.GraficoEmpresaOption(
                 id=cast(int, empresa.id),
                 nombre=cast(str | None, empresa.nombre) or f"Empresa {cast(int, empresa.id)}",
             )
@@ -234,7 +297,10 @@ def get_medidas_graficos_filters(
     )
 
 
-@router.get("/series", response_model=GraficosSeriesResponse)
+@router.get(
+    "/series",
+    response_model=graficos_schemas.GraficosSeriesResponse,
+)
 def get_medidas_graficos_series(
     empresa_ids: list[int] | None = Query(default=None),
     anios: list[int] | None = Query(default=None),
@@ -242,14 +308,21 @@ def get_medidas_graficos_series(
     aggregation: str = Query(default="avg"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    tenant_id_int = cast(int, current_user.tenant_id)
+) -> graficos_schemas.GraficosSeriesResponse:
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
-    tenant_empresas = _get_tenant_empresas(db, tenant_id=tenant_id_int)
+    tenant_empresas = _get_tenant_empresas(
+        db,
+        tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
+    )
     tenant_empresa_ids = [cast(int, empresa.id) for empresa in tenant_empresas]
 
     selected_empresa_ids = [
-        empresa_id for empresa_id in (empresa_ids or []) if empresa_id in tenant_empresa_ids
+        empresa_id
+        for empresa_id in (empresa_ids or [])
+        if empresa_id in tenant_empresa_ids
     ]
 
     all_selected = (
@@ -263,6 +336,7 @@ def get_medidas_graficos_series(
         _build_series_aggregated(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_neta_facturada_kwh",
             label="Todas las empresas",
             empresa_ids=effective_empresa_ids,
@@ -273,6 +347,7 @@ def get_medidas_graficos_series(
         else _build_series_by_empresa(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_neta_facturada_kwh",
             empresa_ids=selected_empresa_ids,
             anios=anios,
@@ -284,6 +359,7 @@ def get_medidas_graficos_series(
         _build_series_aggregated(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="perdidas_e_facturada_pct",
             label="Todas las empresas",
             empresa_ids=effective_empresa_ids,
@@ -294,6 +370,7 @@ def get_medidas_graficos_series(
         else _build_series_by_empresa(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="perdidas_e_facturada_pct",
             empresa_ids=selected_empresa_ids,
             anios=anios,
@@ -305,6 +382,7 @@ def get_medidas_graficos_series(
         _build_series_aggregated(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_autoconsumo_kwh",
             label="Todas las empresas",
             empresa_ids=effective_empresa_ids,
@@ -315,6 +393,7 @@ def get_medidas_graficos_series(
         else _build_series_by_empresa(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_autoconsumo_kwh",
             empresa_ids=selected_empresa_ids,
             anios=anios,
@@ -326,6 +405,7 @@ def get_medidas_graficos_series(
         _build_series_aggregated(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_generada_kwh",
             label="Todas las empresas",
             empresa_ids=effective_empresa_ids,
@@ -336,6 +416,7 @@ def get_medidas_graficos_series(
         else _build_series_by_empresa(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_generada_kwh",
             empresa_ids=selected_empresa_ids,
             anios=anios,
@@ -343,7 +424,7 @@ def get_medidas_graficos_series(
         )
     )
 
-    energias_publicadas_series: list[GraficoSerie] = []
+    energias_publicadas_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
         ("energia_neta_facturada_m2_kwh", "M2", "m2"),
         ("energia_neta_facturada_m7_kwh", "M7", "m7"),
@@ -353,6 +434,7 @@ def get_medidas_graficos_series(
         aggregated = _build_series_aggregated(
             db,
             tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
             field_name=field_name,
             label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
@@ -361,27 +443,27 @@ def get_medidas_graficos_series(
         )[0]
 
         energias_publicadas_series.append(
-            GraficoSerie(
+            graficos_schemas.GraficoSerie(
                 serie_key=key,
                 serie_label=label,
                 points=aggregated.points,
             )
         )
 
-    return GraficosSeriesResponse(
-        filters=GraficosFiltersApplied(
+    return graficos_schemas.GraficosSeriesResponse(
+        filters=graficos_schemas.GraficosFiltersApplied(
             empresa_ids=selected_empresa_ids,
             anios=anios or [],
             meses=meses or [],
             aggregation=aggregation,
         ),
-        scope=GraficosScope(
+        scope=graficos_schemas.GraficosScope(
             all_empresas_selected=all_selected,
             aggregation="avg",
         ),
-        energia_facturada=GraficoSeriesGroup(series=energia_facturada_series),
-        perdidas=GraficoSeriesGroup(series=perdidas_series),
-        energias_publicadas=GraficoSeriesGroup(series=energias_publicadas_series),
-        autoconsumo=GraficoSeriesGroup(series=autoconsumo_series),
-        energia_generada=GraficoSeriesGroup(series=energia_generada_series),
+        energia_facturada=graficos_schemas.GraficoSeriesGroup(series=energia_facturada_series),
+        perdidas=graficos_schemas.GraficoSeriesGroup(series=perdidas_series),
+        energias_publicadas=graficos_schemas.GraficoSeriesGroup(series=energias_publicadas_series),
+        autoconsumo=graficos_schemas.GraficoSeriesGroup(series=autoconsumo_series),
+        energia_generada=graficos_schemas.GraficoSeriesGroup(series=energia_generada_series),
     )

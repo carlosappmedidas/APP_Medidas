@@ -1,10 +1,9 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, JSON
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, JSON, String, Table
 from sqlalchemy.orm import relationship
 
 from app.core.models_base import Base, TimestampMixin
 
 
-# Tabla intermedia: usuario ↔ empresas que puede ver
 user_empresas = Table(
     "user_empresas",
     Base.metadata,
@@ -20,7 +19,6 @@ class Tenant(TimestampMixin, Base):
     nombre = Column(String(200), nullable=False, unique=True)
     plan = Column(String(50), nullable=False, default="starter")
 
-    # Relaciones
     usuarios = relationship(
         "User",
         back_populates="tenant",
@@ -42,29 +40,14 @@ class User(TimestampMixin, Base):
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
 
-    # rol “lógico” dentro del tenant (owner, admin, viewer, etc.)
     rol = Column(String(50), nullable=False, default="owner")
-
-    # usuario activo / desactivado
     is_active = Column(Boolean, nullable=False, default=True)
-
-    # superusuario de plataforma (puede ver todos los tenants)
     is_superuser = Column(Boolean, nullable=False, default=False)
 
-    # ✅ NUEVO: overrides del tema UI (se guardan como JSON)
-    # Ejemplo:
-    # {
-    #   "--app-bg": "#020617",
-    #   "--sidebar-bg": "rgba(0,0,0,0.4)",
-    #   ...
-    # }
     ui_theme_overrides = Column(JSON, nullable=True)
 
-    # Tenant al que pertenece
     tenant = relationship("Tenant", back_populates="usuarios")
 
-    # 🔴 NUEVO: empresas que este usuario puede ver dentro de su tenant
-    # Si la lista está vacía → ve TODAS las empresas de su tenant
     empresas_permitidas = relationship(
         "Empresa",
         secondary=user_empresas,
@@ -76,6 +59,10 @@ class User(TimestampMixin, Base):
     def empresa_ids_permitidas(self) -> list[int]:
         """
         Devuelve la lista de IDs de empresas permitidas.
-        Si no hay ninguna asociada → lista vacía (interpretable como “todas”).
+
+        Regla de negocio actual:
+        - superuser: se gestiona fuera de esta propiedad
+        - admin / owner / user: SOLO ven las empresas asignadas
+        - lista vacía: no ve ninguna empresa
         """
-        return [e.id for e in (self.empresas_permitidas or [])]
+        return [int(e.id) for e in (self.empresas_permitidas or [])]

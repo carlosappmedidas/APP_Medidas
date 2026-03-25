@@ -55,6 +55,30 @@ def _merge_single_and_multi(
     return values
 
 
+def _get_allowed_empresa_ids(current_user: User) -> list[int]:
+    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
+    if not raw_ids:
+        return []
+    return [int(x) for x in raw_ids if x is not None]
+
+
+def _apply_empresa_scope(
+    query: Any,
+    *,
+    current_user: User,
+    empresa_field: Any,
+) -> Any:
+    allowed_empresa_ids = _get_allowed_empresa_ids(current_user)
+
+    if getattr(current_user, "is_superuser", False):
+        return query
+
+    if not allowed_empresa_ids:
+        return query.filter(False)
+
+    return query.filter(empresa_field.in_(allowed_empresa_ids))
+
+
 def _deep_delete_by_file_ids(
     db: Session,
     *,
@@ -118,6 +142,12 @@ def listar_medidas_generales(
             Empresa.tenant_id == current_user.tenant_id,
         )
         .order_by(MedidaGeneral.anio.desc(), MedidaGeneral.mes.desc())
+    )
+
+    query = _apply_empresa_scope(
+        query,
+        current_user=current_user,
+        empresa_field=MedidaGeneral.empresa_id,
     )
 
     filas = query.all()
@@ -256,7 +286,7 @@ def medidas_general_filters(
 ):
     tenant_id = current_user.tenant_id
 
-    empresas_rows = (
+    empresas_query = (
         db.query(Empresa)
         .join(MedidaGeneral, MedidaGeneral.empresa_id == Empresa.id)
         .filter(
@@ -265,8 +295,15 @@ def medidas_general_filters(
         )
         .distinct()
         .order_by(Empresa.id.asc())
-        .all()
     )
+
+    empresas_query = _apply_empresa_scope(
+        empresas_query,
+        current_user=current_user,
+        empresa_field=Empresa.id,
+    )
+
+    empresas_rows = empresas_query.all()
 
     empresas = [
         {
@@ -277,27 +314,39 @@ def medidas_general_filters(
         for e in empresas_rows
     ]
 
+    anios_q = (
+        db.query(MedidaGeneral.anio)
+        .filter(MedidaGeneral.tenant_id == tenant_id)
+        .distinct()
+        .order_by(MedidaGeneral.anio.asc())
+    )
+    anios_q = _apply_empresa_scope(
+        anios_q,
+        current_user=current_user,
+        empresa_field=MedidaGeneral.empresa_id,
+    )
+
     anios = [
         int(r[0])
-        for r in (
-            db.query(MedidaGeneral.anio)
-            .filter(MedidaGeneral.tenant_id == tenant_id)
-            .distinct()
-            .order_by(MedidaGeneral.anio.asc())
-            .all()
-        )
+        for r in anios_q.all()
         if r and r[0] is not None
     ]
 
+    meses_q = (
+        db.query(MedidaGeneral.mes)
+        .filter(MedidaGeneral.tenant_id == tenant_id)
+        .distinct()
+        .order_by(MedidaGeneral.mes.asc())
+    )
+    meses_q = _apply_empresa_scope(
+        meses_q,
+        current_user=current_user,
+        empresa_field=MedidaGeneral.empresa_id,
+    )
+
     meses = [
         int(r[0])
-        for r in (
-            db.query(MedidaGeneral.mes)
-            .filter(MedidaGeneral.tenant_id == tenant_id)
-            .distinct()
-            .order_by(MedidaGeneral.mes.asc())
-            .all()
-        )
+        for r in meses_q.all()
         if r and r[0] is not None
     ]
 
@@ -366,10 +415,33 @@ def listar_medidas_generales_page(
     page_size: int = Query(default=50, ge=1, le=500),
 ):
     tenant_id = current_user.tenant_id
+    allowed_empresa_ids = _get_allowed_empresa_ids(current_user)
+
+    if not allowed_empresa_ids:
+        return {
+            "items": [],
+            "page": 0,
+            "page_size": page_size,
+            "total": 0,
+            "total_pages": 1,
+        }
 
     empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
     anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
     meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+
+    if empresa_ids_list:
+        empresa_ids_list = [eid for eid in empresa_ids_list if eid in allowed_empresa_ids]
+        if not empresa_ids_list:
+            return {
+                "items": [],
+                "page": 0,
+                "page_size": page_size,
+                "total": 0,
+                "total_pages": 1,
+            }
+    else:
+        empresa_ids_list = allowed_empresa_ids
 
     base = (
         db.query(MedidaGeneral, Empresa)
@@ -377,19 +449,19 @@ def listar_medidas_generales_page(
         .filter(
             MedidaGeneral.tenant_id == tenant_id,
             Empresa.tenant_id == tenant_id,
+            MedidaGeneral.empresa_id.in_(empresa_ids_list),
         )
     )
 
-    if empresa_ids_list:
-        base = base.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
     if anios_list:
         base = base.filter(MedidaGeneral.anio.in_(anios_list))
     if meses_list:
         base = base.filter(MedidaGeneral.mes.in_(meses_list))
 
-    total = db.query(func.count(MedidaGeneral.id)).filter(MedidaGeneral.tenant_id == tenant_id)
-    if empresa_ids_list:
-        total = total.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
+    total = db.query(func.count(MedidaGeneral.id)).filter(
+        MedidaGeneral.tenant_id == tenant_id,
+        MedidaGeneral.empresa_id.in_(empresa_ids_list),
+    )
     if anios_list:
         total = total.filter(MedidaGeneral.anio.in_(anios_list))
     if meses_list:

@@ -1,5 +1,3 @@
-# app/ingestion/routes.py
-# pyright: reportMissingImports=false
 from __future__ import annotations
 
 from datetime import datetime
@@ -31,8 +29,8 @@ from app.ingestion.models import IngestionFile
 from app.ingestion.schemas import IngestionFileCreate, IngestionFileRead
 from app.ingestion.services import process_ingestion_file
 from app.ingestion.utils import (
-    infer_period_from_filename,
     find_existing_ingestion_file,
+    infer_period_from_filename,
     safe_unlink,
 )
 from app.tenants.models import User
@@ -50,21 +48,50 @@ class IngestionFilePage(BaseModel):
     total_pages: int
 
 
-def _extract_codigo_from_filename(tipo: str, filename: str) -> str | None:
-    """
-    Extrae el código REE del nombre del fichero según el tipo.
-    Ignora prefijos numéricos del sistema (ej. 1774047141200_).
-    Devuelve None si no puede extraerlo.
+def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
+    tenant_id = int(cast(int, current_user.tenant_id))
 
-    Patrones reales observados:
-      PS       → PS_0277_202512.xlsx          → partes[1]
-      M1       → 0277_202405_Facturacion.xlsm → partes[0]
-      M1_AUTO  → 0277_202407_autoconsumos.xlsx → partes[0]
-      BALD     → BALD_0277_202407_...          → partes[1]
-      ACUMCIL  → ACUMCIL_H2_0277_202407_...    → partes[2]
-      ACUM_H2_RDD_P1/P2 → ACUM_H2_RDD_0277_P1_202407 → partes[3]
-      ACUM_H2_GRD/GEN   → ACUM_H2_GRD_0277_202407     → partes[3]
-    """
+    if bool(getattr(current_user, "is_superuser", False)):
+        rows = (
+            db.query(Empresa.id)
+            .filter(Empresa.tenant_id == tenant_id)
+            .order_by(Empresa.id.asc())
+            .all()
+        )
+        return [int(row[0]) for row in rows if row and row[0] is not None]
+
+    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
+    explicit_ids = [int(x) for x in raw_ids if x is not None] if raw_ids else []
+    if explicit_ids:
+        return explicit_ids
+
+    user_role = str(getattr(current_user, "rol", "") or "").lower()
+    if user_role in {"admin", "owner"}:
+        rows = (
+            db.query(Empresa.id)
+            .filter(Empresa.tenant_id == tenant_id)
+            .order_by(Empresa.id.asc())
+            .all()
+        )
+        return [int(row[0]) for row in rows if row and row[0] is not None]
+
+    return []
+
+
+def _ensure_empresa_access(
+    *,
+    current_user: User,
+    allowed_empresa_ids: list[int],
+    empresa_id: int,
+) -> None:
+    if empresa_id not in allowed_empresa_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa",
+        )
+
+
+def _extract_codigo_from_filename(tipo: str, filename: str) -> str | None:
     import re
 
     name = Path(filename).stem
@@ -104,7 +131,14 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
 ):
     tipo_norm = (tipo or "").upper()
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+
+    _ensure_empresa_access(
+        current_user=current_user,
+        allowed_empresa_ids=allowed_empresa_ids,
+        empresa_id=empresa_id,
+    )
 
     empresa = (
         db.query(Empresa)
@@ -119,6 +153,7 @@ async def upload_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Empresa no encontrada para este tenant",
         )
+
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -203,7 +238,7 @@ async def upload_file(
         "filename": file.filename,
         "storage_key": storage_key,
         "status": IngestionFile.STATUS_PENDING,
-        "uploaded_by": cast(int, current_user.id),
+        "uploaded_by": int(cast(int, current_user.id)),
         "warnings_json": None,
     }
     ingestion = IngestionFile(**ingestion_data)  # type: ignore[arg-type]
@@ -223,7 +258,14 @@ def register_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+
+    _ensure_empresa_access(
+        current_user=current_user,
+        allowed_empresa_ids=allowed_empresa_ids,
+        empresa_id=data.empresa_id,
+    )
 
     empresa = (
         db.query(Empresa)
@@ -278,7 +320,7 @@ def register_file(
         "filename": data.filename,
         "storage_key": data.storage_key,
         "status": IngestionFile.STATUS_PENDING,
-        "uploaded_by": cast(int, current_user.id),
+        "uploaded_by": int(cast(int, current_user.id)),
         "warnings_json": None,
     }
     ingestion = IngestionFile(**ingestion_data)  # type: ignore[arg-type]
@@ -298,10 +340,22 @@ def list_files(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
-    query = db.query(IngestionFile).filter(
-        IngestionFile.tenant_id == tenant_id_int,
-    )
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+
+    query = db.query(IngestionFile).filter(IngestionFile.tenant_id == tenant_id_int)
+
+    if not allowed_empresa_ids:
+        return []
+
+    query = query.filter(IngestionFile.empresa_id.in_(allowed_empresa_ids))
+
+    if empresa_id is not None and empresa_id not in allowed_empresa_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa",
+        )
+
     query = apply_ingestion_filters(
         query,
         empresa_id=empresa_id,
@@ -330,10 +384,28 @@ def list_files_page(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
-    query = db.query(IngestionFile).filter(
-        IngestionFile.tenant_id == tenant_id_int,
-    )
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+
+    query = db.query(IngestionFile).filter(IngestionFile.tenant_id == tenant_id_int)
+
+    if not allowed_empresa_ids:
+        return {
+            "items": [],
+            "page": 0,
+            "page_size": page_size,
+            "total": 0,
+            "total_pages": 1,
+        }
+
+    query = query.filter(IngestionFile.empresa_id.in_(allowed_empresa_ids))
+
+    if empresa_id is not None and empresa_id not in allowed_empresa_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa",
+        )
+
     query = apply_ingestion_filters(
         query,
         empresa_id=empresa_id,
@@ -347,9 +419,11 @@ def list_files_page(
         IngestionFile.mes.desc(),
         IngestionFile.id.desc(),
     )
+
     total = query.count()
     total_pages = max(1, -(-total // page_size))
     items = query.offset(page * page_size).limit(page_size).all()
+
     return {
         "items": items,
         "page": page,
@@ -415,7 +489,9 @@ def process_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+
     ingestion = (
         db.query(IngestionFile)
         .filter(
@@ -429,6 +505,14 @@ def process_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Fichero de ingestion no encontrado",
         )
+
+    ingestion_empresa_id = int(cast(int, ingestion.empresa_id))
+    if ingestion_empresa_id not in allowed_empresa_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa",
+        )
+
     return process_ingestion_file(
         db=db,
         ingestion=ingestion,

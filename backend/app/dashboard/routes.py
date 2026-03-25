@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, false as sql_false
 from sqlalchemy.orm import Query, Session
 
 from app.core.auth import get_current_user
@@ -17,16 +17,43 @@ from app.tenants.models import User
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
+    user_role = str(getattr(current_user, "rol", "") or "").lower()
+    tenant_id = int(cast(int, current_user.tenant_id))
+
+    if user_role in {"admin", "owner"}:
+        rows = (
+            db.query(Empresa.id)
+            .filter(Empresa.tenant_id == tenant_id)
+            .order_by(Empresa.id.asc())
+            .all()
+        )
+        return [int(row[0]) for row in rows if row and row[0] is not None]
+
+    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
+    if not raw_ids:
+        return []
+
+    return [int(x) for x in raw_ids if x is not None]
+
+
 def _apply_scope_filters(
     query: Query[Any],
     model: type[Any],
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None = None,
     anio: int | None = None,
     mes: int | None = None,
 ) -> Query[Any]:
     query = query.filter(model.tenant_id == tenant_id)
+
+    if not allowed_empresa_ids:
+        return query.filter(sql_false())
+
+    query = query.filter(model.empresa_id.in_(allowed_empresa_ids))
+
     if empresa_id is not None:
         query = query.filter(model.empresa_id == empresa_id)
     if anio is not None:
@@ -40,10 +67,17 @@ def _ensure_empresa_belongs_to_tenant(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None,
 ) -> None:
     if empresa_id is None:
         return
+
+    if empresa_id not in allowed_empresa_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa",
+        )
 
     empresa = (
         db.query(Empresa)
@@ -64,6 +98,7 @@ def _build_common_periods_subqueries(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None = None,
     anio: int | None = None,
 ):
@@ -75,6 +110,7 @@ def _build_common_periods_subqueries(
             ).distinct(),
             MedidaGeneral,
             tenant_id=tenant_id,
+            allowed_empresa_ids=allowed_empresa_ids,
             empresa_id=empresa_id,
             anio=anio,
         )
@@ -89,6 +125,7 @@ def _build_common_periods_subqueries(
             ).distinct(),
             MedidaPS,
             tenant_id=tenant_id,
+            allowed_empresa_ids=allowed_empresa_ids,
             empresa_id=empresa_id,
             anio=anio,
         )
@@ -102,6 +139,7 @@ def _resolve_common_period(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None = None,
     anio: int | None = None,
     mes: int | None = None,
@@ -118,6 +156,7 @@ def _resolve_common_period(
                 db.query(MedidaGeneral.id),
                 MedidaGeneral,
                 tenant_id=tenant_id,
+                allowed_empresa_ids=allowed_empresa_ids,
                 empresa_id=empresa_id,
                 anio=anio,
                 mes=mes,
@@ -129,6 +168,7 @@ def _resolve_common_period(
                 db.query(MedidaPS.id),
                 MedidaPS,
                 tenant_id=tenant_id,
+                allowed_empresa_ids=allowed_empresa_ids,
                 empresa_id=empresa_id,
                 anio=anio,
                 mes=mes,
@@ -147,6 +187,7 @@ def _resolve_common_period(
     general_periods, ps_periods = _build_common_periods_subqueries(
         db,
         tenant_id=tenant_id,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=anio,
     )
@@ -177,6 +218,7 @@ def _find_previous_common_period(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None,
     current_anio: int,
     current_mes: int,
@@ -185,6 +227,7 @@ def _find_previous_common_period(
     general_periods, ps_periods = _build_common_periods_subqueries(
         db,
         tenant_id=tenant_id,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=current_anio if same_year_only else None,
     )
@@ -225,16 +268,21 @@ def _sum_dashboard_values(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None,
     anio: int,
     mes: int,
     aggregation_mode: str,
 ) -> tuple[float, float, float]:
+    if not allowed_empresa_ids:
+        return 0.0, 0.0, 0.0
+
     general_query_kwh = db.query(
         func.sum(MedidaGeneral.energia_neta_facturada_kwh)
     ).filter(
         MedidaGeneral.tenant_id == tenant_id,
         MedidaGeneral.anio == anio,
+        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
     )
 
     general_query_perdidas = db.query(
@@ -242,33 +290,27 @@ def _sum_dashboard_values(
     ).filter(
         MedidaGeneral.tenant_id == tenant_id,
         MedidaGeneral.anio == anio,
+        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
     )
 
     ps_query_eur = db.query(func.sum(MedidaPS.importe_total_eur)).filter(
         MedidaPS.tenant_id == tenant_id,
         MedidaPS.anio == anio,
+        MedidaPS.empresa_id.in_(allowed_empresa_ids),
     )
 
     if empresa_id is not None:
-        general_query_kwh = general_query_kwh.filter(
-            MedidaGeneral.empresa_id == empresa_id
-        )
-        general_query_perdidas = general_query_perdidas.filter(
-            MedidaGeneral.empresa_id == empresa_id
-        )
+        general_query_kwh = general_query_kwh.filter(MedidaGeneral.empresa_id == empresa_id)
+        general_query_perdidas = general_query_perdidas.filter(MedidaGeneral.empresa_id == empresa_id)
         ps_query_eur = ps_query_eur.filter(MedidaPS.empresa_id == empresa_id)
 
     if aggregation_mode == "ytd":
         general_query_kwh = general_query_kwh.filter(MedidaGeneral.mes <= mes)
-        general_query_perdidas = general_query_perdidas.filter(
-            MedidaGeneral.mes <= mes
-        )
+        general_query_perdidas = general_query_perdidas.filter(MedidaGeneral.mes <= mes)
         ps_query_eur = ps_query_eur.filter(MedidaPS.mes <= mes)
     else:
         general_query_kwh = general_query_kwh.filter(MedidaGeneral.mes == mes)
-        general_query_perdidas = general_query_perdidas.filter(
-            MedidaGeneral.mes == mes
-        )
+        general_query_perdidas = general_query_perdidas.filter(MedidaGeneral.mes == mes)
         ps_query_eur = ps_query_eur.filter(MedidaPS.mes == mes)
 
     energia_neta_facturada_kwh = cast(float | None, general_query_kwh.scalar())
@@ -293,55 +335,12 @@ def _safe_row_float(row: Any, field_name: str) -> float:
 
 
 def _resolve_pf_kwh(row: Any) -> tuple[float, str, str]:
-    """
-    Devuelve el PF recalculado para la gráfica principal usando la publicación
-    más reciente disponible.
-
-    Fórmula:
-        PF = energia_pf_* + energia_generada_* - energia_frontera_dd_*
-
-    Jerarquía:
-        art15 -> m11 -> m7 -> m2 -> final
-
-    Se considera que una ventana está disponible si alguno de sus tres valores
-    (pf, generada, frontera) es distinto de 0.
-    """
     hierarchy = (
-        (
-            "energia_pf_art15_kwh",
-            "energia_generada_art15_kwh",
-            "energia_frontera_dd_art15_kwh",
-            "art15",
-            "PF ART15",
-        ),
-        (
-            "energia_pf_m11_kwh",
-            "energia_generada_m11_kwh",
-            "energia_frontera_dd_m11_kwh",
-            "m11",
-            "PF M11",
-        ),
-        (
-            "energia_pf_m7_kwh",
-            "energia_generada_m7_kwh",
-            "energia_frontera_dd_m7_kwh",
-            "m7",
-            "PF M7",
-        ),
-        (
-            "energia_pf_m2_kwh",
-            "energia_generada_m2_kwh",
-            "energia_frontera_dd_m2_kwh",
-            "m2",
-            "PF M2",
-        ),
-        (
-            "energia_pf_final_kwh",
-            "energia_generada_kwh",
-            "energia_frontera_dd_kwh",
-            "final",
-            "PF FINAL",
-        ),
+        ("energia_pf_art15_kwh", "energia_generada_art15_kwh", "energia_frontera_dd_art15_kwh", "art15", "PF ART15"),
+        ("energia_pf_m11_kwh", "energia_generada_m11_kwh", "energia_frontera_dd_m11_kwh", "m11", "PF M11"),
+        ("energia_pf_m7_kwh", "energia_generada_m7_kwh", "energia_frontera_dd_m7_kwh", "m7", "PF M7"),
+        ("energia_pf_m2_kwh", "energia_generada_m2_kwh", "energia_frontera_dd_m2_kwh", "m2", "PF M2"),
+        ("energia_pf_final_kwh", "energia_generada_kwh", "energia_frontera_dd_kwh", "final", "PF FINAL"),
     )
 
     for pf_field, generada_field, frontera_field, source, label in hierarchy:
@@ -360,86 +359,47 @@ def _build_energy_comparison_chart_series(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None,
     anio: int,
     max_mes: int,
 ) -> list[dict[str, float | int | str]]:
+    if not allowed_empresa_ids:
+        return []
+
     rows_query = db.query(
         MedidaGeneral.mes.label("mes"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_bruta_facturada), 0.0
-        ).label("energia_bruta_facturada"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_publicada_m2_kwh), 0.0
-        ).label("energia_publicada_m2_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_publicada_m7_kwh), 0.0
-        ).label("energia_publicada_m7_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_publicada_m11_kwh), 0.0
-        ).label("energia_publicada_m11_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_publicada_art15_kwh), 0.0
-        ).label("energia_publicada_art15_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_pf_final_kwh), 0.0
-        ).label("energia_pf_final_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_pf_m2_kwh), 0.0
-        ).label("energia_pf_m2_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_pf_m7_kwh), 0.0
-        ).label("energia_pf_m7_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_pf_m11_kwh), 0.0
-        ).label("energia_pf_m11_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_pf_art15_kwh), 0.0
-        ).label("energia_pf_art15_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_generada_kwh), 0.0
-        ).label("energia_generada_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_generada_m2_kwh), 0.0
-        ).label("energia_generada_m2_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_generada_m7_kwh), 0.0
-        ).label("energia_generada_m7_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_generada_m11_kwh), 0.0
-        ).label("energia_generada_m11_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_generada_art15_kwh), 0.0
-        ).label("energia_generada_art15_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_frontera_dd_kwh), 0.0
-        ).label("energia_frontera_dd_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_frontera_dd_m2_kwh), 0.0
-        ).label("energia_frontera_dd_m2_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_frontera_dd_m7_kwh), 0.0
-        ).label("energia_frontera_dd_m7_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_frontera_dd_m11_kwh), 0.0
-        ).label("energia_frontera_dd_m11_kwh"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_frontera_dd_art15_kwh), 0.0
-        ).label("energia_frontera_dd_art15_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_bruta_facturada), 0.0).label("energia_bruta_facturada"),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_m2_kwh), 0.0).label("energia_publicada_m2_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_m7_kwh), 0.0).label("energia_publicada_m7_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_m11_kwh), 0.0).label("energia_publicada_m11_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_publicada_art15_kwh), 0.0).label("energia_publicada_art15_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_pf_final_kwh), 0.0).label("energia_pf_final_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_pf_m2_kwh), 0.0).label("energia_pf_m2_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_pf_m7_kwh), 0.0).label("energia_pf_m7_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_pf_m11_kwh), 0.0).label("energia_pf_m11_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_pf_art15_kwh), 0.0).label("energia_pf_art15_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_generada_kwh), 0.0).label("energia_generada_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_generada_m2_kwh), 0.0).label("energia_generada_m2_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_generada_m7_kwh), 0.0).label("energia_generada_m7_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_generada_m11_kwh), 0.0).label("energia_generada_m11_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_generada_art15_kwh), 0.0).label("energia_generada_art15_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_frontera_dd_kwh), 0.0).label("energia_frontera_dd_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_frontera_dd_m2_kwh), 0.0).label("energia_frontera_dd_m2_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_frontera_dd_m7_kwh), 0.0).label("energia_frontera_dd_m7_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_frontera_dd_m11_kwh), 0.0).label("energia_frontera_dd_m11_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_frontera_dd_art15_kwh), 0.0).label("energia_frontera_dd_art15_kwh"),
     ).filter(
         MedidaGeneral.tenant_id == tenant_id,
         MedidaGeneral.anio == anio,
         MedidaGeneral.mes <= max_mes,
+        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
     )
 
     if empresa_id is not None:
         rows_query = rows_query.filter(MedidaGeneral.empresa_id == empresa_id)
 
-    rows = (
-        rows_query.group_by(MedidaGeneral.mes)
-        .order_by(MedidaGeneral.mes.asc())
-        .all()
-    )
+    rows = rows_query.group_by(MedidaGeneral.mes).order_by(MedidaGeneral.mes.asc()).all()
 
     rows_by_mes: dict[int, Any] = {
         int(cast(int, row.mes)): row for row in rows
@@ -451,30 +411,18 @@ def _build_energy_comparison_chart_series(
         row = rows_by_mes.get(month_number)
 
         pf_value, pf_source, pf_label = (
-            _resolve_pf_kwh(row)
-            if row is not None
-            else (0.0, "final", "PF FINAL")
+            _resolve_pf_kwh(row) if row is not None else (0.0, "final", "PF FINAL")
         )
 
         series.append(
             {
                 "mes": month_number,
                 "mes_label": str(month_number),
-                "energia_bruta_facturada": float(
-                    cast(float | None, getattr(row, "energia_bruta_facturada", 0.0)) or 0.0
-                ),
-                "energia_publicada_m2_kwh": float(
-                    cast(float | None, getattr(row, "energia_publicada_m2_kwh", 0.0)) or 0.0
-                ),
-                "energia_publicada_m7_kwh": float(
-                    cast(float | None, getattr(row, "energia_publicada_m7_kwh", 0.0)) or 0.0
-                ),
-                "energia_publicada_m11_kwh": float(
-                    cast(float | None, getattr(row, "energia_publicada_m11_kwh", 0.0)) or 0.0
-                ),
-                "energia_publicada_art15_kwh": float(
-                    cast(float | None, getattr(row, "energia_publicada_art15_kwh", 0.0)) or 0.0
-                ),
+                "energia_bruta_facturada": float(cast(float | None, getattr(row, "energia_bruta_facturada", 0.0)) or 0.0),
+                "energia_publicada_m2_kwh": float(cast(float | None, getattr(row, "energia_publicada_m2_kwh", 0.0)) or 0.0),
+                "energia_publicada_m7_kwh": float(cast(float | None, getattr(row, "energia_publicada_m7_kwh", 0.0)) or 0.0),
+                "energia_publicada_m11_kwh": float(cast(float | None, getattr(row, "energia_publicada_m11_kwh", 0.0)) or 0.0),
+                "energia_publicada_art15_kwh": float(cast(float | None, getattr(row, "energia_publicada_art15_kwh", 0.0)) or 0.0),
                 "energia_pf_final_kwh": pf_value,
                 "pf_source": pf_source,
                 "pf_label": pf_label,
@@ -488,29 +436,28 @@ def _build_energy_trend_chart_series(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None,
     anio: int,
     max_mes: int,
 ) -> list[dict[str, float | int | str]]:
+    if not allowed_empresa_ids:
+        return []
+
     rows_query = db.query(
         MedidaGeneral.mes.label("mes"),
-        func.coalesce(
-            func.sum(MedidaGeneral.energia_neta_facturada_kwh), 0.0
-        ).label("energia_neta_facturada_kwh"),
+        func.coalesce(func.sum(MedidaGeneral.energia_neta_facturada_kwh), 0.0).label("energia_neta_facturada_kwh"),
     ).filter(
         MedidaGeneral.tenant_id == tenant_id,
         MedidaGeneral.anio == anio,
         MedidaGeneral.mes <= max_mes,
+        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
     )
 
     if empresa_id is not None:
         rows_query = rows_query.filter(MedidaGeneral.empresa_id == empresa_id)
 
-    rows = (
-        rows_query.group_by(MedidaGeneral.mes)
-        .order_by(MedidaGeneral.mes.asc())
-        .all()
-    )
+    rows = rows_query.group_by(MedidaGeneral.mes).order_by(MedidaGeneral.mes.asc()).all()
 
     rows_by_mes: dict[int, Any] = {
         int(cast(int, row.mes)): row for row in rows
@@ -537,29 +484,28 @@ def _build_losses_trend_chart_series(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: list[int],
     empresa_id: int | None,
     anio: int,
     max_mes: int,
 ) -> list[dict[str, float | int | str]]:
+    if not allowed_empresa_ids:
+        return []
+
     rows_query = db.query(
         MedidaGeneral.mes.label("mes"),
-        func.avg(MedidaGeneral.perdidas_e_facturada_pct).label(
-            "perdidas_e_facturada_pct"
-        ),
+        func.avg(MedidaGeneral.perdidas_e_facturada_pct).label("perdidas_e_facturada_pct"),
     ).filter(
         MedidaGeneral.tenant_id == tenant_id,
         MedidaGeneral.anio == anio,
         MedidaGeneral.mes <= max_mes,
+        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
     )
 
     if empresa_id is not None:
         rows_query = rows_query.filter(MedidaGeneral.empresa_id == empresa_id)
 
-    rows = (
-        rows_query.group_by(MedidaGeneral.mes)
-        .order_by(MedidaGeneral.mes.asc())
-        .all()
-    )
+    rows = rows_query.group_by(MedidaGeneral.mes).order_by(MedidaGeneral.mes.asc()).all()
 
     rows_by_mes: dict[int, Any] = {
         int(cast(int, row.mes)): row for row in rows
@@ -588,17 +534,25 @@ def get_dashboard_filters(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
     )
 
+    if not allowed_empresa_ids:
+        return {"empresas": [], "anios": [], "meses": []}
+
     empresas = (
         db.query(Empresa)
-        .filter(Empresa.tenant_id == tenant_id_int)
+        .filter(
+            Empresa.tenant_id == tenant_id_int,
+            Empresa.id.in_(allowed_empresa_ids),
+        )
         .order_by(Empresa.nombre.asc(), Empresa.codigo_ree.asc(), Empresa.id.asc())
         .all()
     )
@@ -606,6 +560,7 @@ def get_dashboard_filters(
     general_periods, ps_periods = _build_common_periods_subqueries(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=anio,
     )
@@ -648,17 +603,20 @@ def get_dashboard_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
     )
 
     periodo_anio, periodo_mes = _resolve_common_period(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=anio,
         mes=mes,
@@ -666,20 +624,20 @@ def get_dashboard_summary(
 
     aggregation_mode = "ytd" if anio is not None and mes is None else "month"
 
-    energia_neta_facturada_kwh, perdidas_e_facturada_kwh, importe_total_eur = (
-        _sum_dashboard_values(
-            db,
-            tenant_id=tenant_id_int,
-            empresa_id=empresa_id,
-            anio=periodo_anio,
-            mes=periodo_mes,
-            aggregation_mode=aggregation_mode,
-        )
+    energia_neta_facturada_kwh, perdidas_e_facturada_kwh, importe_total_eur = _sum_dashboard_values(
+        db,
+        tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
+        empresa_id=empresa_id,
+        anio=periodo_anio,
+        mes=periodo_mes,
+        aggregation_mode=aggregation_mode,
     )
 
     previous_period = _find_previous_common_period(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         current_anio=periodo_anio,
         current_mes=periodo_mes,
@@ -692,26 +650,19 @@ def get_dashboard_summary(
 
     if previous_period is not None:
         previous_anio, previous_mes = previous_period
-        previous_energia_kwh, previous_perdidas_kwh, previous_importe_eur = (
-            _sum_dashboard_values(
-                db,
-                tenant_id=tenant_id_int,
-                empresa_id=empresa_id,
-                anio=previous_anio,
-                mes=previous_mes,
-                aggregation_mode=aggregation_mode,
-            )
+        previous_energia_kwh, previous_perdidas_kwh, previous_importe_eur = _sum_dashboard_values(
+            db,
+            tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
+            empresa_id=empresa_id,
+            anio=previous_anio,
+            mes=previous_mes,
+            aggregation_mode=aggregation_mode,
         )
 
-        energia_variation_kwh_delta = _absolute_change(
-            energia_neta_facturada_kwh, previous_energia_kwh
-        )
-        energia_variation_eur_delta = _absolute_change(
-            importe_total_eur, previous_importe_eur
-        )
-        perdidas_variation_kwh_delta = _absolute_change(
-            perdidas_e_facturada_kwh, previous_perdidas_kwh
-        )
+        energia_variation_kwh_delta = _absolute_change(energia_neta_facturada_kwh, previous_energia_kwh)
+        energia_variation_eur_delta = _absolute_change(importe_total_eur, previous_importe_eur)
+        perdidas_variation_kwh_delta = _absolute_change(perdidas_e_facturada_kwh, previous_perdidas_kwh)
 
     return {
         "filters": {
@@ -725,10 +676,7 @@ def get_dashboard_summary(
             "mes": periodo_mes,
         },
         "previous_common_period": (
-            {
-                "anio": previous_period[0],
-                "mes": previous_period[1],
-            }
+            {"anio": previous_period[0], "mes": previous_period[1]}
             if previous_period is not None
             else None
         ),
@@ -759,17 +707,20 @@ def get_dashboard_energy_comparison_chart(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
     )
 
     periodo_anio, periodo_mes = _resolve_common_period(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=anio,
         mes=mes,
@@ -787,6 +738,7 @@ def get_dashboard_energy_comparison_chart(
     series = _build_energy_comparison_chart_series(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=chart_anio,
         max_mes=chart_max_mes,
@@ -820,17 +772,20 @@ def get_dashboard_energy_trend_chart(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
     )
 
     periodo_anio, periodo_mes = _resolve_common_period(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=anio,
         mes=mes,
@@ -848,6 +803,7 @@ def get_dashboard_energy_trend_chart(
     series = _build_energy_trend_chart_series(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=chart_anio,
         max_mes=chart_max_mes,
@@ -881,17 +837,20 @@ def get_dashboard_losses_trend_chart(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
     )
 
     periodo_anio, periodo_mes = _resolve_common_period(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=anio,
         mes=mes,
@@ -909,6 +868,7 @@ def get_dashboard_losses_trend_chart(
     series = _build_losses_trend_chart_series(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=chart_anio,
         max_mes=chart_max_mes,
@@ -942,21 +902,20 @@ def get_dashboard_losses_consistency(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Devuelve kWh, % pérdidas y kWh PF por ventana de publicación.
-    Usado en la tarjeta de consistencia de pérdidas del dashboard.
-    """
-    tenant_id_int = cast(int, current_user.tenant_id)
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
     )
 
     periodo_anio, periodo_mes = _resolve_common_period(
         db,
         tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
         empresa_id=empresa_id,
         anio=anio,
         mes=mes,
@@ -988,6 +947,7 @@ def get_dashboard_losses_consistency(
     ).filter(
         MedidaGeneral.tenant_id == tenant_id_int,
         MedidaGeneral.anio == periodo_anio,
+        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
     )
 
     if empresa_id is not None:
