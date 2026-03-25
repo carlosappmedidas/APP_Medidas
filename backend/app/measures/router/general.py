@@ -1,46 +1,62 @@
 from __future__ import annotations
 
-from typing import cast, Any
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Body, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_active_superuser, get_current_user
 from app.core.db import get_db
-from app.core.auth import get_current_user, get_current_active_superuser
-from app.measures.models import MedidaGeneral, MedidaPS
-from app.measures.m1_models import M1PeriodContribution
-from app.measures.ps_models import PSPeriodContribution
-from app.measures.ps_detail_models import PSPeriodDetail
-from app.ingestion.models import IngestionFile
 from app.empresas.models import Empresa
-from app.tenants.models import User
-
+from app.ingestion.models import IngestionFile
+from app.measures.m1_models import M1PeriodContribution
+from app.measures.models import MedidaGeneral, MedidaPS
+from app.measures.ps_detail_models import PSPeriodDetail
+from app.measures.ps_models import PSPeriodContribution
 from app.measures.router.utils import (
-    sanitize_medida,
     build_empresa_codigo,
     paginate,
+    sanitize_medida,
 )
+from app.tenants.models import User
 
 router = APIRouter(prefix="/general", tags=["medidas"])
+
+
+def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
+    tenant_id = int(cast(int, current_user.tenant_id))
+
+    if bool(getattr(current_user, "is_superuser", False)):
+        rows = (
+            db.query(Empresa.id)
+            .filter(Empresa.tenant_id == tenant_id)
+            .order_by(Empresa.id.asc())
+            .all()
+        )
+        return [int(row[0]) for row in rows if row and row[0] is not None]
+
+    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
+    explicit_ids = [int(x) for x in raw_ids if x is not None] if raw_ids else []
+    if explicit_ids:
+        return explicit_ids
+
+    return []
 
 
 def _parse_int_list_param(value: str | None) -> list[int]:
     if not value:
         return []
-
     result: list[int] = []
     for part in value.split(","):
         s = part.strip()
         if not s:
             continue
         try:
-            n = int(s)
+            result.append(int(s))
         except ValueError:
             continue
-        result.append(n)
-
     return list(dict.fromkeys(result))
 
 
@@ -53,30 +69,6 @@ def _merge_single_and_multi(
     if single_value is not None and single_value not in values:
         values.append(single_value)
     return values
-
-
-def _get_allowed_empresa_ids(current_user: User) -> list[int]:
-    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
-    if not raw_ids:
-        return []
-    return [int(x) for x in raw_ids if x is not None]
-
-
-def _apply_empresa_scope(
-    query: Any,
-    *,
-    current_user: User,
-    empresa_field: Any,
-) -> Any:
-    allowed_empresa_ids = _get_allowed_empresa_ids(current_user)
-
-    if getattr(current_user, "is_superuser", False):
-        return query
-
-    if not allowed_empresa_ids:
-        return query.filter(False)
-
-    return query.filter(empresa_field.in_(allowed_empresa_ids))
 
 
 def _deep_delete_by_file_ids(
@@ -94,15 +86,9 @@ def _deep_delete_by_file_ids(
     ps_contrib_q = db.query(PSPeriodContribution).filter(
         PSPeriodContribution.ingestion_file_id.in_(file_ids_select)
     )
-    mg_q = db.query(MedidaGeneral).filter(
-        MedidaGeneral.file_id.in_(file_ids_select)
-    )
-    mp_q = db.query(MedidaPS).filter(
-        MedidaPS.file_id.in_(file_ids_select)
-    )
-    ingestion_q = db.query(IngestionFile).filter(
-        IngestionFile.id.in_(file_ids_select)
-    )
+    mg_q = db.query(MedidaGeneral).filter(MedidaGeneral.file_id.in_(file_ids_select))
+    mp_q = db.query(MedidaPS).filter(MedidaPS.file_id.in_(file_ids_select))
+    ingestion_q = db.query(IngestionFile).filter(IngestionFile.id.in_(file_ids_select))
 
     if tenant_id is not None:
         m1_q = m1_q.filter(M1PeriodContribution.tenant_id == tenant_id)
@@ -133,26 +119,32 @@ def _deep_delete_by_file_ids(
 def listar_medidas_generales(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
+    tenant_id = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+
+    if not allowed_empresa_ids:
+        return []
+
     query = (
         db.query(MedidaGeneral, Empresa)
         .join(Empresa, MedidaGeneral.empresa_id == Empresa.id)
         .filter(
-            MedidaGeneral.tenant_id == current_user.tenant_id,
-            Empresa.tenant_id == current_user.tenant_id,
+            MedidaGeneral.tenant_id == tenant_id,
+            Empresa.tenant_id == tenant_id,
+            MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
+            Empresa.id.in_(allowed_empresa_ids),
         )
-        .order_by(MedidaGeneral.anio.desc(), MedidaGeneral.mes.desc())
-    )
-
-    query = _apply_empresa_scope(
-        query,
-        current_user=current_user,
-        empresa_field=MedidaGeneral.empresa_id,
+        .order_by(
+            MedidaGeneral.anio.desc(),
+            MedidaGeneral.mes.desc(),
+            MedidaGeneral.empresa_id.asc(),
+        )
     )
 
     filas = query.all()
 
-    resultado: list[dict] = []
+    resultado: list[dict[str, Any]] = []
     for mg, empresa in filas:
         item = sanitize_medida(mg)
         item["empresa_codigo"] = build_empresa_codigo(empresa)
@@ -165,7 +157,9 @@ def listar_medidas_generales(
 def listar_medidas_generales_todos_tenants(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
-):
+) -> list[dict[str, Any]]:
+    _ = current_user
+
     query = (
         db.query(MedidaGeneral, Empresa)
         .join(Empresa, MedidaGeneral.empresa_id == Empresa.id)
@@ -178,7 +172,7 @@ def listar_medidas_generales_todos_tenants(
 
     filas = query.all()
 
-    resultado: list[dict] = []
+    resultado: list[dict[str, Any]] = []
     for mg, empresa in filas:
         item = sanitize_medida(mg)
         item["empresa_codigo"] = build_empresa_codigo(empresa)
@@ -196,18 +190,17 @@ def borrar_medidas_generales_todos_tenants(
     empresa_id: int | None = None,
     anio: int | None = None,
     mes: int | None = None,
-):
+) -> dict[str, Any]:
+    _ = current_user
+
     query = db.query(MedidaGeneral)
 
     if tenant_id is not None:
         query = query.filter(MedidaGeneral.tenant_id == tenant_id)
-
     if empresa_id is not None:
         query = query.filter(MedidaGeneral.empresa_id == empresa_id)
-
     if anio is not None:
         query = query.filter(MedidaGeneral.anio == anio)
-
     if mes is not None:
         query = query.filter(MedidaGeneral.mes == mes)
 
@@ -248,7 +241,9 @@ def borrar_medidas_generales_todos_tenants_por_ids(
     payload: DeleteIdsPayload = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
-):
+) -> dict[str, Any]:
+    _ = current_user
+
     ids = [int(x) for x in (payload.ids or []) if int(x) > 0]
     if not ids:
         return {"deleted": 0, "ids": [], "mode": "deep"}
@@ -283,27 +278,26 @@ def borrar_medidas_generales_todos_tenants_por_ids(
 def medidas_general_filters(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    tenant_id = current_user.tenant_id
+) -> dict[str, Any]:
+    tenant_id = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
-    empresas_query = (
+    if not allowed_empresa_ids:
+        return {"empresas": [], "anios": [], "meses": []}
+
+    empresas_rows = (
         db.query(Empresa)
         .join(MedidaGeneral, MedidaGeneral.empresa_id == Empresa.id)
         .filter(
             Empresa.tenant_id == tenant_id,
             MedidaGeneral.tenant_id == tenant_id,
+            Empresa.id.in_(allowed_empresa_ids),
+            MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
         )
         .distinct()
         .order_by(Empresa.id.asc())
+        .all()
     )
-
-    empresas_query = _apply_empresa_scope(
-        empresas_query,
-        current_user=current_user,
-        empresa_field=Empresa.id,
-    )
-
-    empresas_rows = empresas_query.all()
 
     empresas = [
         {
@@ -314,39 +308,33 @@ def medidas_general_filters(
         for e in empresas_rows
     ]
 
-    anios_q = (
-        db.query(MedidaGeneral.anio)
-        .filter(MedidaGeneral.tenant_id == tenant_id)
-        .distinct()
-        .order_by(MedidaGeneral.anio.asc())
-    )
-    anios_q = _apply_empresa_scope(
-        anios_q,
-        current_user=current_user,
-        empresa_field=MedidaGeneral.empresa_id,
-    )
-
     anios = [
         int(r[0])
-        for r in anios_q.all()
+        for r in (
+            db.query(MedidaGeneral.anio)
+            .filter(
+                MedidaGeneral.tenant_id == tenant_id,
+                MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
+            )
+            .distinct()
+            .order_by(MedidaGeneral.anio.asc())
+            .all()
+        )
         if r and r[0] is not None
     ]
 
-    meses_q = (
-        db.query(MedidaGeneral.mes)
-        .filter(MedidaGeneral.tenant_id == tenant_id)
-        .distinct()
-        .order_by(MedidaGeneral.mes.asc())
-    )
-    meses_q = _apply_empresa_scope(
-        meses_q,
-        current_user=current_user,
-        empresa_field=MedidaGeneral.empresa_id,
-    )
-
     meses = [
         int(r[0])
-        for r in meses_q.all()
+        for r in (
+            db.query(MedidaGeneral.mes)
+            .filter(
+                MedidaGeneral.tenant_id == tenant_id,
+                MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
+            )
+            .distinct()
+            .order_by(MedidaGeneral.mes.asc())
+            .all()
+        )
         if r and r[0] is not None
     ]
 
@@ -357,7 +345,9 @@ def medidas_general_filters(
 def medidas_general_filters_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
-):
+) -> dict[str, Any]:
+    _ = current_user
+
     empresas_rows = (
         db.query(Empresa)
         .join(MedidaGeneral, MedidaGeneral.empresa_id == Empresa.id)
@@ -413,9 +403,9 @@ def listar_medidas_generales_page(
     meses: str | None = Query(default=None),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
-):
-    tenant_id = current_user.tenant_id
-    allowed_empresa_ids = _get_allowed_empresa_ids(current_user)
+) -> dict[str, Any]:
+    tenant_id = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     if not allowed_empresa_ids:
         return {
@@ -440,8 +430,6 @@ def listar_medidas_generales_page(
                 "total": 0,
                 "total_pages": 1,
             }
-    else:
-        empresa_ids_list = allowed_empresa_ids
 
     base = (
         db.query(MedidaGeneral, Empresa)
@@ -449,10 +437,13 @@ def listar_medidas_generales_page(
         .filter(
             MedidaGeneral.tenant_id == tenant_id,
             Empresa.tenant_id == tenant_id,
-            MedidaGeneral.empresa_id.in_(empresa_ids_list),
+            MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
+            Empresa.id.in_(allowed_empresa_ids),
         )
     )
 
+    if empresa_ids_list:
+        base = base.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
     if anios_list:
         base = base.filter(MedidaGeneral.anio.in_(anios_list))
     if meses_list:
@@ -460,8 +451,10 @@ def listar_medidas_generales_page(
 
     total = db.query(func.count(MedidaGeneral.id)).filter(
         MedidaGeneral.tenant_id == tenant_id,
-        MedidaGeneral.empresa_id.in_(empresa_ids_list),
+        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
     )
+    if empresa_ids_list:
+        total = total.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
     if anios_list:
         total = total.filter(MedidaGeneral.anio.in_(anios_list))
     if meses_list:
@@ -481,7 +474,7 @@ def listar_medidas_generales_page(
         .all()
     )
 
-    items: list[dict] = []
+    items: list[dict[str, Any]] = []
     for mg, empresa in filas:
         item = sanitize_medida(mg)
         item["empresa_codigo"] = build_empresa_codigo(empresa)
@@ -510,7 +503,9 @@ def listar_medidas_generales_all_page(
     meses: str | None = Query(default=None),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
-):
+) -> dict[str, Any]:
+    _ = current_user
+
     tenant_ids_list = _merge_single_and_multi(single_value=tenant_id, multi_value=tenant_ids)
     empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
     anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
@@ -555,7 +550,7 @@ def listar_medidas_generales_all_page(
         .all()
     )
 
-    items: list[dict] = []
+    items: list[dict[str, Any]] = []
     for mg, empresa in filas:
         item = sanitize_medida(mg)
         item["empresa_codigo"] = build_empresa_codigo(empresa)

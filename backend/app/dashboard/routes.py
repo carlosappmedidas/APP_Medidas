@@ -1,11 +1,9 @@
-# app/dashboard/routes.py
-# pyright: reportMissingImports=false
 from __future__ import annotations
 
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, func, or_, false as sql_false
+from sqlalchemy import and_, false as sql_false, func, or_
 from sqlalchemy.orm import Query, Session
 
 from app.core.auth import get_current_user
@@ -18,10 +16,9 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
-    user_role = str(getattr(current_user, "rol", "") or "").lower()
     tenant_id = int(cast(int, current_user.tenant_id))
 
-    if user_role in {"admin", "owner"}:
+    if bool(getattr(current_user, "is_superuser", False)):
         rows = (
             db.query(Empresa.id)
             .filter(Empresa.tenant_id == tenant_id)
@@ -31,10 +28,11 @@ def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
         return [int(row[0]) for row in rows if row and row[0] is not None]
 
     raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
-    if not raw_ids:
-        return []
+    explicit_ids = [int(x) for x in raw_ids if x is not None] if raw_ids else []
+    if explicit_ids:
+        return explicit_ids
 
-    return [int(x) for x in raw_ids if x is not None]
+    return []
 
 
 def _apply_scope_filters(
@@ -60,6 +58,7 @@ def _apply_scope_filters(
         query = query.filter(model.anio == anio)
     if mes is not None:
         query = query.filter(model.mes == mes)
+
     return query
 
 
@@ -973,19 +972,16 @@ def get_dashboard_losses_consistency(
     m7_kwh = _f(getattr(row, "m7_kwh", None))
     m11_kwh = _f(getattr(row, "m11_kwh", None))
     art15_kwh = _f(getattr(row, "art15_kwh", None))
-
     perdidas_m1_kwh = _f(getattr(row, "perdidas_m1_kwh", None))
     perdidas_m2_kwh = _f(getattr(row, "perdidas_m2_kwh", None))
     perdidas_m7_kwh = _f(getattr(row, "perdidas_m7_kwh", None))
     perdidas_m11_kwh = _f(getattr(row, "perdidas_m11_kwh", None))
     perdidas_art15_kwh = _f(getattr(row, "perdidas_art15_kwh", None))
-
     pf_final_kwh = _f(getattr(row, "pf_final_kwh", None))
     pf_m2_kwh = _f(getattr(row, "pf_m2_kwh", None))
     pf_m7_kwh = _f(getattr(row, "pf_m7_kwh", None))
     pf_m11_kwh = _f(getattr(row, "pf_m11_kwh", None))
     pf_art15_kwh = _f(getattr(row, "pf_art15_kwh", None))
-
     perdidas_m1_pct = _f(getattr(row, "perdidas_m1_pct", None))
     perdidas_m2_pct = _f(getattr(row, "perdidas_m2_pct", None))
     perdidas_m7_pct = _f(getattr(row, "perdidas_m7_pct", None))
@@ -1010,36 +1006,11 @@ def get_dashboard_losses_consistency(
         },
         "aggregation_mode": aggregation_mode,
         "ventanas": {
-            "m1": {
-                "kwh": m1_kwh,
-                "perdidas_kwh": perdidas_m1_kwh,
-                "perdidas_pct": perdidas_m1_pct,
-                "pf_kwh": pf_final_kwh,
-            },
-            "m2": {
-                "kwh": m2_kwh,
-                "perdidas_kwh": perdidas_m2_kwh,
-                "perdidas_pct": perdidas_m2_pct,
-                "pf_kwh": pf_m2_kwh,
-            },
-            "m7": {
-                "kwh": m7_kwh,
-                "perdidas_kwh": perdidas_m7_kwh,
-                "perdidas_pct": perdidas_m7_pct,
-                "pf_kwh": pf_m7_kwh,
-            },
-            "m11": {
-                "kwh": m11_kwh,
-                "perdidas_kwh": perdidas_m11_kwh,
-                "perdidas_pct": perdidas_m11_pct,
-                "pf_kwh": pf_m11_kwh,
-            },
-            "art15": {
-                "kwh": art15_kwh,
-                "perdidas_kwh": perdidas_art15_kwh,
-                "perdidas_pct": perdidas_art15_pct,
-                "pf_kwh": pf_art15_kwh,
-            },
+            "m1": {"kwh": m1_kwh, "perdidas_kwh": perdidas_m1_kwh, "perdidas_pct": perdidas_m1_pct, "pf_kwh": pf_final_kwh},
+            "m2": {"kwh": m2_kwh, "perdidas_kwh": perdidas_m2_kwh, "perdidas_pct": perdidas_m2_pct, "pf_kwh": pf_m2_kwh},
+            "m7": {"kwh": m7_kwh, "perdidas_kwh": perdidas_m7_kwh, "perdidas_pct": perdidas_m7_pct, "pf_kwh": pf_m7_kwh},
+            "m11": {"kwh": m11_kwh, "perdidas_kwh": perdidas_m11_kwh, "perdidas_pct": perdidas_m11_pct, "pf_kwh": pf_m11_kwh},
+            "art15": {"kwh": art15_kwh, "perdidas_kwh": perdidas_art15_kwh, "perdidas_pct": perdidas_art15_pct, "pf_kwh": pf_art15_kwh},
         },
         "comparaciones": {
             "m1_vs_m2": _diff(perdidas_m1_pct, perdidas_m2_pct),

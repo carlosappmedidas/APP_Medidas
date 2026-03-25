@@ -14,27 +14,23 @@ export default function UsersSection({ token }: UsersSectionProps) {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // ✅ estado “pro”: distinguir nunca-cargado vs sin-resultados
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  // formulario nuevo usuario (tenant actual)
+  // formulario nuevo usuario
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRol, setNewRol] = useState("user");
   const [newActive, setNewActive] = useState(true);
-  const [newEmpresaIds, setNewEmpresaIds] = useState<number[]>([]); // [] => todas (sin filtro extra)
+  const [newEmpresaIds, setNewEmpresaIds] = useState<number[]>([]);
 
-  // EDICIÓN DE USUARIO EXISTENTE
+  // edición
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [editRol, setEditRol] = useState("user");
   const [editActive, setEditActive] = useState(true);
   const [editPassword, setEditPassword] = useState("");
-  const [editEmpresaIds, setEditEmpresaIds] = useState<number[]>([]); // [] => todas
+  const [editEmpresaIds, setEditEmpresaIds] = useState<number[]>([]);
 
   const canCallApi = !!token;
-
-  // desplegable (cerrado por defecto)
   const [isOpen, setIsOpen] = useState(false);
 
   // --------- HELPERS ---------
@@ -56,10 +52,18 @@ export default function UsersSection({ token }: UsersSectionProps) {
     return names.join(", ");
   };
 
+  // --------- RESET FORMULARIO CREAR ---------
+  const resetNewForm = () => {
+    setNewEmail("");
+    setNewPassword("");
+    setNewRol("user");
+    setNewActive(true);
+    setNewEmpresaIds([]);  // ← CLAVE: siempre limpio
+  };
+
   // --------- CARGA ---------
   const loadUsers = async () => {
     if (!canCallApi) return;
-
     setLoading(true);
     setError(null);
     try {
@@ -82,7 +86,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
 
   const loadEmpresas = async () => {
     if (!canCallApi) return;
-
     try {
       const res = await fetch(`${API_BASE_URL}/empresas/?solo_activas=true`, {
         headers: getAuthHeaders(token),
@@ -101,7 +104,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
     setError(null);
     setLoading(true);
     try {
-      // en paralelo para que sea más ágil
       await Promise.all([loadEmpresas(), loadUsers()]);
     } finally {
       setLoading(false);
@@ -110,7 +112,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
 
   useEffect(() => {
     if (token) {
-      // autocarga al iniciar sesión (aunque esté plegado)
       void handleRefresh();
     } else {
       setUsers([]);
@@ -118,18 +119,18 @@ export default function UsersSection({ token }: UsersSectionProps) {
       setEditingUserId(null);
       setHasLoadedOnce(false);
       setError(null);
+      resetNewForm();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // --------- ACCIONES TENANT ACTUAL ---------
+  // --------- CREAR ---------
   const handleCreateUser = async () => {
     if (!canCallApi) return;
     if (!newEmail || !newPassword) {
       setError("Email y contraseña son obligatorios.");
       return;
     }
-
     setLoading(true);
     setError(null);
     try {
@@ -138,36 +139,23 @@ export default function UsersSection({ token }: UsersSectionProps) {
         password: newPassword,
         rol: newRol,
         is_active: newActive,
-        empresa_ids_permitidas: newEmpresaIds, // [] => todas (sin filtro extra)
+        empresa_ids_permitidas: newEmpresaIds,
       };
-
       const res = await fetch(`${API_BASE_URL}/auth/users`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(token),
-        },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
         body: JSON.stringify(body),
       });
-
       if (!res.ok) {
         const text = await res.text();
         console.error("Respuesta backend:", text);
         throw new Error(`Error creando usuario: ${res.status}`);
       }
-
-      setNewEmail("");
-      setNewPassword("");
-      setNewRol("user");
-      setNewActive(true);
-      setNewEmpresaIds([]);
-
+      resetNewForm();
       await loadUsers();
     } catch (err) {
       console.error("Error creando usuario:", err);
-      setError(
-        "No se pudo crear el usuario. Revisa que el email no exista y que el token sea válido."
-      );
+      setError("No se pudo crear el usuario. Revisa que el email no exista y que el token sea válido.");
     } finally {
       setLoading(false);
     }
@@ -176,7 +164,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
   const handleDeactivate = async (userId: number) => {
     if (!canCallApi) return;
     if (!window.confirm("¿Desactivar este usuario?")) return;
-
     setLoading(true);
     setError(null);
     try {
@@ -184,7 +171,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
         method: "DELETE",
         headers: getAuthHeaders(token),
       });
-
       if (!res.ok && res.status !== 204) throw new Error(`Error ${res.status}`);
       await loadUsers();
     } catch (err) {
@@ -195,8 +181,11 @@ export default function UsersSection({ token }: UsersSectionProps) {
     }
   };
 
-  // --------- EDICIÓN & BORRADO ---------
+  // --------- EDITAR ---------
   const handleStartEdit = (u: User) => {
+    // Limpiar formulario de crear para evitar confusión
+    resetNewForm();
+    // Cargar datos del usuario a editar
     setEditingUserId(u.id);
     setEditRol(u.rol || "user");
     setEditActive(u.is_active);
@@ -208,41 +197,37 @@ export default function UsersSection({ token }: UsersSectionProps) {
   const handleCancelEdit = () => {
     setEditingUserId(null);
     setEditPassword("");
+    setEditEmpresaIds([]);
+    resetNewForm();
   };
 
   const handleSaveEdit = async () => {
     if (!canCallApi || editingUserId === null) return;
-
     setLoading(true);
     setError(null);
     try {
       const body: any = {
         rol: editRol,
         is_active: editActive,
-        empresa_ids_permitidas: editEmpresaIds, // [] => todas (sin filtro extra)
+        empresa_ids_permitidas: editEmpresaIds,
       };
-
       if (editPassword.trim() !== "") {
         body.password = editPassword;
       }
-
       const res = await fetch(`${API_BASE_URL}/auth/users/${editingUserId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(token),
-        },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
         body: JSON.stringify(body),
       });
-
       if (!res.ok) {
         const text = await res.text();
         console.error("Respuesta backend PATCH:", text);
         throw new Error(`Error actualizando usuario: ${res.status}`);
       }
-
       setEditingUserId(null);
       setEditPassword("");
+      setEditEmpresaIds([]);
+      resetNewForm();
       await loadUsers();
     } catch (err) {
       console.error("Error actualizando usuario:", err);
@@ -254,12 +239,8 @@ export default function UsersSection({ token }: UsersSectionProps) {
 
   const handleDeleteUser = async (userId: number) => {
     if (!canCallApi) return;
-
-    const ok = window.confirm(
-      "⚠️ Esta acción borrará el usuario de forma permanente. ¿Continuar?"
-    );
+    const ok = window.confirm("⚠️ Esta acción borrará el usuario de forma permanente. ¿Continuar?");
     if (!ok) return;
-
     setLoading(true);
     setError(null);
     try {
@@ -267,18 +248,16 @@ export default function UsersSection({ token }: UsersSectionProps) {
         method: "DELETE",
         headers: getAuthHeaders(token),
       });
-
       if (!res.ok && res.status !== 204) {
         const text = await res.text();
         console.error("Respuesta backend hard-delete:", text);
         throw new Error(`Error ${res.status}`);
       }
-
       if (editingUserId === userId) {
         setEditingUserId(null);
         setEditPassword("");
+        setEditEmpresaIds([]);
       }
-
       await loadUsers();
     } catch (err) {
       console.error("Error eliminando usuario:", err);
@@ -302,8 +281,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
             Gestiona usuarios del cliente y define el acceso por empresas.
           </p>
         </div>
-
-        {/* ✅ Flecha unificada (igual que Sistema/Ajustes): ▾ + rotación */}
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-[11px] ui-muted">{isOpen ? "Ocultar" : "Mostrar"}</span>
           <span
@@ -318,10 +295,8 @@ export default function UsersSection({ token }: UsersSectionProps) {
         </div>
       </header>
 
-      {/* ERRORES */}
       {error && isOpen && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
-      {/* CONTENIDO */}
       {isOpen && (
         <>
           {!token && (
@@ -330,140 +305,132 @@ export default function UsersSection({ token }: UsersSectionProps) {
             </p>
           )}
 
-          {/* FORMULARIO NUEVO USUARIO */}
-          <div className="mb-6 ui-panel text-[11px]">
-            <h5 className="mb-2 text-xs font-semibold">Crear usuario</h5>
+          {/* FORMULARIO CREAR — se oculta cuando hay una edición activa */}
+          {editingUserId === null && (
+            <div className="mb-6 ui-panel text-[11px]">
+              <h5 className="mb-2 text-xs font-semibold">Crear usuario</h5>
 
-            <div className="grid gap-3 md:grid-cols-[2fr,2fr,1fr,auto,auto]">
-              <div>
-                <label className="ui-label">Email</label>
-                <input
-                  type="email"
-                  className="ui-input"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="usuario@cliente.com"
-                  disabled={!canCallApi}
-                />
-              </div>
-
-              <div>
-                <label className="ui-label">Contraseña</label>
-                <input
-                  type="password"
-                  className="ui-input"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="••••••••"
-                  disabled={!canCallApi}
-                />
-              </div>
-
-              <div>
-                <label className="ui-label">Rol</label>
-                <select
-                  className="ui-select"
-                  value={newRol}
-                  onChange={(e) => setNewRol(e.target.value)}
-                  disabled={!canCallApi}
-                >
-                  <option value="user">user</option>
-                  <option value="admin">admin</option>
-                </select>
-              </div>
-
-              {/* Activo */}
-              <div className="flex items-end">
-                <label className="flex cursor-pointer items-center gap-2 text-[10px] ui-muted">
+              <div className="grid gap-3 md:grid-cols-[2fr,2fr,1fr,auto,auto]">
+                <div>
+                  <label className="ui-label">Email</label>
                   <input
-                    type="checkbox"
-                    checked={newActive}
-                    onChange={(e) => setNewActive(e.target.checked)}
-                    className="ui-checkbox"
+                    type="email"
+                    className="ui-input"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="usuario@cliente.com"
                     disabled={!canCallApi}
                   />
-                  Activo
-                </label>
-              </div>
-
-              {/* Botones */}
-              <div className="flex items-end justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleCreateUser}
-                  disabled={loading || !canCallApi}
-                  className="ui-btn ui-btn-primary"
-                >
-                  Crear
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  disabled={loading || !canCallApi}
-                  className="ui-btn ui-btn-secondary"
-                >
-                  {loading ? "Actualizando..." : "Actualizar"}
-                </button>
-              </div>
-            </div>
-
-            {/* Selector empresas (nuevo usuario) */}
-            <div className="mt-4 rounded-xl border border-[var(--field-border)] bg-[var(--field-bg-soft)] p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[10px] font-semibold" style={{ color: "var(--text)" }}>
-                  Acceso por empresas
                 </div>
-
-                <button
-                  type="button"
-                  className="ui-btn ui-btn-outline ui-btn-xs"
-                  onClick={() => setNewEmpresaIds([])}
-                  disabled={!canCallApi}
-                  title="Dejar sin filtro (ver todas)"
-                >
-                  Ver todas
-                </button>
+                <div>
+                  <label className="ui-label">Contraseña</label>
+                  <input
+                    type="password"
+                    className="ui-input"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    disabled={!canCallApi}
+                  />
+                </div>
+                <div>
+                  <label className="ui-label">Rol</label>
+                  <select
+                    className="ui-select"
+                    value={newRol}
+                    onChange={(e) => setNewRol(e.target.value)}
+                    disabled={!canCallApi}
+                  >
+                    <option value="user">user</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex cursor-pointer items-center gap-2 text-[10px] ui-muted">
+                    <input
+                      type="checkbox"
+                      checked={newActive}
+                      onChange={(e) => setNewActive(e.target.checked)}
+                      className="ui-checkbox"
+                      disabled={!canCallApi}
+                    />
+                    Activo
+                  </label>
+                </div>
+                <div className="flex items-end justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCreateUser}
+                    disabled={loading || !canCallApi}
+                    className="ui-btn ui-btn-primary"
+                  >
+                    Crear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={loading || !canCallApi}
+                    className="ui-btn ui-btn-secondary"
+                  >
+                    {loading ? "Actualizando..." : "Actualizar"}
+                  </button>
+                </div>
               </div>
 
-              <div className="mt-1 text-[10px] ui-muted">
-                Seleccionadas:{" "}
-                <span style={{ color: "var(--text)" }}>
-                  {renderEmpresasLabel(newEmpresaIds)}
-                </span>
-              </div>
-
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                {empresas.length === 0 ? (
-                  <div className="text-[10px] ui-muted">
-                    No hay empresas (o no se pudieron cargar).
+              {/* Selector empresas — nuevo usuario */}
+              <div className="mt-4 rounded-xl border border-[var(--field-border)] bg-[var(--field-bg-soft)] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] font-semibold" style={{ color: "var(--text)" }}>
+                    Acceso por empresas
                   </div>
-                ) : (
-                  empresas.map((e) => (
-                    <label
-                      key={e.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--field-border)] bg-[var(--field-bg)] px-2 py-1.5 text-[10px] hover:bg-white/5"
-                      style={{ color: "var(--text)" }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={newEmpresaIds.includes(e.id)}
-                        onChange={() => setNewEmpresaIds((prev) => toggleId(prev, e.id))}
-                        className="ui-checkbox"
-                        disabled={!canCallApi}
-                      />
-                      <span className="truncate">{e.nombre}</span>
-                      {!e.activo && (
-                        <span className="text-[10px] text-yellow-300">(inactiva)</span>
-                      )}
-                    </label>
-                  ))
-                )}
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn-outline ui-btn-xs"
+                    onClick={() => setNewEmpresaIds([])}
+                    disabled={!canCallApi}
+                    title="Dejar sin filtro (ver todas)"
+                  >
+                    Ver todas
+                  </button>
+                </div>
+                <div className="mt-1 text-[10px] ui-muted">
+                  Seleccionadas:{" "}
+                  <span style={{ color: "var(--text)" }}>
+                    {renderEmpresasLabel(newEmpresaIds)}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {empresas.length === 0 ? (
+                    <div className="text-[10px] ui-muted">
+                      No hay empresas (o no se pudieron cargar).
+                    </div>
+                  ) : (
+                    empresas.map((e) => (
+                      <label
+                        key={e.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--field-border)] bg-[var(--field-bg)] px-2 py-1.5 text-[10px] hover:bg-white/5"
+                        style={{ color: "var(--text)" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={newEmpresaIds.includes(e.id)}
+                          onChange={() => setNewEmpresaIds((prev) => toggleId(prev, e.id))}
+                          className="ui-checkbox"
+                          disabled={!canCallApi}
+                        />
+                        <span className="truncate">{e.nombre}</span>
+                        {!e.activo && (
+                          <span className="text-[10px] text-yellow-300">(inactiva)</span>
+                        )}
+                      </label>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* TABLA USUARIOS TENANT */}
+          {/* TABLA */}
           <div className="ui-table-wrap">
             <table className="ui-table text-[11px]">
               <thead className="ui-thead">
@@ -476,9 +443,7 @@ export default function UsersSection({ token }: UsersSectionProps) {
                   <th className="ui-th ui-th-right">Acciones</th>
                 </tr>
               </thead>
-
               <tbody>
-                {/* Skeleton */}
                 {loading &&
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr key={`sk-${i}`} className="ui-tr">
@@ -504,7 +469,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
                 {!loading &&
                   users.map((u) => {
                     const isEditing = editingUserId === u.id;
-
                     return (
                       <tr key={u.id} className="ui-tr align-top">
                         <td className="ui-td">{u.email}</td>
@@ -564,7 +528,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
                                   Ver todas
                                 </button>
                               </div>
-
                               <div className="mt-2 grid gap-2 md:grid-cols-2">
                                 {empresas.map((e) => (
                                   <label
@@ -641,7 +604,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
                               >
                                 Editar
                               </button>
-
                               <button
                                 type="button"
                                 onClick={() => handleDeactivate(u.id)}
@@ -650,7 +612,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
                               >
                                 Desactivar
                               </button>
-
                               <button
                                 type="button"
                                 onClick={() => handleDeleteUser(u.id)}
@@ -668,7 +629,6 @@ export default function UsersSection({ token }: UsersSectionProps) {
               </tbody>
             </table>
 
-            {/* Mensaje “nunca cargado” (por si falla token/estado raro) */}
             {!loading && !hasLoadedOnce && token && (
               <div className="mt-3 text-[11px] ui-muted">
                 Aún no se han cargado datos. Pulsa{" "}
