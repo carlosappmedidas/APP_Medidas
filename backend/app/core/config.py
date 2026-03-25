@@ -17,44 +17,35 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "DEV_SECRET_KEY_CAMBIALA_LUEGO"
     ALGORITHM: str = "HS256"
 
-    # dev: 60 ok | prod: recomendado 15–30
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # dev: 480 ok | prod: máximo 480 (8 horas = jornada laboral)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
     # Borrado de ficheros de ingestion tras procesar OK
-    # Por defecto: True (modo "servidor": no acumular ficheros)
     INGESTION_DELETE_AFTER_OK: bool = True
 
-    # ✅ NUEVO: orígenes CORS permitidos, separados por coma
-    # Ejemplo prod: CORS_ORIGINS=http://100.106.206.66:3000,https://midominio.com
-    # Si está vacío, main.py usa los defaults de desarrollo
+    # Orígenes CORS permitidos, separados por coma
     CORS_ORIGINS: str = ""
 
-    # Leer variables de entorno desde .env
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore",  # ✅ evita petar si tienes variables extra en .env
+        extra="ignore",
     )
 
 
 @lru_cache()
 def get_settings() -> Settings:
-    """
-    Devuelve una instancia única de Settings leyendo .env.
-    """
     s = Settings()
 
-    # ✅ Hardening en PRODUCCIÓN
+    # Hardening en PRODUCCIÓN
     if s.ENV == "prod":
-        # SECRET_KEY obligatoria y no puede ser la de desarrollo
         if (not s.SECRET_KEY) or ("DEV_SECRET" in s.SECRET_KEY):
             raise RuntimeError(
                 "SECRET_KEY insegura en producción. Define SECRET_KEY real en el .env del servidor."
             )
-        # Expiración recomendada en producción
-        if s.ACCESS_TOKEN_EXPIRE_MINUTES > 30:
+        if s.ACCESS_TOKEN_EXPIRE_MINUTES > 480:
             raise RuntimeError(
-                "ACCESS_TOKEN_EXPIRE_MINUTES demasiado alto en producción (recomendado <= 30)."
+                "ACCESS_TOKEN_EXPIRE_MINUTES demasiado alto en producción (máximo 480 = 8h)."
             )
 
     return s

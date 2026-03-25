@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+
 import {
   CartesianGrid,
   Legend,
@@ -59,7 +60,10 @@ type GraficosSeriesResponse = {
   };
   energia_facturada: GraficoSeriesGroup;
   perdidas: GraficoSeriesGroup;
+  perdidas_kwh: GraficoSeriesGroup;
+  perdidas_ventanas: GraficoSeriesGroup;     // ← NUEVO
   energias_publicadas: GraficoSeriesGroup;
+  energias_pf: GraficoSeriesGroup;
   autoconsumo: GraficoSeriesGroup;
   energia_generada: GraficoSeriesGroup;
 };
@@ -80,6 +84,7 @@ type CustomTooltipProps = {
   active?: boolean;
   payload?: readonly CustomTooltipEntry[];
   label?: number | string;
+  extraByLabel?: Record<string, { label: string; value: number }[]>;
 };
 
 type MultiCheckOption = {
@@ -108,32 +113,30 @@ type ChartCardProps = {
   series: GraficoSerie[];
   companyLabel: string;
   yAxisFormatter?: (value: number) => string;
+  headerExtra?: React.ReactNode;
+  tooltipExtraByLabel?: Record<string, { label: string; value: number }[]>;
 };
 
+// Definición de las 5 series de la Gráfica 2
+type Grafica2SerieKey = "pct" | "perd_m2" | "perd_m7" | "perd_m11" | "perd_art15";
+
+const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string }[] = [
+  { key: "pct",       label: "Pérdidas (%)"      },
+  { key: "perd_m2",   label: "Pérdidas M2 (%)"   },
+  { key: "perd_m7",   label: "Pérdidas M7 (%)"   },
+  { key: "perd_m11",  label: "Pérdidas M11 (%)"  },
+  { key: "perd_art15",label: "Pérdidas ART15 (%)" },
+];
+
 const MESES_LABEL: Record<number, string> = {
-  1: "Ene",
-  2: "Feb",
-  3: "Mar",
-  4: "Abr",
-  5: "May",
-  6: "Jun",
-  7: "Jul",
-  8: "Ago",
-  9: "Sep",
-  10: "Oct",
-  11: "Nov",
-  12: "Dic",
+  1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr",
+  5: "May", 6: "Jun", 7: "Jul", 8: "Ago",
+  9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
 };
 
 const LINE_COLORS = [
-  "#6D5EF8",
-  "#22C55E",
-  "#F59E0B",
-  "#EF4444",
-  "#06B6D4",
-  "#A855F7",
-  "#84CC16",
-  "#F97316",
+  "#6D5EF8", "#22C55E", "#F59E0B", "#EF4444",
+  "#06B6D4", "#A855F7", "#84CC16", "#F97316",
 ];
 
 function formatNumberEs(value: number | string | null | undefined): string {
@@ -141,13 +144,11 @@ function formatNumberEs(value: number | string | null | undefined): string {
     typeof value === "number"
       ? value
       : typeof value === "string"
-        ? Number(value)
-        : null;
-
+      ? Number(value)
+      : null;
   if (numericValue === null || Number.isNaN(numericValue)) {
     return "—";
   }
-
   return new Intl.NumberFormat("es-ES", {
     maximumFractionDigits: 2,
   }).format(numericValue);
@@ -157,43 +158,76 @@ function buildChartRows(group: GraficoSeriesGroup | null): ChartRow[] {
   if (!group?.series?.length) {
     return [];
   }
-
   const map = new Map<string, ChartRow>();
-
   for (const serie of group.series) {
     for (const point of serie.points) {
       const current = map.get(point.period_key) ?? {
         period_key: point.period_key,
         period_label: point.period_label,
       };
-
       current[serie.serie_key] = point.value;
       map.set(point.period_key, current);
     }
   }
-
   return Array.from(map.values()).sort((a, b) =>
     String(a.period_key).localeCompare(String(b.period_key))
   );
 }
 
-function relabelSeries(series: GraficoSerie[], legendLabel: string): GraficoSerie[] {
+function buildChartRowsCombined(
+  groups: (GraficoSeriesGroup | null)[]
+): ChartRow[] {
+  const map = new Map<string, ChartRow>();
+  for (const group of groups) {
+    if (!group?.series?.length) continue;
+    for (const serie of group.series) {
+      for (const point of serie.points) {
+        const current = map.get(point.period_key) ?? {
+          period_key: point.period_key,
+          period_label: point.period_label,
+        };
+        current[serie.serie_key] = point.value;
+        map.set(point.period_key, current);
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) =>
+    String(a.period_key).localeCompare(String(b.period_key))
+  );
+}
+
+function relabelSeries(
+  series: GraficoSerie[],
+  legendLabel: string
+): GraficoSerie[] {
   if (series.length !== 1) {
     return series;
   }
-
-  return [
-    {
-      ...series[0],
-      serie_label: legendLabel,
-    },
-  ];
+  return [{ ...series[0], serie_label: legendLabel }];
 }
 
-function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+function buildTooltipExtraByLabel(
+  group: GraficoSeriesGroup | null,
+  labelOverride?: string
+): Record<string, { label: string; value: number }[]> {
+  const result: Record<string, { label: string; value: number }[]> = {};
+  if (!group?.series?.length) return result;
+  for (const serie of group.series) {
+    const displayLabel = labelOverride ?? serie.serie_label;
+    for (const point of serie.points) {
+      if (!result[point.period_label]) result[point.period_label] = [];
+      result[point.period_label].push({ label: displayLabel, value: point.value });
+    }
+  }
+  return result;
+}
+
+function CustomTooltip({ active, payload, label, extraByLabel }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
+  const labelStr = String(label ?? "—");
+  const extras = extraByLabel?.[labelStr] ?? [];
 
   return (
     <div
@@ -204,8 +238,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
         color: "var(--text)",
       }}
     >
-      <div className="mb-2 font-semibold">{String(label ?? "—")}</div>
-
+      <div className="mb-2 font-semibold">{labelStr}</div>
       <div className="flex flex-col gap-1">
         {payload.map((entry, index) => (
           <div
@@ -222,6 +255,23 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
             </span>
           </div>
         ))}
+        {extras.length > 0 && (
+          <>
+            <div
+              className="my-1 border-t"
+              style={{ borderColor: "var(--card-border)" }}
+            />
+            {extras.map((extra, i) => (
+              <div
+                key={`extra-${i}`}
+                className="flex items-center justify-between gap-3 ui-muted"
+              >
+                <span>{extra.label}</span>
+                <span className="font-medium">{formatNumberEs(extra.value)}</span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
@@ -232,52 +282,27 @@ function useElementSize<T extends HTMLElement>() {
   const [mounted, setMounted] = useState(false);
   const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 });
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const element = ref.current;
-    if (!mounted || !element) {
-      return;
-    }
-
+    if (!mounted || !element) return;
     const updateSize = () => {
       const rect = element.getBoundingClientRect();
       const nextWidth = Math.max(0, Math.round(rect.width));
       const nextHeight = Math.max(0, Math.round(rect.height));
-
       setSize((prev) => {
-        if (prev.width === nextWidth && prev.height === nextHeight) {
-          return prev;
-        }
-
-        return {
-          width: nextWidth,
-          height: nextHeight,
-        };
+        if (prev.width === nextWidth && prev.height === nextHeight) return prev;
+        return { width: nextWidth, height: nextHeight };
       });
     };
-
     updateSize();
-
-    const observer = new ResizeObserver(() => {
-      updateSize();
-    });
-
+    const observer = new ResizeObserver(() => { updateSize(); });
     observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-    };
+    return () => { observer.disconnect(); };
   }, [mounted]);
 
-  return {
-    ref,
-    mounted,
-    width: size.width,
-    height: size.height,
-  };
+  return { ref, mounted, width: size.width, height: size.height };
 }
 
 function FilterDropdown({
@@ -290,91 +315,57 @@ function FilterDropdown({
 }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const allSelected =
-    options.length > 0 && selectedValues.length === options.length;
+  const allSelected = options.length > 0 && selectedValues.length === options.length;
 
   const summary = useMemo(() => {
-    if (options.length === 0) {
-      return "Sin opciones";
-    }
-
-    if (allSelected) {
-      return allLabel;
-    }
-
-    if (selectedValues.length === 0) {
-      return "Ninguna";
-    }
-
+    if (options.length === 0) return "Sin opciones";
+    if (allSelected) return allLabel;
+    if (selectedValues.length === 0) return "Ninguna";
     if (selectedValues.length === 1) {
-      const selected = options.find((option) => option.value === selectedValues[0]);
+      const selected = options.find((o) => o.value === selectedValues[0]);
       return selected?.label ?? "1 seleccionada";
     }
-
     return `${selectedValues.length} seleccionadas`;
   }, [allLabel, allSelected, options, selectedValues]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const targetNode = event.target;
-      if (!(targetNode instanceof Node)) {
-        return;
-      }
-
+      if (!(targetNode instanceof Node)) return;
       if (containerRef.current && !containerRef.current.contains(targetNode)) {
         setOpen(false);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => { document.removeEventListener("mousedown", handleClickOutside); };
   }, []);
 
   return (
     <div ref={containerRef} className="relative min-w-0">
       <div
         className="min-w-0 rounded-xl border p-3"
-        style={{
-          borderColor: "var(--card-border)",
-          background: "var(--card-bg)",
-        }}
+        style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
       >
-        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em]">
-          {title}
-        </div>
-
+        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em]">{title}</div>
         <button
           type="button"
           onClick={() => setOpen((prev) => !prev)}
           className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs"
-          style={{
-            borderColor: "var(--field-border)",
-            background: "var(--field-bg)",
-            color: "var(--field-text)",
-          }}
+          style={{ borderColor: "var(--field-border)", background: "var(--field-bg)", color: "var(--field-text)" }}
         >
           <span className="truncate">{summary}</span>
           <span className="ml-3 shrink-0">{open ? "▴" : "▾"}</span>
         </button>
       </div>
-
       {open && (
         <div
           className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border p-3 shadow-lg"
-          style={{
-            borderColor: "var(--card-border)",
-            background: "var(--card-bg)",
-          }}
+          style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
         >
           <label className="mb-2 flex cursor-pointer items-center gap-2 text-xs">
             <input type="checkbox" checked={allSelected} onChange={onSelectAll} />
             <span>{allLabel}</span>
           </label>
-
           <div className="grid gap-1">
             {options.map((option) => (
               <label
@@ -403,6 +394,8 @@ function ChartCard({
   series,
   companyLabel,
   yAxisFormatter,
+  headerExtra,
+  tooltipExtraByLabel,
 }: ChartCardProps) {
   const { ref, mounted, width, height } = useElementSize<HTMLDivElement>();
   const canRenderChart = mounted && width > 0 && height > 0;
@@ -410,20 +403,18 @@ function ChartCard({
   return (
     <div
       className="min-w-0 rounded-xl border p-4"
-      style={{
-        borderColor: "var(--card-border)",
-        background: "var(--card-bg)",
-      }}
+      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
     >
-      <div className="mb-2">
-        <div className="text-sm font-semibold">{title}</div>
-        <div className="ui-muted mt-1 text-xs">{subtitle}</div>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="ui-muted mt-1 text-xs">{subtitle}</div>
+        </div>
+        {headerExtra && <div className="shrink-0">{headerExtra}</div>}
       </div>
-
       <div className="mb-4 text-center text-xs font-medium" style={{ color: "var(--text)" }}>
         {companyLabel}
       </div>
-
       <div ref={ref} className="h-[320px] min-w-0 w-full">
         {data.length === 0 ? (
           <div className="ui-muted flex h-full items-center justify-center text-sm">
@@ -449,11 +440,11 @@ function ChartCard({
                   active={props.active}
                   payload={props.payload as readonly CustomTooltipEntry[] | undefined}
                   label={props.label as string | number | undefined}
+                  extraByLabel={tooltipExtraByLabel}
                 />
               )}
             />
             <Legend />
-
             {series.map((serie, index) => (
               <Line
                 key={serie.serie_key}
@@ -473,13 +464,89 @@ function ChartCard({
   );
 }
 
+// ─── Selector genérico de dos opciones toggleables ─────────────────────────
+type TwoFlagsState = { a: boolean; b: boolean };
+
+function TwoFlagsSelector({
+  labelA, labelB, flags, onChange,
+}: {
+  labelA: string; labelB: string;
+  flags: TwoFlagsState; onChange: (flags: TwoFlagsState) => void;
+}) {
+  const toggle = (key: keyof TwoFlagsState) => {
+    const next = { ...flags, [key]: !flags[key] };
+    if (!next.a && !next.b) { next[key === "a" ? "b" : "a"] = true; }
+    onChange(next);
+  };
+  return (
+    <div
+      className="flex rounded-lg border text-[11px] overflow-hidden"
+      style={{ borderColor: "var(--field-border)" }}
+    >
+      <button
+        type="button" onClick={() => toggle("a")} className="px-2 py-1 transition-colors"
+        style={{ background: flags.a ? "var(--primary)" : "var(--field-bg)", color: flags.a ? "var(--primary-fg, #fff)" : "var(--field-text)" }}
+      >{labelA}</button>
+      <button
+        type="button" onClick={() => toggle("b")} className="px-2 py-1 transition-colors"
+        style={{ background: flags.b ? "var(--primary)" : "var(--field-bg)", color: flags.b ? "var(--primary-fg, #fff)" : "var(--field-text)" }}
+      >{labelB}</button>
+    </div>
+  );
+}
+
+// ─── Selector multi para Gráfica 2 — 5 botones independientes ─────────────
+function Grafica2Selector({
+  active,
+  onChange,
+}: {
+  active: Set<Grafica2SerieKey>;
+  onChange: (next: Set<Grafica2SerieKey>) => void;
+}) {
+  const toggle = (key: Grafica2SerieKey) => {
+    const next = new Set(active);
+    if (next.has(key)) {
+      // Nunca dejar todo vacío
+      if (next.size === 1) return;
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    onChange(next);
+  };
+
+  return (
+    <div
+      className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
+      style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+    >
+      {GRAFICA2_OPCIONES.map((opcion) => {
+        const isActive = active.has(opcion.key);
+        return (
+          <button
+            key={opcion.key}
+            type="button"
+            onClick={() => toggle(opcion.key)}
+            className="rounded px-2 py-0.5 transition-colors"
+            style={{
+              background: isActive ? "var(--primary)" : "transparent",
+              color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)",
+            }}
+          >
+            {opcion.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 export default function GraficosSection({ token, currentUser }: Props) {
   const [filtersData, setFiltersData] = useState<GraficoFiltersResponse | null>(null);
   const [seriesData, setSeriesData] = useState<GraficosSeriesResponse | null>(null);
-
   const [filtersLoading, setFiltersLoading] = useState(false);
   const [seriesLoading, setSeriesLoading] = useState(false);
-
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const [seriesError, setSeriesError] = useState<string | null>(null);
 
@@ -487,227 +554,293 @@ export default function GraficosSection({ token, currentUser }: Props) {
   const [selectedAnios, setSelectedAnios] = useState<number[]>([]);
   const [selectedMeses, setSelectedMeses] = useState<number[]>([]);
 
+  const [grafica1Flags, setGrafica1Flags] = useState<TwoFlagsState>({ a: true, b: false });
+  // Gráfica 2: set de keys activas — por defecto solo "pct"
+  const [grafica2Active, setGrafica2Active] = useState<Set<Grafica2SerieKey>>(
+    new Set(["pct"])
+  );
+  const [grafica3Flags, setGrafica3Flags] = useState<TwoFlagsState>({ a: true, b: false });
+  const [grafica4Flags, setGrafica4Flags] = useState<TwoFlagsState>({ a: true, b: false });
+
   useEffect(() => {
     const loadFilters = async () => {
-      if (!token) {
-        setFiltersData(null);
-        return;
-      }
-
+      if (!token) { setFiltersData(null); return; }
       setFiltersLoading(true);
       setFiltersError(null);
-
       try {
-        const response = await fetch(`${API_BASE_URL}/medidas-graficos/filters`, {
-          method: "GET",
-          headers: getAuthHeaders(token),
-        });
-
+        const response = await fetch(
+          `${API_BASE_URL}/medidas-graficos/filters`,
+          { method: "GET", headers: getAuthHeaders(token) }
+        );
         if (!response.ok) {
           const text = await response.text();
           throw new Error(text || "No se pudieron cargar los filtros.");
         }
-
         const json = (await response.json()) as GraficoFiltersResponse;
         setFiltersData(json);
         setSelectedEmpresas(json.empresas.map((item) => item.id));
         setSelectedAnios(json.anios);
         setSelectedMeses(json.meses);
       } catch (err) {
-        setFiltersError(
-          err instanceof Error ? err.message : "No se pudieron cargar los filtros."
-        );
+        setFiltersError(err instanceof Error ? err.message : "No se pudieron cargar los filtros.");
         setFiltersData(null);
       } finally {
         setFiltersLoading(false);
       }
     };
-
     void loadFilters();
   }, [token]);
 
   useEffect(() => {
     const loadSeries = async () => {
-      if (!token) {
-        setSeriesData(null);
-        return;
-      }
-
-      if (!filtersData) {
-        return;
-      }
-
+      if (!token) { setSeriesData(null); return; }
+      if (!filtersData) return;
       setSeriesLoading(true);
       setSeriesError(null);
-
       try {
         const searchParams = new URLSearchParams();
-
-        for (const empresaId of selectedEmpresas) {
-          searchParams.append("empresa_ids", String(empresaId));
-        }
-
-        for (const anio of selectedAnios) {
-          searchParams.append("anios", String(anio));
-        }
-
-        for (const mes of selectedMeses) {
-          searchParams.append("meses", String(mes));
-        }
-
+        for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
+        for (const anio of selectedAnios) searchParams.append("anios", String(anio));
+        for (const mes of selectedMeses) searchParams.append("meses", String(mes));
         searchParams.set("aggregation", "avg");
-
         const response = await fetch(
           `${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`,
-          {
-            method: "GET",
-            headers: getAuthHeaders(token),
-          }
+          { method: "GET", headers: getAuthHeaders(token) }
         );
-
         if (!response.ok) {
           const text = await response.text();
           throw new Error(text || "No se pudieron cargar las gráficas.");
         }
-
         const json = (await response.json()) as GraficosSeriesResponse;
         setSeriesData(json);
       } catch (err) {
-        setSeriesError(
-          err instanceof Error ? err.message : "No se pudieron cargar las gráficas."
-        );
+        setSeriesError(err instanceof Error ? err.message : "No se pudieron cargar las gráficas.");
         setSeriesData(null);
       } finally {
         setSeriesLoading(false);
       }
     };
-
     void loadSeries();
   }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
 
   const empresaOptions = useMemo<MultiCheckOption[]>(
-    () =>
-      (filtersData?.empresas ?? []).map((item) => ({
-        value: item.id,
-        label: item.nombre,
-      })),
+    () => (filtersData?.empresas ?? []).map((item) => ({ value: item.id, label: item.nombre })),
     [filtersData]
   );
-
   const anioOptions = useMemo<MultiCheckOption[]>(
-    () =>
-      (filtersData?.anios ?? []).map((item) => ({
-        value: item,
-        label: String(item),
-      })),
+    () => (filtersData?.anios ?? []).map((item) => ({ value: item, label: String(item) })),
     [filtersData]
   );
-
   const mesOptions = useMemo<MultiCheckOption[]>(
-    () =>
-      (filtersData?.meses ?? []).map((item) => ({
-        value: item,
-        label: MESES_LABEL[item] ?? String(item),
-      })),
+    () => (filtersData?.meses ?? []).map((item) => ({ value: item, label: MESES_LABEL[item] ?? String(item) })),
     [filtersData]
   );
 
   const selectedEmpresaNames = useMemo(() => {
-    if (!filtersData?.empresas?.length) {
+    if (!filtersData?.empresas?.length) return "Todas las empresas";
+    if (selectedEmpresas.length === 0 || selectedEmpresas.length === filtersData.empresas.length)
       return "Todas las empresas";
-    }
-
-    if (selectedEmpresas.length === 0 || selectedEmpresas.length === filtersData.empresas.length) {
-      return "Todas las empresas";
-    }
-
     const names = filtersData.empresas
-      .filter((empresa) => selectedEmpresas.includes(empresa.id))
-      .map((empresa) => empresa.nombre);
-
-    if (names.length === 0) {
-      return "Todas las empresas";
-    }
-
+      .filter((e) => selectedEmpresas.includes(e.id))
+      .map((e) => e.nombre);
+    if (names.length === 0) return "Todas las empresas";
     return names.join(" · ");
   }, [filtersData, selectedEmpresas]);
 
-  const energiaFacturadaRows = useMemo(
-    () => buildChartRows(seriesData?.energia_facturada ?? null),
+  // ── Gráfica 1 ────────────────────────────────────────────────────────
+  const grafica1Series = useMemo(() => {
+    const result: GraficoSerie[] = [];
+    if (grafica1Flags.a) {
+      result.push(
+        ...relabelSeries(
+          (seriesData?.energia_facturada.series ?? []).map((s) => ({ ...s, serie_key: `ef_${s.serie_key}` })),
+          "E neta facturada"
+        )
+      );
+    }
+    if (grafica1Flags.b) {
+      const pfFinal = (seriesData?.energias_pf.series ?? []).find((s) => s.serie_key === "pf_final");
+      if (pfFinal) result.push({ ...pfFinal, serie_label: "E PF Final" });
+    }
+    return result;
+  }, [seriesData, grafica1Flags]);
+
+  const grafica1Rows = useMemo(() => {
+    const map = new Map<string, ChartRow>();
+    if (grafica1Flags.a) {
+      for (const serie of seriesData?.energia_facturada.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`ef_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
+    if (grafica1Flags.b) {
+      const pfFinal = (seriesData?.energias_pf.series ?? []).find((s) => s.serie_key === "pf_final");
+      if (pfFinal) {
+        for (const point of pfFinal.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current["pf_final"] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
+  }, [seriesData, grafica1Flags]);
+
+  const grafica1Subtitle = useMemo(() => {
+    if (grafica1Flags.a && grafica1Flags.b) return "Histórico de E neta facturada y E PF Final.";
+    if (grafica1Flags.a) return "Histórico de E neta facturada.";
+    return "Histórico de E PF Final.";
+  }, [grafica1Flags]);
+
+  // ── Gráfica 2: selector multi independiente ───────────────────────────
+  // Construimos las series activas combinando perdidas (pct) y perdidas_ventanas
+  const grafica2Series = useMemo(() => {
+    const result: GraficoSerie[] = [];
+    if (grafica2Active.has("pct")) {
+      result.push(
+        ...relabelSeries(
+          (seriesData?.perdidas.series ?? []).map((s) => ({ ...s, serie_key: `pct_${s.serie_key}` })),
+          "Pérdidas (%)"
+        )
+      );
+    }
+    // Las 4 ventanas vienen del grupo perdidas_ventanas con serie_key: perd_m2, perd_m7, perd_m11, perd_art15
+    for (const opcion of GRAFICA2_OPCIONES.filter((o) => o.key !== "pct")) {
+      if (grafica2Active.has(opcion.key)) {
+        const serie = (seriesData?.perdidas_ventanas.series ?? []).find(
+          (s) => s.serie_key === opcion.key
+        );
+        if (serie) result.push({ ...serie, serie_label: opcion.label });
+      }
+    }
+    return result;
+  }, [seriesData, grafica2Active]);
+
+  const grafica2Rows = useMemo(() => {
+    const map = new Map<string, ChartRow>();
+    if (grafica2Active.has("pct")) {
+      for (const serie of seriesData?.perdidas.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`pct_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
+    for (const opcion of GRAFICA2_OPCIONES.filter((o) => o.key !== "pct")) {
+      if (grafica2Active.has(opcion.key)) {
+        const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key);
+        if (serie) {
+          for (const point of serie.points) {
+            const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+            current[opcion.key] = point.value;
+            map.set(point.period_key, current);
+          }
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
+  }, [seriesData, grafica2Active]);
+
+  const grafica2Subtitle = useMemo(() => {
+    const labels = GRAFICA2_OPCIONES.filter((o) => grafica2Active.has(o.key)).map((o) => o.label);
+    return `Histórico de ${labels.join(", ")}.`;
+  }, [grafica2Active]);
+
+  // Pérdidas kWh — siempre en tooltip como info extra (no se grafica)
+  const perdidasKwhByLabel = useMemo(
+    () => buildTooltipExtraByLabel(seriesData?.perdidas_kwh ?? null, "Pérdidas E facturada (kWh)"),
     [seriesData]
   );
 
-  const perdidasRows = useMemo(
-    () => buildChartRows(seriesData?.perdidas ?? null),
-    [seriesData]
-  );
+  // ── Gráfica 3 ────────────────────────────────────────────────────────
+  const energiasPfSinFinal = useMemo((): GraficoSeriesGroup => ({
+    series: (seriesData?.energias_pf.series ?? []).filter((s) => s.serie_key !== "pf_final"),
+  }), [seriesData]);
 
-  const energiasPublicadasRows = useMemo(
-    () => buildChartRows(seriesData?.energias_publicadas ?? null),
-    [seriesData]
-  );
+  const grafica3Series = useMemo(() => {
+    const result: GraficoSerie[] = [];
+    if (grafica3Flags.a) result.push(...(seriesData?.energias_publicadas.series ?? []));
+    if (grafica3Flags.b) result.push(...energiasPfSinFinal.series);
+    return result;
+  }, [seriesData, grafica3Flags, energiasPfSinFinal]);
 
-  const autoconsumoRows = useMemo(
-    () => buildChartRows(seriesData?.autoconsumo ?? null),
-    [seriesData]
-  );
+  const grafica3Rows = useMemo(() => {
+    const groups: (GraficoSeriesGroup | null)[] = [];
+    if (grafica3Flags.a) groups.push(seriesData?.energias_publicadas ?? null);
+    if (grafica3Flags.b) groups.push(energiasPfSinFinal);
+    return buildChartRowsCombined(groups);
+  }, [seriesData, grafica3Flags, energiasPfSinFinal]);
 
-  const energiaGeneradaRows = useMemo(
-    () => buildChartRows(seriesData?.energia_generada ?? null),
-    [seriesData]
-  );
+  const grafica3Subtitle = useMemo(() => {
+    if (grafica3Flags.a && grafica3Flags.b)
+      return "Histórico de E neta publicada (M2, M7, M11, ART15) y E PF (M2, M7, M11, ART15).";
+    if (grafica3Flags.a) return "Histórico de E neta publicada M2, M7, M11 y ART15.";
+    return "Histórico de E PF M2, M7, M11 y ART15.";
+  }, [grafica3Flags]);
 
-  const energiaFacturadaSeries = useMemo(
-    () => relabelSeries(
-      seriesData?.energia_facturada.series ?? [],
-      "E neta facturada"
-    ),
-    [seriesData]
-  );
+  // ── Gráfica 4 ────────────────────────────────────────────────────────
+  const grafica4Series = useMemo(() => {
+    const result: GraficoSerie[] = [];
+    if (grafica4Flags.a) {
+      result.push(
+        ...(seriesData?.autoconsumo.series ?? []).map((s) => ({
+          ...s,
+          serie_key: `autoc_${s.serie_key}`,
+          serie_label: seriesData?.autoconsumo.series.length === 1 ? "E autoconsumo" : s.serie_label,
+        }))
+      );
+    }
+    if (grafica4Flags.b) {
+      result.push(
+        ...(seriesData?.energia_generada.series ?? []).map((s) => ({
+          ...s,
+          serie_key: `gen_${s.serie_key}`,
+          serie_label: seriesData?.energia_generada.series.length === 1 ? "E generada" : s.serie_label,
+        }))
+      );
+    }
+    return result;
+  }, [seriesData, grafica4Flags]);
 
-  const perdidasSeries = useMemo(
-    () => relabelSeries(
-      seriesData?.perdidas.series ?? [],
-      "Pérdidas E facturada (%)"
-    ),
-    [seriesData]
-  );
+  const grafica4Rows = useMemo(() => {
+    const map = new Map<string, ChartRow>();
+    if (grafica4Flags.a) {
+      for (const serie of seriesData?.autoconsumo.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`autoc_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
+    if (grafica4Flags.b) {
+      for (const serie of seriesData?.energia_generada.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`gen_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
+  }, [seriesData, grafica4Flags]);
 
-  const autoconsumoSeries = useMemo(
-    () => relabelSeries(
-      seriesData?.autoconsumo.series ?? [],
-      "E autoconsumo"
-    ),
-    [seriesData]
-  );
+  const grafica4Subtitle = useMemo(() => {
+    if (grafica4Flags.a && grafica4Flags.b) return "Histórico de E autoconsumo y E generada.";
+    if (grafica4Flags.a) return "Histórico de E autoconsumo.";
+    return "Histórico de E generada.";
+  }, [grafica4Flags]);
 
-  const energiaGeneradaSeries = useMemo(
-    () => relabelSeries(
-      seriesData?.energia_generada.series ?? [],
-      "E generada"
-    ),
-    [seriesData]
-  );
-
-  const toggleSelection = (
-    value: number,
-    setter: React.Dispatch<React.SetStateAction<number[]>>
-  ) => {
-    setter((prev) =>
-      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
-    );
+  const toggleSelection = (value: number, setter: React.Dispatch<React.SetStateAction<number[]>>) => {
+    setter((prev) => prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]);
   };
 
-  const selectAll = (
-    values: number[],
-    selected: number[],
-    setter: React.Dispatch<React.SetStateAction<number[]>>
-  ) => {
-    if (selected.length === values.length) {
-      setter([]);
-      return;
-    }
-
+  const selectAll = (values: number[], selected: number[], setter: React.Dispatch<React.SetStateAction<number[]>>) => {
+    if (selected.length === values.length) { setter([]); return; }
     setter(values);
   };
 
@@ -716,69 +849,30 @@ export default function GraficosSection({ token, currentUser }: Props) {
       <div className="flex min-w-0 flex-col gap-4">
         <div>
           <h3 className="ui-card-title text-base md:text-lg">GRÁFICOS</h3>
-          <p className="ui-card-subtitle mt-1">
-            Histórico visual de medidas por empresa, año y mes.
-          </p>
+          <p className="ui-card-subtitle mt-1">Histórico visual de medidas por empresa, año y mes.</p>
           <div className="ui-muted mt-1 text-[11px]">
             Usuario: {currentUser?.email ?? "—"} · Tenant: {currentUser?.tenant_id ?? "—"}
           </div>
         </div>
 
-        {filtersError && (
-          <div className="ui-alert ui-alert--danger">
-            Error cargando filtros: {filtersError}
-          </div>
-        )}
-
-        {seriesError && (
-          <div className="ui-alert ui-alert--danger">
-            Error cargando gráficas: {seriesError}
-          </div>
-        )}
+        {filtersError && <div className="ui-alert ui-alert--danger">Error cargando filtros: {filtersError}</div>}
+        {seriesError && <div className="ui-alert ui-alert--danger">Error cargando gráficas: {seriesError}</div>}
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-3">
           <FilterDropdown
-            title="Empresa"
-            options={empresaOptions}
-            selectedValues={selectedEmpresas}
+            title="Empresa" options={empresaOptions} selectedValues={selectedEmpresas}
             onToggle={(value) => toggleSelection(value, setSelectedEmpresas)}
-            onSelectAll={() =>
-              selectAll(
-                empresaOptions.map((item) => item.value),
-                selectedEmpresas,
-                setSelectedEmpresas
-              )
-            }
+            onSelectAll={() => selectAll(empresaOptions.map((item) => item.value), selectedEmpresas, setSelectedEmpresas)}
           />
-
           <FilterDropdown
-            title="Año"
-            options={anioOptions}
-            selectedValues={selectedAnios}
+            title="Año" options={anioOptions} selectedValues={selectedAnios} allLabel="Todos"
             onToggle={(value) => toggleSelection(value, setSelectedAnios)}
-            onSelectAll={() =>
-              selectAll(
-                anioOptions.map((item) => item.value),
-                selectedAnios,
-                setSelectedAnios
-              )
-            }
-            allLabel="Todos"
+            onSelectAll={() => selectAll(anioOptions.map((item) => item.value), selectedAnios, setSelectedAnios)}
           />
-
           <FilterDropdown
-            title="Mes"
-            options={mesOptions}
-            selectedValues={selectedMeses}
+            title="Mes" options={mesOptions} selectedValues={selectedMeses} allLabel="Todos"
             onToggle={(value) => toggleSelection(value, setSelectedMeses)}
-            onSelectAll={() =>
-              selectAll(
-                mesOptions.map((item) => item.value),
-                selectedMeses,
-                setSelectedMeses
-              )
-            }
-            allLabel="Todos"
+            onSelectAll={() => selectAll(mesOptions.map((item) => item.value), selectedMeses, setSelectedMeses)}
           />
         </div>
 
@@ -788,44 +882,58 @@ export default function GraficosSection({ token, currentUser }: Props) {
 
         <div className="grid min-w-0 gap-4">
           <ChartCard
-            title="Gráfica 1. Evolución de energía facturada"
-            subtitle="Histórico de E neta facturada."
+            title="Gráfica 1. Evolución de energía facturada / E PF Final"
+            subtitle={grafica1Subtitle}
             companyLabel={selectedEmpresaNames}
-            data={energiaFacturadaRows}
-            series={energiaFacturadaSeries}
+            data={grafica1Rows}
+            series={grafica1Series}
+            headerExtra={
+              <TwoFlagsSelector
+                labelA="E neta fact." labelB="E PF Final"
+                flags={grafica1Flags} onChange={setGrafica1Flags}
+              />
+            }
           />
 
           <ChartCard
             title="Gráfica 2. Evolución de pérdidas"
-            subtitle="Histórico de Pérdidas E facturada (%)."
+            subtitle={grafica2Subtitle}
             companyLabel={selectedEmpresaNames}
-            data={perdidasRows}
-            series={perdidasSeries}
+            data={grafica2Rows}
+            series={grafica2Series}
             yAxisFormatter={(value) => `${formatNumberEs(value)}%`}
+            tooltipExtraByLabel={perdidasKwhByLabel}
+            headerExtra={
+              <Grafica2Selector active={grafica2Active} onChange={setGrafica2Active} />
+            }
           />
 
           <ChartCard
-            title="Gráfica 3. Evolución de energías publicadas"
-            subtitle="Histórico de E neta publicada M2, M7, M11 y ART15."
+            title="Gráfica 3. Evolución de energías publicadas / E PF"
+            subtitle={grafica3Subtitle}
             companyLabel={selectedEmpresaNames}
-            data={energiasPublicadasRows}
-            series={seriesData?.energias_publicadas.series ?? []}
+            data={grafica3Rows}
+            series={grafica3Series}
+            headerExtra={
+              <TwoFlagsSelector
+                labelA="E neta publ." labelB="E PF"
+                flags={grafica3Flags} onChange={setGrafica3Flags}
+              />
+            }
           />
 
           <ChartCard
-            title="Gráfica 4. Evolución de energía autoconsumos"
-            subtitle="Histórico de E autoconsumo."
+            title="Gráfica 4. Evolución de autoconsumo / energía generada"
+            subtitle={grafica4Subtitle}
             companyLabel={selectedEmpresaNames}
-            data={autoconsumoRows}
-            series={autoconsumoSeries}
-          />
-
-          <ChartCard
-            title="Gráfica 5. Evolución de energía generada"
-            subtitle="Histórico de E generada."
-            companyLabel={selectedEmpresaNames}
-            data={energiaGeneradaRows}
-            series={energiaGeneradaSeries}
+            data={grafica4Rows}
+            series={grafica4Series}
+            headerExtra={
+              <TwoFlagsSelector
+                labelA="E autoconsumo" labelB="E generada"
+                flags={grafica4Flags} onChange={setGrafica4Flags}
+              />
+            }
           />
         </div>
       </div>

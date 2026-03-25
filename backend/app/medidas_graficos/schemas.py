@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict
 class GraficoEmpresaOption(BaseModel):
     id: int
     nombre: str
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -51,6 +50,9 @@ class GraficosSeriesResponse(BaseModel):
     scope: GraficosScope
     energia_facturada: GraficoSeriesGroup
     perdidas: GraficoSeriesGroup
+    perdidas_kwh: GraficoSeriesGroup
+    perdidas_ventanas: GraficoSeriesGroup     # ← NUEVO
     energias_publicadas: GraficoSeriesGroup
+    energias_pf: GraficoSeriesGroup
     autoconsumo: GraficoSeriesGroup
     energia_generada: GraficoSeriesGroup
