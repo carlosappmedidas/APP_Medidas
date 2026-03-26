@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState } from "react";
 import type { LossesConsistencyResponse } from "../hooks/useDashboardLossesConsistency";
 
@@ -36,14 +35,12 @@ function formatPctVal(v: number | null): string {
 type RowData = {
   label: string;
   diff: number | null;
-
   fromLabel: string;
   fromKwh: number | null;
   fromLossesKwh: number | null;
   fromPct: number | null;
   fromPfKwh: number | null;
   fromPfLabel: string;
-
   toLabel: string;
   toKwh: number | null;
   toLossesKwh: number | null;
@@ -56,33 +53,24 @@ type Props = {
   data: LossesConsistencyResponse | null;
   loading: boolean;
   error: string | null;
+  compact?: boolean;
 };
 
 function getLossesLabel(label: string, isFrom: boolean, rowLabel: string): string {
-  if (isFrom && rowLabel === "m-1 vs m-2") {
-    return "Pérdidas E facturada";
-  }
-
+  if (isFrom && rowLabel === "m-1 vs m-2") return "Pérdidas E facturada";
   if (label === "E NETA M2") return "Pérdidas M2";
   if (label === "E NETA M7") return "Pérdidas M7";
   if (label === "E NETA M11") return "Pérdidas M11";
   if (label === "E NETA ART15") return "Pérdidas ART15";
-
   return "Pérdidas";
 }
 
-export default function LossesConsistencyCard({
-  data,
-  loading,
-  error,
-}: Props) {
-  const [tooltip, setTooltip] = useState<{ row: RowData; y: number } | null>(
-    null
-  );
+export default function LossesConsistencyCard({ data, loading, error, compact = false }: Props) {
+  const [tooltip, setTooltip] = useState<{ row: RowData; y: number } | null>(null);
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-[#111827] p-4 text-sm text-white/70">
+      <div className={compact ? "text-[10px] ui-muted text-center py-2" : "rounded-2xl border border-white/10 bg-[#111827] p-4 text-sm text-white/70"}>
         Cargando...
       </div>
     );
@@ -90,7 +78,7 @@ export default function LossesConsistencyCard({
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-500/20 bg-[#111827] p-4 text-sm text-red-300">
+      <div className={compact ? "text-[10px] ui-muted text-center py-2" : "rounded-2xl border border-red-500/20 bg-[#111827] p-4 text-sm text-red-300"}>
         {error}
       </div>
     );
@@ -98,7 +86,7 @@ export default function LossesConsistencyCard({
 
   if (!data) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-[#111827] p-4 text-sm text-white/70">
+      <div className={compact ? "text-[10px] ui-muted text-center py-2" : "rounded-2xl border border-white/10 bg-[#111827] p-4 text-sm text-white/70"}>
         Sin datos
       </div>
     );
@@ -110,14 +98,12 @@ export default function LossesConsistencyCard({
     {
       label: "m-1 vs m-2",
       diff: comparaciones.m1_vs_m2,
-
       fromLabel: "E NETA FACTURADA",
       fromKwh: ventanas.m1.kwh,
       fromLossesKwh: ventanas.m1.perdidas_kwh,
       fromPct: ventanas.m1.perdidas_pct,
       fromPfKwh: ventanas.m1.pf_kwh,
       fromPfLabel: "E PF FINAL",
-
       toLabel: "E NETA M2",
       toKwh: ventanas.m2.kwh,
       toLossesKwh: ventanas.m2.perdidas_kwh,
@@ -128,14 +114,12 @@ export default function LossesConsistencyCard({
     {
       label: "m-2 vs m-7",
       diff: comparaciones.m2_vs_m7,
-
       fromLabel: "E NETA M2",
       fromKwh: ventanas.m2.kwh,
       fromLossesKwh: ventanas.m2.perdidas_kwh,
       fromPct: ventanas.m2.perdidas_pct,
       fromPfKwh: ventanas.m2.pf_kwh,
       fromPfLabel: "E PF M2",
-
       toLabel: "E NETA M7",
       toKwh: ventanas.m7.kwh,
       toLossesKwh: ventanas.m7.perdidas_kwh,
@@ -146,14 +130,12 @@ export default function LossesConsistencyCard({
     {
       label: "m-7 vs m-11",
       diff: comparaciones.m7_vs_m11,
-
       fromLabel: "E NETA M7",
       fromKwh: ventanas.m7.kwh,
       fromLossesKwh: ventanas.m7.perdidas_kwh,
       fromPct: ventanas.m7.perdidas_pct,
       fromPfKwh: ventanas.m7.pf_kwh,
       fromPfLabel: "E PF M7",
-
       toLabel: "E NETA M11",
       toKwh: ventanas.m11.kwh,
       toLossesKwh: ventanas.m11.perdidas_kwh,
@@ -164,14 +146,12 @@ export default function LossesConsistencyCard({
     {
       label: "m-11 vs Art15",
       diff: comparaciones.m11_vs_art15,
-
       fromLabel: "E NETA M11",
       fromKwh: ventanas.m11.kwh,
       fromLossesKwh: ventanas.m11.perdidas_kwh,
       fromPct: ventanas.m11.perdidas_pct,
       fromPfKwh: ventanas.m11.pf_kwh,
       fromPfLabel: "E PF M11",
-
       toLabel: "E NETA ART15",
       toKwh: ventanas.art15.kwh,
       toLossesKwh: ventanas.art15.perdidas_kwh,
@@ -181,23 +161,84 @@ export default function LossesConsistencyCard({
     },
   ];
 
+  // ── Modo compact: grid 2×2 inline sin wrapper propio ────────────────
+  if (compact) {
+    return (
+      <>
+        <div className="grid grid-cols-2 gap-1 w-full">
+          {rows.map((row) => {
+            const color = getArrowColor(row.diff);
+            const arrow = row.diff === null ? null : row.diff >= 0 ? "▲" : "▼";
+            return (
+              <div
+                key={row.label}
+                className="flex flex-col items-center justify-center rounded-lg px-1.5 py-1 cursor-default"
+                style={{ background: "var(--field-bg)" }}
+                onMouseEnter={(e) => {
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setTooltip({ row, y: rect.bottom });
+                }}
+                onMouseLeave={() => setTooltip(null)}
+              >
+                <div className="text-[8px] ui-muted mb-0.5">{row.label}</div>
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[11px] font-semibold" style={{ color }}>
+                    {formatPct(row.diff)}
+                  </span>
+                  {arrow && (
+                    <span className="text-[10px]" style={{ color }}>{arrow}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Tooltip — mismo que el modo normal */}
+        {tooltip && (
+          <div
+            className="fixed left-1/2 z-[9999] w-[380px] -translate-x-1/2 rounded-2xl border border-white/10 bg-[#0B1220] p-4 text-sm text-white shadow-2xl"
+            style={{ top: tooltip.y + 8 }}
+            onMouseEnter={() => setTooltip(tooltip)}
+            onMouseLeave={() => setTooltip(null)}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-semibold text-white">{tooltip.row.label}</div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between gap-4"><span>{tooltip.row.fromLabel}</span><span>{formatKwh(tooltip.row.fromKwh)}</span></div>
+              <div className="flex justify-between gap-4"><span>{tooltip.row.fromPfLabel}</span><span>{formatKwh(tooltip.row.fromPfKwh)}</span></div>
+              <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.fromLabel, true, tooltip.row.label)} (kWh)</span><span>{formatKwh(tooltip.row.fromLossesKwh)}</span></div>
+              <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.fromLabel, true, tooltip.row.label)} (%)</span><span>{formatPctVal(tooltip.row.fromPct)}</span></div>
+              <hr className="my-3 border-white/10" />
+              <div className="flex justify-between gap-4"><span>{tooltip.row.toLabel}</span><span>{formatKwh(tooltip.row.toKwh)}</span></div>
+              <div className="flex justify-between gap-4"><span>{tooltip.row.toPfLabel}</span><span>{formatKwh(tooltip.row.toPfKwh)}</span></div>
+              <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.toLabel, false, tooltip.row.label)} (kWh)</span><span>{formatKwh(tooltip.row.toLossesKwh)}</span></div>
+              <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.toLabel, false, tooltip.row.label)} (%)</span><span>{formatPctVal(tooltip.row.toPct)}</span></div>
+              <hr className="my-3 border-white/10" />
+              <div className="flex justify-between gap-4 font-semibold"><span>Diferencia</span><span>{formatPct(tooltip.row.diff)}</span></div>
+            </div>
+            <div className="mt-4 grid grid-cols-5 gap-1 text-center text-[10px] text-white/45">
+              <span>&lt;-3pp</span><span>-3 a -1pp</span><span>-1 a +5pp</span><span>+5 a +7pp</span><span>&gt;+7pp</span>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ── Modo normal: igual que antes ────────────────────────────────────
   return (
     <>
       <div className="rounded-2xl border border-white/10 bg-[#111827] p-4 shadow-sm">
         <div className="mb-3">
-          <h3 className="text-sm font-semibold text-white">
-            Consistencia de pérdidas
-          </h3>
-          <p className="text-xs text-white/50">
-            Comparativa secuencial entre publicaciones
-          </p>
+          <h3 className="text-sm font-semibold text-white">Consistencia de pérdidas</h3>
+          <p className="text-xs text-white/50">Comparativa secuencial entre publicaciones</p>
         </div>
-
         <div className="space-y-2">
           {rows.map((row) => {
             const color = getArrowColor(row.diff);
             const arrow = row.diff === null ? null : row.diff >= 0 ? "▲" : "▼";
-
             return (
               <div
                 key={row.label}
@@ -208,25 +249,13 @@ export default function LossesConsistencyCard({
                 }}
                 onMouseLeave={() => setTooltip(null)}
               >
-                <span className="text-sm font-medium text-white/80">
-                  {row.label}
-                </span>
-
+                <span className="text-sm font-medium text-white/80">{row.label}</span>
                 <div className="flex items-center gap-2">
-                  <span
-                    className="text-sm font-semibold"
-                    style={{ color }}
-                  >
+                  <span className="text-sm font-semibold" style={{ color }}>
                     {formatPct(row.diff)}
                   </span>
-
                   {arrow ? (
-                    <span
-                      className="text-sm"
-                      style={{ color }}
-                    >
-                      {arrow}
-                    </span>
+                    <span className="text-sm" style={{ color }}>{arrow}</span>
                   ) : (
                     <span className="text-sm text-white/40">—</span>
                   )}
@@ -245,68 +274,23 @@ export default function LossesConsistencyCard({
           onMouseLeave={() => setTooltip(null)}
         >
           <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold text-white">
-              {tooltip.row.label}
-            </div>
+            <div className="text-sm font-semibold text-white">{tooltip.row.label}</div>
           </div>
-
           <div className="space-y-2">
-            <div className="flex justify-between gap-4">
-              <span>{tooltip.row.fromLabel}</span>
-              <span>{formatKwh(tooltip.row.fromKwh)}</span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span>{tooltip.row.fromPfLabel}</span>
-              <span>{formatKwh(tooltip.row.fromPfKwh)}</span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span>{getLossesLabel(tooltip.row.fromLabel, true, tooltip.row.label)} (kWh)</span>
-              <span>{formatKwh(tooltip.row.fromLossesKwh)}</span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span>{getLossesLabel(tooltip.row.fromLabel, true, tooltip.row.label)} (%)</span>
-              <span>{formatPctVal(tooltip.row.fromPct)}</span>
-            </div>
-
+            <div className="flex justify-between gap-4"><span>{tooltip.row.fromLabel}</span><span>{formatKwh(tooltip.row.fromKwh)}</span></div>
+            <div className="flex justify-between gap-4"><span>{tooltip.row.fromPfLabel}</span><span>{formatKwh(tooltip.row.fromPfKwh)}</span></div>
+            <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.fromLabel, true, tooltip.row.label)} (kWh)</span><span>{formatKwh(tooltip.row.fromLossesKwh)}</span></div>
+            <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.fromLabel, true, tooltip.row.label)} (%)</span><span>{formatPctVal(tooltip.row.fromPct)}</span></div>
             <hr className="my-3 border-white/10" />
-
-            <div className="flex justify-between gap-4">
-              <span>{tooltip.row.toLabel}</span>
-              <span>{formatKwh(tooltip.row.toKwh)}</span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span>{tooltip.row.toPfLabel}</span>
-              <span>{formatKwh(tooltip.row.toPfKwh)}</span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span>{getLossesLabel(tooltip.row.toLabel, false, tooltip.row.label)} (kWh)</span>
-              <span>{formatKwh(tooltip.row.toLossesKwh)}</span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span>{getLossesLabel(tooltip.row.toLabel, false, tooltip.row.label)} (%)</span>
-              <span>{formatPctVal(tooltip.row.toPct)}</span>
-            </div>
-
+            <div className="flex justify-between gap-4"><span>{tooltip.row.toLabel}</span><span>{formatKwh(tooltip.row.toKwh)}</span></div>
+            <div className="flex justify-between gap-4"><span>{tooltip.row.toPfLabel}</span><span>{formatKwh(tooltip.row.toPfKwh)}</span></div>
+            <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.toLabel, false, tooltip.row.label)} (kWh)</span><span>{formatKwh(tooltip.row.toLossesKwh)}</span></div>
+            <div className="flex justify-between gap-4"><span>{getLossesLabel(tooltip.row.toLabel, false, tooltip.row.label)} (%)</span><span>{formatPctVal(tooltip.row.toPct)}</span></div>
             <hr className="my-3 border-white/10" />
-
-            <div className="flex justify-between gap-4 font-semibold">
-              <span>Diferencia</span>
-              <span>{formatPct(tooltip.row.diff)}</span>
-            </div>
+            <div className="flex justify-between gap-4 font-semibold"><span>Diferencia</span><span>{formatPct(tooltip.row.diff)}</span></div>
           </div>
-
           <div className="mt-4 grid grid-cols-5 gap-1 text-center text-[10px] text-white/45">
-            <span>&lt;-3pp</span>
-            <span>-3 a -1pp</span>
-            <span>-1 a +5pp</span>
-            <span>+5 a +7pp</span>
-            <span>&gt;+7pp</span>
+            <span>&lt;-3pp</span><span>-3 a -1pp</span><span>-1 a +5pp</span><span>+5 a +7pp</span><span>&gt;+7pp</span>
           </div>
         </div>
       )}
