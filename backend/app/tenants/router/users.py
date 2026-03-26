@@ -5,33 +5,38 @@ from typing import Any, List, Sequence, cast
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.core.security import get_password_hash
-from app.core.auth import get_current_user
-from app.tenants.models import User
-from app.tenants.schemas import UserRead, UserCreate, UserUpdate
 from app.empresas.models import Empresa
+from app.tenants.models import User
+from app.tenants.schemas import UserCreate, UserRead, UserUpdate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 PROTECTED_USER_EMAIL = ""
-ALLOWED_TENANT_ROLES: Sequence[str] = ("user", "admin")
+ALLOWED_TENANT_ROLES: Sequence[str] = ("user", "admin", "viewer")
 
 
 def _as_any(obj: Any) -> Any:
     return cast(Any, obj)
 
+
 def _u_id(u: User) -> int:
     return cast(int, getattr(u, "id"))
+
 
 def _u_tenant_id(u: User) -> int:
     return cast(int, getattr(u, "tenant_id"))
 
+
 def _u_email(u: User) -> str:
     return str(getattr(u, "email"))
 
+
 def _u_rol(u: User) -> str:
     return str(getattr(u, "rol"))
+
 
 def _validate_empresas_permitidas(
     db: Session,

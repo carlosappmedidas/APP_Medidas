@@ -107,7 +107,6 @@ const TABLAS_OPEN_STORAGE_KEY = "ui_tablas_open";
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
-
     try {
       return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     } catch {
@@ -116,11 +115,9 @@ export default function HomePage() {
   });
 
   const [authReady, setAuthReady] = useState(false);
-
   const [activeTab, setActiveTab] = useState<MainTab>("dashboard");
   const [medidasOpen, setMedidasOpen] = useState(false);
   const [tablasOpen, setTablasOpen] = useState(false);
-
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [columnOrder, setColumnOrder] = useState<string[]>(ALL_COLUMNS_META.map((c) => c.id));
@@ -277,11 +274,14 @@ export default function HomePage() {
     setHomeMenuOpen(false);
   }, [activeTab]);
 
+  // ─── Permisos por rol ────────────────────────────────────────────────
+  const isViewer = currentUser?.rol === "viewer";
   const canManageUsers =
-    currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
-
+    currentUser &&
+    (currentUser.rol === "admin" || currentUser.rol === "owner");
   const canSeeAjustes = !!canManageUsers;
   const isSuperuser = !!currentUser?.is_superuser;
+  // ────────────────────────────────────────────────────────────────────
 
   const resetUiColors = () => {
     window.dispatchEvent(new CustomEvent("ui-theme-reset"));
@@ -391,6 +391,7 @@ export default function HomePage() {
           <nav className="ui-nav">
             <div className="ui-nav-section-title">Menú</div>
 
+            {/* Dashboard — visible para todos */}
             <button
               onClick={() => setActiveTab("dashboard")}
               className={[
@@ -401,6 +402,7 @@ export default function HomePage() {
               <span>Dashboard</span>
             </button>
 
+            {/* Medidas — visible para todos */}
             <div>
               <button
                 onClick={handleMedidasClick}
@@ -422,46 +424,51 @@ export default function HomePage() {
 
               {medidasOpen && (
                 <div className="ui-nav-sub">
-                  <button
-                    type="button"
-                    onClick={handleTablasClick}
-                    className={[
-                      "ui-nav-subitem",
-                      activeTab === "tablas-general" || activeTab === "tablas-ps"
-                        ? "ui-nav-subitem--active"
-                        : "",
-                    ].join(" ")}
-                  >
-                    <span>Tablas</span>
-                    <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
-                  </button>
 
-                  {tablasOpen && (
-                    <div className="ui-nav-sub">
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab("tablas-general")}
-                        className={[
-                          "ui-nav-subitem",
-                          activeTab === "tablas-general" ? "ui-nav-subitem--active" : "",
-                        ].join(" ")}
-                      >
-                        <span>Medidas general</span>
-                      </button>
+                  {/* Tablas — visible para todos */}
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleTablasClick}
+                      className={[
+                        "ui-nav-subitem",
+                        activeTab === "tablas-general" || activeTab === "tablas-ps"
+                          ? "ui-nav-subitem--active"
+                          : "",
+                      ].join(" ")}
+                    >
+                      <span>Tablas</span>
+                      <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
+                    </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab("tablas-ps")}
-                        className={[
-                          "ui-nav-subitem",
-                          activeTab === "tablas-ps" ? "ui-nav-subitem--active" : "",
-                        ].join(" ")}
-                      >
-                        <span>Medidas PS</span>
-                      </button>
-                    </div>
-                  )}
+                    {tablasOpen && (
+                      <div className="ui-nav-sub">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("tablas-general")}
+                          className={[
+                            "ui-nav-subitem",
+                            activeTab === "tablas-general" ? "ui-nav-subitem--active" : "",
+                          ].join(" ")}
+                        >
+                          <span>Medidas general</span>
+                        </button>
 
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("tablas-ps")}
+                          className={[
+                            "ui-nav-subitem",
+                            activeTab === "tablas-ps" ? "ui-nav-subitem--active" : "",
+                          ].join(" ")}
+                        >
+                          <span>Medidas PS</span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+
+                  {/* Objeciones — visible para todos */}
                   <button
                     type="button"
                     onClick={() => setActiveTab("objeciones")}
@@ -473,6 +480,7 @@ export default function HomePage() {
                     <span>Objeciones</span>
                   </button>
 
+                  {/* Calendario REE — visible para todos */}
                   <button
                     type="button"
                     onClick={() => setActiveTab("calendario-ree")}
@@ -484,6 +492,7 @@ export default function HomePage() {
                     <span>Calendario REE</span>
                   </button>
 
+                  {/* Gráficos — visible para todos */}
                   <button
                     type="button"
                     onClick={() => setActiveTab("graficos")}
@@ -494,10 +503,12 @@ export default function HomePage() {
                   >
                     <span>Gráficos</span>
                   </button>
+
                 </div>
               )}
             </div>
 
+            {/* Alertas — visible para todos */}
             <button
               onClick={() => setActiveTab("alertas")}
               className={[
@@ -508,6 +519,7 @@ export default function HomePage() {
               <span>Alertas</span>
             </button>
 
+            {/* Usuarios — solo admin y owner */}
             {canManageUsers && (
               <button
                 onClick={() => setActiveTab("usuarios")}
@@ -520,6 +532,7 @@ export default function HomePage() {
               </button>
             )}
 
+            {/* Clientes — solo superuser */}
             {isSuperuser && (
               <button
                 onClick={() => setActiveTab("clientes")}
@@ -532,16 +545,20 @@ export default function HomePage() {
               </button>
             )}
 
-            <button
-              onClick={() => setActiveTab("carga")}
-              className={[
-                "ui-nav-item",
-                activeTab === "carga" ? "ui-nav-item--active" : "",
-              ].join(" ")}
-            >
-              <span>Carga de datos</span>
-            </button>
+            {/* Carga de datos — oculto para viewer */}
+            {!isViewer && (
+              <button
+                onClick={() => setActiveTab("carga")}
+                className={[
+                  "ui-nav-item",
+                  activeTab === "carga" ? "ui-nav-item--active" : "",
+                ].join(" ")}
+              >
+                <span>Carga de datos</span>
+              </button>
+            )}
 
+            {/* Configuración — solo admin y owner */}
             {canSeeAjustes && (
               <button
                 onClick={() => setActiveTab("ajustes")}
@@ -554,6 +571,7 @@ export default function HomePage() {
               </button>
             )}
 
+            {/* Sistema — solo superuser */}
             {isSuperuser && (
               <button
                 onClick={() => setActiveTab("sistema")}
@@ -639,7 +657,9 @@ export default function HomePage() {
 
         {activeTab === "dashboard" && <DashboardSection token={token} />}
 
-        {activeTab === "medidas" && <MedidasSection token={token} currentUser={currentUser} />}
+        {activeTab === "medidas" && (
+          <MedidasSection token={token} currentUser={currentUser} />
+        )}
 
         {activeTab === "objeciones" && (
           <ObjecionesSection token={token} currentUser={currentUser} />
@@ -653,7 +673,9 @@ export default function HomePage() {
           <GraficosSection token={token} currentUser={currentUser} />
         )}
 
-        {activeTab === "alertas" && <AlertsSection token={token} currentUser={currentUser} />}
+        {activeTab === "alertas" && (
+          <AlertsSection token={token} currentUser={currentUser} />
+        )}
 
         {activeTab === "usuarios" && canManageUsers && <UsersSection token={token} />}
 
@@ -681,7 +703,7 @@ export default function HomePage() {
           />
         )}
 
-        {activeTab === "carga" && <CargaSection token={token} />}
+        {activeTab === "carga" && !isViewer && <CargaSection token={token} />}
 
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="settings-page">

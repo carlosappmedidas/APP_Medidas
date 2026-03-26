@@ -343,6 +343,7 @@ export default function UsersSection({ token }: UsersSectionProps) {
                   >
                     <option value="user">user</option>
                     <option value="admin">admin</option>
+                    <option value="viewer">viewer</option>
                   </select>
                 </div>
                 <div className="flex items-end">
@@ -484,6 +485,7 @@ export default function UsersSection({ token }: UsersSectionProps) {
                             >
                               <option value="user">user</option>
                               <option value="admin">admin</option>
+                              <option value="viewer">viewer</option>
                             </select>
                           ) : (
                             u.rol

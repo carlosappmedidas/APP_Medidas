@@ -23,7 +23,7 @@ from app.empresas.models import Empresa
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 PROTECTED_USER_EMAIL = ""
-ALLOWED_TENANT_ROLES: Sequence[str] = ("user", "admin")
+ALLOWED_TENANT_ROLES: Sequence[str] = ("user", "admin", "viewer")
 
 
 def _as_any(obj: Any) -> Any:
