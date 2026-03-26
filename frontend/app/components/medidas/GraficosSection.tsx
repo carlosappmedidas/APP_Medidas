@@ -61,11 +61,26 @@ type GraficosSeriesResponse = {
   energia_facturada: GraficoSeriesGroup;
   perdidas: GraficoSeriesGroup;
   perdidas_kwh: GraficoSeriesGroup;
-  perdidas_ventanas: GraficoSeriesGroup;     // ← NUEVO
+  perdidas_ventanas: GraficoSeriesGroup;
   energias_publicadas: GraficoSeriesGroup;
   energias_pf: GraficoSeriesGroup;
   autoconsumo: GraficoSeriesGroup;
   energia_generada: GraficoSeriesGroup;
+};
+
+// ← NUEVO: response del endpoint PS
+type GraficosPsSeriesResponse = {
+  filters: {
+    empresa_ids: number[];
+    anios: number[];
+    meses: number[];
+    aggregation: string;
+  };
+  scope: {
+    all_empresas_selected: boolean;
+    aggregation: string;
+  };
+  cups_por_tipo: GraficoSeriesGroup;
 };
 
 type ChartRow = {
@@ -121,11 +136,23 @@ type ChartCardProps = {
 type Grafica2SerieKey = "pct" | "perd_m2" | "perd_m7" | "perd_m11" | "perd_art15";
 
 const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string }[] = [
-  { key: "pct",       label: "Pérdidas (%)"      },
+  { key: "pct",        label: "Pérdidas (%)"      },
   { key: "perd_m2",   label: "Pérdidas M2 (%)"   },
   { key: "perd_m7",   label: "Pérdidas M7 (%)"   },
   { key: "perd_m11",  label: "Pérdidas M11 (%)"  },
-  { key: "perd_art15",label: "Pérdidas ART15 (%)" },
+  { key: "perd_art15", label: "Pérdidas ART15 (%)" },
+];
+
+// ← NUEVO: definición de las 6 series de CUPS para la Gráfica 5
+type Grafica5SerieKey = "cups_t1" | "cups_t2" | "cups_t3" | "cups_t4" | "cups_t5" | "cups_total";
+
+const GRAFICA5_OPCIONES: { key: Grafica5SerieKey; label: string }[] = [
+  { key: "cups_t1",    label: "CUPS Tipo 1" },
+  { key: "cups_t2",    label: "CUPS Tipo 2" },
+  { key: "cups_t3",    label: "CUPS Tipo 3" },
+  { key: "cups_t4",    label: "CUPS Tipo 4" },
+  { key: "cups_t5",    label: "CUPS Tipo 5" },
+  { key: "cups_total", label: "CUPS Total"  },
 ];
 
 const MESES_LABEL: Record<number, string> = {
@@ -506,7 +533,6 @@ function Grafica2Selector({
   const toggle = (key: Grafica2SerieKey) => {
     const next = new Set(active);
     if (next.has(key)) {
-      // Nunca dejar todo vacío
       if (next.size === 1) return;
       next.delete(key);
     } else {
@@ -514,13 +540,56 @@ function Grafica2Selector({
     }
     onChange(next);
   };
-
   return (
     <div
       className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
       style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
     >
       {GRAFICA2_OPCIONES.map((opcion) => {
+        const isActive = active.has(opcion.key);
+        return (
+          <button
+            key={opcion.key}
+            type="button"
+            onClick={() => toggle(opcion.key)}
+            className="rounded px-2 py-0.5 transition-colors"
+            style={{
+              background: isActive ? "var(--primary)" : "transparent",
+              color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)",
+            }}
+          >
+            {opcion.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Selector multi para Gráfica 5 — 6 botones independientes ─────────────
+function Grafica5Selector({
+  active,
+  onChange,
+}: {
+  active: Set<Grafica5SerieKey>;
+  onChange: (next: Set<Grafica5SerieKey>) => void;
+}) {
+  const toggle = (key: Grafica5SerieKey) => {
+    const next = new Set(active);
+    if (next.has(key)) {
+      if (next.size === 1) return;
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    onChange(next);
+  };
+  return (
+    <div
+      className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
+      style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+    >
+      {GRAFICA5_OPCIONES.map((opcion) => {
         const isActive = active.has(opcion.key);
         return (
           <button
@@ -550,17 +619,25 @@ export default function GraficosSection({ token, currentUser }: Props) {
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const [seriesError, setSeriesError] = useState<string | null>(null);
 
+  // ← NUEVO: estado para datos PS (Gráfica 5)
+  const [psSeriesData, setPsSeriesData] = useState<GraficosPsSeriesResponse | null>(null);
+  const [psSeriesLoading, setPsSeriesLoading] = useState(false);
+  const [psSeriesError, setPsSeriesError] = useState<string | null>(null);
+
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
   const [selectedAnios, setSelectedAnios] = useState<number[]>([]);
   const [selectedMeses, setSelectedMeses] = useState<number[]>([]);
 
   const [grafica1Flags, setGrafica1Flags] = useState<TwoFlagsState>({ a: true, b: false });
-  // Gráfica 2: set de keys activas — por defecto solo "pct"
   const [grafica2Active, setGrafica2Active] = useState<Set<Grafica2SerieKey>>(
     new Set(["pct"])
   );
   const [grafica3Flags, setGrafica3Flags] = useState<TwoFlagsState>({ a: true, b: false });
   const [grafica4Flags, setGrafica4Flags] = useState<TwoFlagsState>({ a: true, b: false });
+  // ← NUEVO: Gráfica 5 — por defecto solo CUPS Total
+  const [grafica5Active, setGrafica5Active] = useState<Set<Grafica5SerieKey>>(
+    new Set(["cups_total"])
+  );
 
   useEffect(() => {
     const loadFilters = async () => {
@@ -621,6 +698,38 @@ export default function GraficosSection({ token, currentUser }: Props) {
       }
     };
     void loadSeries();
+  }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
+
+  // ← NUEVO: carga de series PS (Gráfica 5)
+  useEffect(() => {
+    const loadPsSeries = async () => {
+      if (!token) { setPsSeriesData(null); return; }
+      if (!filtersData) return;
+      setPsSeriesLoading(true);
+      setPsSeriesError(null);
+      try {
+        const searchParams = new URLSearchParams();
+        for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
+        for (const anio of selectedAnios) searchParams.append("anios", String(anio));
+        for (const mes of selectedMeses) searchParams.append("meses", String(mes));
+        const response = await fetch(
+          `${API_BASE_URL}/medidas-graficos-ps/series-cups?${searchParams.toString()}`,
+          { method: "GET", headers: getAuthHeaders(token) }
+        );
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "No se pudieron cargar los datos de CUPS.");
+        }
+        const json = (await response.json()) as GraficosPsSeriesResponse;
+        setPsSeriesData(json);
+      } catch (err) {
+        setPsSeriesError(err instanceof Error ? err.message : "No se pudieron cargar los datos de CUPS.");
+        setPsSeriesData(null);
+      } finally {
+        setPsSeriesLoading(false);
+      }
+    };
+    void loadPsSeries();
   }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
 
   const empresaOptions = useMemo<MultiCheckOption[]>(
@@ -695,8 +804,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return "Histórico de E PF Final.";
   }, [grafica1Flags]);
 
-  // ── Gráfica 2: selector multi independiente ───────────────────────────
-  // Construimos las series activas combinando perdidas (pct) y perdidas_ventanas
+  // ── Gráfica 2 ────────────────────────────────────────────────────────
   const grafica2Series = useMemo(() => {
     const result: GraficoSerie[] = [];
     if (grafica2Active.has("pct")) {
@@ -707,12 +815,9 @@ export default function GraficosSection({ token, currentUser }: Props) {
         )
       );
     }
-    // Las 4 ventanas vienen del grupo perdidas_ventanas con serie_key: perd_m2, perd_m7, perd_m11, perd_art15
     for (const opcion of GRAFICA2_OPCIONES.filter((o) => o.key !== "pct")) {
       if (grafica2Active.has(opcion.key)) {
-        const serie = (seriesData?.perdidas_ventanas.series ?? []).find(
-          (s) => s.serie_key === opcion.key
-        );
+        const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key);
         if (serie) result.push({ ...serie, serie_label: opcion.label });
       }
     }
@@ -750,7 +855,6 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return `Histórico de ${labels.join(", ")}.`;
   }, [grafica2Active]);
 
-  // Pérdidas kWh — siempre en tooltip como info extra (no se grafica)
   const perdidasKwhByLabel = useMemo(
     () => buildTooltipExtraByLabel(seriesData?.perdidas_kwh ?? null, "Pérdidas E facturada (kWh)"),
     [seriesData]
@@ -835,6 +939,47 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return "Histórico de E generada.";
   }, [grafica4Flags]);
 
+  // ── Gráfica 5: CUPS por tipo ──────────────────────────────────────────
+  const grafica5Series = useMemo(() => {
+    return GRAFICA5_OPCIONES
+      .filter((o) => grafica5Active.has(o.key))
+      .map((o) => {
+        const serie = (psSeriesData?.cups_por_tipo.series ?? []).find(
+          (s) => s.serie_key === o.key
+        );
+        if (!serie) return null;
+        return { ...serie, serie_label: o.label };
+      })
+      .filter((s): s is GraficoSerie => s !== null);
+  }, [psSeriesData, grafica5Active]);
+
+  const grafica5Rows = useMemo(() => {
+    const map = new Map<string, ChartRow>();
+    for (const opcion of GRAFICA5_OPCIONES) {
+      if (!grafica5Active.has(opcion.key)) continue;
+      const serie = (psSeriesData?.cups_por_tipo.series ?? []).find(
+        (s) => s.serie_key === opcion.key
+      );
+      if (!serie) continue;
+      for (const point of serie.points) {
+        const current = map.get(point.period_key) ?? {
+          period_key: point.period_key,
+          period_label: point.period_label,
+        };
+        current[opcion.key] = point.value;
+        map.set(point.period_key, current);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      String(a.period_key).localeCompare(String(b.period_key))
+    );
+  }, [psSeriesData, grafica5Active]);
+
+  const grafica5Subtitle = useMemo(() => {
+    const labels = GRAFICA5_OPCIONES.filter((o) => grafica5Active.has(o.key)).map((o) => o.label);
+    return `Histórico de ${labels.join(", ")}.`;
+  }, [grafica5Active]);
+
   const toggleSelection = (value: number, setter: React.Dispatch<React.SetStateAction<number[]>>) => {
     setter((prev) => prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]);
   };
@@ -857,6 +1002,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
 
         {filtersError && <div className="ui-alert ui-alert--danger">Error cargando filtros: {filtersError}</div>}
         {seriesError && <div className="ui-alert ui-alert--danger">Error cargando gráficas: {seriesError}</div>}
+        {psSeriesError && <div className="ui-alert ui-alert--danger">Error cargando datos CUPS: {psSeriesError}</div>}
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-3">
           <FilterDropdown
@@ -876,7 +1022,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
           />
         </div>
 
-        {(filtersLoading || seriesLoading) && (
+        {(filtersLoading || seriesLoading || psSeriesLoading) && (
           <div className="ui-alert ui-alert--info">Cargando gráficos...</div>
         )}
 
@@ -933,6 +1079,17 @@ export default function GraficosSection({ token, currentUser }: Props) {
                 labelA="E autoconsumo" labelB="E generada"
                 flags={grafica4Flags} onChange={setGrafica4Flags}
               />
+            }
+          />
+
+          <ChartCard
+            title="Gráfica 5. Evolución de CUPS por tipo"
+            subtitle={grafica5Subtitle}
+            companyLabel={selectedEmpresaNames}
+            data={grafica5Rows}
+            series={grafica5Series}
+            headerExtra={
+              <Grafica5Selector active={grafica5Active} onChange={setGrafica5Active} />
             }
           />
         </div>

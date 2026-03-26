@@ -51,8 +51,15 @@ class GraficosSeriesResponse(BaseModel):
     energia_facturada: GraficoSeriesGroup
     perdidas: GraficoSeriesGroup
     perdidas_kwh: GraficoSeriesGroup
-    perdidas_ventanas: GraficoSeriesGroup     # ← NUEVO
+    perdidas_ventanas: GraficoSeriesGroup
     energias_publicadas: GraficoSeriesGroup
     energias_pf: GraficoSeriesGroup
     autoconsumo: GraficoSeriesGroup
     energia_generada: GraficoSeriesGroup
+
+
+# ── Nuevo: respuesta del endpoint PS ────────────────────────────────────────
+class GraficosPsSeriesResponse(BaseModel):
+    filters: GraficosFiltersApplied
+    scope: GraficosScope
+    cups_por_tipo: GraficoSeriesGroup

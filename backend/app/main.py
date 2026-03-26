@@ -1,6 +1,5 @@
 # app/main.py
 # pyright: reportMissingImports=false
-
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -18,6 +17,7 @@ from app.empresas.routes import router as empresas_router
 from app.ingestion.routes import router as ingestion_router
 from app.measures.routes import router as medidas_router
 from app.medidas_graficos.routes import router as medidas_graficos_router
+from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router  # ← NUEVO
 from app.tenants.routes import router as auth_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
@@ -46,7 +46,6 @@ _default_origins = [
     "http://127.0.0.1:3000",
     "http://100.106.206.66:3000",
 ]
-
 origins = (
     [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
     if settings.CORS_ORIGINS.strip()
@@ -76,3 +75,4 @@ app.include_router(alerts_router)
 app.include_router(dashboard_router)
 app.include_router(calendario_ree_router)
 app.include_router(medidas_graficos_router)
+app.include_router(medidas_graficos_ps_router)  # ← NUEVO
