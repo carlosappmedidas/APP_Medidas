@@ -180,13 +180,13 @@ export default function LossesConsistencyCard({ data, loading, error, compact = 
                 }}
                 onMouseLeave={() => setTooltip(null)}
               >
-                <div className="text-[8px] ui-muted mb-0.5">{row.label}</div>
+                <div className="text-[10px] font-medium ui-muted mb-0.5">{row.label}</div>
                 <div className="flex items-center gap-0.5">
-                  <span className="text-[11px] font-semibold" style={{ color }}>
+                  <span className="text-[10px] font-semibold" style={{ color }}>
                     {formatPct(row.diff)}
                   </span>
                   {arrow && (
-                    <span className="text-[10px]" style={{ color }}>{arrow}</span>
+                     <span className="text-[9px]" style={{ color }}>{arrow}</span>
                   )}
                 </div>
               </div>

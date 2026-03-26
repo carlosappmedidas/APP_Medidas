@@ -210,7 +210,7 @@ export default function DashboardEnergyComparisonChart({
             responsive
             style={{ width: "100%", height: "100%" }}
             data={points}
-            margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
+            margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
             barCategoryGap="28%"
             barGap={2}
           >

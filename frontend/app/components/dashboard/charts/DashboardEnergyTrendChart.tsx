@@ -65,7 +65,7 @@ export default function DashboardEnergyTrendChart({
   if (!ready) {
     return (
       <DashboardChartState loading={loading} error={error} hasData={hasData}>
-        <div className="mt-2 p-0">
+        <div className="mt-4 p-0">
           <div className="h-[180px] w-full" />
         </div>
       </DashboardChartState>
@@ -74,13 +74,13 @@ export default function DashboardEnergyTrendChart({
 
   return (
     <DashboardChartState loading={loading} error={error} hasData={hasData}>
-      <div className="mt-2 p-0">
+      <div className="mt-4 p-0">
         <div className="h-[180px] w-full">
           <AreaChart
             responsive
             style={{ width: "100%", height: "100%" }}
             data={points}
-            margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+            margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
           >
             <Tooltip
               formatter={tooltipFormatter}
@@ -100,6 +100,7 @@ export default function DashboardEnergyTrendChart({
               domain={[1, 12]}
               allowDecimals={false}
               tickCount={12}
+              height={30}
               tick={{ fontSize: 11, fill: "var(--text)" }}
               axisLine={{ stroke: "var(--card-border)" }}
               tickLine={false}

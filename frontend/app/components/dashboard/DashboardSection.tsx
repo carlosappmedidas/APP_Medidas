@@ -599,6 +599,7 @@ export default function DashboardSection({ token }: Props) {
                     }`}
                     style={{
                       background: hito.isAlert ? "#FEF2F2" : "var(--field-bg)",
+
                       gridColumn: idx === 4 ? "1 / -1" : undefined,
                     }}
                   >
@@ -608,7 +609,8 @@ export default function DashboardSection({ token }: Props) {
                         width: "20px",
                         height: "20px",
                         background: hito.isAlert ? "#FCEBEB" : "var(--card-bg)",
-                        color: hito.isAlert ? "#A32D2D" : "var(--text)",
+
+                        color: hito.isAlert ? "#7F1D1D" : "var(--text)",
                       }}
                     >
                       {reeHitosLoading ? "·" : hito.dia}
@@ -616,7 +618,7 @@ export default function DashboardSection({ token }: Props) {
                     <div className="min-w-0 flex-1">
                       <div
                         className="text-[10px] font-semibold truncate"
-                        style={{ color: "var(--text)" }}
+                        style={{ color: hito.isAlert ? "#7F1D1D" : "var(--text)" }}
                       >
                         {hito.label}
                       </div>
