@@ -719,12 +719,14 @@ export function useAppearanceTheme(
       //
     }
 
+    // ── Carga del tema guardado ───────────────────────────────────────────
     let loaded: ThemeOverrides = {};
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as ThemeOverrides;
-        if (parsed && typeof parsed === "object") {
+        // Solo usar si tiene al menos una variable real (ignorar {} vacío)
+        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
           loaded = parsed;
           setOverrides(parsed);
           applyOverrides(parsed);
@@ -734,12 +736,17 @@ export function useAppearanceTheme(
       //
     }
 
-    // ── Si no hay nada guardado, aplicar Slate Electric por defecto ──────
+    // ── Si no hay nada válido guardado → Slate Electric por defecto ───────
     if (!Object.keys(loaded).length) {
       applyOverrides(SLATE_ELECTRIC_OVERRIDES);
       setOverrides(SLATE_ELECTRIC_OVERRIDES);
       setActiveModeId("slate");
       loaded = SLATE_ELECTRIC_OVERRIDES;
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(SLATE_ELECTRIC_OVERRIDES));
+      } catch {
+        //
+      }
     }
     // ─────────────────────────────────────────────────────────────────────
 
