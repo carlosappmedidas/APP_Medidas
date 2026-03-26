@@ -1,5 +1,4 @@
 "use client";
-
 import { useMemo } from "react";
 import type { MedidaPS } from "../../types";
 import DeletePreviewModal from "../ui/DeletePreviewModal";
@@ -33,7 +32,6 @@ const formatNumberEs = (
   decimals: number = 2
 ): string => {
   if (v == null || Number.isNaN(v)) return "-";
-
   return new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -41,6 +39,7 @@ const formatNumberEs = (
 };
 
 const ALL_COLUMNS_PS: ColumnDefPs[] = [
+  // ── Identificación ──────────────────────────────────────────────────
   {
     id: "empresa_id",
     label: "Empresa ID",
@@ -70,6 +69,7 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => m.mes.toString().padStart(2, "0"),
   },
 
+  // ── Energía PS por tipo ──────────────────────────────────────────────
   {
     id: "energia_ps_tipo_1_kwh",
     label: "E PS tipo 1",
@@ -113,6 +113,7 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => formatNumberEs(m.energia_ps_total_kwh),
   },
 
+  // ── CUPS PS por tipo ─────────────────────────────────────────────────
   {
     id: "cups_tipo_1",
     label: "CUPS tipo 1",
@@ -156,6 +157,7 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => m.cups_total ?? "-",
   },
 
+  // ── Importes PS por tipo ─────────────────────────────────────────────
   {
     id: "importe_tipo_1_eur",
     label: "Importe tipo 1",
@@ -199,158 +201,116 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
     render: (m) => formatNumberEs(m.importe_total_eur),
   },
 
+  // ── Energía por tarifa ───────────────────────────────────────────────
+  // Agrupadas igual que tipos: primero todas las E, luego CUPS, luego importes
   {
     id: "energia_tarifa_20td_kwh",
     label: "E 2.0TD",
     align: "right",
-    group: "Tarifas",
+    group: "Energía Tarifas",
     render: (m) => formatNumberEs(m.energia_tarifa_20td_kwh),
   },
-  {
-    id: "cups_tarifa_20td",
-    label: "CUPS 2.0TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => m.cups_tarifa_20td ?? "-",
-  },
-  {
-    id: "importe_tarifa_20td_eur",
-    label: "Importe 2.0TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.importe_tarifa_20td_eur),
-  },
-
   {
     id: "energia_tarifa_30td_kwh",
     label: "E 3.0TD",
     align: "right",
-    group: "Tarifas",
+    group: "Energía Tarifas",
     render: (m) => formatNumberEs(m.energia_tarifa_30td_kwh),
+  },
+  {
+    id: "energia_tarifa_30tdve_kwh",
+    label: "E 3.0TDVE",
+    align: "right",
+    group: "Energía Tarifas",
+    render: (m) => formatNumberEs(m.energia_tarifa_30tdve_kwh),
+  },
+  {
+    id: "energia_tarifa_61td_kwh",
+    label: "E 6.1TD",
+    align: "right",
+    group: "Energía Tarifas",
+    render: (m) => formatNumberEs(m.energia_tarifa_61td_kwh),
+  },
+  {
+    id: "energia_tarifa_total_kwh",
+    label: "E Tarifas Total",
+    align: "right",
+    group: "Energía Tarifas",
+    render: (m) => formatNumberEs(m.energia_tarifa_total_kwh),
+  },
+
+  // ── CUPS por tarifa ──────────────────────────────────────────────────
+  {
+    id: "cups_tarifa_20td",
+    label: "CUPS 2.0TD",
+    align: "right",
+    group: "CUPS Tarifas",
+    render: (m) => m.cups_tarifa_20td ?? "-",
   },
   {
     id: "cups_tarifa_30td",
     label: "CUPS 3.0TD",
     align: "right",
-    group: "Tarifas",
+    group: "CUPS Tarifas",
     render: (m) => m.cups_tarifa_30td ?? "-",
-  },
-  {
-    id: "importe_tarifa_30td_eur",
-    label: "Importe 3.0TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.importe_tarifa_30td_eur),
-  },
-
-  {
-    id: "energia_tarifa_30tdve_kwh",
-    label: "E 3.0TDVE",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.energia_tarifa_30tdve_kwh),
   },
   {
     id: "cups_tarifa_30tdve",
     label: "CUPS 3.0TDVE",
     align: "right",
-    group: "Tarifas",
+    group: "CUPS Tarifas",
     render: (m) => m.cups_tarifa_30tdve ?? "-",
-  },
-  {
-    id: "importe_tarifa_30tdve_eur",
-    label: "Importe 3.0TDVE",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.importe_tarifa_30tdve_eur),
-  },
-
-  {
-    id: "energia_tarifa_61td_kwh",
-    label: "E 6.1TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.energia_tarifa_61td_kwh),
   },
   {
     id: "cups_tarifa_61td",
     label: "CUPS 6.1TD",
     align: "right",
-    group: "Tarifas",
+    group: "CUPS Tarifas",
     render: (m) => m.cups_tarifa_61td ?? "-",
+  },
+  {
+    id: "cups_tarifa_total",
+    label: "CUPS Tarifas Total",
+    align: "right",
+    group: "CUPS Tarifas",
+    render: (m) => m.cups_tarifa_total ?? "-",
+  },
+
+  // ── Importes por tarifa ──────────────────────────────────────────────
+  {
+    id: "importe_tarifa_20td_eur",
+    label: "Importe 2.0TD",
+    align: "right",
+    group: "Importes Tarifas",
+    render: (m) => formatNumberEs(m.importe_tarifa_20td_eur),
+  },
+  {
+    id: "importe_tarifa_30td_eur",
+    label: "Importe 3.0TD",
+    align: "right",
+    group: "Importes Tarifas",
+    render: (m) => formatNumberEs(m.importe_tarifa_30td_eur),
+  },
+  {
+    id: "importe_tarifa_30tdve_eur",
+    label: "Importe 3.0TDVE",
+    align: "right",
+    group: "Importes Tarifas",
+    render: (m) => formatNumberEs(m.importe_tarifa_30tdve_eur),
   },
   {
     id: "importe_tarifa_61td_eur",
     label: "Importe 6.1TD",
     align: "right",
-    group: "Tarifas",
+    group: "Importes Tarifas",
     render: (m) => formatNumberEs(m.importe_tarifa_61td_eur),
   },
-
   {
-    id: "energia_tarifa_62td_kwh",
-    label: "E 6.2TD",
+    id: "importe_tarifa_total_eur",
+    label: "Importe Tarifas Total",
     align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.energia_tarifa_62td_kwh),
-  },
-  {
-    id: "cups_tarifa_62td",
-    label: "CUPS 6.2TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => m.cups_tarifa_62td ?? "-",
-  },
-  {
-    id: "importe_tarifa_62td_eur",
-    label: "Importe 6.2TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.importe_tarifa_62td_eur),
-  },
-
-  {
-    id: "energia_tarifa_63td_kwh",
-    label: "E 6.3TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.energia_tarifa_63td_kwh),
-  },
-  {
-    id: "cups_tarifa_63td",
-    label: "CUPS 6.3TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => m.cups_tarifa_63td ?? "-",
-  },
-  {
-    id: "importe_tarifa_63td_eur",
-    label: "Importe 6.3TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.importe_tarifa_63td_eur),
-  },
-
-  {
-    id: "energia_tarifa_64td_kwh",
-    label: "E 6.4TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.energia_tarifa_64td_kwh),
-  },
-  {
-    id: "cups_tarifa_64td",
-    label: "CUPS 6.4TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => m.cups_tarifa_64td ?? "-",
-  },
-  {
-    id: "importe_tarifa_64td_eur",
-    label: "Importe 6.4TD",
-    align: "right",
-    group: "Tarifas",
-    render: (m) => formatNumberEs(m.importe_tarifa_64td_eur),
+    group: "Importes Tarifas",
+    render: (m) => formatNumberEs(m.importe_tarifa_total_eur),
   },
 ];
 
@@ -376,7 +336,6 @@ export default function MedidasPsSection({
     loading,
     error,
     hasLoadedOnce,
-
     filtroTenant,
     setFiltroTenant,
     filtroEmpresaIds,
@@ -385,13 +344,11 @@ export default function MedidasPsSection({
     setFiltroAnios,
     filtroMeses,
     setFiltroMeses,
-
     opcionesEmpresa,
     opcionesAnio,
     opcionesMes,
     opcionesTenant,
     opcionesEmpresaFiltradas,
-
     pageSize,
     setPageSize,
     page,
@@ -401,23 +358,18 @@ export default function MedidasPsSection({
     currentPage,
     startIndex,
     endIndex,
-
     showAdjust,
     setShowAdjust,
     handleDragStart,
     handleDrop,
-
     safeColumnOrder,
     safeHiddenColumns,
     canEditAdjustments,
     orderForAdjustments,
-
     filtrosActivosCount,
-
     clearFilters,
     loadFilters,
     handleLoadData,
-
     toggleVisible,
     resetOrder,
     hideAllColumns,
@@ -525,20 +477,16 @@ export default function MedidasPsSection({
 
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefPs[] = [];
-
     if (isSistema) {
       const tcol = columnasPorId.get("tenant_id");
       if (tcol) base.push(tcol);
     }
-
     for (const id of safeColumnOrder) {
       const col = columnasPorId.get(id);
       if (col && col.id !== "tenant_id") base.push(col);
     }
-
     const faltantes = ALL_COLUMNS_PS.filter((c) => !safeColumnOrder.includes(c.id));
     const full = [...base, ...faltantes.filter((c) => !base.some((b) => b.id === c.id))];
-
     if (!safeHiddenColumns || safeHiddenColumns.length === 0) return full;
     return full.filter((c) => !safeHiddenColumns.includes(c.id));
   }, [isSistema, safeColumnOrder, columnasPorId, safeHiddenColumns]);
@@ -551,10 +499,13 @@ export default function MedidasPsSection({
     <section className="ui-card text-sm">
       <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h4 className="ui-card-title">Medidas (PS){scope === "all" ? " · Sistema" : ""}</h4>
-          <p className="ui-card-subtitle">Resumen mensual de PS por empresa, tarifa y tipo.</p>
+          <h4 className="ui-card-title">
+            Medidas (PS){scope === "all" ? " · Sistema" : ""}
+          </h4>
+          <p className="ui-card-subtitle">
+            Resumen mensual de PS por empresa, tarifa y tipo.
+          </p>
         </div>
-
         <MedidasTableActions
           loading={loading}
           token={token}
@@ -589,7 +540,6 @@ export default function MedidasPsSection({
             {filtrosActivosCount}
           </span>
         </div>
-
         {hasLoadedOnce && (
           <div className="ui-muted">
             Total filas:{" "}
@@ -602,8 +552,9 @@ export default function MedidasPsSection({
 
       {isSistema && (
         <div className="mb-3 ui-alert ui-alert--warning">
-          En Sistema, el borrado de PS se hace siempre por <strong>ingestion</strong> usando los
-          filtros activos y forzando la familia <strong>PS</strong>. Selecciona al menos{" "}
+          En Sistema, el borrado de PS se hace siempre por{" "}
+          <strong>ingestion</strong> usando los filtros activos y forzando la
+          familia <strong>PS</strong>. Selecciona al menos{" "}
           <strong>empresa + año + mes</strong>. Esto no borra General.
         </div>
       )}
@@ -638,7 +589,10 @@ export default function MedidasPsSection({
         hiddenColumns={safeHiddenColumns}
         columnsMeta={
           isSistema
-            ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_PS_META]
+            ? [
+                { id: "tenant_id", label: "Cliente", group: "Identificación" },
+                ...COLUMNS_PS_META,
+              ]
             : COLUMNS_PS_META
         }
         onToggleVisible={toggleVisible}
@@ -656,14 +610,16 @@ export default function MedidasPsSection({
               {columnasOrdenadas.map((col) => (
                 <th
                   key={col.id}
-                  className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
+                  className={[
+                    "ui-th",
+                    col.align === "right" ? "ui-th-right" : "",
+                  ].join(" ")}
                 >
                   {col.label}
                 </th>
               ))}
             </tr>
           </thead>
-
           <tbody>
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
@@ -682,15 +638,16 @@ export default function MedidasPsSection({
                   ))}
                 </tr>
               ))}
-
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
-                <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
+                <td
+                  colSpan={totalColumnas}
+                  className="ui-td text-center ui-muted"
+                >
                   No hay medidas PS que cumplan los filtros.
                 </td>
               </tr>
             )}
-
             {!loading &&
               data.map((m: any) => (
                 <tr
@@ -700,7 +657,10 @@ export default function MedidasPsSection({
                   {columnasOrdenadas.map((col) => (
                     <td
                       key={col.id}
-                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
+                      className={[
+                        "ui-td",
+                        col.align === "right" ? "ui-td-right" : "",
+                      ].join(" ")}
                     >
                       {col.render(m)}
                     </td>
