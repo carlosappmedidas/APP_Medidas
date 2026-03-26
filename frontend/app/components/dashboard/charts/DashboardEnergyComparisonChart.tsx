@@ -196,7 +196,7 @@ export default function DashboardEnergyComparisonChart({
     return (
       <DashboardChartState loading={loading} error={error} hasData={hasData}>
         <div className="mt-4 p-0">
-          <div className="h-[280px] w-full" />
+          <div className="h-[180px] w-full" />
         </div>
       </DashboardChartState>
     );
@@ -205,7 +205,7 @@ export default function DashboardEnergyComparisonChart({
   return (
     <DashboardChartState loading={loading} error={error} hasData={hasData}>
       <div className="mt-4 p-0">
-        <div className="h-[280px] w-full">
+        <div className="h-[180px] w-full">
           <ComposedChart
             responsive
             style={{ width: "100%", height: "100%" }}
