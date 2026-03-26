@@ -58,8 +58,9 @@ class GraficosSeriesResponse(BaseModel):
     energia_generada: GraficoSeriesGroup
 
 
-# ── Nuevo: respuesta del endpoint PS ────────────────────────────────────────
 class GraficosPsSeriesResponse(BaseModel):
     filters: GraficosFiltersApplied
     scope: GraficosScope
     cups_por_tipo: GraficoSeriesGroup
+    energia_por_tipo: GraficoSeriesGroup    # ← NUEVO
+    importe_por_tipo: GraficoSeriesGroup    # ← NUEVO

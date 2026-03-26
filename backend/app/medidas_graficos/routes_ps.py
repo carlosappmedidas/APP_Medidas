@@ -72,7 +72,7 @@ def _base_ps_query(
     return query
 
 
-def _build_cups_serie(
+def _build_ps_serie(
     db: Session,
     *,
     tenant_id: int,
@@ -132,7 +132,6 @@ def get_medidas_graficos_ps_cups(
     tenant_id_int = int(cast(int, current_user.tenant_id))
     allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
-    # Calcular empresas del tenant para validar selección
     tenant_empresa_rows = (
         db.query(Empresa.id)
         .filter(
@@ -152,17 +151,17 @@ def get_medidas_graficos_ps_cups(
     )
     effective_empresa_ids = None if all_selected else selected_empresa_ids
 
-    # Construir las 6 series de CUPS
+    # ── CUPS por tipo ────────────────────────────────────────────────────
     cups_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, serie_key, serie_label in (
-        ("cups_tipo_1", "cups_t1", "CUPS Tipo 1"),
-        ("cups_tipo_2", "cups_t2", "CUPS Tipo 2"),
-        ("cups_tipo_3", "cups_t3", "CUPS Tipo 3"),
-        ("cups_tipo_4", "cups_t4", "CUPS Tipo 4"),
-        ("cups_tipo_5", "cups_t5", "CUPS Tipo 5"),
+        ("cups_tipo_1", "cups_t1",    "CUPS Tipo 1"),
+        ("cups_tipo_2", "cups_t2",    "CUPS Tipo 2"),
+        ("cups_tipo_3", "cups_t3",    "CUPS Tipo 3"),
+        ("cups_tipo_4", "cups_t4",    "CUPS Tipo 4"),
+        ("cups_tipo_5", "cups_t5",    "CUPS Tipo 5"),
         ("cups_total",  "cups_total", "CUPS Total"),
     ):
-        serie = _build_cups_serie(
+        cups_series.append(_build_ps_serie(
             db,
             tenant_id=tenant_id_int,
             allowed_empresa_ids=allowed_empresa_ids,
@@ -172,8 +171,51 @@ def get_medidas_graficos_ps_cups(
             empresa_ids=effective_empresa_ids,
             anios=anios,
             meses=meses,
-        )
-        cups_series.append(serie)
+        ))
+
+    # ── Energía por tipo ─────────────────────────────────────────────────
+    energia_series: list[graficos_schemas.GraficoSerie] = []
+    for field_name, serie_key, serie_label in (
+        ("energia_ps_tipo_1_kwh", "en_t1",    "Energía Tipo 1 (kWh)"),
+        ("energia_ps_tipo_2_kwh", "en_t2",    "Energía Tipo 2 (kWh)"),
+        ("energia_ps_tipo_3_kwh", "en_t3",    "Energía Tipo 3 (kWh)"),
+        ("energia_ps_tipo_4_kwh", "en_t4",    "Energía Tipo 4 (kWh)"),
+        ("energia_ps_tipo_5_kwh", "en_t5",    "Energía Tipo 5 (kWh)"),
+        ("energia_ps_total_kwh",  "en_total", "Energía Total (kWh)"),
+    ):
+        energia_series.append(_build_ps_serie(
+            db,
+            tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name,
+            serie_key=serie_key,
+            serie_label=serie_label,
+            empresa_ids=effective_empresa_ids,
+            anios=anios,
+            meses=meses,
+        ))
+
+    # ── Importe por tipo ─────────────────────────────────────────────────
+    importe_series: list[graficos_schemas.GraficoSerie] = []
+    for field_name, serie_key, serie_label in (
+        ("importe_tipo_1_eur", "im_t1",    "Importe Tipo 1 (€)"),
+        ("importe_tipo_2_eur", "im_t2",    "Importe Tipo 2 (€)"),
+        ("importe_tipo_3_eur", "im_t3",    "Importe Tipo 3 (€)"),
+        ("importe_tipo_4_eur", "im_t4",    "Importe Tipo 4 (€)"),
+        ("importe_tipo_5_eur", "im_t5",    "Importe Tipo 5 (€)"),
+        ("importe_total_eur",  "im_total", "Importe Total (€)"),
+    ):
+        importe_series.append(_build_ps_serie(
+            db,
+            tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name,
+            serie_key=serie_key,
+            serie_label=serie_label,
+            empresa_ids=effective_empresa_ids,
+            anios=anios,
+            meses=meses,
+        ))
 
     return graficos_schemas.GraficosPsSeriesResponse(
         filters=graficos_schemas.GraficosFiltersApplied(
@@ -187,4 +229,6 @@ def get_medidas_graficos_ps_cups(
             aggregation="sum",
         ),
         cups_por_tipo=graficos_schemas.GraficoSeriesGroup(series=cups_series),
+        energia_por_tipo=graficos_schemas.GraficoSeriesGroup(series=energia_series),
+        importe_por_tipo=graficos_schemas.GraficoSeriesGroup(series=importe_series),
     )
