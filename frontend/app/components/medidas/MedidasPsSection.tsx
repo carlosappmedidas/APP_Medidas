@@ -202,7 +202,6 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
   },
 
   // ── Energía por tarifa ───────────────────────────────────────────────
-  // Agrupadas igual que tipos: primero todas las E, luego CUPS, luego importes
   {
     id: "energia_tarifa_20td_kwh",
     label: "E 2.0TD",

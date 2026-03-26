@@ -123,8 +123,6 @@ def _sanitize_medida(medida_obj: Any) -> dict[str, Any]:
         + _f("importe_tarifa_30tdve_eur")
         + _f("importe_tarifa_61td_eur")
     )
-    # ──────────────────────────────────────────────────────────────────────
-
     return data
 
 
@@ -559,16 +557,14 @@ def listar_medidas_ps_page(
     empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
     anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
     meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+
+    # ── Si vienen empresas filtrarlas contra las permitidas;
+    #    si no viene ninguna → usar todas las permitidas (igual que General)
     if empresa_ids_list:
         empresa_ids_list = [eid for eid in empresa_ids_list if eid in allowed_empresa_ids]
     if not empresa_ids_list:
-        return {
-            "items": [],
-            "page": 0,
-            "page_size": page_size,
-            "total": 0,
-            "total_pages": 1,
-        }
+        empresa_ids_list = allowed_empresa_ids
+
     base = (
         db.query(MedidaPS, Empresa)
         .join(Empresa, MedidaPS.empresa_id == Empresa.id)
@@ -587,6 +583,7 @@ def listar_medidas_ps_page(
         base = base.filter(MedidaPS.mes.in_(meses_list))
     if tarifa:
         base = _ps_tarifa_filter(base, tarifa)
+
     total_q = db.query(func.count(MedidaPS.id)).filter(
         MedidaPS.tenant_id == tenant_id,
         MedidaPS.empresa_id.in_(allowed_empresa_ids),
@@ -599,6 +596,7 @@ def listar_medidas_ps_page(
         total_q = total_q.filter(MedidaPS.mes.in_(meses_list))
     if tarifa:
         total_q = _ps_tarifa_filter(total_q, tarifa)
+
     total_int = int(total_q.scalar() or 0)
     pg = _paginate(total_int, page, page_size)
     filas = (
