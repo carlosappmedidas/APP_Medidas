@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, JSON, String, Table
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, JSON
 from sqlalchemy.orm import relationship
 
 from app.core.models_base import Base, TimestampMixin
@@ -39,11 +39,9 @@ class User(TimestampMixin, Base):
 
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
-
     rol = Column(String(50), nullable=False, default="owner")
     is_active = Column(Boolean, nullable=False, default=True)
     is_superuser = Column(Boolean, nullable=False, default=False)
-
     ui_theme_overrides = Column(JSON, nullable=True)
 
     tenant = relationship("Tenant", back_populates="usuarios")
@@ -57,12 +55,4 @@ class User(TimestampMixin, Base):
 
     @property
     def empresa_ids_permitidas(self) -> list[int]:
-        """
-        Devuelve la lista de IDs de empresas permitidas.
-
-        Regla de negocio actual:
-        - superuser: se gestiona fuera de esta propiedad
-        - admin / owner / user: SOLO ven las empresas asignadas
-        - lista vacía: no ve ninguna empresa
-        """
-        return [int(e.id) for e in (self.empresas_permitidas or [])]
+        return [e.id for e in (self.empresas_permitidas or [])]

@@ -1,5 +1,3 @@
-# app/core/auth.py
-
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -7,7 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
 from app.core.db import get_db
@@ -76,6 +74,7 @@ def get_current_user(
 
     user = (
         db.query(User)
+        .options(joinedload(User.empresas_permitidas))
         .filter(User.id == user_id, User.tenant_id == tenant_id)
         .first()
     )

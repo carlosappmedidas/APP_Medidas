@@ -15,11 +15,8 @@ class Empresa(TimestampMixin, Base):
     codigo_cnmc = Column(String(50), nullable=True)
     activo = Column(Boolean, nullable=False, default=True)
 
-    # Tenant al que pertenece la empresa
     tenant = relationship("Tenant", back_populates="empresas")
 
-    # 🔴 NUEVO: usuarios que tienen acceso explícito a esta empresa
-    # (la tabla intermedia user_empresas está definida en app.tenants.models)
     usuarios_con_acceso = relationship(
         "User",
         secondary="user_empresas",
