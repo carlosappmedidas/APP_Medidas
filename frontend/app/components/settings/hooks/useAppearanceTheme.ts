@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
 
@@ -22,7 +21,6 @@ export type VarKey =
   | "--nav-sub-active-bg";
 
 export type ThemeOverrides = Partial<Record<VarKey, string>>;
-
 export type AppearanceSettingsTab = "mode" | "presets" | "advanced";
 export type AppearanceDetailSection =
   | "fondo"
@@ -64,6 +62,27 @@ const ALPHA_ENABLED_KEYS: VarKey[] = [
   "--nav-item-hover",
 ];
 
+// ── Paleta predeterminada: Slate Electric ──────────────────────────────────
+const SLATE_ELECTRIC_OVERRIDES: ThemeOverrides = {
+  "--app-bg": "#0d1b2a",
+  "--main-bg": "rgba(0, 0, 0, 0)",
+  "--card-bg": "#1a2e45",
+  "--card-border": "rgba(30, 58, 95, 0.8)",
+  "--text": "#e2e8f0",
+  "--text-muted": "rgba(226, 232, 240, 0.65)",
+  "--btn-primary-bg": "#059669",
+  "--btn-secondary-bg": "#2563eb",
+  "--sidebar-bg": "rgba(13, 27, 42, 0.95)",
+  "--sidebar-border": "rgba(30, 58, 95, 0.6)",
+  "--nav-item-bg": "rgba(30, 58, 95, 0.25)",
+  "--nav-item-hover": "rgba(30, 58, 95, 0.5)",
+  "--nav-item-text": "rgba(226, 232, 240, 0.95)",
+  "--nav-active-bg": "#2563eb",
+  "--nav-active-text": "#ffffff",
+  "--nav-sub-active-bg": "#3b82f6",
+};
+// ───────────────────────────────────────────────────────────────────────────
+
 const DARK_MODE_OVERRIDES: ThemeOverrides = {
   "--app-bg": "#020617",
   "--main-bg": "rgba(0, 0, 0, 0)",
@@ -104,35 +123,27 @@ const LIGHT_MODE_OVERRIDES: ThemeOverrides = {
 
 function normalizeHexColor(input: string): string | null {
   const v = (input || "").trim();
-
   if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toLowerCase();
   if (/^[0-9a-fA-F]{6}$/.test(v)) return `#${v.toLowerCase()}`;
-
   if (/^#[0-9a-fA-F]{8}$/.test(v)) return v.toLowerCase();
   if (/^[0-9a-fA-F]{8}$/.test(v)) return `#${v.toLowerCase()}`;
-
   return null;
 }
 
 function normalizeRgbColor(input: string): string | null {
   const v = (input || "").trim();
-
   const m = v.match(
     /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([\d.]+))?\s*\)$/i
   );
   if (!m) return null;
-
   const r = Number(m[1]);
   const g = Number(m[2]);
   const b = Number(m[3]);
   if ([r, g, b].some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null;
-
   const hasAlpha = typeof m[4] === "string";
   if (!hasAlpha) return `rgb(${r}, ${g}, ${b})`;
-
   const a = Number(m[4]);
   if (Number.isNaN(a) || a < 0 || a > 1) return null;
-
   const aNorm = Math.round(a * 1000) / 1000;
   return `rgba(${r}, ${g}, ${b}, ${aNorm})`;
 }
@@ -144,39 +155,31 @@ function normalizeAnyColor(input: string): string | null {
 function hexToRgb(hex: string): { r: number; g: number; b: number; a: number } | null {
   const norm = normalizeHexColor(hex);
   if (!norm) return null;
-
   const h = norm.replace("#", "");
   const hasAlpha = h.length === 8;
-
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   const a = hasAlpha ? parseInt(h.slice(6, 8), 16) / 255 : 1;
-
   if ([r, g, b].some((n) => Number.isNaN(n))) return null;
   return { r, g, b, a };
 }
 
 function cssColorToRgba(color: string): { r: number; g: number; b: number; a: number } | null {
   if (!color || typeof document === "undefined") return null;
-
   const el = document.createElement("div");
   el.style.color = color;
   document.body.appendChild(el);
-
   const computed = getComputedStyle(el).color;
   document.body.removeChild(el);
-
   const m = computed.match(
     /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/
   );
   if (!m) return null;
-
   const r = Number(m[1]);
   const g = Number(m[2]);
   const b = Number(m[3]);
   const a = m[4] === undefined ? 1 : Number(m[4]);
-
   if ([r, g, b, a].some((n) => Number.isNaN(n))) return null;
   return { r, g, b, a: Math.max(0, Math.min(1, a)) };
 }
@@ -184,7 +187,6 @@ function cssColorToRgba(color: string): { r: number; g: number; b: number; a: nu
 function cssColorToHex(color: string): string | null {
   const rgba = cssColorToRgba(color);
   if (!rgba) return null;
-
   const toHex = (n: number) => n.toString(16).padStart(2, "0");
   return `#${toHex(rgba.r)}${toHex(rgba.g)}${toHex(rgba.b)}`;
 }
@@ -192,7 +194,6 @@ function cssColorToHex(color: string): string | null {
 function readDefaultsFromCss(vars: VarKey[]): Record<VarKey, string> {
   const root = document.documentElement;
   const styles = getComputedStyle(root);
-
   const out = {} as Record<VarKey, string>;
   for (const v of vars) {
     const raw = styles.getPropertyValue(v).trim();
@@ -217,35 +218,27 @@ function clearOverrides(vars: readonly VarKey[]): void {
 function alphaPctFromColorValue(value: string): number {
   const v = (value || "").trim();
   const normHex = normalizeHexColor(v);
-
   if (normHex) {
     const rgb = hexToRgb(normHex);
     if (rgb) return Math.round(rgb.a * 100);
     return 100;
   }
-
   const rgba = cssColorToRgba(v);
   if (rgba) return Math.round(rgba.a * 100);
-
   return 100;
 }
 
 function sanitizePresetObject(obj: unknown, vars: readonly VarKey[]): ThemeOverrides | null {
   if (!obj || typeof obj !== "object") return null;
-
   const out: ThemeOverrides = {};
   const allowed = new Set(vars);
-
   for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
     if (!allowed.has(k as VarKey)) continue;
     if (typeof v !== "string") continue;
-
     const trimmed = v.trim();
     if (!trimmed) continue;
-
     out[k as VarKey] = trimmed;
   }
-
   return out;
 }
 
@@ -261,44 +254,36 @@ type UseAppearanceThemeResult = {
   overrides: ThemeOverrides;
   presets: Record<string, ThemeOverrides>;
   activePresetId: string;
-  activeModeId: "dark" | "light" | null;
+  activeModeId: "dark" | "light" | "slate" | null;
   activeSettingsTab: AppearanceSettingsTab;
   activeDetailSection: AppearanceDetailSection;
   draftHex: Record<VarKey, string>;
   draftAlpha: Record<VarKey, number>;
-
   setActivePresetId: React.Dispatch<React.SetStateAction<string>>;
-  setActiveModeId: React.Dispatch<React.SetStateAction<"dark" | "light" | null>>;
+  setActiveModeId: React.Dispatch<React.SetStateAction<"dark" | "light" | "slate" | null>>;
   setActiveSettingsTab: React.Dispatch<React.SetStateAction<AppearanceSettingsTab>>;
   setActiveDetailSection: React.Dispatch<React.SetStateAction<AppearanceDetailSection>>;
   setDraftHex: React.Dispatch<React.SetStateAction<Record<VarKey, string>>>;
   setDraftAlpha: React.Dispatch<React.SetStateAction<Record<VarKey, number>>>;
-
   currentValue: (key: VarKey) => string;
   currentHex: (key: VarKey) => string;
   currentAlphaPct: (key: VarKey) => number;
-
   onHexChange: (key: VarKey, value: string) => void;
   onHexBlur: (key: VarKey) => void;
   onPickerChange: (key: VarKey, value: string) => void;
   onAlphaChange: (key: VarKey, pct: number) => void;
-
   resetAll: () => Promise<void>;
   resetGroup: (keys: VarKey[]) => void;
   applyFullTheme: (theme: ThemeOverrides) => void;
   snapshotTheme: () => ThemeOverrides;
-
   onSelectPreset: (id: string) => void;
   savePresetAs: () => void;
   overwritePreset: () => void;
   deletePreset: () => void;
   exportPresets: () => Promise<void>;
   importPresets: () => void;
-
-  handleSelectMode: (mode: "dark" | "light") => void;
-
+  handleSelectMode: (mode: "dark" | "light" | "slate") => void;
   presetOptions: string[];
-
   constants: {
     STORAGE_KEY: string;
     PRESETS_KEY: string;
@@ -306,6 +291,7 @@ type UseAppearanceThemeResult = {
     DEFAULT_PRESET_ID: string;
     DARK_MODE_OVERRIDES: ThemeOverrides;
     LIGHT_MODE_OVERRIDES: ThemeOverrides;
+    SLATE_ELECTRIC_OVERRIDES: ThemeOverrides;
   };
 };
 
@@ -318,16 +304,11 @@ export function useAppearanceTheme(
   const [defaults, setDefaults] = useState<Record<VarKey, string> | null>(null);
   const [overrides, setOverrides] = useState<ThemeOverrides>({});
   const [mounted, setMounted] = useState(false);
-
   const [presets, setPresets] = useState<Record<string, ThemeOverrides>>({});
   const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PRESET_ID);
-  const [activeModeId, setActiveModeId] = useState<"dark" | "light" | null>(null);
-
-  const [activeSettingsTab, setActiveSettingsTab] =
-    useState<AppearanceSettingsTab>("mode");
-
-  const [activeDetailSection, setActiveDetailSection] =
-    useState<AppearanceDetailSection>("fondo");
+  const [activeModeId, setActiveModeId] = useState<"dark" | "light" | "slate" | null>(null);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<AppearanceSettingsTab>("mode");
+  const [activeDetailSection, setActiveDetailSection] = useState<AppearanceDetailSection>("fondo");
 
   const saveTimerRef = useRef<number | null>(null);
   const skipNextBackendSaveRef = useRef(false);
@@ -346,16 +327,13 @@ export function useAppearanceTheme(
 
   const scheduleBackendSave = (nextOverrides: ThemeOverrides): void => {
     if (!token) return;
-
     if (skipNextBackendSaveRef.current) {
       skipNextBackendSaveRef.current = false;
       return;
     }
-
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
     }
-
     saveTimerRef.current = window.setTimeout(async () => {
       try {
         await fetch(`${API_BASE_URL}/auth/ui-theme`, {
@@ -384,7 +362,6 @@ export function useAppearanceTheme(
   const currentHex = (key: VarKey): string => {
     const v = currentValue(key);
     if (!mounted) return "#000000";
-
     const norm = normalizeHexColor(v);
     if (norm) {
       const rgb = hexToRgb(norm);
@@ -394,7 +371,6 @@ export function useAppearanceTheme(
       }
       return norm.length === 9 ? norm.slice(0, 7) : norm;
     }
-
     const hex = cssColorToHex(v);
     return hex ?? "#000000";
   };
@@ -415,7 +391,6 @@ export function useAppearanceTheme(
       }
       return next;
     });
-
     setDraftAlpha((prev) => {
       const next = { ...prev };
       for (const k of Object.keys(prev) as VarKey[]) {
@@ -444,13 +419,11 @@ export function useAppearanceTheme(
   const resetAll = async (): Promise<void> => {
     clearOverrides(vars);
     setOverrides({});
-
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch {
       //
     }
-
     if (token) {
       try {
         skipNextBackendSaveRef.current = true;
@@ -462,14 +435,12 @@ export function useAppearanceTheme(
         console.error("Error limpiando ui_theme_overrides en backend:", err);
       }
     }
-
     window.setTimeout(() => {
       setDraftHex((prev) => {
         const next = { ...prev };
         for (const v of vars) next[v] = (defaults?.[v] ?? "").toString();
         return next;
       });
-
       setDraftAlpha((prev) => {
         const next = { ...prev };
         for (const k of Object.keys(prev) as VarKey[]) {
@@ -495,13 +466,11 @@ export function useAppearanceTheme(
     nextActive?: string
   ): void => {
     setPresets(next);
-
     try {
       window.localStorage.setItem(PRESETS_KEY, JSON.stringify(next));
     } catch {
       //
     }
-
     if (typeof nextActive === "string") {
       setActivePresetId(nextActive);
       try {
@@ -514,80 +483,63 @@ export function useAppearanceTheme(
 
   const onSelectPreset = (id: string): void => {
     setActiveModeId(null);
-
     if (id === DEFAULT_PRESET_ID) {
       persistPresets(presets, DEFAULT_PRESET_ID);
       void resetAll();
       return;
     }
-
     const preset = presets[id];
     if (!preset) return;
-
     persistPresets(presets, id);
-
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preset));
     } catch {
       //
     }
-
     applyFullTheme(preset);
   };
 
   const savePresetAs = (): void => {
     const name = (window.prompt("Nombre del preset (único):") || "").trim();
     if (!name) return;
-
     const snap = snapshotTheme();
     const next = { ...presets, [name]: snap };
-
     persistPresets(next, name);
-
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     } catch {
       //
     }
-
     applyFullTheme(snap);
   };
 
   const overwritePreset = (): void => {
     if (!activePresetId || activePresetId === DEFAULT_PRESET_ID) return;
     if (!presets[activePresetId]) return;
-
     const snap = snapshotTheme();
     const next = { ...presets, [activePresetId]: snap };
-
     persistPresets(next, activePresetId);
-
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     } catch {
       //
     }
-
     applyFullTheme(snap);
   };
 
   const deletePreset = (): void => {
     if (!activePresetId || activePresetId === DEFAULT_PRESET_ID) return;
     if (!presets[activePresetId]) return;
-
     const ok = window.confirm(`¿Borrar preset "${activePresetId}"?`);
     if (!ok) return;
-
     const next = { ...presets };
     delete next[activePresetId];
-
     persistPresets(next, DEFAULT_PRESET_ID);
     void resetAll();
   };
 
   const exportPresets = async (): Promise<void> => {
     const payload = JSON.stringify(presets, null, 2);
-
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(payload);
@@ -597,7 +549,6 @@ export function useAppearanceTheme(
     } catch {
       //
     }
-
     window.prompt("Copia este JSON:", payload);
   };
 
@@ -606,26 +557,20 @@ export function useAppearanceTheme(
       'Pega el JSON de presets (formato: { "Nombre": {"--var": "..."} })'
     );
     if (!raw) return;
-
     try {
       const parsed = JSON.parse(raw) as unknown;
       if (!parsed || typeof parsed !== "object") {
         window.alert("JSON inválido.");
         return;
       }
-
       const incoming: Record<string, ThemeOverrides> = {};
-
       for (const [name, presetObj] of Object.entries(parsed as Record<string, unknown>)) {
         const clean = sanitizePresetObject(presetObj, vars);
         if (!clean) continue;
-
         const key = (name || "").trim();
         if (!key) continue;
-
         incoming[key] = clean;
       }
-
       const merged = { ...presets, ...incoming };
       persistPresets(merged, activePresetId);
       window.alert("Presets importados ✅");
@@ -634,39 +579,35 @@ export function useAppearanceTheme(
     }
   };
 
-  const handleSelectMode = (mode: "dark" | "light"): void => {
+  const handleSelectMode = (mode: "dark" | "light" | "slate"): void => {
     setActiveModeId(mode);
     setActivePresetId(DEFAULT_PRESET_ID);
-
     try {
       window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
     } catch {
       //
     }
-
     const overridesToApply =
-      mode === "dark" ? DARK_MODE_OVERRIDES : LIGHT_MODE_OVERRIDES;
-
+      mode === "dark"
+        ? DARK_MODE_OVERRIDES
+        : mode === "light"
+        ? LIGHT_MODE_OVERRIDES
+        : SLATE_ELECTRIC_OVERRIDES;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(overridesToApply));
     } catch {
       //
     }
-
     applyFullTheme(overridesToApply);
   };
 
   const resetGroup = (keys: VarKey[]): void => {
     if (!defaults) return;
-
     const root = document.documentElement;
-
     setOverrides((prev) => {
       const next = { ...prev };
-
       for (const k of keys) {
         const base = (defaults[k] ?? "").toString();
-
         if (base && base.trim() !== "") {
           next[k] = base;
           root.style.setProperty(k, base);
@@ -675,10 +616,8 @@ export function useAppearanceTheme(
           root.style.removeProperty(k);
         }
       }
-
       return next;
     });
-
     setDraftHex((prev) => {
       const next = { ...prev };
       for (const k of keys) {
@@ -686,7 +625,6 @@ export function useAppearanceTheme(
       }
       return next;
     });
-
     setDraftAlpha((prev) => {
       const next = { ...prev };
       for (const k of keys) {
@@ -714,7 +652,6 @@ export function useAppearanceTheme(
       setVar(key, norm);
       return;
     }
-
     const fallback = currentValue(key);
     setDraftHex((prev) => ({ ...prev, [key]: fallback }));
   };
@@ -722,20 +659,16 @@ export function useAppearanceTheme(
   const onPickerChange = (key: VarKey, value: string): void => {
     const norm = normalizeHexColor(value);
     if (!norm) return;
-
     if (alphaEnabled.has(key)) {
       const pct = draftAlpha[key] ?? currentAlphaPct(key);
       const rgb = hexToRgb(norm);
       if (!rgb) return;
-
       const a = Math.max(0, Math.min(1, pct / 100));
       const rgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.round(a * 1000) / 1000})`;
-
       setDraftHex((prev) => ({ ...prev, [key]: rgba }));
       setVar(key, rgba);
       return;
     }
-
     setDraftHex((prev) => ({ ...prev, [key]: norm }));
     setVar(key, norm);
   };
@@ -743,21 +676,17 @@ export function useAppearanceTheme(
   const onAlphaChange = (key: VarKey, pct: number): void => {
     const clamped = Math.max(0, Math.min(100, pct));
     setDraftAlpha((prev) => ({ ...prev, [key]: clamped }));
-
     const baseHex = currentHex(key);
     const rgb = hexToRgb(baseHex);
     if (!rgb) return;
-
     const a = clamped / 100;
     const rgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.round(a * 1000) / 1000})`;
-
     setDraftHex((prev) => ({ ...prev, [key]: rgba }));
     setVar(key, rgba);
   };
 
   useEffect(() => {
     setMounted(true);
-
     const d = readDefaultsFromCss(vars);
     setDefaults(d);
 
@@ -766,19 +695,15 @@ export function useAppearanceTheme(
       if (rawPresets) {
         const parsed = JSON.parse(rawPresets) as Record<string, unknown>;
         const clean: Record<string, ThemeOverrides> = {};
-
         if (parsed && typeof parsed === "object") {
           for (const [name, presetObj] of Object.entries(parsed)) {
             const sanitized = sanitizePresetObject(presetObj, vars);
             if (!sanitized) continue;
-
             const key = (name || "").trim();
             if (!key) continue;
-
             clean[key] = sanitized;
           }
         }
-
         setPresets(clean);
       }
     } catch {
@@ -809,12 +734,20 @@ export function useAppearanceTheme(
       //
     }
 
+    // ── Si no hay nada guardado, aplicar Slate Electric por defecto ──────
+    if (!Object.keys(loaded).length) {
+      applyOverrides(SLATE_ELECTRIC_OVERRIDES);
+      setOverrides(SLATE_ELECTRIC_OVERRIDES);
+      setActiveModeId("slate");
+      loaded = SLATE_ELECTRIC_OVERRIDES;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     setDraftHex((prev) => {
       const next = { ...prev };
       for (const v of vars) next[v] = loaded[v] ?? d[v] ?? "";
       return next;
     });
-
     setDraftAlpha((prev) => {
       const next = { ...prev };
       for (const k of Object.keys(prev) as VarKey[]) {
@@ -827,18 +760,15 @@ export function useAppearanceTheme(
     const onReset = (): void => {
       setActivePresetId(DEFAULT_PRESET_ID);
       setActiveModeId(null);
-
       try {
         window.localStorage.setItem(ACTIVE_PRESET_KEY, DEFAULT_PRESET_ID);
       } catch {
         //
       }
-
       void resetAll();
     };
 
     window.addEventListener("ui-theme-reset", onReset as EventListener);
-
     return () => {
       window.removeEventListener("ui-theme-reset", onReset as EventListener);
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
@@ -848,13 +778,11 @@ export function useAppearanceTheme(
 
   useEffect(() => {
     if (!mounted) return;
-
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
     } catch {
       //
     }
-
     scheduleBackendSave(overrides);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overrides, mounted]);
@@ -872,6 +800,7 @@ export function useAppearanceTheme(
       DEFAULT_PRESET_ID,
       DARK_MODE_OVERRIDES,
       LIGHT_MODE_OVERRIDES,
+      SLATE_ELECTRIC_OVERRIDES,
     }),
     []
   );
@@ -889,37 +818,30 @@ export function useAppearanceTheme(
     activeDetailSection,
     draftHex,
     draftAlpha,
-
     setActivePresetId,
     setActiveModeId,
     setActiveSettingsTab,
     setActiveDetailSection,
     setDraftHex,
     setDraftAlpha,
-
     currentValue,
     currentHex,
     currentAlphaPct,
-
     onHexChange,
     onHexBlur,
     onPickerChange,
     onAlphaChange,
-
     resetAll,
     resetGroup,
     applyFullTheme,
     snapshotTheme,
-
     onSelectPreset,
     savePresetAs,
     overwritePreset,
     deletePreset,
     exportPresets,
     importPresets,
-
     handleSelectMode,
-
     presetOptions,
     constants,
   };

@@ -1,5 +1,4 @@
 "use client";
-
 import { useMemo } from "react";
 import { useAppearanceTheme, type VarKey } from "./hooks/useAppearanceTheme";
 
@@ -17,18 +16,14 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     activeDetailSection,
     draftHex,
     draftAlpha,
-
     setActiveSettingsTab,
     setActiveDetailSection,
-
     currentHex,
     currentAlphaPct,
-
     onHexChange,
     onHexBlur,
     onPickerChange,
     onAlphaChange,
-
     resetGroup,
     onSelectPreset,
     savePresetAs,
@@ -37,7 +32,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
     exportPresets,
     importPresets,
     handleSelectMode,
-
     presetOptions,
     constants,
   } = useAppearanceTheme({ token });
@@ -79,7 +73,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
           />
         </div>
       </div>
-
       {showAlpha && (
         <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] ui-muted">
@@ -131,7 +124,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
         >
           Modo de color
         </button>
-
         <button
           type="button"
           onClick={() => setActiveSettingsTab("presets")}
@@ -142,7 +134,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
         >
           Mis temas
         </button>
-
         <button
           type="button"
           onClick={() => setActiveSettingsTab("advanced")}
@@ -165,8 +156,43 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               </p>
             </div>
           </div>
+          <div className="theme-mode-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
 
-          <div className="theme-mode-grid">
+            {/* Predeterminado — Slate Electric */}
+            <button
+              type="button"
+              className={[
+                "theme-mode-card",
+                activeModeId === "slate" ? "theme-mode-card--active" : "",
+              ].join(" ")}
+              onClick={() => handleSelectMode("slate")}
+            >
+              <div className="theme-mode-card-header">
+                <span className="theme-mode-card-title">Predeterminado</span>
+                <span className="theme-mode-card-badge">Por defecto</span>
+              </div>
+              <div
+                className="theme-mode-card-preview"
+                style={{ background: "rgba(13, 27, 42, 0.9)" }}
+              >
+                <div
+                  className="theme-mode-card-preview-bar"
+                  style={{ background: "#2563eb" }}
+                />
+                <div className="theme-mode-card-preview-body" style={{ background: "rgba(13, 27, 42, 0.95)" }}>
+                  <div
+                    className="theme-mode-card-preview-main"
+                    style={{ background: "#1a2e45", borderColor: "rgba(30,58,95,0.8)" }}
+                  />
+                  <div
+                    className="theme-mode-card-preview-side"
+                    style={{ borderColor: "rgba(30,58,95,0.6)" }}
+                  />
+                </div>
+              </div>
+            </button>
+
+            {/* Oscuro */}
             <button
               type="button"
               className={[
@@ -188,6 +214,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               </div>
             </button>
 
+            {/* Claro */}
             <button
               type="button"
               className={[
@@ -208,6 +235,7 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                 </div>
               </div>
             </button>
+
           </div>
         </section>
       )}
@@ -223,7 +251,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               </p>
             </div>
           </div>
-
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="min-w-[220px]">
               <label className="mb-1 block text-[10px] ui-muted">Tema actual</label>
@@ -241,14 +268,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </option>
                 ))}
               </select>
-
               <p className="mt-1 text-[10px] ui-muted">
                 {activePresetId === DEFAULT_PRESET_ID
                   ? "Usando los colores por defecto de la aplicación."
                   : "Estás usando un tema guardado. Puedes actualizarlo con tus cambios actuales."}
               </p>
             </div>
-
             <div className="flex flex-wrap gap-2 md:justify-end">
               <button
                 type="button"
@@ -257,7 +282,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               >
                 Guardar como…
               </button>
-
               <button
                 type="button"
                 className="ui-btn ui-btn-outline ui-btn-xs"
@@ -266,7 +290,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               >
                 Sobrescribir
               </button>
-
               <button
                 type="button"
                 className="ui-btn ui-btn-outline ui-btn-xs"
@@ -277,13 +300,11 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               </button>
             </div>
           </div>
-
           <div className="mt-4 flex flex-col gap-3 border-t border-[color:var(--card-border)] pt-3 md:flex-row md:items-center md:justify-between">
             <p className="max-w-md text-[10px] ui-muted">
-              Exporta tus temas a JSON para compartirlos o hacer copia de seguridad.
-              Puedes importarlos más tarde en otro navegador o equipo.
+              Exporta tus temas a JSON para compartirlos o hacer copia de seguridad. Puedes
+              importarlos más tarde en otro navegador o equipo.
             </p>
-
             <div className="flex flex-wrap gap-2 md:justify-end">
               <button
                 type="button"
@@ -292,7 +313,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               >
                 Exportar
               </button>
-
               <button
                 type="button"
                 className="ui-btn ui-btn-outline ui-btn-xs"
@@ -311,17 +331,15 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
             <div>
               <div className="appearance-section-title">Ajustes detallados</div>
               <p className="appearance-section-subtitle">
-                Colores por sección (fondo, tarjetas, texto, botones…). No hace falta
-                tocarlos para usar la app.
+                Colores por sección (fondo, tarjetas, texto, botones…). No hace falta tocarlos
+                para usar la app.
               </p>
               <p className="mt-1 text-[10px] ui-muted">
-                Solo para ajustes finos. Cambiar estos valores afecta a toda la interfaz.
-                Siempre puedes restaurar los colores desde Configuración o desde cada
-                grupo.
+                Solo para ajustes finos. Cambiar estos valores afecta a toda la interfaz. Siempre
+                puedes restaurar los colores desde Configuración o desde cada grupo.
               </p>
             </div>
           </div>
-
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -384,7 +402,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
               Navegación
             </button>
           </div>
-
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-[11px]">
               <div className="mb-2 flex items-center justify-between">
@@ -393,13 +410,9 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   Solo visual, no afecta a datos reales.
                 </span>
               </div>
-
               <div
                 className="rounded-xl p-2"
-                style={{
-                  background: "var(--app-bg)",
-                  color: "var(--text)",
-                }}
+                style={{ background: "var(--app-bg)", color: "var(--text)" }}
               >
                 <div
                   className="mb-2 rounded-md px-3 py-2 text-[11px] font-semibold"
@@ -410,7 +423,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                 >
                   APP Medidas · Dashboard
                 </div>
-
                 <div className="flex gap-2">
                   <div
                     className="flex h-32 w-24 flex-col rounded-lg border p-2"
@@ -455,7 +467,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       </div>
                     </div>
                   </div>
-
                   <div
                     className="flex-1 rounded-lg border p-2"
                     style={{
@@ -478,7 +489,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                         Texto secundario dentro de una tarjeta del panel.
                       </div>
                     </div>
-
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -498,13 +508,11 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </div>
                 </div>
               </div>
-
               <div className="mt-2 text-[10px] ui-muted">
                 Usa esta vista para ver cómo combinan los colores entre sí (fondo, tarjetas,
                 sidebar, navegación y botones).
               </div>
             </div>
-
             <div className="space-y-4">
               {activeDetailSection === "fondo" && (
                 <div className="space-y-3">
@@ -524,14 +532,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       Restaurar fondo
                     </button>
                   </div>
-
                   <ColorRow
                     varKey="--app-bg"
                     label="fondo general (app)"
                     placeholder="#020617"
                     aria="Color fondo general"
                   />
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--main-bg"
@@ -542,7 +548,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </div>
                 </div>
               )}
-
               {activeDetailSection === "tarjetas" && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -561,14 +566,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       Restaurar tarjetas
                     </button>
                   </div>
-
                   <ColorRow
                     varKey="--card-bg"
                     label="fondo de tarjetas"
                     placeholder="#111827"
                     aria="Color fondo tarjetas"
                   />
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--card-border"
@@ -580,7 +583,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </div>
                 </div>
               )}
-
               {activeDetailSection === "texto" && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -599,14 +601,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       Restaurar texto
                     </button>
                   </div>
-
                   <ColorRow
                     varKey="--text"
                     label="texto principal"
                     placeholder="#e5e7eb"
                     aria="Color texto principal"
                   />
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--text-muted"
@@ -617,7 +617,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </div>
                 </div>
               )}
-
               {activeDetailSection === "botones" && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -636,14 +635,12 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       Restaurar botones
                     </button>
                   </div>
-
                   <ColorRow
                     varKey="--btn-primary-bg"
                     label="botón primario"
                     placeholder="#059669"
                     aria="Color botón primario"
                   />
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--btn-secondary-bg"
@@ -652,7 +649,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       aria="Color botón secundario"
                     />
                   </div>
-
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button type="button" className="ui-btn ui-btn-primary" disabled>
                       Primario
@@ -666,7 +662,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </div>
                 </div>
               )}
-
               {activeDetailSection === "sidebar" && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -685,7 +680,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       Restaurar sidebar
                     </button>
                   </div>
-
                   <ColorRow
                     varKey="--sidebar-bg"
                     label="fondo sidebar"
@@ -693,7 +687,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                     aria="Color fondo sidebar"
                     showAlpha
                   />
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--sidebar-border"
@@ -705,7 +698,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                   </div>
                 </div>
               )}
-
               {activeDetailSection === "nav" && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -733,7 +725,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       Restaurar navegación
                     </button>
                   </div>
-
                   <ColorRow
                     varKey="--nav-item-bg"
                     label="fondo item (normal)"
@@ -741,7 +732,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                     aria="Color item normal"
                     showAlpha
                   />
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--nav-item-hover"
@@ -751,7 +741,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       showAlpha
                     />
                   </div>
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--nav-item-text"
@@ -760,7 +749,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       aria="Color texto item"
                     />
                   </div>
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--nav-active-bg"
@@ -769,7 +757,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       aria="Color fondo activo"
                     />
                   </div>
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--nav-active-text"
@@ -778,7 +765,6 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       aria="Color texto activo"
                     />
                   </div>
-
                   <div className="mt-3">
                     <ColorRow
                       varKey="--nav-sub-active-bg"
@@ -787,16 +773,14 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
                       aria="Color fondo sub activo"
                     />
                   </div>
-
                   <p className="mt-2 text-[10px] ui-muted">
-                    Los efectos se pueden ver en la vista previa de la izquierda (items
-                    normal, hover y activo).
+                    Los efectos se pueden ver en la vista previa de la izquierda (items normal,
+                    hover y activo).
                   </p>
                 </div>
               )}
             </div>
           </div>
-
           <div className="mt-2 text-[10px] ui-muted">
             Todos los cambios se aplican sobre variables CSS en <code>:root</code>, así que
             afectan a toda la app.
