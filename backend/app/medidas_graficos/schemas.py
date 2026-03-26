@@ -56,6 +56,7 @@ class GraficosSeriesResponse(BaseModel):
     energias_pf: GraficoSeriesGroup
     autoconsumo: GraficoSeriesGroup
     energia_generada: GraficoSeriesGroup
+    adquisicion: GraficoSeriesGroup          # ← NUEVO
 
 
 class GraficosPsSeriesResponse(BaseModel):
@@ -64,6 +65,6 @@ class GraficosPsSeriesResponse(BaseModel):
     cups_por_tipo: GraficoSeriesGroup
     energia_por_tipo: GraficoSeriesGroup
     importe_por_tipo: GraficoSeriesGroup
-    energia_por_tarifa: GraficoSeriesGroup    # ← NUEVO
-    cups_por_tarifa: GraficoSeriesGroup       # ← NUEVO
-    importe_por_tarifa: GraficoSeriesGroup    # ← NUEVO
+    energia_por_tarifa: GraficoSeriesGroup
+    cups_por_tarifa: GraficoSeriesGroup
+    importe_por_tarifa: GraficoSeriesGroup

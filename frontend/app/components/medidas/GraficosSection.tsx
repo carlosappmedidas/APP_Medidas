@@ -23,6 +23,7 @@ type GraficosSeriesResponse = {
   energias_pf: GraficoSeriesGroup;
   autoconsumo: GraficoSeriesGroup;
   energia_generada: GraficoSeriesGroup;
+  adquisicion: GraficoSeriesGroup;           // ← NUEVO
 };
 type GraficosPsSeriesResponse = {
   filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string; };
@@ -84,11 +85,11 @@ const GRAFICA5_MODO_CONFIG: Record<Grafica5Modo, { prefix: string; modeLabel: st
 type Grafica6Modo = "cups" | "energia" | "importe";
 type Grafica6TarifaKey = "20td" | "30td" | "30tdve" | "61td" | "total";
 const GRAFICA6_TARIFAS: { key: Grafica6TarifaKey; label: string }[] = [
-  { key: "20td",   label: "2.0TD"  },
-  { key: "30td",   label: "3.0TD"  },
+  { key: "20td",   label: "2.0TD"   },
+  { key: "30td",   label: "3.0TD"   },
   { key: "30tdve", label: "3.0TDVE" },
-  { key: "61td",   label: "6.1TD"  },
-  { key: "total",  label: "Total"  },
+  { key: "61td",   label: "6.1TD"   },
+  { key: "total",  label: "Total"   },
 ];
 const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { prefix: string; modeLabel: string; yFormatter?: (v: number) => string }> = {
   cups:    { prefix: "ct_", modeLabel: "CUPS" },
@@ -404,7 +405,6 @@ const GRAFICA5_MODOS: { key: Grafica5Modo; label: string }[] = [
   { key: "energia", label: "Energía" },
   { key: "importe", label: "Importe" },
 ];
-
 const GRAFICA6_MODOS: { key: Grafica6Modo; label: string }[] = [
   { key: "cups",    label: "CUPS"    },
   { key: "energia", label: "Energía" },
@@ -431,12 +431,8 @@ export default function GraficosSection({ token, currentUser }: Props) {
   const [grafica2Active, setGrafica2Active] = useState<Set<Grafica2SerieKey>>(new Set(["pct"]));
   const [grafica3Flags, setGrafica3Flags] = useState<TwoFlagsState>({ a: true, b: false });
   const [grafica4Flags, setGrafica4Flags] = useState<TwoFlagsState>({ a: true, b: false });
-
-  // Gráfica 5 — PS por tipo
   const [grafica5Modo, setGrafica5Modo] = useState<Grafica5Modo>("cups");
   const [grafica5Tipos, setGrafica5Tipos] = useState<Set<Grafica5TipoKey>>(new Set(["total"]));
-
-  // Gráfica 6 — PS por tarifa
   const [grafica6Modo, setGrafica6Modo] = useState<Grafica6Modo>("cups");
   const [grafica6Tarifas, setGrafica6Tarifas] = useState<Set<Grafica6TarifaKey>>(new Set(["total"]));
 
@@ -520,25 +516,50 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return names.join(" · ");
   }, [filtersData, selectedEmpresas]);
 
-  // ── Gráfica 1 ────────────────────────────────────────────────────────
+  // ── Gráfica 1: E neta facturada / Adquisición ────────────────────────
   const grafica1Series = useMemo(() => {
     const result: GraficoSerie[] = [];
-    if (grafica1Flags.a) result.push(...relabelSeries((seriesData?.energia_facturada.series ?? []).map((s) => ({ ...s, serie_key: `ef_${s.serie_key}` })), "E neta facturada"));
-    if (grafica1Flags.b) { const pfFinal = (seriesData?.energias_pf.series ?? []).find((s) => s.serie_key === "pf_final"); if (pfFinal) result.push({ ...pfFinal, serie_label: "E PF Final" }); }
+    if (grafica1Flags.a) {
+      result.push(...relabelSeries(
+        (seriesData?.energia_facturada.series ?? []).map((s) => ({ ...s, serie_key: `ef_${s.serie_key}` })),
+        "E neta facturada"
+      ));
+    }
+    if (grafica1Flags.b) {
+      const adq = (seriesData?.adquisicion.series ?? []).find((s) => s.serie_key === "adquisicion");
+      if (adq) result.push({ ...adq, serie_label: "Adquisición" });
+    }
     return result;
   }, [seriesData, grafica1Flags]);
 
   const grafica1Rows = useMemo(() => {
     const map = new Map<string, ChartRow>();
-    if (grafica1Flags.a) { for (const serie of seriesData?.energia_facturada.series ?? []) { for (const point of serie.points) { const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label }; current[`ef_${serie.serie_key}`] = point.value; map.set(point.period_key, current); } } }
-    if (grafica1Flags.b) { const pfFinal = (seriesData?.energias_pf.series ?? []).find((s) => s.serie_key === "pf_final"); if (pfFinal) { for (const point of pfFinal.points) { const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label }; current["pf_final"] = point.value; map.set(point.period_key, current); } } }
+    if (grafica1Flags.a) {
+      for (const serie of seriesData?.energia_facturada.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`ef_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
+    if (grafica1Flags.b) {
+      const adq = (seriesData?.adquisicion.series ?? []).find((s) => s.serie_key === "adquisicion");
+      if (adq) {
+        for (const point of adq.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current["adquisicion"] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
     return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
   }, [seriesData, grafica1Flags]);
 
   const grafica1Subtitle = useMemo(() => {
-    if (grafica1Flags.a && grafica1Flags.b) return "Histórico de E neta facturada y E PF Final.";
+    if (grafica1Flags.a && grafica1Flags.b) return "Histórico de E neta facturada y Adquisición.";
     if (grafica1Flags.a) return "Histórico de E neta facturada.";
-    return "Histórico de E PF Final.";
+    return "Histórico de Adquisición (E PF Final + E generada - E frontera DD).";
   }, [grafica1Flags]);
 
   // ── Gráfica 2 ────────────────────────────────────────────────────────
@@ -755,10 +776,10 @@ export default function GraficosSection({ token, currentUser }: Props) {
 
         <div className="grid min-w-0 gap-4">
           <ChartCard
-            title="Gráfica 1. Evolución de energía facturada / E PF Final"
+            title="Gráfica 1. Evolución de energía facturada / Adquisición"
             subtitle={grafica1Subtitle} companyLabel={selectedEmpresaNames}
             data={grafica1Rows} series={grafica1Series}
-            headerExtra={<TwoFlagsSelector labelA="E neta fact." labelB="E PF Final" flags={grafica1Flags} onChange={setGrafica1Flags} />}
+            headerExtra={<TwoFlagsSelector labelA="E neta fact." labelB="Adquisición" flags={grafica1Flags} onChange={setGrafica1Flags} />}
           />
           <ChartCard
             title="Gráfica 2. Evolución de pérdidas"

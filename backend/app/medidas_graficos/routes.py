@@ -213,6 +213,98 @@ def _build_series_by_empresa(
     return series
 
 
+def _build_adquisicion_series(
+    db: Session,
+    *,
+    tenant_id: int,
+    allowed_empresa_ids: list[int],
+    empresa_ids: list[int] | None,
+    all_selected: bool,
+    selected_empresa_ids: list[int],
+    anios: list[int] | None,
+    meses: list[int] | None,
+) -> graficos_schemas.GraficoSerie:
+    """
+    Adquisición = E PF Final + E generada - E frontera DD
+    Calculado directamente en SQL para mantener consistencia con el dashboard.
+    """
+    effective_ids = empresa_ids  # None si all_selected, lista si filtrado
+
+    if all_selected:
+        rows = (
+            _base_general_query(
+                db,
+                tenant_id=tenant_id,
+                allowed_empresa_ids=allowed_empresa_ids,
+                empresa_ids=effective_ids,
+                anios=anios,
+                meses=meses,
+            )
+            .with_entities(
+                MedidaGeneral.anio.label("anio"),
+                MedidaGeneral.mes.label("mes"),
+                func.avg(
+                    MedidaGeneral.energia_pf_final_kwh
+                    + MedidaGeneral.energia_generada_kwh
+                    - MedidaGeneral.energia_frontera_dd_kwh
+                ).label("value"),
+            )
+            .group_by(MedidaGeneral.anio, MedidaGeneral.mes)
+            .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
+            .all()
+        )
+        points: list[graficos_schemas.GraficoPoint] = [
+            graficos_schemas.GraficoPoint(
+                period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+                period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+                value=float(cast(Any, row).value or 0.0),
+            )
+            for row in rows
+        ]
+        return graficos_schemas.GraficoSerie(
+            serie_key="adquisicion",
+            serie_label="Adquisición",
+            points=points,
+        )
+    else:
+        # Por empresa — devolvemos serie agregada igualmente (avg de la fórmula)
+        rows = (
+            _base_general_query(
+                db,
+                tenant_id=tenant_id,
+                allowed_empresa_ids=allowed_empresa_ids,
+                empresa_ids=selected_empresa_ids,
+                anios=anios,
+                meses=meses,
+            )
+            .with_entities(
+                MedidaGeneral.anio.label("anio"),
+                MedidaGeneral.mes.label("mes"),
+                func.avg(
+                    MedidaGeneral.energia_pf_final_kwh
+                    + MedidaGeneral.energia_generada_kwh
+                    - MedidaGeneral.energia_frontera_dd_kwh
+                ).label("value"),
+            )
+            .group_by(MedidaGeneral.anio, MedidaGeneral.mes)
+            .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
+            .all()
+        )
+        points = [
+            graficos_schemas.GraficoPoint(
+                period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+                period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+                value=float(cast(Any, row).value or 0.0),
+            )
+            for row in rows
+        ]
+        return graficos_schemas.GraficoSerie(
+            serie_key="adquisicion",
+            serie_label="Adquisición",
+            points=points,
+        )
+
+
 @router.get(
     "/filters",
     response_model=graficos_schemas.GraficoFiltersResponse,
@@ -292,197 +384,136 @@ def get_medidas_graficos_series(
 
     energia_facturada_series = (
         _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name="energia_neta_facturada_kwh",
-            label="Todas las empresas",
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name="energia_neta_facturada_kwh", label="Todas las empresas",
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         )
-        if all_selected
-        else _build_series_by_empresa(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
+        if all_selected else
+        _build_series_by_empresa(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_neta_facturada_kwh",
-            empresa_ids=selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            empresa_ids=selected_empresa_ids, anios=anios, meses=meses,
         )
     )
-
     perdidas_series = (
         _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name="perdidas_e_facturada_pct",
-            label="Todas las empresas",
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name="perdidas_e_facturada_pct", label="Todas las empresas",
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         )
-        if all_selected
-        else _build_series_by_empresa(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
+        if all_selected else
+        _build_series_by_empresa(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="perdidas_e_facturada_pct",
-            empresa_ids=selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            empresa_ids=selected_empresa_ids, anios=anios, meses=meses,
         )
     )
-
     perdidas_kwh_series = (
         _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name="perdidas_e_facturada_kwh",
-            label="Pérdidas E facturada (kWh)",
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name="perdidas_e_facturada_kwh", label="Pérdidas E facturada (kWh)",
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         )
-        if all_selected
-        else _build_series_by_empresa(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
+        if all_selected else
+        _build_series_by_empresa(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="perdidas_e_facturada_kwh",
-            empresa_ids=selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            empresa_ids=selected_empresa_ids, anios=anios, meses=meses,
         )
     )
-
     autoconsumo_series = (
         _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name="energia_autoconsumo_kwh",
-            label="Todas las empresas",
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name="energia_autoconsumo_kwh", label="Todas las empresas",
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         )
-        if all_selected
-        else _build_series_by_empresa(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
+        if all_selected else
+        _build_series_by_empresa(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_autoconsumo_kwh",
-            empresa_ids=selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            empresa_ids=selected_empresa_ids, anios=anios, meses=meses,
         )
     )
-
     energia_generada_series = (
         _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name="energia_generada_kwh",
-            label="Todas las empresas",
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name="energia_generada_kwh", label="Todas las empresas",
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         )
-        if all_selected
-        else _build_series_by_empresa(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
+        if all_selected else
+        _build_series_by_empresa(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_generada_kwh",
-            empresa_ids=selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            empresa_ids=selected_empresa_ids, anios=anios, meses=meses,
         )
     )
 
     # Energías publicadas — E neta publicada M2, M7, M11, ART15
     energias_publicadas_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
-        ("energia_neta_facturada_m2_kwh", "M2", "m2"),
-        ("energia_neta_facturada_m7_kwh", "M7", "m7"),
-        ("energia_neta_facturada_m11_kwh", "M11", "m11"),
+        ("energia_neta_facturada_m2_kwh",    "M2",    "m2"),
+        ("energia_neta_facturada_m7_kwh",    "M7",    "m7"),
+        ("energia_neta_facturada_m11_kwh",   "M11",   "m11"),
         ("energia_neta_facturada_art15_kwh", "ART15", "art15"),
     ):
         aggregated = _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name=field_name,
-            label=label,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            anios=anios, meses=meses,
         )[0]
         energias_publicadas_series.append(
-            graficos_schemas.GraficoSerie(
-                serie_key=key,
-                serie_label=label,
-                points=aggregated.points,
-            )
+            graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
         )
 
-    # Energías PF — E PF Final, E PF M2, M7, M11, ART15
+    # Energías PF — pf_final se mantiene para Gráfica 3, más M2, M7, M11, ART15
     energias_pf_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
-        ("energia_pf_final_kwh", "E PF Final", "pf_final"),
-        ("energia_pf_m2_kwh", "E PF M2", "pf_m2"),
-        ("energia_pf_m7_kwh", "E PF M7", "pf_m7"),
-        ("energia_pf_m11_kwh", "E PF M11", "pf_m11"),
-        ("energia_pf_art15_kwh", "E PF ART15", "pf_art15"),
+        ("energia_pf_final_kwh",   "E PF Final",   "pf_final"),
+        ("energia_pf_m2_kwh",      "E PF M2",      "pf_m2"),
+        ("energia_pf_m7_kwh",      "E PF M7",      "pf_m7"),
+        ("energia_pf_m11_kwh",     "E PF M11",     "pf_m11"),
+        ("energia_pf_art15_kwh",   "E PF ART15",   "pf_art15"),
     ):
         aggregated = _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name=field_name,
-            label=label,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            anios=anios, meses=meses,
         )[0]
         energias_pf_series.append(
-            graficos_schemas.GraficoSerie(
-                serie_key=key,
-                serie_label=label,
-                points=aggregated.points,
-            )
+            graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
         )
 
-    # ← NUEVO: Pérdidas por ventana en % — M2, M7, M11, ART15
+    # Pérdidas por ventana en % — M2, M7, M11, ART15
     perdidas_ventanas_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
-        ("perdidas_e_facturada_m2_pct", "Pérdidas M2 (%)", "perd_m2"),
-        ("perdidas_e_facturada_m7_pct", "Pérdidas M7 (%)", "perd_m7"),
-        ("perdidas_e_facturada_m11_pct", "Pérdidas M11 (%)", "perd_m11"),
+        ("perdidas_e_facturada_m2_pct",    "Pérdidas M2 (%)",    "perd_m2"),
+        ("perdidas_e_facturada_m7_pct",    "Pérdidas M7 (%)",    "perd_m7"),
+        ("perdidas_e_facturada_m11_pct",   "Pérdidas M11 (%)",   "perd_m11"),
         ("perdidas_e_facturada_art15_pct", "Pérdidas ART15 (%)", "perd_art15"),
     ):
         aggregated = _build_series_aggregated(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name=field_name,
-            label=label,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
-            anios=anios,
-            meses=meses,
+            anios=anios, meses=meses,
         )[0]
         perdidas_ventanas_series.append(
-            graficos_schemas.GraficoSerie(
-                serie_key=key,
-                serie_label=label,
-                points=aggregated.points,
-            )
+            graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
         )
+
+    # ── Adquisición = E PF Final + E generada - E frontera DD ────────────
+    adquisicion_serie = _build_adquisicion_series(
+        db,
+        tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
+        empresa_ids=effective_empresa_ids,
+        all_selected=all_selected,
+        selected_empresa_ids=selected_empresa_ids,
+        anios=anios,
+        meses=meses,
+    )
 
     return graficos_schemas.GraficosSeriesResponse(
         filters=graficos_schemas.GraficosFiltersApplied(
@@ -503,4 +534,5 @@ def get_medidas_graficos_series(
         energias_pf=graficos_schemas.GraficoSeriesGroup(series=energias_pf_series),
         autoconsumo=graficos_schemas.GraficoSeriesGroup(series=autoconsumo_series),
         energia_generada=graficos_schemas.GraficoSeriesGroup(series=energia_generada_series),
+        adquisicion=graficos_schemas.GraficoSeriesGroup(series=[adquisicion_serie]),
     )
