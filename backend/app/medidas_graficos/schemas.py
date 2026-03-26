@@ -62,5 +62,8 @@ class GraficosPsSeriesResponse(BaseModel):
     filters: GraficosFiltersApplied
     scope: GraficosScope
     cups_por_tipo: GraficoSeriesGroup
-    energia_por_tipo: GraficoSeriesGroup    # ← NUEVO
-    importe_por_tipo: GraficoSeriesGroup    # ← NUEVO
+    energia_por_tipo: GraficoSeriesGroup
+    importe_por_tipo: GraficoSeriesGroup
+    energia_por_tarifa: GraficoSeriesGroup    # ← NUEVO
+    cups_por_tarifa: GraficoSeriesGroup       # ← NUEVO
+    importe_por_tarifa: GraficoSeriesGroup    # ← NUEVO

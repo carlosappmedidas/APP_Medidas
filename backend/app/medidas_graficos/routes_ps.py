@@ -118,6 +118,56 @@ def _build_ps_serie(
     )
 
 
+def _build_ps_serie_sum(
+    db: Session,
+    *,
+    tenant_id: int,
+    allowed_empresa_ids: list[int],
+    field_names: list[str],
+    serie_key: str,
+    serie_label: str,
+    empresa_ids: list[int] | None,
+    anios: list[int] | None,
+    meses: list[int] | None,
+) -> graficos_schemas.GraficoSerie:
+    """Construye una serie sumando múltiples campos de BD — para totales calculados."""
+    fields = [getattr(MedidaPS, fn) for fn in field_names]
+    total_expr = fields[0]
+    for f in fields[1:]:
+        total_expr = total_expr + f
+    rows = (
+        _base_ps_query(
+            db,
+            tenant_id=tenant_id,
+            allowed_empresa_ids=allowed_empresa_ids,
+            empresa_ids=empresa_ids,
+            anios=anios,
+            meses=meses,
+        )
+        .with_entities(
+            MedidaPS.anio.label("anio"),
+            MedidaPS.mes.label("mes"),
+            func.sum(total_expr).label("value"),
+        )
+        .group_by(MedidaPS.anio, MedidaPS.mes)
+        .order_by(MedidaPS.anio.asc(), MedidaPS.mes.asc())
+        .all()
+    )
+    points: list[graficos_schemas.GraficoPoint] = [
+        graficos_schemas.GraficoPoint(
+            period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+            period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+            value=float(cast(Any, row).value or 0.0),
+        )
+        for row in rows
+    ]
+    return graficos_schemas.GraficoSerie(
+        serie_key=serie_key,
+        serie_label=serie_label,
+        points=points,
+    )
+
+
 @router.get(
     "/series-cups",
     response_model=graficos_schemas.GraficosPsSeriesResponse,
@@ -162,15 +212,9 @@ def get_medidas_graficos_ps_cups(
         ("cups_total",  "cups_total", "CUPS Total"),
     ):
         cups_series.append(_build_ps_serie(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name=field_name,
-            serie_key=serie_key,
-            serie_label=serie_label,
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, serie_key=serie_key, serie_label=serie_label,
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         ))
 
     # ── Energía por tipo ─────────────────────────────────────────────────
@@ -184,15 +228,9 @@ def get_medidas_graficos_ps_cups(
         ("energia_ps_total_kwh",  "en_total", "Energía Total (kWh)"),
     ):
         energia_series.append(_build_ps_serie(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name=field_name,
-            serie_key=serie_key,
-            serie_label=serie_label,
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, serie_key=serie_key, serie_label=serie_label,
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         ))
 
     # ── Importe por tipo ─────────────────────────────────────────────────
@@ -206,16 +244,85 @@ def get_medidas_graficos_ps_cups(
         ("importe_total_eur",  "im_total", "Importe Total (€)"),
     ):
         importe_series.append(_build_ps_serie(
-            db,
-            tenant_id=tenant_id_int,
-            allowed_empresa_ids=allowed_empresa_ids,
-            field_name=field_name,
-            serie_key=serie_key,
-            serie_label=serie_label,
-            empresa_ids=effective_empresa_ids,
-            anios=anios,
-            meses=meses,
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, serie_key=serie_key, serie_label=serie_label,
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
         ))
+
+    # ── Energía por tarifa ───────────────────────────────────────────────
+    _ENERGIA_TARIFAS = [
+        "energia_tarifa_20td_kwh", "energia_tarifa_30td_kwh",
+        "energia_tarifa_30tdve_kwh", "energia_tarifa_61td_kwh",
+    ]
+    energia_tarifa_series: list[graficos_schemas.GraficoSerie] = []
+    for field_name, serie_key, serie_label in (
+        ("energia_tarifa_20td_kwh",   "et_20td",   "E 2.0TD (kWh)"),
+        ("energia_tarifa_30td_kwh",   "et_30td",   "E 3.0TD (kWh)"),
+        ("energia_tarifa_30tdve_kwh", "et_30tdve", "E 3.0TDVE (kWh)"),
+        ("energia_tarifa_61td_kwh",   "et_61td",   "E 6.1TD (kWh)"),
+    ):
+        energia_tarifa_series.append(_build_ps_serie(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, serie_key=serie_key, serie_label=serie_label,
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+        ))
+    # Total tarifas energía — suma de los 4 campos reales en BD
+    energia_tarifa_series.append(_build_ps_serie_sum(
+        db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+        field_names=_ENERGIA_TARIFAS,
+        serie_key="et_total", serie_label="E Tarifas Total (kWh)",
+        empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+    ))
+
+    # ── CUPS por tarifa ──────────────────────────────────────────────────
+    _CUPS_TARIFAS = [
+        "cups_tarifa_20td", "cups_tarifa_30td",
+        "cups_tarifa_30tdve", "cups_tarifa_61td",
+    ]
+    cups_tarifa_series: list[graficos_schemas.GraficoSerie] = []
+    for field_name, serie_key, serie_label in (
+        ("cups_tarifa_20td",   "ct_20td",   "CUPS 2.0TD"),
+        ("cups_tarifa_30td",   "ct_30td",   "CUPS 3.0TD"),
+        ("cups_tarifa_30tdve", "ct_30tdve", "CUPS 3.0TDVE"),
+        ("cups_tarifa_61td",   "ct_61td",   "CUPS 6.1TD"),
+    ):
+        cups_tarifa_series.append(_build_ps_serie(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, serie_key=serie_key, serie_label=serie_label,
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+        ))
+    # Total tarifas CUPS — suma de los 4 campos reales en BD
+    cups_tarifa_series.append(_build_ps_serie_sum(
+        db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+        field_names=_CUPS_TARIFAS,
+        serie_key="ct_total", serie_label="CUPS Tarifas Total",
+        empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+    ))
+
+    # ── Importe por tarifa ───────────────────────────────────────────────
+    _IMPORTE_TARIFAS = [
+        "importe_tarifa_20td_eur", "importe_tarifa_30td_eur",
+        "importe_tarifa_30tdve_eur", "importe_tarifa_61td_eur",
+    ]
+    importe_tarifa_series: list[graficos_schemas.GraficoSerie] = []
+    for field_name, serie_key, serie_label in (
+        ("importe_tarifa_20td_eur",   "it_20td",   "Importe 2.0TD (€)"),
+        ("importe_tarifa_30td_eur",   "it_30td",   "Importe 3.0TD (€)"),
+        ("importe_tarifa_30tdve_eur", "it_30tdve", "Importe 3.0TDVE (€)"),
+        ("importe_tarifa_61td_eur",   "it_61td",   "Importe 6.1TD (€)"),
+    ):
+        importe_tarifa_series.append(_build_ps_serie(
+            db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+            field_name=field_name, serie_key=serie_key, serie_label=serie_label,
+            empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+        ))
+    # Total tarifas importe — suma de los 4 campos reales en BD
+    importe_tarifa_series.append(_build_ps_serie_sum(
+        db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
+        field_names=_IMPORTE_TARIFAS,
+        serie_key="it_total", serie_label="Importe Tarifas Total (€)",
+        empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+    ))
 
     return graficos_schemas.GraficosPsSeriesResponse(
         filters=graficos_schemas.GraficosFiltersApplied(
@@ -231,4 +338,7 @@ def get_medidas_graficos_ps_cups(
         cups_por_tipo=graficos_schemas.GraficoSeriesGroup(series=cups_series),
         energia_por_tipo=graficos_schemas.GraficoSeriesGroup(series=energia_series),
         importe_por_tipo=graficos_schemas.GraficoSeriesGroup(series=importe_series),
+        energia_por_tarifa=graficos_schemas.GraficoSeriesGroup(series=energia_tarifa_series),
+        cups_por_tarifa=graficos_schemas.GraficoSeriesGroup(series=cups_tarifa_series),
+        importe_por_tarifa=graficos_schemas.GraficoSeriesGroup(series=importe_tarifa_series),
     )
