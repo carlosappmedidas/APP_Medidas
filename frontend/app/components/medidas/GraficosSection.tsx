@@ -1,20 +1,31 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Brush, CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis,
+  Brush,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
-type Props = { token: string | null; currentUser?: User | null; };
-type GraficoEmpresaOption = { id: number; nombre: string; };
-type GraficoFiltersResponse = { empresas: GraficoEmpresaOption[]; anios: number[]; meses: number[]; };
-type GraficoPoint = { period_key: string; period_label: string; value: number; };
-type GraficoSerie = { serie_key: string; serie_label: string; points: GraficoPoint[]; };
-type GraficoSeriesGroup = { series: GraficoSerie[]; };
+type Props = {
+  token: string | null;
+  currentUser?: User | null;
+};
+
+type GraficoEmpresaOption = { id: number; nombre: string };
+type GraficoFiltersResponse = { empresas: GraficoEmpresaOption[]; anios: number[]; meses: number[] };
+type GraficoPoint = { period_key: string; period_label: string; value: number };
+type GraficoSerie = { serie_key: string; serie_label: string; points: GraficoPoint[] };
+type GraficoSeriesGroup = { series: GraficoSerie[] };
 type GraficosSeriesResponse = {
-  filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string; };
-  scope: { all_empresas_selected: boolean; aggregation: string; };
+  filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string };
+  scope: { all_empresas_selected: boolean; aggregation: string };
   energia_facturada: GraficoSeriesGroup;
   perdidas: GraficoSeriesGroup;
   perdidas_kwh: GraficoSeriesGroup;
@@ -24,11 +35,11 @@ type GraficosSeriesResponse = {
   autoconsumo: GraficoSeriesGroup;
   energia_generada: GraficoSeriesGroup;
   adquisicion: GraficoSeriesGroup;
-  adquisicion_ventanas: GraficoSeriesGroup; // ← NUEVO
+  adquisicion_ventanas: GraficoSeriesGroup;
 };
 type GraficosPsSeriesResponse = {
-  filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string; };
-  scope: { all_empresas_selected: boolean; aggregation: string; };
+  filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string };
+  scope: { all_empresas_selected: boolean; aggregation: string };
   cups_por_tipo: GraficoSeriesGroup;
   energia_por_tipo: GraficoSeriesGroup;
   importe_por_tipo: GraficoSeriesGroup;
@@ -36,64 +47,78 @@ type GraficosPsSeriesResponse = {
   cups_por_tarifa: GraficoSeriesGroup;
   importe_por_tarifa: GraficoSeriesGroup;
 };
-type ChartRow = { period_key: string; period_label: string; [key: string]: string | number; };
-type CustomTooltipEntry = { value?: number | string; name?: number | string; dataKey?: number | string; };
-type CustomTooltipProps = {
-  active?: boolean; payload?: readonly CustomTooltipEntry[];
-  label?: number | string; extraByLabel?: Record<string, { label: string; value: number }[]>;
+type ChartRow = { period_key: string; period_label: string; [key: string]: string | number };
+type CustomTooltipEntry = {
+  value?: number | string;
+  name?: number | string;
+  dataKey?: number | string;
 };
-type MultiCheckOption = { value: number; label: string; };
-type ElementSize = { width: number; height: number; };
+type CustomTooltipProps = {
+  active?: boolean;
+  payload?: readonly CustomTooltipEntry[];
+  label?: number | string;
+  extraByLabel?: Record<string, { label: string; value: number }[]>;
+};
+type MultiCheckOption = { value: number; label: string };
+type ElementSize = { width: number; height: number };
 type FilterDropdownProps = {
-  title: string; options: MultiCheckOption[]; selectedValues: number[];
-  onToggle: (value: number) => void; onSelectAll: () => void; allLabel?: string;
+  title: string;
+  options: MultiCheckOption[];
+  selectedValues: number[];
+  onToggle: (value: number) => void;
+  onSelectAll: () => void;
+  allLabel?: string;
 };
 type ChartCardProps = {
-  title: string; subtitle: string; data: ChartRow[]; series: GraficoSerie[];
-  companyLabel: string; yAxisFormatter?: (value: number) => string;
+  title: string;
+  subtitle: string;
+  data: ChartRow[];
+  series: GraficoSerie[];
+  companyLabel: string;
+  yAxisFormatter?: (value: number) => string;
   headerExtra?: React.ReactNode;
   tooltipExtraByLabel?: Record<string, { label: string; value: number }[]>;
 };
 
-// ── Gráfica 2 ────────────────────────────────────────────────────────────
+// ── Gráfica 2 ──────────────────────────────────────────────────────────────
 type Grafica2SerieKey = "pct" | "perd_m2" | "perd_m7" | "perd_m11" | "perd_art15";
 const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string }[] = [
-  { key: "pct",        label: "Pérdidas (%)"      },
-  { key: "perd_m2",   label: "Pérdidas M2 (%)"   },
-  { key: "perd_m7",   label: "Pérdidas M7 (%)"   },
-  { key: "perd_m11",  label: "Pérdidas M11 (%)"  },
+  { key: "pct", label: "Pérdidas (%)" },
+  { key: "perd_m2", label: "Pérdidas M2 (%)" },
+  { key: "perd_m7", label: "Pérdidas M7 (%)" },
+  { key: "perd_m11", label: "Pérdidas M11 (%)" },
   { key: "perd_art15", label: "Pérdidas ART15 (%)" },
 ];
 
-// ── Gráfica 5 — PS por tipo ───────────────────────────────────────────────
+// ── Gráfica 5 — PS por tipo ────────────────────────────────────────────────
 type Grafica5Modo = "cups" | "energia" | "importe";
 type Grafica5TipoKey = "t1" | "t2" | "t3" | "t4" | "t5" | "total";
 const GRAFICA5_TIPOS: { key: Grafica5TipoKey; label: string }[] = [
-  { key: "t1",    label: "Tipo 1" },
-  { key: "t2",    label: "Tipo 2" },
-  { key: "t3",    label: "Tipo 3" },
-  { key: "t4",    label: "Tipo 4" },
-  { key: "t5",    label: "Tipo 5" },
-  { key: "total", label: "Total"  },
+  { key: "t1", label: "Tipo 1" },
+  { key: "t2", label: "Tipo 2" },
+  { key: "t3", label: "Tipo 3" },
+  { key: "t4", label: "Tipo 4" },
+  { key: "t5", label: "Tipo 5" },
+  { key: "total", label: "Total" },
 ];
 const GRAFICA5_MODO_CONFIG: Record<Grafica5Modo, { prefix: string; modeLabel: string; yFormatter?: (v: number) => string }> = {
-  cups:    { prefix: "cups_", modeLabel: "CUPS" },
-  energia: { prefix: "en_",   modeLabel: "Energía (kWh)" },
-  importe: { prefix: "im_",   modeLabel: "Importe (€)", yFormatter: (v) => `${formatYAxis(v)} €` },
+  cups: { prefix: "cups_", modeLabel: "CUPS" },
+  energia: { prefix: "en_", modeLabel: "Energía (kWh)" },
+  importe: { prefix: "im_", modeLabel: "Importe (€)", yFormatter: (v) => `${formatYAxis(v)} €` },
 };
 
-// ── Gráfica 6 — PS por tarifa ─────────────────────────────────────────────
+// ── Gráfica 6 — PS por tarifa ──────────────────────────────────────────────
 type Grafica6Modo = "cups" | "energia" | "importe";
 type Grafica6TarifaKey = "20td" | "30td" | "30tdve" | "61td" | "total";
 const GRAFICA6_TARIFAS: { key: Grafica6TarifaKey; label: string }[] = [
-  { key: "20td",   label: "2.0TD"   },
-  { key: "30td",   label: "3.0TD"   },
+  { key: "20td", label: "2.0TD" },
+  { key: "30td", label: "3.0TD" },
   { key: "30tdve", label: "3.0TDVE" },
-  { key: "61td",   label: "6.1TD"   },
-  { key: "total",  label: "Total"   },
+  { key: "61td", label: "6.1TD" },
+  { key: "total", label: "Total" },
 ];
 const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { prefix: string; modeLabel: string; yFormatter?: (v: number) => string }> = {
-  cups:    { prefix: "ct_", modeLabel: "CUPS" },
+  cups: { prefix: "ct_", modeLabel: "CUPS" },
   energia: { prefix: "et_", modeLabel: "Energía (kWh)" },
   importe: { prefix: "it_", modeLabel: "Importe (€)", yFormatter: (v) => `${formatYAxis(v)} €` },
 };
@@ -101,39 +126,36 @@ const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { prefix: string; modeLabel: st
 // Jerarquía de ventanas de adquisición: de más reciente a más antigua
 const ADQ_VENTANAS: { key: string; label: string }[] = [
   { key: "adq_art15", label: "Adq. ART15" },
-  { key: "adq_m11",   label: "Adq. M11"   },
-  { key: "adq_m7",    label: "Adq. M7"    },
-  { key: "adq_m2",    label: "Adq. M2"    },
-  { key: "adq_m1",    label: "Adq. M1"    },
+  { key: "adq_m11", label: "Adq. M11" },
+  { key: "adq_m7", label: "Adq. M7" },
+  { key: "adq_m2", label: "Adq. M2" },
+  { key: "adq_m1", label: "Adq. M1" },
 ];
 
 const MESES_LABEL: Record<number, string> = {
   1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
   7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
 };
+
 const LINE_COLORS = [
   "#6D5EF8", "#22C55E", "#F59E0B", "#EF4444",
   "#06B6D4", "#A855F7", "#84CC16", "#F97316",
 ];
 
-// ── MEJORA 1: Formateador de eje Y unificado para todas las gráficas ──────
-// Escalonado: M (millones) / k (miles) / número entero. Funciona con negativos.
+// ── MEJORA 1: Formateador de eje Y unificado ───────────────────────────────
 function formatYAxis(value: number): string {
   if (value === 0) return "0";
   const abs = Math.abs(value);
   const sign = value < 0 ? "-" : "";
   if (abs >= 1_000_000) return sign + (abs / 1_000_000).toFixed(abs % 1_000_000 === 0 ? 0 : 1) + "M";
-  if (abs >= 1_000)     return sign + (abs / 1_000).toFixed(abs % 1_000 === 0 ? 0 : 1) + "k";
+  if (abs >= 1_000) return sign + (abs / 1_000).toFixed(abs % 1_000 === 0 ? 0 : 1) + "k";
   return sign + abs.toString();
 }
 
-// ── MEJORA 1: Formateador de eje X para fechas cortas ("Feb 2022" → "Feb 22") ──
-// Acepta tanto "Feb 2022" (period_label) como "2022-02" (period_key ISO) por seguridad.
+// ── MEJORA 1: Formateador de eje X para fechas cortas ─────────────────────
 function formatXAxisTick(tick: string): string {
-  // Formato "Mes YYYY" → "Mes YY"  (ej: "Feb 2022" → "Feb 22")
   const matchLabel = tick.match(/^(\w+)\s(\d{2})(\d{2})$/);
   if (matchLabel) return `${matchLabel[1]} ${matchLabel[3]}`;
-  // Formato "YYYY-MM" → busca mes en MESES_LABEL (ej: "2022-02" → "Feb 22")
   const matchKey = tick.match(/^(\d{4})-(\d{2})$/);
   if (matchKey) {
     const mes = MESES_LABEL[parseInt(matchKey[2])] ?? matchKey[2];
@@ -143,7 +165,10 @@ function formatXAxisTick(tick: string): string {
 }
 
 function formatNumberEs(value: number | string | null | undefined): string {
-  const numericValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : null;
+  const numericValue =
+    typeof value === "number" ? value
+    : typeof value === "string" ? Number(value)
+    : null;
   if (numericValue === null || Number.isNaN(numericValue)) return "—";
   return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(numericValue);
 }
@@ -181,7 +206,10 @@ function relabelSeries(series: GraficoSerie[], legendLabel: string): GraficoSeri
   return [{ ...series[0], serie_label: legendLabel }];
 }
 
-function buildTooltipExtraByLabel(group: GraficoSeriesGroup | null, labelOverride?: string): Record<string, { label: string; value: number }[]> {
+function buildTooltipExtraByLabel(
+  group: GraficoSeriesGroup | null,
+  labelOverride?: string
+): Record<string, { label: string; value: number }[]> {
   const result: Record<string, { label: string; value: number }[]> = {};
   if (!group?.series?.length) return result;
   for (const serie of group.series) {
@@ -199,15 +227,24 @@ function CustomTooltip({ active, payload, label, extraByLabel }: CustomTooltipPr
   const labelStr = String(label ?? "—");
   const extras = extraByLabel?.[labelStr] ?? [];
   return (
-    <div className="rounded-lg border px-3 py-2 text-xs shadow-lg"
-      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--text)" }}>
+    <div
+      className="rounded-lg border px-3 py-2 text-xs shadow-lg"
+      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--text)" }}
+    >
       <div className="mb-2 font-semibold">{labelStr}</div>
       <div className="flex flex-col gap-1">
         {payload.map((entry, index) => (
-          <div key={`${String(entry.dataKey ?? "serie")}-${index}`} className="flex items-center justify-between gap-3">
+          <div
+            key={`${String(entry.dataKey ?? "serie")}-${index}`}
+            className="flex items-center justify-between gap-3"
+          >
             <span>{String(entry.name ?? entry.dataKey ?? "Serie")}</span>
             <span className="font-medium">
-              {formatNumberEs(typeof entry.value === "number" || typeof entry.value === "string" ? entry.value : null)}
+              {formatNumberEs(
+                typeof entry.value === "number" || typeof entry.value === "string"
+                  ? entry.value
+                  : null
+              )}
             </span>
           </div>
         ))}
@@ -252,10 +289,19 @@ function useElementSize<T extends HTMLElement>() {
   return { ref, mounted, width: size.width, height: size.height };
 }
 
-function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll, allLabel = "Todas" }: FilterDropdownProps) {
+// ── FilterDropdown — ÚNICO CAMBIO: botón trigger usa className="ui-select" ─
+function FilterDropdown({
+  title,
+  options,
+  selectedValues,
+  onToggle,
+  onSelectAll,
+  allLabel = "Todas",
+}: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const allSelected = options.length > 0 && selectedValues.length === options.length;
+
   const summary = useMemo(() => {
     if (options.length === 0) return "Sin opciones";
     if (allSelected) return allLabel;
@@ -266,6 +312,7 @@ function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll,
     }
     return `${selectedValues.length} seleccionadas`;
   }, [allLabel, allSelected, options, selectedValues]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const targetNode = event.target;
@@ -275,28 +322,44 @@ function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll,
     document.addEventListener("mousedown", handleClickOutside);
     return () => { document.removeEventListener("mousedown", handleClickOutside); };
   }, []);
+
   return (
     <div ref={containerRef} className="relative min-w-0">
-      <div className="min-w-0 rounded-xl border p-3" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
-        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em]">{title}</div>
-        <button type="button" onClick={() => setOpen((prev) => !prev)}
-          className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs"
-          style={{ borderColor: "var(--field-border)", background: "var(--field-bg)", color: "var(--field-text)" }}>
+      <div
+        className="min-w-0 rounded-xl border p-3"
+        style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+      >
+        <label className="ui-label">{title}</label>
+        {/* CAMBIO: reemplazado estilos inline por className="ui-select" */}
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          className="ui-select flex w-full items-center justify-between text-left"
+        >
           <span className="truncate">{summary}</span>
           <span className="ml-3 shrink-0">{open ? "▴" : "▾"}</span>
         </button>
       </div>
       {open && (
-        <div className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border p-3 shadow-lg"
-          style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+        <div
+          className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border p-3 shadow-lg"
+          style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+        >
           <label className="mb-2 flex cursor-pointer items-center gap-2 text-xs">
             <input type="checkbox" checked={allSelected} onChange={onSelectAll} />
             <span>{allLabel}</span>
           </label>
           <div className="grid gap-1">
             {options.map((option) => (
-              <label key={`${title}-${option.value}`} className="ui-muted flex cursor-pointer items-center gap-2 text-xs">
-                <input type="checkbox" checked={selectedValues.includes(option.value)} onChange={() => onToggle(option.value)} />
+              <label
+                key={`${title}-${option.value}`}
+                className="ui-muted flex cursor-pointer items-center gap-2 text-xs"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedValues.includes(option.value)}
+                  onChange={() => onToggle(option.value)}
+                />
                 <span>{option.label}</span>
               </label>
             ))}
@@ -307,28 +370,36 @@ function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll,
   );
 }
 
-// ── MEJORAS 2 y 3: ChartCard con Brush y leyenda clickable abajo ──────────
-function ChartCard({ title, subtitle, data, series, companyLabel, yAxisFormatter, headerExtra, tooltipExtraByLabel }: ChartCardProps) {
+// ── MEJORAS 2 y 3: ChartCard con Brush y leyenda clickable abajo ───────────
+function ChartCard({
+  title,
+  subtitle,
+  data,
+  series,
+  companyLabel,
+  yAxisFormatter,
+  headerExtra,
+  tooltipExtraByLabel,
+}: ChartCardProps) {
   const { ref, mounted, width, height } = useElementSize<HTMLDivElement>();
   const canRenderChart = mounted && width > 0 && height > 0;
 
-  // MEJORA 3: estado local de series ocultas — no toca filtros del backend
+  // MEJORA 3: estado local de series ocultas
   const [hiddenSeries, setHiddenSeries] = useState<Record<string, boolean>>({});
   const toggleSerie = (dataKey: string) => {
     setHiddenSeries((prev) => ({ ...prev, [dataKey]: !prev[dataKey] }));
   };
 
-  // Resetear series ocultas cuando cambian las series disponibles
   const seriesKey = series.map((s) => s.serie_key).join(",");
-  useEffect(() => {
-    setHiddenSeries({});
-  }, [seriesKey]);
+  useEffect(() => { setHiddenSeries({}); }, [seriesKey]);
 
-  // MEJORA 1: yFormatter final — usa formatYAxis si no se pasa formatter propio
   const yTickFormatter = yAxisFormatter ?? formatYAxis;
 
   return (
-    <div className="min-w-0 rounded-xl border p-4" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+    <div
+      className="min-w-0 rounded-xl border p-4"
+      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+    >
       <div className="mb-2 flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">{title}</div>
@@ -336,26 +407,39 @@ function ChartCard({ title, subtitle, data, series, companyLabel, yAxisFormatter
         </div>
         {headerExtra && <div className="shrink-0">{headerExtra}</div>}
       </div>
-      <div className="mb-4 text-center text-xs font-medium" style={{ color: "var(--text)" }}>{companyLabel}</div>
+      <div className="mb-4 text-center text-xs font-medium" style={{ color: "var(--text)" }}>
+        {companyLabel}
+      </div>
       {/* MEJORA 2: altura aumentada para acomodar el Brush */}
       <div ref={ref} className="h-[370px] min-w-0 w-full">
         {data.length === 0 ? (
-          <div className="ui-muted flex h-full items-center justify-center text-sm">Sin datos para los filtros seleccionados.</div>
+          <div className="ui-muted flex h-full items-center justify-center text-sm">
+            Sin datos para los filtros seleccionados.
+          </div>
         ) : !canRenderChart ? (
-          <div className="ui-muted flex h-full items-center justify-center text-sm">Preparando gráfica...</div>
+          <div className="ui-muted flex h-full items-center justify-center text-sm">
+            Preparando gráfica...
+          </div>
         ) : (
-          <LineChart width={width} height={height} data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
+          <LineChart
+            width={width}
+            height={height}
+            data={data}
+            margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+          >
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-            {/* MEJORA 1: tickFormatter para fechas cortas */}
             <XAxis dataKey="period_label" tick={{ fontSize: 12 }} tickFormatter={formatXAxisTick} />
-            {/* MEJORA 1: yTickFormatter unificado */}
             <YAxis tick={{ fontSize: 12 }} tickFormatter={yTickFormatter} />
-            <Tooltip content={(props) => (
-              <CustomTooltip active={props.active}
-                payload={props.payload as readonly CustomTooltipEntry[] | undefined}
-                label={props.label as string | number | undefined}
-                extraByLabel={tooltipExtraByLabel} />
-            )} />
+            <Tooltip
+              content={(props) => (
+                <CustomTooltip
+                  active={props.active}
+                  payload={props.payload as readonly CustomTooltipEntry[] | undefined}
+                  label={props.label as string | number | undefined}
+                  extraByLabel={tooltipExtraByLabel}
+                />
+              )}
+            />
             {/* MEJORA 3: leyenda abajo, clickable */}
             <Legend
               verticalAlign="bottom"
@@ -367,7 +451,7 @@ function ChartCard({ title, subtitle, data, series, companyLabel, yAxisFormatter
                 </span>
               )}
             />
-            {/* MEJORA 2: Brush sin startIndex → muestra todo lo que venga del filtro */}
+            {/* MEJORA 2: Brush sin startIndex */}
             <Brush
               dataKey="period_label"
               height={24}
@@ -395,10 +479,18 @@ function ChartCard({ title, subtitle, data, series, companyLabel, yAxisFormatter
   );
 }
 
-// ─── Selector genérico de dos opciones toggleables ─────────────────────────
+// ── Selector genérico de dos opciones toggleables ─────────────────────────
 type TwoFlagsState = { a: boolean; b: boolean };
-function TwoFlagsSelector({ labelA, labelB, flags, onChange }: {
-  labelA: string; labelB: string; flags: TwoFlagsState; onChange: (flags: TwoFlagsState) => void;
+function TwoFlagsSelector({
+  labelA,
+  labelB,
+  flags,
+  onChange,
+}: {
+  labelA: string;
+  labelB: string;
+  flags: TwoFlagsState;
+  onChange: (flags: TwoFlagsState) => void;
 }) {
   const toggle = (key: keyof TwoFlagsState) => {
     const next = { ...flags, [key]: !flags[key] };
@@ -406,35 +498,72 @@ function TwoFlagsSelector({ labelA, labelB, flags, onChange }: {
     onChange(next);
   };
   return (
-    <div className="flex rounded-lg border text-[11px] overflow-hidden" style={{ borderColor: "var(--field-border)" }}>
-      <button type="button" onClick={() => toggle("a")} className="px-2 py-1 transition-colors"
-        style={{ background: flags.a ? "var(--primary)" : "var(--field-bg)", color: flags.a ? "var(--primary-fg, #fff)" : "var(--field-text)" }}
-      >{labelA}</button>
-      <button type="button" onClick={() => toggle("b")} className="px-2 py-1 transition-colors"
-        style={{ background: flags.b ? "var(--primary)" : "var(--field-bg)", color: flags.b ? "var(--primary-fg, #fff)" : "var(--field-text)" }}
-      >{labelB}</button>
+    <div
+      className="flex rounded-lg border text-[11px] overflow-hidden"
+      style={{ borderColor: "var(--field-border)" }}
+    >
+      <button
+        type="button"
+        onClick={() => toggle("a")}
+        className="px-2 py-1 transition-colors"
+        style={{
+          background: flags.a ? "var(--primary)" : "var(--field-bg)",
+          color: flags.a ? "var(--primary-fg, #fff)" : "var(--field-text)",
+        }}
+      >
+        {labelA}
+      </button>
+      <button
+        type="button"
+        onClick={() => toggle("b")}
+        className="px-2 py-1 transition-colors"
+        style={{
+          background: flags.b ? "var(--primary)" : "var(--field-bg)",
+          color: flags.b ? "var(--primary-fg, #fff)" : "var(--field-text)",
+        }}
+      >
+        {labelB}
+      </button>
     </div>
   );
 }
 
-// ─── Selector multi para Gráfica 2 ─────────────────────────────────────────
-function Grafica2Selector({ active, onChange }: {
-  active: Set<Grafica2SerieKey>; onChange: (next: Set<Grafica2SerieKey>) => void;
+// ── Selector multi para Gráfica 2 ─────────────────────────────────────────
+function Grafica2Selector({
+  active,
+  onChange,
+}: {
+  active: Set<Grafica2SerieKey>;
+  onChange: (next: Set<Grafica2SerieKey>) => void;
 }) {
   const toggle = (key: Grafica2SerieKey) => {
     const next = new Set(active);
-    if (next.has(key)) { if (next.size === 1) return; next.delete(key); } else { next.add(key); }
+    if (next.has(key)) {
+      if (next.size === 1) return;
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
     onChange(next);
   };
   return (
-    <div className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
-      style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}>
+    <div
+      className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
+      style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+    >
       {GRAFICA2_OPCIONES.map((opcion) => {
         const isActive = active.has(opcion.key);
         return (
-          <button key={opcion.key} type="button" onClick={() => toggle(opcion.key)}
+          <button
+            key={opcion.key}
+            type="button"
+            onClick={() => toggle(opcion.key)}
             className="rounded px-2 py-0.5 transition-colors"
-            style={{ background: isActive ? "var(--primary)" : "transparent", color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)" }}>
+            style={{
+              background: isActive ? "var(--primary)" : "transparent",
+              color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)",
+            }}
+          >
             {opcion.label}
           </button>
         );
@@ -443,9 +572,14 @@ function Grafica2Selector({ active, onChange }: {
   );
 }
 
-// ─── Selector de dos niveles genérico (modo + items) ───────────────────────
+// ── Selector de dos niveles genérico (modo + items) ───────────────────────
 function TwoLevelSelector<M extends string, K extends string>({
-  modos, activeItems, items, currentModo, onModoChange, onItemToggle,
+  modos,
+  activeItems,
+  items,
+  currentModo,
+  onModoChange,
+  onItemToggle,
 }: {
   modos: { key: M; label: string }[];
   activeItems: Set<K>;
@@ -456,23 +590,42 @@ function TwoLevelSelector<M extends string, K extends string>({
 }) {
   return (
     <div className="flex flex-col gap-1 items-end">
-      <div className="flex rounded-lg border text-[11px] overflow-hidden" style={{ borderColor: "var(--field-border)" }}>
+      <div
+        className="flex rounded-lg border text-[11px] overflow-hidden"
+        style={{ borderColor: "var(--field-border)" }}
+      >
         {modos.map((m) => (
-          <button key={m.key} type="button" onClick={() => onModoChange(m.key)}
+          <button
+            key={m.key}
+            type="button"
+            onClick={() => onModoChange(m.key)}
             className="px-2 py-1 transition-colors"
-            style={{ background: currentModo === m.key ? "var(--primary)" : "var(--field-bg)", color: currentModo === m.key ? "var(--primary-fg, #fff)" : "var(--field-text)" }}>
+            style={{
+              background: currentModo === m.key ? "var(--primary)" : "var(--field-bg)",
+              color: currentModo === m.key ? "var(--primary-fg, #fff)" : "var(--field-text)",
+            }}
+          >
             {m.label}
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
-        style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}>
+      <div
+        className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
+        style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+      >
         {items.map((item) => {
           const isActive = activeItems.has(item.key);
           return (
-            <button key={item.key} type="button" onClick={() => onItemToggle(item.key)}
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => onItemToggle(item.key)}
               className="rounded px-2 py-0.5 transition-colors"
-              style={{ background: isActive ? "var(--primary)" : "transparent", color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)" }}>
+              style={{
+                background: isActive ? "var(--primary)" : "transparent",
+                color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)",
+              }}
+            >
               {item.label}
             </button>
           );
@@ -481,15 +634,14 @@ function TwoLevelSelector<M extends string, K extends string>({
     </div>
   );
 }
-// ───────────────────────────────────────────────────────────────────────────
 
 const GRAFICA5_MODOS: { key: Grafica5Modo; label: string }[] = [
-  { key: "cups",    label: "CUPS"    },
+  { key: "cups", label: "CUPS" },
   { key: "energia", label: "Energía" },
   { key: "importe", label: "Importe" },
 ];
 const GRAFICA6_MODOS: { key: Grafica6Modo; label: string }[] = [
-  { key: "cups",    label: "CUPS"    },
+  { key: "cups", label: "CUPS" },
   { key: "energia", label: "Energía" },
   { key: "importe", label: "Importe" },
 ];
@@ -501,7 +653,6 @@ export default function GraficosSection({ token, currentUser }: Props) {
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const [seriesError, setSeriesError] = useState<string | null>(null);
-
   const [psSeriesData, setPsSeriesData] = useState<GraficosPsSeriesResponse | null>(null);
   const [psSeriesLoading, setPsSeriesLoading] = useState(false);
   const [psSeriesError, setPsSeriesError] = useState<string | null>(null);
@@ -509,7 +660,6 @@ export default function GraficosSection({ token, currentUser }: Props) {
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
   const [selectedAnios, setSelectedAnios] = useState<number[]>([]);
   const [selectedMeses, setSelectedMeses] = useState<number[]>([]);
-
   const [grafica1Flags, setGrafica1Flags] = useState<TwoFlagsState>({ a: true, b: false });
   const [grafica2Active, setGrafica2Active] = useState<Set<Grafica2SerieKey>>(new Set(["pct"]));
   const [grafica3Flags, setGrafica3Flags] = useState<TwoFlagsState>({ a: true, b: false });
@@ -522,10 +672,17 @@ export default function GraficosSection({ token, currentUser }: Props) {
   useEffect(() => {
     const loadFilters = async () => {
       if (!token) { setFiltersData(null); return; }
-      setFiltersLoading(true); setFiltersError(null);
+      setFiltersLoading(true);
+      setFiltersError(null);
       try {
-        const response = await fetch(`${API_BASE_URL}/medidas-graficos/filters`, { method: "GET", headers: getAuthHeaders(token) });
-        if (!response.ok) { const text = await response.text(); throw new Error(text || "No se pudieron cargar los filtros."); }
+        const response = await fetch(`${API_BASE_URL}/medidas-graficos/filters`, {
+          method: "GET",
+          headers: getAuthHeaders(token),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "No se pudieron cargar los filtros.");
+        }
         const json = (await response.json()) as GraficoFiltersResponse;
         setFiltersData(json);
         setSelectedEmpresas(json.empresas.map((item) => item.id));
@@ -534,7 +691,9 @@ export default function GraficosSection({ token, currentUser }: Props) {
       } catch (err) {
         setFiltersError(err instanceof Error ? err.message : "No se pudieron cargar los filtros.");
         setFiltersData(null);
-      } finally { setFiltersLoading(false); }
+      } finally {
+        setFiltersLoading(false);
+      }
     };
     void loadFilters();
   }, [token]);
@@ -543,25 +702,31 @@ export default function GraficosSection({ token, currentUser }: Props) {
     const loadSeries = async () => {
       if (!token) { setSeriesData(null); return; }
       if (!filtersData) return;
-      setSeriesLoading(true); setSeriesError(null);
+      setSeriesLoading(true);
+      setSeriesError(null);
       try {
         const searchParams = new URLSearchParams();
         for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
         for (const anio of selectedAnios) searchParams.append("anios", String(anio));
         for (const mes of selectedMeses) searchParams.append("meses", String(mes));
-        // sum cuando hay varias/todas empresas, avg cuando es una sola
-        const allSelected =
-          !filtersData.empresas.length ||
-          selectedEmpresas.length === filtersData.empresas.length;
+        const allSelected = !filtersData.empresas.length || selectedEmpresas.length === filtersData.empresas.length;
         searchParams.set("aggregation", allSelected || selectedEmpresas.length > 1 ? "sum" : "avg");
-        const response = await fetch(`${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`, { method: "GET", headers: getAuthHeaders(token) });
-        if (!response.ok) { const text = await response.text(); throw new Error(text || "No se pudieron cargar las gráficas."); }
+        const response = await fetch(`${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`, {
+          method: "GET",
+          headers: getAuthHeaders(token),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "No se pudieron cargar las gráficas.");
+        }
         const json = (await response.json()) as GraficosSeriesResponse;
         setSeriesData(json);
       } catch (err) {
         setSeriesError(err instanceof Error ? err.message : "No se pudieron cargar las gráficas.");
         setSeriesData(null);
-      } finally { setSeriesLoading(false); }
+      } finally {
+        setSeriesLoading(false);
+      }
     };
     void loadSeries();
   }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
@@ -570,41 +735,58 @@ export default function GraficosSection({ token, currentUser }: Props) {
     const loadPsSeries = async () => {
       if (!token) { setPsSeriesData(null); return; }
       if (!filtersData) return;
-      setPsSeriesLoading(true); setPsSeriesError(null);
+      setPsSeriesLoading(true);
+      setPsSeriesError(null);
       try {
         const searchParams = new URLSearchParams();
         for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
         for (const anio of selectedAnios) searchParams.append("anios", String(anio));
         for (const mes of selectedMeses) searchParams.append("meses", String(mes));
-        const response = await fetch(`${API_BASE_URL}/medidas-graficos-ps/series-cups?${searchParams.toString()}`, { method: "GET", headers: getAuthHeaders(token) });
-        if (!response.ok) { const text = await response.text(); throw new Error(text || "No se pudieron cargar los datos PS."); }
+        const response = await fetch(`${API_BASE_URL}/medidas-graficos-ps/series-cups?${searchParams.toString()}`, {
+          method: "GET",
+          headers: getAuthHeaders(token),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "No se pudieron cargar los datos PS.");
+        }
         const json = (await response.json()) as GraficosPsSeriesResponse;
         setPsSeriesData(json);
       } catch (err) {
         setPsSeriesError(err instanceof Error ? err.message : "No se pudieron cargar los datos PS.");
         setPsSeriesData(null);
-      } finally { setPsSeriesLoading(false); }
+      } finally {
+        setPsSeriesLoading(false);
+      }
     };
     void loadPsSeries();
   }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
 
   const empresaOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.empresas ?? []).map((item) => ({ value: item.id, label: item.nombre })), [filtersData]);
+    () => (filtersData?.empresas ?? []).map((item) => ({ value: item.id, label: item.nombre })),
+    [filtersData]
+  );
   const anioOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.anios ?? []).map((item) => ({ value: item, label: String(item) })), [filtersData]);
+    () => (filtersData?.anios ?? []).map((item) => ({ value: item, label: String(item) })),
+    [filtersData]
+  );
   const mesOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.meses ?? []).map((item) => ({ value: item, label: MESES_LABEL[item] ?? String(item) })), [filtersData]);
+    () => (filtersData?.meses ?? []).map((item) => ({ value: item, label: MESES_LABEL[item] ?? String(item) })),
+    [filtersData]
+  );
 
   const selectedEmpresaNames = useMemo(() => {
     if (!filtersData?.empresas?.length) return "Todas las empresas";
-    if (selectedEmpresas.length === 0 || selectedEmpresas.length === filtersData.empresas.length) return "Todas las empresas";
-    const names = filtersData.empresas.filter((e) => selectedEmpresas.includes(e.id)).map((e) => e.nombre);
+    if (selectedEmpresas.length === 0 || selectedEmpresas.length === filtersData.empresas.length)
+      return "Todas las empresas";
+    const names = filtersData.empresas
+      .filter((e) => selectedEmpresas.includes(e.id))
+      .map((e) => e.nombre);
     if (names.length === 0) return "Todas las empresas";
     return names.join(" · ");
   }, [filtersData, selectedEmpresas]);
 
-  // ── Gráfica 1: E neta facturada / Adquisición ────────────────────────
-  // Mapa de ventanas por period_key para la adquisición: { period_key -> { adq_m1, adq_m2, ... } }
+  // ── Adquisición por ventanas ───────────────────────────────────────────────
   const adqVentanasByPeriod = useMemo(() => {
     const map = new Map<string, Record<string, number>>();
     for (const serie of seriesData?.adquisicion_ventanas?.series ?? []) {
@@ -617,36 +799,31 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return map;
   }, [seriesData]);
 
+  // ── Gráfica 1 ────────────────────────────────────────────────────────────
   const grafica1Series = useMemo(() => {
     const result: GraficoSerie[] = [];
     if (grafica1Flags.a) {
-      result.push(...relabelSeries(
-        (seriesData?.energia_facturada.series ?? []).map((s) => ({ ...s, serie_key: `ef_${s.serie_key}` })),
-        "E neta facturada"
-      ));
+      result.push(
+        ...relabelSeries(
+          (seriesData?.energia_facturada.series ?? []).map((s) => ({ ...s, serie_key: `ef_${s.serie_key}` })),
+          "E neta facturada"
+        )
+      );
     }
     if (grafica1Flags.b) {
-      // Construir la serie activa eligiendo la ventana más reciente con valor != 0 por cada punto
       const allPeriodKeys = Array.from(adqVentanasByPeriod.keys()).sort();
       if (allPeriodKeys.length > 0) {
-        // Obtener period_label de adq_m1 (siempre existe)
-        const m1Serie = seriesData?.adquisicion_ventanas?.series?.find(s => s.serie_key === "adq_m1");
+        const m1Serie = seriesData?.adquisicion_ventanas?.series?.find((s) => s.serie_key === "adq_m1");
         const labelByKey: Record<string, string> = {};
         for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
-
-        const points: GraficoPoint[] = allPeriodKeys.map(pk => {
+        const points: GraficoPoint[] = allPeriodKeys.map((pk) => {
           const ventanas = adqVentanasByPeriod.get(pk) ?? {};
-          // Jerarquía: ART15 → M11 → M7 → M2 → M1
           let value = 0;
           for (const v of ADQ_VENTANAS) {
             const val = ventanas[v.key] ?? 0;
             if (val !== 0) { value = val; break; }
           }
-          return {
-            period_key: pk,
-            period_label: labelByKey[pk] ?? pk,
-            value,
-          };
+          return { period_key: pk, period_label: labelByKey[pk] ?? pk, value };
         });
         result.push({ serie_key: "adquisicion", serie_label: "Adquisición", points });
       }
@@ -666,11 +843,9 @@ export default function GraficosSection({ token, currentUser }: Props) {
       }
     }
     if (grafica1Flags.b) {
-      // Usar la misma lógica de jerarquía que grafica1Series
-      const m1Serie = seriesData?.adquisicion_ventanas?.series?.find(s => s.serie_key === "adq_m1");
+      const m1Serie = seriesData?.adquisicion_ventanas?.series?.find((s) => s.serie_key === "adq_m1");
       const labelByKey: Record<string, string> = {};
       for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
-
       for (const [pk, ventanas] of adqVentanasByPeriod) {
         let value = 0;
         for (const v of ADQ_VENTANAS) {
@@ -685,18 +860,15 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
   }, [seriesData, grafica1Flags, adqVentanasByPeriod]);
 
-  // Tooltip histórico de adquisición — muestra todas las ventanas con valor != 0
   const grafica1TooltipExtra = useMemo((): Record<string, { label: string; value: number }[]> => {
     if (!grafica1Flags.b) return {};
     const result: Record<string, { label: string; value: number }[]> = {};
-    const m1Serie = seriesData?.adquisicion_ventanas?.series?.find(s => s.serie_key === "adq_m1");
+    const m1Serie = seriesData?.adquisicion_ventanas?.series?.find((s) => s.serie_key === "adq_m1");
     const labelByKey: Record<string, string> = {};
     for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
-
     for (const [pk, ventanas] of adqVentanasByPeriod) {
       const periodLabel = labelByKey[pk] ?? pk;
       const entries: { label: string; value: number }[] = [];
-      // Mostrar en orden M1 → M2 → M7 → M11 → ART15 (cronológico)
       for (const v of [...ADQ_VENTANAS].reverse()) {
         const val = ventanas[v.key] ?? 0;
         if (val !== 0) entries.push({ label: v.label, value: val });
@@ -712,21 +884,42 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return "Histórico de Adquisición (publicación más reciente disponible).";
   }, [grafica1Flags]);
 
-  // ── Gráfica 2 ────────────────────────────────────────────────────────
+  // ── Gráfica 2 ────────────────────────────────────────────────────────────
   const grafica2Series = useMemo(() => {
     const result: GraficoSerie[] = [];
-    if (grafica2Active.has("pct")) result.push(...relabelSeries((seriesData?.perdidas.series ?? []).map((s) => ({ ...s, serie_key: `pct_${s.serie_key}` })), "Pérdidas (%)"));
+    if (grafica2Active.has("pct"))
+      result.push(...relabelSeries((seriesData?.perdidas.series ?? []).map((s) => ({ ...s, serie_key: `pct_${s.serie_key}` })), "Pérdidas (%)"));
     for (const opcion of GRAFICA2_OPCIONES.filter((o) => o.key !== "pct")) {
-      if (grafica2Active.has(opcion.key)) { const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key); if (serie) result.push({ ...serie, serie_label: opcion.label }); }
+      if (grafica2Active.has(opcion.key)) {
+        const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key);
+        if (serie) result.push({ ...serie, serie_label: opcion.label });
+      }
     }
     return result;
   }, [seriesData, grafica2Active]);
 
   const grafica2Rows = useMemo(() => {
     const map = new Map<string, ChartRow>();
-    if (grafica2Active.has("pct")) { for (const serie of seriesData?.perdidas.series ?? []) { for (const point of serie.points) { const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label }; current[`pct_${serie.serie_key}`] = point.value; map.set(point.period_key, current); } } }
+    if (grafica2Active.has("pct")) {
+      for (const serie of seriesData?.perdidas.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`pct_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
     for (const opcion of GRAFICA2_OPCIONES.filter((o) => o.key !== "pct")) {
-      if (grafica2Active.has(opcion.key)) { const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key); if (serie) { for (const point of serie.points) { const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label }; current[opcion.key] = point.value; map.set(point.period_key, current); } } }
+      if (grafica2Active.has(opcion.key)) {
+        const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key);
+        if (serie) {
+          for (const point of serie.points) {
+            const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+            current[opcion.key] = point.value;
+            map.set(point.period_key, current);
+          }
+        }
+      }
     }
     return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
   }, [seriesData, grafica2Active]);
@@ -737,9 +930,11 @@ export default function GraficosSection({ token, currentUser }: Props) {
   }, [grafica2Active]);
 
   const perdidasKwhByLabel = useMemo(
-    () => buildTooltipExtraByLabel(seriesData?.perdidas_kwh ?? null, "Pérdidas E facturada (kWh)"), [seriesData]);
+    () => buildTooltipExtraByLabel(seriesData?.perdidas_kwh ?? null, "Pérdidas E facturada (kWh)"),
+    [seriesData]
+  );
 
-  // ── Gráfica 3 ────────────────────────────────────────────────────────
+  // ── Gráfica 3 ────────────────────────────────────────────────────────────
   const energiasPfSinFinal = useMemo((): GraficoSeriesGroup => ({
     series: (seriesData?.energias_pf.series ?? []).filter((s) => s.serie_key !== "pf_final"),
   }), [seriesData]);
@@ -764,18 +959,42 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return "Histórico de E PF M2, M7, M11 y ART15.";
   }, [grafica3Flags]);
 
-  // ── Gráfica 4 ────────────────────────────────────────────────────────
+  // ── Gráfica 4 ────────────────────────────────────────────────────────────
   const grafica4Series = useMemo(() => {
     const result: GraficoSerie[] = [];
-    if (grafica4Flags.a) result.push(...(seriesData?.autoconsumo.series ?? []).map((s) => ({ ...s, serie_key: `autoc_${s.serie_key}`, serie_label: seriesData?.autoconsumo.series.length === 1 ? "E autoconsumo" : s.serie_label })));
-    if (grafica4Flags.b) result.push(...(seriesData?.energia_generada.series ?? []).map((s) => ({ ...s, serie_key: `gen_${s.serie_key}`, serie_label: seriesData?.energia_generada.series.length === 1 ? "E generada" : s.serie_label })));
+    if (grafica4Flags.a)
+      result.push(...(seriesData?.autoconsumo.series ?? []).map((s) => ({
+        ...s, serie_key: `autoc_${s.serie_key}`,
+        serie_label: seriesData?.autoconsumo.series.length === 1 ? "E autoconsumo" : s.serie_label,
+      })));
+    if (grafica4Flags.b)
+      result.push(...(seriesData?.energia_generada.series ?? []).map((s) => ({
+        ...s, serie_key: `gen_${s.serie_key}`,
+        serie_label: seriesData?.energia_generada.series.length === 1 ? "E generada" : s.serie_label,
+      })));
     return result;
   }, [seriesData, grafica4Flags]);
 
   const grafica4Rows = useMemo(() => {
     const map = new Map<string, ChartRow>();
-    if (grafica4Flags.a) { for (const serie of seriesData?.autoconsumo.series ?? []) { for (const point of serie.points) { const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label }; current[`autoc_${serie.serie_key}`] = point.value; map.set(point.period_key, current); } } }
-    if (grafica4Flags.b) { for (const serie of seriesData?.energia_generada.series ?? []) { for (const point of serie.points) { const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label }; current[`gen_${serie.serie_key}`] = point.value; map.set(point.period_key, current); } } }
+    if (grafica4Flags.a) {
+      for (const serie of seriesData?.autoconsumo.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`autoc_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
+    if (grafica4Flags.b) {
+      for (const serie of seriesData?.energia_generada.series ?? []) {
+        for (const point of serie.points) {
+          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
+          current[`gen_${serie.serie_key}`] = point.value;
+          map.set(point.period_key, current);
+        }
+      }
+    }
     return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
   }, [seriesData, grafica4Flags]);
 
@@ -785,7 +1004,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
     return "Histórico de E generada.";
   }, [grafica4Flags]);
 
-  // ── Gráfica 5: PS por tipo ────────────────────────────────────────────
+  // ── Gráfica 5: PS por tipo ────────────────────────────────────────────────
   const grafica5Group = useMemo((): GraficoSeriesGroup | null => {
     if (!psSeriesData) return null;
     if (grafica5Modo === "cups") return psSeriesData.cups_por_tipo;
@@ -835,7 +1054,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
     });
   };
 
-  // ── Gráfica 6: PS por tarifa ──────────────────────────────────────────
+  // ── Gráfica 6: PS por tarifa ──────────────────────────────────────────────
   const grafica6Group = useMemo((): GraficoSeriesGroup | null => {
     if (!psSeriesData) return null;
     if (grafica6Modo === "cups") return psSeriesData.cups_por_tarifa;
@@ -909,15 +1128,29 @@ export default function GraficosSection({ token, currentUser }: Props) {
         {psSeriesError && <div className="ui-alert ui-alert--danger">Error cargando datos PS: {psSeriesError}</div>}
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-3">
-          <FilterDropdown title="Empresa" options={empresaOptions} selectedValues={selectedEmpresas}
+          <FilterDropdown
+            title="Empresa"
+            options={empresaOptions}
+            selectedValues={selectedEmpresas}
             onToggle={(value) => toggleSelection(value, setSelectedEmpresas)}
-            onSelectAll={() => selectAll(empresaOptions.map((item) => item.value), selectedEmpresas, setSelectedEmpresas)} />
-          <FilterDropdown title="Año" options={anioOptions} selectedValues={selectedAnios} allLabel="Todos"
+            onSelectAll={() => selectAll(empresaOptions.map((item) => item.value), selectedEmpresas, setSelectedEmpresas)}
+          />
+          <FilterDropdown
+            title="Año"
+            options={anioOptions}
+            selectedValues={selectedAnios}
+            allLabel="Todos"
             onToggle={(value) => toggleSelection(value, setSelectedAnios)}
-            onSelectAll={() => selectAll(anioOptions.map((item) => item.value), selectedAnios, setSelectedAnios)} />
-          <FilterDropdown title="Mes" options={mesOptions} selectedValues={selectedMeses} allLabel="Todos"
+            onSelectAll={() => selectAll(anioOptions.map((item) => item.value), selectedAnios, setSelectedAnios)}
+          />
+          <FilterDropdown
+            title="Mes"
+            options={mesOptions}
+            selectedValues={selectedMeses}
+            allLabel="Todos"
             onToggle={(value) => toggleSelection(value, setSelectedMeses)}
-            onSelectAll={() => selectAll(mesOptions.map((item) => item.value), selectedMeses, setSelectedMeses)} />
+            onSelectAll={() => selectAll(mesOptions.map((item) => item.value), selectedMeses, setSelectedMeses)}
+          />
         </div>
 
         {(filtersLoading || seriesLoading || psSeriesLoading) && (
@@ -927,40 +1160,73 @@ export default function GraficosSection({ token, currentUser }: Props) {
         <div className="grid min-w-0 gap-4">
           <ChartCard
             title="Gráfica 1. Evolución de energía facturada / Adquisición"
-            subtitle={grafica1Subtitle} companyLabel={selectedEmpresaNames}
-            data={grafica1Rows} series={grafica1Series}
+            subtitle={grafica1Subtitle}
+            companyLabel={selectedEmpresaNames}
+            data={grafica1Rows}
+            series={grafica1Series}
             tooltipExtraByLabel={grafica1TooltipExtra}
-            headerExtra={<TwoFlagsSelector labelA="E neta fact." labelB="Adquisición" flags={grafica1Flags} onChange={setGrafica1Flags} />}
+            headerExtra={
+              <TwoFlagsSelector
+                labelA="E neta fact."
+                labelB="Adquisición"
+                flags={grafica1Flags}
+                onChange={setGrafica1Flags}
+              />
+            }
           />
           <ChartCard
             title="Gráfica 2. Evolución de pérdidas"
-            subtitle={grafica2Subtitle} companyLabel={selectedEmpresaNames}
-            data={grafica2Rows} series={grafica2Series}
+            subtitle={grafica2Subtitle}
+            companyLabel={selectedEmpresaNames}
+            data={grafica2Rows}
+            series={grafica2Series}
             yAxisFormatter={(value) => `${formatYAxis(value)}%`}
             tooltipExtraByLabel={perdidasKwhByLabel}
             headerExtra={<Grafica2Selector active={grafica2Active} onChange={setGrafica2Active} />}
           />
           <ChartCard
             title="Gráfica 3. Evolución de energías publicadas / E PF"
-            subtitle={grafica3Subtitle} companyLabel={selectedEmpresaNames}
-            data={grafica3Rows} series={grafica3Series}
-            headerExtra={<TwoFlagsSelector labelA="E neta publ." labelB="E PF" flags={grafica3Flags} onChange={setGrafica3Flags} />}
+            subtitle={grafica3Subtitle}
+            companyLabel={selectedEmpresaNames}
+            data={grafica3Rows}
+            series={grafica3Series}
+            headerExtra={
+              <TwoFlagsSelector
+                labelA="E neta publ."
+                labelB="E PF"
+                flags={grafica3Flags}
+                onChange={setGrafica3Flags}
+              />
+            }
           />
           <ChartCard
             title="Gráfica 4. Evolución de autoconsumo / energía generada"
-            subtitle={grafica4Subtitle} companyLabel={selectedEmpresaNames}
-            data={grafica4Rows} series={grafica4Series}
-            headerExtra={<TwoFlagsSelector labelA="E autoconsumo" labelB="E generada" flags={grafica4Flags} onChange={setGrafica4Flags} />}
+            subtitle={grafica4Subtitle}
+            companyLabel={selectedEmpresaNames}
+            data={grafica4Rows}
+            series={grafica4Series}
+            headerExtra={
+              <TwoFlagsSelector
+                labelA="E autoconsumo"
+                labelB="E generada"
+                flags={grafica4Flags}
+                onChange={setGrafica4Flags}
+              />
+            }
           />
           <ChartCard
             title="Gráfica 5. Evolución PS por tipo"
-            subtitle={grafica5Subtitle} companyLabel={selectedEmpresaNames}
-            data={grafica5Rows} series={grafica5Series}
+            subtitle={grafica5Subtitle}
+            companyLabel={selectedEmpresaNames}
+            data={grafica5Rows}
+            series={grafica5Series}
             yAxisFormatter={grafica5Config.yFormatter ?? formatYAxis}
             headerExtra={
               <TwoLevelSelector
-                modos={GRAFICA5_MODOS} currentModo={grafica5Modo}
-                items={GRAFICA5_TIPOS} activeItems={grafica5Tipos}
+                modos={GRAFICA5_MODOS}
+                currentModo={grafica5Modo}
+                items={GRAFICA5_TIPOS}
+                activeItems={grafica5Tipos}
                 onModoChange={(m) => { setGrafica5Modo(m); setGrafica5Tipos(new Set(["total"])); }}
                 onItemToggle={handleGrafica5TipoToggle}
               />
@@ -968,13 +1234,17 @@ export default function GraficosSection({ token, currentUser }: Props) {
           />
           <ChartCard
             title="Gráfica 6. Evolución PS por tarifa"
-            subtitle={grafica6Subtitle} companyLabel={selectedEmpresaNames}
-            data={grafica6Rows} series={grafica6Series}
+            subtitle={grafica6Subtitle}
+            companyLabel={selectedEmpresaNames}
+            data={grafica6Rows}
+            series={grafica6Series}
             yAxisFormatter={grafica6Config.yFormatter ?? formatYAxis}
             headerExtra={
               <TwoLevelSelector
-                modos={GRAFICA6_MODOS} currentModo={grafica6Modo}
-                items={GRAFICA6_TARIFAS} activeItems={grafica6Tarifas}
+                modos={GRAFICA6_MODOS}
+                currentModo={grafica6Modo}
+                items={GRAFICA6_TARIFAS}
+                activeItems={grafica6Tarifas}
                 onModoChange={(m) => { setGrafica6Modo(m); setGrafica6Tarifas(new Set(["total"])); }}
                 onItemToggle={handleGrafica6TarifaToggle}
               />
