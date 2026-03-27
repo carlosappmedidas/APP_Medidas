@@ -216,53 +216,39 @@ export default function MedidasPsSection({
   const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
-  const adjustButton = canEditAdjustments ? (
-    <button
-      type="button"
-      onClick={() => setShowAdjust((v) => !v)}
-      className="ui-btn ui-btn-outline ui-btn-xs"
-    >
-      {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
-    </button>
-  ) : null;
+  // Refresh + ajustar columnas juntos en la misma zona derecha
+  const adjustButton = (
+    <div className="flex items-center gap-1">
+      <MedidasTableActions
+        loading={loading} token={token} isSistema={isSistema}
+        canDeleteByFilters={canDeleteByFilters} totalDeleteOps={totalDeleteOps}
+        deletePreviewLoading={deletePreviewLoading} filtrosActivosCount={filtrosActivosCount}
+        onRefresh={() => void handleLoadData(page)}
+        onOpenDeletePreview={() => void handleOpenDeletePreview()}
+        onOpenDelete={openDelete}
+        onClearFilters={() => { clearFilters(); clearDeleteState(); }}
+        deletePreviewTitleEnabled="Ver impacto antes de borrar"
+        deletePreviewTitleDisabled="Selecciona al menos empresa, año y mes para ver la vista previa"
+        deleteTitleEnabled="Borrar por ingestion de la familia PS usando empresa + año + mes"
+        deleteTitleDisabled="Selecciona al menos empresa, año y mes para borrar"
+      />
+      {canEditAdjustments && (
+        <button
+          type="button"
+          onClick={() => setShowAdjust((v) => !v)}
+          className="ui-btn ui-btn-outline ui-btn-xs"
+        >
+          {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <section className="ui-card text-sm">
-      <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h4 className="ui-card-title">Medidas (PS){scope === "all" ? " · Sistema" : ""}</h4>
-          <p className="ui-card-subtitle">Resumen mensual de PS por empresa, tarifa y tipo.</p>
-        </div>
-        <MedidasTableActions
-          loading={loading} token={token} isSistema={isSistema}
-          canDeleteByFilters={canDeleteByFilters} totalDeleteOps={totalDeleteOps}
-          deletePreviewLoading={deletePreviewLoading} filtrosActivosCount={filtrosActivosCount}
-          onRefresh={() => void handleLoadData(page)}
-          onOpenDeletePreview={() => void handleOpenDeletePreview()}
-          onOpenDelete={openDelete}
-          onClearFilters={() => { clearFilters(); clearDeleteState(); }}
-          deletePreviewTitleEnabled="Ver impacto antes de borrar"
-          deletePreviewTitleDisabled="Selecciona al menos empresa, año y mes para ver la vista previa"
-          deleteTitleEnabled="Borrar por ingestion de la familia PS usando empresa + año + mes"
-          deleteTitleDisabled="Selecciona al menos empresa, año y mes para borrar"
-        />
-      </header>
-
+ 
       {error && <div className="ui-alert ui-alert--danger mb-4">{error}</div>}
       {deletePreviewError && <div className="ui-alert ui-alert--danger mb-4">{deletePreviewError}</div>}
-
-      <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
-        <div className="ui-muted">
-          Filtros activos:{" "}
-          <span className="font-medium" style={{ color: "var(--text)" }}>{filtrosActivosCount}</span>
-        </div>
-        {hasLoadedOnce && (
-          <div className="ui-muted">
-            Total filas:{" "}
-            <span className="font-medium" style={{ color: "var(--text)" }}>{totalFilas}</span>
-          </div>
-        )}
-      </div>
 
       {isSistema && (
         <div className="mb-3 ui-alert ui-alert--warning">
@@ -283,6 +269,7 @@ export default function MedidasPsSection({
         empresaOptions={empresaOptions} anioOptions={anioOptions} mesOptions={mesOptions}
         empresaPlaceholder="Todas" anioPlaceholder="Todos" mesPlaceholder="Todos"
         compact
+        filtrosActivosCount={filtrosActivosCount}
         adjustButton={adjustButton}
       />
 
@@ -307,7 +294,6 @@ export default function MedidasPsSection({
         />
       )}
 
-      {/* Tabla — solo scroll horizontal aquí, paginación fuera */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
@@ -382,7 +368,6 @@ export default function MedidasPsSection({
         </table>
       </div>
 
-      {/* Paginación fuera del scroll horizontal — siempre visible */}
       <TablePaginationFooter
         loading={loading} hasLoadedOnce={hasLoadedOnce}
         totalFilas={totalFilas} startIndex={startIndex} endIndex={endIndex}

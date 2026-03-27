@@ -4,24 +4,19 @@ type MedidasTableActionsProps = {
   loading: boolean;
   token: string | null;
   isSistema: boolean;
-
   canDeleteByFilters: boolean;
   totalDeleteOps: number;
   deletePreviewLoading: boolean;
-
   filtrosActivosCount: number;
-
   onRefresh: () => void;
   onOpenDeletePreview: () => void;
   onOpenDelete: () => void;
   onClearFilters: () => void;
-
   refreshText?: string;
   refreshLoadingText?: string;
   deletePreviewText?: string;
   deletePreviewLoadingText?: string;
   deleteText?: string;
-
   deletePreviewTitleEnabled?: string;
   deletePreviewTitleDisabled?: string;
   deleteTitleEnabled?: string;
@@ -33,24 +28,17 @@ export default function MedidasTableActions({
   loading,
   token,
   isSistema,
-
   canDeleteByFilters,
   totalDeleteOps,
   deletePreviewLoading,
-
   filtrosActivosCount,
-
   onRefresh,
   onOpenDeletePreview,
   onOpenDelete,
   onClearFilters,
-
-  refreshText = "Actualizar",
-  refreshLoadingText = "Actualizando...",
   deletePreviewText = "Vista previa borrado",
   deletePreviewLoadingText = "Calculando preview...",
   deleteText = "Borrar…",
-
   deletePreviewTitleEnabled = "Ver impacto antes de borrar",
   deletePreviewTitleDisabled = "Completa los filtros necesarios para ver la vista previa",
   deleteTitleEnabled = "Borrar por ingestion usando los filtros activos",
@@ -59,13 +47,24 @@ export default function MedidasTableActions({
 }: MedidasTableActionsProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {/* Botón refresh — solo icono, se posiciona junto a "Ajustar columnas" desde el padre */}
       <button
         onClick={onRefresh}
         disabled={loading || !token}
-        className="ui-btn ui-btn-primary"
+        className="ui-btn ui-btn-ghost ui-btn-xs rounded-full"
         type="button"
+        title={loading ? "Actualizando..." : "Actualizar datos"}
+        style={{ fontSize: 16, lineHeight: 1, padding: "4px 8px" }}
       >
-        {loading ? refreshLoadingText : refreshText}
+        <span
+          style={{
+            display: "inline-block",
+            transition: "transform 0.5s ease",
+            transform: loading ? "rotate(360deg)" : "rotate(0deg)",
+          }}
+        >
+          ↻
+        </span>
       </button>
 
       {isSistema && (
@@ -79,7 +78,6 @@ export default function MedidasTableActions({
           >
             {deletePreviewLoading ? deletePreviewLoadingText : deletePreviewText}
           </button>
-
           <button
             onClick={onOpenDelete}
             disabled={loading || !token || !canDeleteByFilters}

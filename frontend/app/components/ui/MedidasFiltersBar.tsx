@@ -29,6 +29,7 @@ type MedidasFiltersBarProps = {
   mesPlaceholder?: string;
 
   compact?: boolean;
+  filtrosActivosCount?: number;
 
   /** Slot opcional: botón de ajuste de columnas en la misma línea que los filtros */
   adjustButton?: React.ReactNode;
@@ -54,6 +55,7 @@ export default function MedidasFiltersBar({
   anioPlaceholder = "Todos",
   mesPlaceholder = "Todos",
   compact = false,
+  filtrosActivosCount,
   adjustButton,
 }: MedidasFiltersBarProps) {
   const selectStyle = compact
@@ -76,73 +78,83 @@ export default function MedidasFiltersBar({
       };
 
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-2">
-      {isSistema && (
-        <div style={{ minWidth: 110 }}>
-          <label className="ui-label">Cliente</label>
-          <select
-            className="ui-select w-full text-[10px]"
-            style={selectStyle}
-            value={filtroTenant}
-            onChange={(e) => {
-              setFiltroTenant(e.target.value);
-              setFiltroEmpresaIds([]);
-            }}
+    <div className="mb-3">
+      {/* Fila de filtros + botón ajustar columnas */}
+      <div className="flex flex-wrap items-end gap-2">
+        {isSistema && (
+          <div style={{ minWidth: 110 }}>
+            <label className="ui-label">Cliente</label>
+            <select
+              className="ui-select w-full text-[10px]"
+              style={selectStyle}
+              value={filtroTenant}
+              onChange={(e) => {
+                setFiltroTenant(e.target.value);
+                setFiltroEmpresaIds([]);
+              }}
+              disabled={!token || loading}
+            >
+              <option value="">Todos</option>
+              {opcionesTenant.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div style={{ minWidth: 160 }}>
+          <MultiSelectDropdown
+            label="Empresa"
+            options={empresaOptions}
+            selectedValues={filtroEmpresaIds}
+            onChange={setFiltroEmpresaIds}
             disabled={!token || loading}
-          >
-            <option value="">Todos</option>
-            {opcionesTenant.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+            placeholder={empresaPlaceholder}
+            compact={compact}
+          />
         </div>
-      )}
 
-      {/* Empresa: más ancho porque los nombres pueden ser largos */}
-      <div style={{ minWidth: 160 }}>
-        <MultiSelectDropdown
-          label="Empresa"
-          options={empresaOptions}
-          selectedValues={filtroEmpresaIds}
-          onChange={setFiltroEmpresaIds}
-          disabled={!token || loading}
-          placeholder={empresaPlaceholder}
-          compact={compact}
-        />
+        <div style={{ minWidth: 95 }}>
+          <MultiSelectDropdown
+            label="Año"
+            options={anioOptions}
+            selectedValues={filtroAnios}
+            onChange={setFiltroAnios}
+            disabled={!token || loading}
+            placeholder={anioPlaceholder}
+            compact={compact}
+          />
+        </div>
+
+        <div style={{ minWidth: 95 }}>
+          <MultiSelectDropdown
+            label="Mes"
+            options={mesOptions}
+            selectedValues={filtroMeses}
+            onChange={setFiltroMeses}
+            disabled={!token || loading}
+            placeholder={mesPlaceholder}
+            compact={compact}
+          />
+        </div>
+
+        {/* Botón ajuste de columnas + refresh al extremo derecho */}
+        {adjustButton && (
+          <div className="ml-auto flex items-end gap-1">
+            {adjustButton}
+          </div>
+        )}
       </div>
 
-      {/* Año */}
-      <div style={{ minWidth: 95 }}>
-        <MultiSelectDropdown
-          label="Año"
-          options={anioOptions}
-          selectedValues={filtroAnios}
-          onChange={setFiltroAnios}
-          disabled={!token || loading}
-          placeholder={anioPlaceholder}
-          compact={compact}
-        />
-      </div>
-
-      {/* Mes */}
-      <div style={{ minWidth: 95 }}>
-        <MultiSelectDropdown
-          label="Mes"
-          options={mesOptions}
-          selectedValues={filtroMeses}
-          onChange={setFiltroMeses}
-          disabled={!token || loading}
-          placeholder={mesPlaceholder}
-          compact={compact}
-        />
-      </div>
-
-      {/* Solo el botón toggle — los demás aparecen dentro del panel expandido */}
-      {adjustButton && (
-        <div className="ml-auto flex items-end">
-          {adjustButton}
+      {/* Filtros activos — debajo, pequeño y discreto */}
+      {filtrosActivosCount !== undefined && (
+        <div className="mt-1 text-[10px] ui-muted">
+          Filtros activos:{" "}
+          <span className="font-medium" style={{ color: "var(--text)" }}>
+            {filtrosActivosCount}
+          </span>
         </div>
       )}
     </div>

@@ -35,6 +35,22 @@ type MainTab =
   | "ajustes"
   | "sistema";
 
+const PAGE_TITLES: Record<MainTab, string> = {
+  "dashboard": "Dashboard",
+  "medidas": "Medidas",
+  "tablas-general": "Medidas (General)",
+  "tablas-ps": "Medidas (PS)",
+  "objeciones": "Objeciones",
+  "calendario-ree": "Calendario REE",
+  "graficos": "Gráficos",
+  "alertas": "Alertas",
+  "usuarios": "Usuarios",
+  "clientes": "Clientes",
+  "carga": "Carga de datos",
+  "ajustes": "Configuración",
+  "sistema": "Sistema",
+};
+
 /* =========================================================
    Column meta medidas_general
    ========================================================= */
@@ -51,16 +67,8 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
   { id: "energia_generada_kwh", label: "E generada", group: "General" },
   { id: "energia_frontera_dd_kwh", label: "E frontera DD", group: "General" },
   { id: "energia_pf_final_kwh", label: "E PF final", group: "General" },
-  {
-    id: "perdidas_e_facturada_kwh",
-    label: "Pérdidas E facturada (kWh)",
-    group: "General",
-  },
-  {
-    id: "perdidas_e_facturada_pct",
-    label: "Pérdidas E facturada (%)",
-    group: "General",
-  },
+  { id: "perdidas_e_facturada_kwh", label: "Pérdidas E facturada (kWh)", group: "General" },
+  { id: "perdidas_e_facturada_pct", label: "Pérdidas E facturada (%)", group: "General" },
 
   { id: "energia_publicada_m2_kwh", label: "E publ M2", group: "M2" },
   { id: "energia_autoconsumo_m2_kwh", label: "E autoc M2", group: "M2" },
@@ -424,7 +432,6 @@ export default function HomePage() {
 
               {medidasOpen && (
                 <div className="ui-nav-sub">
-
                   {/* Tablas — visible para todos */}
                   <>
                     <button
@@ -503,7 +510,6 @@ export default function HomePage() {
                   >
                     <span>Gráficos</span>
                   </button>
-
                 </div>
               )}
             </div>
@@ -588,8 +594,9 @@ export default function HomePage() {
       </aside>
 
       <main className="ui-main">
+        {/* ← ÚNICO CAMBIO: título dinámico según pestaña activa */}
         <header className="mb-6 flex items-center justify-between gap-3">
-          <h2 className="ui-page-title">APP Medidas</h2>
+          <h2 className="ui-page-title">{PAGE_TITLES[activeTab]}</h2>
 
           <div className="relative">
             <button
