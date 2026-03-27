@@ -1,5 +1,4 @@
 "use client";
-
 import { useMemo, useState } from "react";
 import type { MedidaGeneral } from "../../types";
 import DeletePreviewModal from "../ui/DeletePreviewModal";
@@ -47,11 +46,11 @@ const STICKY_COLUMN_IDS = ["empresa_id", "empresa_codigo", "punto_id", "anio", "
 
 // Anchos fijos para calcular el `left` acumulado de cada columna sticky
 const STICKY_WIDTHS: Record<string, number> = {
-  empresa_id:     64,
+  empresa_id: 64,
   empresa_codigo: 110,
-  punto_id:       64,
-  anio:           52,
-  mes:            44,
+  punto_id: 64,
+  anio: 52,
+  mes: 44,
 };
 
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
@@ -60,7 +59,6 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   { id: "punto_id", label: "Punto", align: "left", group: "Identificación", render: (m) => m.punto_id },
   { id: "anio", label: "Año", align: "left", group: "Identificación", render: (m) => m.anio },
   { id: "mes", label: "Mes", align: "left", group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
-
   { id: "energia_bruta_facturada", label: "E bruta facturada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_bruta_facturada) },
   { id: "energia_autoconsumo_kwh", label: "E autoconsumo", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_autoconsumo_kwh) },
   { id: "energia_neta_facturada_kwh", label: "E neta facturada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_neta_facturada_kwh) },
@@ -69,7 +67,6 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   { id: "energia_pf_final_kwh", label: "E PF final", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_pf_final_kwh) },
   { id: "perdidas_e_facturada_kwh", label: "Pérdidas E facturada (kWh)", align: "right", group: "General", render: (m) => formatNumberEs(m.perdidas_e_facturada_kwh) },
   { id: "perdidas_e_facturada_pct", label: "Pérdidas E facturada (%)", align: "right", group: "General", render: (m) => formatPercentEs(m.perdidas_e_facturada_pct) },
-
   { id: "energia_publicada_m2_kwh", label: "E publ M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_publicada_m2_kwh) },
   { id: "energia_autoconsumo_m2_kwh", label: "E autoc M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_autoconsumo_m2_kwh) },
   { id: "energia_pf_m2_kwh", label: "E PF M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_pf_m2_kwh) },
@@ -78,7 +75,6 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   { id: "energia_neta_facturada_m2_kwh", label: "E neta M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_neta_facturada_m2_kwh) },
   { id: "perdidas_e_facturada_m2_kwh", label: "Pérdidas M2 (kWh)", align: "right", group: "M2", render: (m) => formatNumberEs(m.perdidas_e_facturada_m2_kwh) },
   { id: "perdidas_e_facturada_m2_pct", label: "Pérdidas M2 (%)", align: "right", group: "M2", render: (m) => formatPercentEs(m.perdidas_e_facturada_m2_pct) },
-
   { id: "energia_publicada_m7_kwh", label: "E publ M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_publicada_m7_kwh) },
   { id: "energia_autoconsumo_m7_kwh", label: "E autoc M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_autoconsumo_m7_kwh) },
   { id: "energia_pf_m7_kwh", label: "E PF M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_pf_m7_kwh) },
@@ -87,7 +83,6 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   { id: "energia_neta_facturada_m7_kwh", label: "E neta M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_neta_facturada_m7_kwh) },
   { id: "perdidas_e_facturada_m7_kwh", label: "Pérdidas M7 (kWh)", align: "right", group: "M7", render: (m) => formatNumberEs(m.perdidas_e_facturada_m7_kwh) },
   { id: "perdidas_e_facturada_m7_pct", label: "Pérdidas M7 (%)", align: "right", group: "M7", render: (m) => formatPercentEs(m.perdidas_e_facturada_m7_pct) },
-
   { id: "energia_publicada_m11_kwh", label: "E publ M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_publicada_m11_kwh) },
   { id: "energia_autoconsumo_m11_kwh", label: "E autoc M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_autoconsumo_m11_kwh) },
   { id: "energia_pf_m11_kwh", label: "E PF M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_pf_m11_kwh) },
@@ -96,7 +91,6 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   { id: "energia_neta_facturada_m11_kwh", label: "E neta M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_neta_facturada_m11_kwh) },
   { id: "perdidas_e_facturada_m11_kwh", label: "Pérdidas M11 (kWh)", align: "right", group: "M11", render: (m) => formatNumberEs(m.perdidas_e_facturada_m11_kwh) },
   { id: "perdidas_e_facturada_m11_pct", label: "Pérdidas M11 (%)", align: "right", group: "M11", render: (m) => formatPercentEs(m.perdidas_e_facturada_m11_pct) },
-
   { id: "energia_publicada_art15_kwh", label: "E publ ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_publicada_art15_kwh) },
   { id: "energia_autoconsumo_art15_kwh", label: "E autoc ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_autoconsumo_art15_kwh) },
   { id: "energia_pf_art15_kwh", label: "E PF ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_pf_art15_kwh) },
@@ -297,6 +291,7 @@ export default function MedidasGeneralSection({
   }, [columnasOrdenadas]);
 
   const totalColumnas = columnasOrdenadas.length || 1;
+
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
   return (
@@ -350,8 +345,8 @@ export default function MedidasGeneralSection({
 
       {isSistema && (
         <div className="mb-3 ui-alert ui-alert--warning">
-          En Sistema, el borrado de General se hace siempre por <strong>ingestion</strong> usando
-          <strong> tenant + empresa + año + mes</strong> y forzando la familia
+          En Sistema, el borrado de General se hace siempre por <strong>ingestion</strong> usando{" "}
+          <strong> tenant + empresa + año + mes</strong> y forzando la familia{" "}
           <strong> GENERAL</strong>. Esto no borra PS.
         </div>
       )}
@@ -397,7 +392,10 @@ export default function MedidasGeneralSection({
       />
 
       <div className="ui-table-wrap">
-        <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+        <table
+          className="ui-table text-[11px]"
+          style={{ borderCollapse: "separate", borderSpacing: 0 }}
+        >
           <thead className="ui-thead">
             <tr>
               {columnasOrdenadas.map((col) => {
@@ -412,7 +410,8 @@ export default function MedidasGeneralSection({
                             position: "sticky",
                             left: stickyLeftMap[col.id],
                             zIndex: 3,
-                            background: "var(--table-head-bg, var(--card-bg))",
+                            // MEJORA B: fondo opaco para que no se transparente al scrollar
+                            background: "var(--sticky-head-bg)",
                             boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                             minWidth: STICKY_WIDTHS[col.id] ?? 80,
                             maxWidth: STICKY_WIDTHS[col.id] ?? 80,
@@ -427,7 +426,6 @@ export default function MedidasGeneralSection({
               })}
             </tr>
           </thead>
-
           <tbody>
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
@@ -446,7 +444,6 @@ export default function MedidasGeneralSection({
                   ))}
                 </tr>
               ))}
-
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
                 <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
@@ -454,7 +451,6 @@ export default function MedidasGeneralSection({
                 </td>
               </tr>
             )}
-
             {!loading &&
               data.map((m: any) => {
                 const rowKey = `${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`;
@@ -466,16 +462,13 @@ export default function MedidasGeneralSection({
                     onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
                     style={{
                       cursor: "pointer",
-                      background: isSelected
-                        ? "var(--nav-item-hover)"
-                        : undefined,
-                      outline: isSelected
-                        ? "1px solid var(--btn-secondary-bg)"
-                        : undefined,
+                      background: isSelected ? "var(--nav-item-hover)" : undefined,
+                      outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined,
                     }}
                   >
                     {columnasOrdenadas.map((col) => {
-                      const isSticky = STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
+                      const isSticky =
+                        STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
                       return (
                         <td
                           key={col.id}
@@ -486,9 +479,10 @@ export default function MedidasGeneralSection({
                                   position: "sticky",
                                   left: stickyLeftMap[col.id],
                                   zIndex: 1,
+                                  // MEJORA B: fondo opaco — respeta selección de fila
                                   background: isSelected
-                                    ? "var(--nav-item-hover)"
-                                    : "var(--card-bg)",
+                                    ? "var(--sticky-selected-bg)"
+                                    : "var(--sticky-bg)",
                                   boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                                   minWidth: STICKY_WIDTHS[col.id] ?? 80,
                                   maxWidth: STICKY_WIDTHS[col.id] ?? 80,
@@ -506,7 +500,6 @@ export default function MedidasGeneralSection({
               })}
           </tbody>
         </table>
-
         <TablePaginationFooter
           loading={loading}
           hasLoadedOnce={hasLoadedOnce}
@@ -536,7 +529,6 @@ export default function MedidasGeneralSection({
         onConfirm={confirmDelete}
         onClose={closeDelete}
       />
-
       <DeletePreviewModal
         open={deletePreviewOpen}
         preview={deletePreviewData}

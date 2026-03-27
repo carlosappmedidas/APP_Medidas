@@ -37,60 +37,53 @@ const formatNumberEs = (v: number | null | undefined, decimals: number = 2): str
 
 // Columnas fijas a la izquierda (PS no tiene punto_id)
 const STICKY_COLUMN_IDS_PS = ["empresa_id", "empresa_codigo", "anio", "mes"];
-
 const STICKY_WIDTHS_PS: Record<string, number> = {
-  empresa_id:     64,
+  empresa_id: 64,
   empresa_codigo: 110,
-  anio:           52,
-  mes:            44,
+  anio: 52,
+  mes: 44,
 };
 
 const ALL_COLUMNS_PS: ColumnDefPs[] = [
-  // ── Identificación ──────────────────────────────────────────────────
+  // ── Identificación ────────────────────────────────────────────────────
   { id: "empresa_id", label: "Empresa ID", align: "left", group: "Identificación", render: (m) => m.empresa_id },
   { id: "empresa_codigo", label: "Código empresa", align: "left", group: "Identificación", render: (m) => m.empresa_codigo ?? "-" },
   { id: "anio", label: "Año", align: "left", group: "Identificación", render: (m) => m.anio },
   { id: "mes", label: "Mes", align: "left", group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
-
-  // ── Energía PS por tipo ──────────────────────────────────────────────
+  // ── Energía PS por tipo ───────────────────────────────────────────────
   { id: "energia_ps_tipo_1_kwh", label: "E PS tipo 1", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_1_kwh) },
   { id: "energia_ps_tipo_2_kwh", label: "E PS tipo 2", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_2_kwh) },
   { id: "energia_ps_tipo_3_kwh", label: "E PS tipo 3", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_3_kwh) },
   { id: "energia_ps_tipo_4_kwh", label: "E PS tipo 4", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_4_kwh) },
   { id: "energia_ps_tipo_5_kwh", label: "E PS tipo 5", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_5_kwh) },
   { id: "energia_ps_total_kwh", label: "E PS total", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_total_kwh) },
-
-  // ── CUPS PS por tipo ─────────────────────────────────────────────────
+  // ── CUPS PS por tipo ──────────────────────────────────────────────────
   { id: "cups_tipo_1", label: "CUPS tipo 1", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_1 ?? "-" },
   { id: "cups_tipo_2", label: "CUPS tipo 2", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_2 ?? "-" },
   { id: "cups_tipo_3", label: "CUPS tipo 3", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_3 ?? "-" },
   { id: "cups_tipo_4", label: "CUPS tipo 4", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_4 ?? "-" },
   { id: "cups_tipo_5", label: "CUPS tipo 5", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_5 ?? "-" },
   { id: "cups_total", label: "CUPS total", align: "right", group: "CUPS PS", render: (m) => m.cups_total ?? "-" },
-
-  // ── Importes PS por tipo ─────────────────────────────────────────────
+  // ── Importes PS por tipo ──────────────────────────────────────────────
   { id: "importe_tipo_1_eur", label: "Importe tipo 1", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_1_eur) },
   { id: "importe_tipo_2_eur", label: "Importe tipo 2", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_2_eur) },
   { id: "importe_tipo_3_eur", label: "Importe tipo 3", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_3_eur) },
   { id: "importe_tipo_4_eur", label: "Importe tipo 4", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_4_eur) },
   { id: "importe_tipo_5_eur", label: "Importe tipo 5", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_5_eur) },
   { id: "importe_total_eur", label: "Importe total", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_total_eur) },
-
-  // ── Energía por tarifa ───────────────────────────────────────────────
+  // ── Energía por tarifa ────────────────────────────────────────────────
   { id: "energia_tarifa_20td_kwh", label: "E 2.0TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_20td_kwh) },
   { id: "energia_tarifa_30td_kwh", label: "E 3.0TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30td_kwh) },
   { id: "energia_tarifa_30tdve_kwh", label: "E 3.0TDVE", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30tdve_kwh) },
   { id: "energia_tarifa_61td_kwh", label: "E 6.1TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_61td_kwh) },
   { id: "energia_tarifa_total_kwh", label: "E Tarifas Total", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_total_kwh) },
-
-  // ── CUPS por tarifa ──────────────────────────────────────────────────
+  // ── CUPS por tarifa ───────────────────────────────────────────────────
   { id: "cups_tarifa_20td", label: "CUPS 2.0TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_20td ?? "-" },
   { id: "cups_tarifa_30td", label: "CUPS 3.0TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30td ?? "-" },
   { id: "cups_tarifa_30tdve", label: "CUPS 3.0TDVE", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30tdve ?? "-" },
   { id: "cups_tarifa_61td", label: "CUPS 6.1TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_61td ?? "-" },
   { id: "cups_tarifa_total", label: "CUPS Tarifas Total", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_total ?? "-" },
-
-  // ── Importes por tarifa ──────────────────────────────────────────────
+  // ── Importes por tarifa ───────────────────────────────────────────────
   { id: "importe_tarifa_20td_eur", label: "Importe 2.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_20td_eur) },
   { id: "importe_tarifa_30td_eur", label: "Importe 3.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30td_eur) },
   { id: "importe_tarifa_30tdve_eur", label: "Importe 3.0TDVE", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30tdve_eur) },
@@ -292,6 +285,7 @@ export default function MedidasPsSection({
   }, [columnasOrdenadas]);
 
   const totalColumnas = columnasOrdenadas.length || 1;
+
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
   return (
@@ -352,8 +346,8 @@ export default function MedidasPsSection({
       {isSistema && (
         <div className="mb-3 ui-alert ui-alert--warning">
           En Sistema, el borrado de PS se hace siempre por{" "}
-          <strong>ingestion</strong> usando los filtros activos y forzando la
-          familia <strong>PS</strong>. Selecciona al menos{" "}
+          <strong>ingestion</strong> usando los filtros activos y forzando la familia{" "}
+          <strong>PS</strong>. Selecciona al menos{" "}
           <strong>empresa + año + mes</strong>. Esto no borra General.
         </div>
       )}
@@ -400,11 +394,15 @@ export default function MedidasPsSection({
       />
 
       <div className="ui-table-wrap">
-        <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+        <table
+          className="ui-table text-[11px]"
+          style={{ borderCollapse: "separate", borderSpacing: 0 }}
+        >
           <thead className="ui-thead">
             <tr>
               {columnasOrdenadas.map((col) => {
-                const isSticky = STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
+                const isSticky =
+                  STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
                 return (
                   <th
                     key={col.id}
@@ -415,7 +413,8 @@ export default function MedidasPsSection({
                             position: "sticky",
                             left: stickyLeftMap[col.id],
                             zIndex: 3,
-                            background: "var(--table-head-bg, var(--card-bg))",
+                            // MEJORA B: fondo opaco para que no se transparente al scrollar
+                            background: "var(--sticky-head-bg)",
                             boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                             minWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
                             maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
@@ -430,7 +429,6 @@ export default function MedidasPsSection({
               })}
             </tr>
           </thead>
-
           <tbody>
             {loading &&
               Array.from({ length: 8 }).map((_, i) => (
@@ -449,7 +447,6 @@ export default function MedidasPsSection({
                   ))}
                 </tr>
               ))}
-
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
                 <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
@@ -457,7 +454,6 @@ export default function MedidasPsSection({
                 </td>
               </tr>
             )}
-
             {!loading &&
               data.map((m: any) => {
                 const rowKey = `${m.empresa_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`;
@@ -469,16 +465,13 @@ export default function MedidasPsSection({
                     onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
                     style={{
                       cursor: "pointer",
-                      background: isSelected
-                        ? "var(--nav-item-hover)"
-                        : undefined,
-                      outline: isSelected
-                        ? "1px solid var(--btn-secondary-bg)"
-                        : undefined,
+                      background: isSelected ? "var(--nav-item-hover)" : undefined,
+                      outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined,
                     }}
                   >
                     {columnasOrdenadas.map((col) => {
-                      const isSticky = STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
+                      const isSticky =
+                        STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
                       return (
                         <td
                           key={col.id}
@@ -489,9 +482,10 @@ export default function MedidasPsSection({
                                   position: "sticky",
                                   left: stickyLeftMap[col.id],
                                   zIndex: 1,
+                                  // MEJORA B: fondo opaco — respeta selección de fila
                                   background: isSelected
-                                    ? "var(--nav-item-hover)"
-                                    : "var(--card-bg)",
+                                    ? "var(--sticky-selected-bg)"
+                                    : "var(--sticky-bg)",
                                   boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                                   minWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
                                   maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
@@ -509,7 +503,6 @@ export default function MedidasPsSection({
               })}
           </tbody>
         </table>
-
         <TablePaginationFooter
           loading={loading}
           hasLoadedOnce={hasLoadedOnce}
@@ -540,7 +533,6 @@ export default function MedidasPsSection({
         onConfirm={confirmDelete}
         onClose={closeDelete}
       />
-
       <DeletePreviewModal
         open={deletePreviewOpen}
         preview={deletePreviewData}

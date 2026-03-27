@@ -53,16 +53,12 @@
   --btn-pad-x: 16px;
   --btn-pad-y: 8px;
   --btn-font-size: 12px;
-
   --btn-primary-bg: #059669;
   --btn-primary-hover: #10b981;
-
   --btn-secondary-bg: #4f46e5;
   --btn-secondary-hover: #6366f1;
-
   --btn-outline-border: rgba(255, 255, 255, 0.3);
   --btn-outline-hover: rgba(255, 255, 255, 0.08);
-
   --danger-bg: rgba(239, 68, 68, 0.14);
   --danger-border: rgba(239, 68, 68, 0.45);
   --danger-text: rgba(252, 165, 165, 0.95);
@@ -70,39 +66,37 @@
   /* Layout / Nav tokens */
   --sidebar-bg: rgba(0, 0, 0, 0.4);
   --sidebar-border: rgba(255, 255, 255, 0.08);
-
   --nav-item-bg: rgba(255, 255, 255, 0.05);
   --nav-item-hover: rgba(255, 255, 255, 0.1);
   --nav-item-text: rgba(228, 228, 231, 0.95);
-
   --nav-active-bg: var(--btn-secondary-bg);
   --nav-active-text: #ffffff;
-
   --nav-sub-active-bg: var(--btn-secondary-hover);
 
   /* Surfaces / Table */
   --surface-1: rgba(0, 0, 0, 0.2);
   --surface-2: rgba(0, 0, 0, 0.3);
   --surface-3: rgba(0, 0, 0, 0.6);
-
   --table-border: rgba(255, 255, 255, 0.05);
   --table-head-bg: rgba(255, 255, 255, 0.05);
   --table-head-text: rgba(161, 161, 170, 0.95);
   --table-row-border: rgba(255, 255, 255, 0.05);
 
+  /* MEJORA B: Fondos opacos para columnas sticky — oscuro */
+  --sticky-bg: #111827;
+  --sticky-head-bg: #1a2236;
+  --sticky-selected-bg: #1e2d45;
+
   /* Badges (status) */
   --badge-neutral-bg: rgba(255, 255, 255, 0.05);
   --badge-neutral-border: rgba(113, 113, 122, 0.4);
   --badge-neutral-text: rgba(228, 228, 231, 0.9);
-
   --badge-ok-bg: rgba(16, 185, 129, 0.1);
   --badge-ok-border: rgba(16, 185, 129, 0.4);
   --badge-ok-text: rgba(110, 231, 183, 0.95);
-
   --badge-warn-bg: rgba(234, 179, 8, 0.1);
   --badge-warn-border: rgba(234, 179, 8, 0.4);
   --badge-warn-text: rgba(253, 224, 71, 0.95);
-
   --badge-err-bg: rgba(239, 68, 68, 0.1);
   --badge-err-border: rgba(239, 68, 68, 0.4);
   --badge-err-text: rgba(252, 165, 165, 0.95);
@@ -124,7 +118,6 @@
   --info-border: rgba(59, 130, 246, 0.6);
   --info-text: rgba(147, 197, 253, 0.95);
   --info-bg: rgba(59, 130, 246, 0.1);
-
   --warn-border: rgba(234, 179, 8, 0.6);
   --warn-text: rgba(253, 224, 71, 0.95);
   --warn-bg: rgba(234, 179, 8, 0.1);
@@ -169,15 +162,20 @@
 
   --sidebar-bg: rgba(255, 255, 255, 0.6);
   --sidebar-border: rgba(15, 23, 42, 0.1);
-
   --nav-item-bg: rgba(15, 23, 42, 0.05);
   --nav-item-hover: rgba(15, 23, 42, 0.08);
   --nav-item-text: rgba(15, 23, 42, 0.9);
 
   --table-border: rgba(15, 23, 42, 0.1);
-  --table-head-bg: rgba(15, 23, 42, 0.04);
+  /* MEJORA claro: cabecera de tabla opaca y visible */
+  --table-head-bg: #e8ecf0;
   --table-head-text: rgba(100, 116, 139, 0.95);
   --table-row-border: rgba(15, 23, 42, 0.08);
+
+  /* MEJORA claro: sticky columns — fondos opacos con contraste suficiente */
+  --sticky-bg: #f8fafc;
+  --sticky-head-bg: #e2e8f0;
+  --sticky-selected-bg: #dbeafe;
 
   --badge-neutral-bg: rgba(15, 23, 42, 0.04);
   --badge-neutral-border: rgba(100, 116, 139, 0.35);
@@ -191,9 +189,9 @@
   --ghost-hover: rgba(15, 23, 42, 0.08);
 }
 
-/* ✅ Mantengo el bloque para no “desaparecer” nada,
-   pero sin tocar el UI theme: el tema final lo controla data-theme.
-   Aquí solo se ajusta el base background/foreground si el SO está en dark. */
+/* ✅ Mantengo el bloque para no "desaparecer" nada, pero sin tocar el UI theme:
+   el tema final lo controla data-theme. Aquí solo se ajusta el base
+   background/foreground si el SO está en dark. */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -335,7 +333,6 @@ body {
   border-radius: 6px;
   border: 1px solid var(--btn-outline-border);
   background: transparent;
-
   /* ✅ mejoras visuales sin cambiar lógica */
   cursor: pointer;
   accent-color: var(--field-border-focus);
@@ -361,10 +358,7 @@ body {
   font-size: var(--btn-font-size);
   font-weight: 600;
   line-height: 1;
-  transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    opacity 150ms ease,
+  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease,
     transform 150ms ease;
   user-select: none;
 }
@@ -465,17 +459,14 @@ body {
   right: 0;
   z-index: 50;
   margin-top: 8px;
-
-  /* ✅ mantiene tu width, pero evita “cortes” en pantallas pequeñas */
+  /* ✅ mantiene tu width, pero evita "cortes" en pantallas pequeñas */
   width: 224px;
   max-width: calc(100vw - 24px);
-
   border-radius: 12px;
   border: 1px solid var(--popover-border);
   background: var(--popover-bg);
   padding: 8px;
   box-shadow: var(--shadow-popover);
-
   /* ✅ útil si en el futuro animas */
   transform-origin: top right;
 }
@@ -519,7 +510,6 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 40px; /* px-10 py-10 */
-
   /* ✅ NUEVO */
   background: var(--main-bg);
   min-width: 0;
@@ -602,8 +592,7 @@ body {
   border-radius: 12px;
   border: 1px solid var(--table-border);
   background: var(--surface-1);
-
-  /* ✅ mejora scroll y evita “saltos” al aparecer scrollbar */
+  /* ✅ mejora scroll y evita "saltos" al aparecer scrollbar */
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable both-edges;
 }
@@ -613,12 +602,12 @@ body {
   border-collapse: collapse;
 }
 
+/* MEJORA C: headers más legibles — sin mayúsculas forzadas, font-size 11px */
 .ui-thead {
   background: var(--table-head-bg);
   color: var(--table-head-text);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 /* ✅ opcional (no cambia nada si no añades la clase en HTML):
@@ -633,8 +622,9 @@ body {
   border-top: 1px solid var(--table-row-border);
 }
 
+/* MEJORA D: más respiración vertical en las filas */
 .ui-td {
-  padding: 8px 16px;
+  padding: 10px 16px;
 }
 
 .ui-th {
@@ -729,7 +719,6 @@ body {
 /* =========================================================
    15) Settings page (Configuración)
    ========================================================= */
-
 .settings-page {
   display: flex;
   flex-direction: column;
@@ -787,10 +776,7 @@ body {
   color: var(--nav-item-text);
   text-align: left;
   cursor: pointer;
-  transition:
-    background 150ms ease,
-    color 150ms ease,
-    border-color 150ms ease,
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease,
     transform 120ms ease;
 }
 
@@ -844,7 +830,6 @@ body {
 /* =========================================================
    16) Apariencia / temas (modos + chips)
    ========================================================= */
-
 .appearance-root {
   display: flex;
   flex-direction: column;
@@ -903,10 +888,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition:
-    border-color 150ms ease,
-    background 150ms ease,
-    transform 120ms ease,
+  transition: border-color 150ms ease, background 150ms ease, transform 120ms ease,
     box-shadow 150ms ease;
 }
 
@@ -946,7 +928,7 @@ body {
   color: var(--table-head-text);
 }
 
-/* Pequeña “mini UI” dentro de la tarjeta */
+/* Pequeña "mini UI" dentro de la tarjeta */
 .theme-mode-card-preview {
   border-radius: 10px;
   padding: 6px;
@@ -1000,10 +982,7 @@ body {
   background: var(--nav-item-bg);
   color: var(--nav-item-text);
   cursor: pointer;
-  transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    transform 120ms ease,
+  transition: background 150ms ease, border-color 150ms ease, transform 120ms ease,
     box-shadow 150ms ease;
 }
 
@@ -1043,15 +1022,13 @@ body {
 /* =========================================================
    17) Login shell
    ========================================================= */
-
 .ui-login-shell {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 32px 16px;
-  background:
-    radial-gradient(circle at top, rgba(79, 70, 229, 0.12), transparent 35%),
+  background: radial-gradient(circle at top, rgba(79, 70, 229, 0.12), transparent 35%),
     var(--app-bg);
 }
 
@@ -1064,7 +1041,6 @@ body {
 /* =========================================================
    18) Alertas
    ========================================================= */
-
 .alerts-page {
   display: flex;
   flex-direction: column;
@@ -1134,11 +1110,9 @@ body {
   .alerts-filters-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
   .alerts-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
   .alerts-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1152,11 +1126,9 @@ body {
     flex-direction: column;
     align-items: stretch;
   }
-
   .alerts-header-actions {
     justify-content: flex-start;
   }
-
   .alerts-filters-grid,
   .alerts-stats-grid,
   .alerts-detail-grid {
