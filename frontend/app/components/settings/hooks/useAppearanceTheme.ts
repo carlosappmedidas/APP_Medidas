@@ -21,6 +21,11 @@ export type VarKey =
   | "--nav-sub-active-bg";
 
 export type ThemeOverrides = Partial<Record<VarKey, string>>;
+
+// Tipo extendido para overrides internos que incluyen variables de tabla
+// (no editables por el usuario, solo aplicadas automáticamente con cada modo)
+type InternalOverrides = ThemeOverrides & Record<string, string>;
+
 export type AppearanceSettingsTab = "mode" | "presets" | "advanced";
 export type AppearanceDetailSection =
   | "fondo"
@@ -62,8 +67,8 @@ const ALPHA_ENABLED_KEYS: VarKey[] = [
   "--nav-item-hover",
 ];
 
-// ── Paleta predeterminada: Slate Electric ──────────────────────────────────
-const SLATE_ELECTRIC_OVERRIDES: ThemeOverrides = {
+// ── Paleta predeterminada: Slate Electric ─────────────────────────────────
+const SLATE_ELECTRIC_OVERRIDES: InternalOverrides = {
   "--app-bg": "#0d1b2a",
   "--main-bg": "rgba(0, 0, 0, 0)",
   "--card-bg": "#1a2e45",
@@ -80,10 +85,15 @@ const SLATE_ELECTRIC_OVERRIDES: ThemeOverrides = {
   "--nav-active-bg": "#2563eb",
   "--nav-active-text": "#ffffff",
   "--nav-sub-active-bg": "#3b82f6",
+  // Variables de tabla sticky — modo oscuro (Slate)
+  "--table-head-bg": "rgba(255, 255, 255, 0.05)",
+  "--sticky-bg": "#1a2e45",
+  "--sticky-head-bg": "#1e3550",
+  "--sticky-selected-bg": "#1e2d45",
 };
-// ───────────────────────────────────────────────────────────────────────────
 
-const DARK_MODE_OVERRIDES: ThemeOverrides = {
+// ────────────────────────────────────────────────────────────────────────────
+const DARK_MODE_OVERRIDES: InternalOverrides = {
   "--app-bg": "#020617",
   "--main-bg": "rgba(0, 0, 0, 0)",
   "--card-bg": "#111827",
@@ -100,9 +110,14 @@ const DARK_MODE_OVERRIDES: ThemeOverrides = {
   "--nav-active-bg": "#4f46e5",
   "--nav-active-text": "#ffffff",
   "--nav-sub-active-bg": "#6366f1",
+  // Variables de tabla sticky — modo oscuro
+  "--table-head-bg": "rgba(255, 255, 255, 0.05)",
+  "--sticky-bg": "#111827",
+  "--sticky-head-bg": "#1a2236",
+  "--sticky-selected-bg": "#1e2d45",
 };
 
-const LIGHT_MODE_OVERRIDES: ThemeOverrides = {
+const LIGHT_MODE_OVERRIDES: InternalOverrides = {
   "--app-bg": "#f8fafc",
   "--main-bg": "rgba(255, 255, 255, 0)",
   "--card-bg": "#ffffff",
@@ -119,6 +134,11 @@ const LIGHT_MODE_OVERRIDES: ThemeOverrides = {
   "--nav-active-bg": "#4f46e5",
   "--nav-active-text": "#ffffff",
   "--nav-sub-active-bg": "#6366f1",
+  // Variables de tabla sticky — modo claro (opacos con contraste suficiente)
+  "--table-head-bg": "#e8ecf0",
+  "--sticky-bg": "#f8fafc",
+  "--sticky-head-bg": "#e2e8f0",
+  "--sticky-selected-bg": "#dbeafe",
 };
 
 function normalizeHexColor(input: string): string | null {
@@ -202,7 +222,7 @@ function readDefaultsFromCss(vars: VarKey[]): Record<VarKey, string> {
   return out;
 }
 
-function applyOverrides(overrides: ThemeOverrides): void {
+function applyOverrides(overrides: InternalOverrides | ThemeOverrides): void {
   const root = document.documentElement;
   for (const [k, val] of Object.entries(overrides)) {
     if (!k || typeof val !== "string") continue;
@@ -213,6 +233,16 @@ function applyOverrides(overrides: ThemeOverrides): void {
 function clearOverrides(vars: readonly VarKey[]): void {
   const root = document.documentElement;
   for (const v of vars) root.style.removeProperty(v);
+}
+
+// Limpia también las variables internas de tabla sticky
+function clearAllOverrides(vars: readonly VarKey[]): void {
+  const root = document.documentElement;
+  for (const v of vars) root.style.removeProperty(v);
+  root.style.removeProperty("--table-head-bg");
+  root.style.removeProperty("--sticky-bg");
+  root.style.removeProperty("--sticky-head-bg");
+  root.style.removeProperty("--sticky-selected-bg");
 }
 
 function alphaPctFromColorValue(value: string): number {
@@ -410,14 +440,14 @@ export function useAppearanceTheme(
   };
 
   const applyFullTheme = (theme: ThemeOverrides): void => {
-    clearOverrides(vars);
+    clearAllOverrides(vars);
     applyOverrides(theme);
     setOverrides(theme);
     syncDraftsFromValues(theme, defaults);
   };
 
   const resetAll = async (): Promise<void> => {
-    clearOverrides(vars);
+    clearAllOverrides(vars);
     setOverrides({});
     try {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -720,11 +750,11 @@ export function useAppearanceTheme(
     }
 
     // ── Carga del tema guardado ───────────────────────────────────────────
-    let loaded: ThemeOverrides = {};
+    let loaded: InternalOverrides = {};
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as ThemeOverrides;
+        const parsed = JSON.parse(raw) as InternalOverrides;
         // Solo usar si tiene al menos una variable real (ignorar {} vacío)
         if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
           loaded = parsed;
@@ -736,7 +766,7 @@ export function useAppearanceTheme(
       //
     }
 
-    // ── Si no hay nada válido guardado → Slate Electric por defecto ───────
+    // ── Si no hay nada válido guardado → Slate Electric por defecto ──────
     if (!Object.keys(loaded).length) {
       applyOverrides(SLATE_ELECTRIC_OVERRIDES);
       setOverrides(SLATE_ELECTRIC_OVERRIDES);
