@@ -591,7 +591,7 @@ def _get_proximos_hitos(
     proximos_models = [
         item
         for item in items
-        if _is_open_estado(_estado_from_fecha(cast(date, _event_any(item).fecha)))
+        if _estado_from_fecha(cast(date, _event_any(item).fecha)) != "cerrado"
     ][:limit]
 
     return [_to_operativo_schema(item) for item in proximos_models]
