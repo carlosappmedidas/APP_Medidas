@@ -296,6 +296,102 @@ def _build_adquisicion_series(
     )
 
 
+def _build_adquisicion_por_ventana(
+    db: Session,
+    *,
+    tenant_id: int,
+    allowed_empresa_ids: list[int],
+    empresa_ids: list[int] | None,
+    anios: list[int] | None,
+    meses: list[int] | None,
+    aggregation: str = "avg",
+) -> list[graficos_schemas.GraficoSerie]:
+    """
+    Devuelve 5 series de adquisición, una por ventana de publicación:
+      adq_m1   = pf_final    + generada    - frontera_dd
+      adq_m2   = pf_m2       + generada_m2 - frontera_dd_m2
+      adq_m7   = pf_m7       + generada_m7 - frontera_dd_m7
+      adq_m11  = pf_m11      + generada_m11 - frontera_dd_m11
+      adq_art15= pf_art15    + generada_art15 - frontera_dd_art15
+    """
+    agg_func = func.sum if aggregation == "sum" else func.avg
+
+    ventanas = [
+        (
+            "adq_m1",
+            "Adq. M1",
+            MedidaGeneral.energia_pf_final_kwh,
+            MedidaGeneral.energia_generada_kwh,
+            MedidaGeneral.energia_frontera_dd_kwh,
+        ),
+        (
+            "adq_m2",
+            "Adq. M2",
+            MedidaGeneral.energia_pf_m2_kwh,
+            MedidaGeneral.energia_generada_m2_kwh,
+            MedidaGeneral.energia_frontera_dd_m2_kwh,
+        ),
+        (
+            "adq_m7",
+            "Adq. M7",
+            MedidaGeneral.energia_pf_m7_kwh,
+            MedidaGeneral.energia_generada_m7_kwh,
+            MedidaGeneral.energia_frontera_dd_m7_kwh,
+        ),
+        (
+            "adq_m11",
+            "Adq. M11",
+            MedidaGeneral.energia_pf_m11_kwh,
+            MedidaGeneral.energia_generada_m11_kwh,
+            MedidaGeneral.energia_frontera_dd_m11_kwh,
+        ),
+        (
+            "adq_art15",
+            "Adq. ART15",
+            MedidaGeneral.energia_pf_art15_kwh,
+            MedidaGeneral.energia_generada_art15_kwh,
+            MedidaGeneral.energia_frontera_dd_art15_kwh,
+        ),
+    ]
+
+    series: list[graficos_schemas.GraficoSerie] = []
+    for serie_key, serie_label, pf_field, gen_field, front_field in ventanas:
+        rows = (
+            _base_general_query(
+                db,
+                tenant_id=tenant_id,
+                allowed_empresa_ids=allowed_empresa_ids,
+                empresa_ids=empresa_ids,
+                anios=anios,
+                meses=meses,
+            )
+            .with_entities(
+                MedidaGeneral.anio.label("anio"),
+                MedidaGeneral.mes.label("mes"),
+                agg_func(pf_field + gen_field - front_field).label("value"),
+            )
+            .group_by(MedidaGeneral.anio, MedidaGeneral.mes)
+            .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
+            .all()
+        )
+        points: list[graficos_schemas.GraficoPoint] = [
+            graficos_schemas.GraficoPoint(
+                period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+                period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+                value=float(cast(Any, row).value or 0.0),
+            )
+            for row in rows
+        ]
+        series.append(
+            graficos_schemas.GraficoSerie(
+                serie_key=serie_key,
+                serie_label=serie_label,
+                points=points,
+            )
+        )
+    return series
+
+
 @router.get(
     "/filters",
     response_model=graficos_schemas.GraficoFiltersResponse,
@@ -515,6 +611,17 @@ def get_medidas_graficos_series(
         aggregation=aggregation,
     )
 
+    # ── Adquisición por ventana (M1, M2, M7, M11, ART15) para tooltip ────
+    adquisicion_ventanas_series = _build_adquisicion_por_ventana(
+        db,
+        tenant_id=tenant_id_int,
+        allowed_empresa_ids=allowed_empresa_ids,
+        empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
+        anios=anios,
+        meses=meses,
+        aggregation=aggregation,
+    )
+
     return graficos_schemas.GraficosSeriesResponse(
         filters=graficos_schemas.GraficosFiltersApplied(
             empresa_ids=selected_empresa_ids,
@@ -535,4 +642,5 @@ def get_medidas_graficos_series(
         autoconsumo=graficos_schemas.GraficoSeriesGroup(series=autoconsumo_series),
         energia_generada=graficos_schemas.GraficoSeriesGroup(series=energia_generada_series),
         adquisicion=graficos_schemas.GraficoSeriesGroup(series=[adquisicion_serie]),
+        adquisicion_ventanas=graficos_schemas.GraficoSeriesGroup(series=adquisicion_ventanas_series),
     )

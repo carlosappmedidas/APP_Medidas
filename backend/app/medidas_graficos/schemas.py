@@ -56,7 +56,8 @@ class GraficosSeriesResponse(BaseModel):
     energias_pf: GraficoSeriesGroup
     autoconsumo: GraficoSeriesGroup
     energia_generada: GraficoSeriesGroup
-    adquisicion: GraficoSeriesGroup          # ← NUEVO
+    adquisicion: GraficoSeriesGroup
+    adquisicion_ventanas: GraficoSeriesGroup  # ← NUEVO: una serie por ventana (m1, m2, m7, m11, art15)
 
 
 class GraficosPsSeriesResponse(BaseModel):

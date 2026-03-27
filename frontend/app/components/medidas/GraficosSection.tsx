@@ -24,6 +24,7 @@ type GraficosSeriesResponse = {
   autoconsumo: GraficoSeriesGroup;
   energia_generada: GraficoSeriesGroup;
   adquisicion: GraficoSeriesGroup;
+  adquisicion_ventanas: GraficoSeriesGroup; // ← NUEVO
 };
 type GraficosPsSeriesResponse = {
   filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string; };
@@ -96,6 +97,15 @@ const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { prefix: string; modeLabel: st
   energia: { prefix: "et_", modeLabel: "Energía (kWh)" },
   importe: { prefix: "it_", modeLabel: "Importe (€)", yFormatter: (v) => `${new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(v)} €` },
 };
+
+// Jerarquía de ventanas de adquisición: de más reciente a más antigua
+const ADQ_VENTANAS: { key: string; label: string }[] = [
+  { key: "adq_art15", label: "Adq. ART15" },
+  { key: "adq_m11",   label: "Adq. M11"   },
+  { key: "adq_m7",    label: "Adq. M7"    },
+  { key: "adq_m2",    label: "Adq. M2"    },
+  { key: "adq_m1",    label: "Adq. M1"    },
+];
 
 const MESES_LABEL: Record<number, string> = {
   1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
@@ -466,12 +476,11 @@ export default function GraficosSection({ token, currentUser }: Props) {
         for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
         for (const anio of selectedAnios) searchParams.append("anios", String(anio));
         for (const mes of selectedMeses) searchParams.append("meses", String(mes));
-        // ── FIX: sum cuando hay varias/todas empresas, avg cuando es una sola ──
+        // sum cuando hay varias/todas empresas, avg cuando es una sola
         const allSelected =
           !filtersData.empresas.length ||
           selectedEmpresas.length === filtersData.empresas.length;
         searchParams.set("aggregation", allSelected || selectedEmpresas.length > 1 ? "sum" : "avg");
-        // ─────────────────────────────────────────────────────────────────────
         const response = await fetch(`${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`, { method: "GET", headers: getAuthHeaders(token) });
         if (!response.ok) { const text = await response.text(); throw new Error(text || "No se pudieron cargar las gráficas."); }
         const json = (await response.json()) as GraficosSeriesResponse;
@@ -522,6 +531,19 @@ export default function GraficosSection({ token, currentUser }: Props) {
   }, [filtersData, selectedEmpresas]);
 
   // ── Gráfica 1: E neta facturada / Adquisición ────────────────────────
+  // Mapa de ventanas por period_key para la adquisición: { period_key -> { adq_m1, adq_m2, ... } }
+  const adqVentanasByPeriod = useMemo(() => {
+    const map = new Map<string, Record<string, number>>();
+    for (const serie of seriesData?.adquisicion_ventanas?.series ?? []) {
+      for (const point of serie.points) {
+        const current = map.get(point.period_key) ?? {};
+        current[serie.serie_key] = point.value;
+        map.set(point.period_key, current);
+      }
+    }
+    return map;
+  }, [seriesData]);
+
   const grafica1Series = useMemo(() => {
     const result: GraficoSerie[] = [];
     if (grafica1Flags.a) {
@@ -531,11 +553,33 @@ export default function GraficosSection({ token, currentUser }: Props) {
       ));
     }
     if (grafica1Flags.b) {
-      const adq = (seriesData?.adquisicion.series ?? []).find((s) => s.serie_key === "adquisicion");
-      if (adq) result.push({ ...adq, serie_label: "Adquisición" });
+      // Construir la serie activa eligiendo la ventana más reciente con valor != 0 por cada punto
+      const allPeriodKeys = Array.from(adqVentanasByPeriod.keys()).sort();
+      if (allPeriodKeys.length > 0) {
+        // Obtener period_label de adq_m1 (siempre existe)
+        const m1Serie = seriesData?.adquisicion_ventanas?.series?.find(s => s.serie_key === "adq_m1");
+        const labelByKey: Record<string, string> = {};
+        for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
+
+        const points: GraficoPoint[] = allPeriodKeys.map(pk => {
+          const ventanas = adqVentanasByPeriod.get(pk) ?? {};
+          // Jerarquía: ART15 → M11 → M7 → M2 → M1
+          let value = 0;
+          for (const v of ADQ_VENTANAS) {
+            const val = ventanas[v.key] ?? 0;
+            if (val !== 0) { value = val; break; }
+          }
+          return {
+            period_key: pk,
+            period_label: labelByKey[pk] ?? pk,
+            value,
+          };
+        });
+        result.push({ serie_key: "adquisicion", serie_label: "Adquisición", points });
+      }
     }
     return result;
-  }, [seriesData, grafica1Flags]);
+  }, [seriesData, grafica1Flags, adqVentanasByPeriod]);
 
   const grafica1Rows = useMemo(() => {
     const map = new Map<string, ChartRow>();
@@ -549,22 +593,50 @@ export default function GraficosSection({ token, currentUser }: Props) {
       }
     }
     if (grafica1Flags.b) {
-      const adq = (seriesData?.adquisicion.series ?? []).find((s) => s.serie_key === "adquisicion");
-      if (adq) {
-        for (const point of adq.points) {
-          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-          current["adquisicion"] = point.value;
-          map.set(point.period_key, current);
+      // Usar la misma lógica de jerarquía que grafica1Series
+      const m1Serie = seriesData?.adquisicion_ventanas?.series?.find(s => s.serie_key === "adq_m1");
+      const labelByKey: Record<string, string> = {};
+      for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
+
+      for (const [pk, ventanas] of adqVentanasByPeriod) {
+        let value = 0;
+        for (const v of ADQ_VENTANAS) {
+          const val = ventanas[v.key] ?? 0;
+          if (val !== 0) { value = val; break; }
         }
+        const current = map.get(pk) ?? { period_key: pk, period_label: labelByKey[pk] ?? pk };
+        current["adquisicion"] = value;
+        map.set(pk, current);
       }
     }
     return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
-  }, [seriesData, grafica1Flags]);
+  }, [seriesData, grafica1Flags, adqVentanasByPeriod]);
+
+  // Tooltip histórico de adquisición — muestra todas las ventanas con valor != 0
+  const grafica1TooltipExtra = useMemo((): Record<string, { label: string; value: number }[]> => {
+    if (!grafica1Flags.b) return {};
+    const result: Record<string, { label: string; value: number }[]> = {};
+    const m1Serie = seriesData?.adquisicion_ventanas?.series?.find(s => s.serie_key === "adq_m1");
+    const labelByKey: Record<string, string> = {};
+    for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
+
+    for (const [pk, ventanas] of adqVentanasByPeriod) {
+      const periodLabel = labelByKey[pk] ?? pk;
+      const entries: { label: string; value: number }[] = [];
+      // Mostrar en orden M1 → M2 → M7 → M11 → ART15 (cronológico)
+      for (const v of [...ADQ_VENTANAS].reverse()) {
+        const val = ventanas[v.key] ?? 0;
+        if (val !== 0) entries.push({ label: v.label, value: val });
+      }
+      if (entries.length > 0) result[periodLabel] = entries;
+    }
+    return result;
+  }, [seriesData, grafica1Flags, adqVentanasByPeriod]);
 
   const grafica1Subtitle = useMemo(() => {
-    if (grafica1Flags.a && grafica1Flags.b) return "Histórico de E neta facturada y Adquisición.";
+    if (grafica1Flags.a && grafica1Flags.b) return "Histórico de E neta facturada y Adquisición (publicación más reciente).";
     if (grafica1Flags.a) return "Histórico de E neta facturada.";
-    return "Histórico de Adquisición (E PF Final + E generada - E frontera DD).";
+    return "Histórico de Adquisición (publicación más reciente disponible).";
   }, [grafica1Flags]);
 
   // ── Gráfica 2 ────────────────────────────────────────────────────────
@@ -784,6 +856,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
             title="Gráfica 1. Evolución de energía facturada / Adquisición"
             subtitle={grafica1Subtitle} companyLabel={selectedEmpresaNames}
             data={grafica1Rows} series={grafica1Series}
+            tooltipExtraByLabel={grafica1TooltipExtra}
             headerExtra={<TwoFlagsSelector labelA="E neta fact." labelB="Adquisición" flags={grafica1Flags} onChange={setGrafica1Flags} />}
           />
           <ChartCard
