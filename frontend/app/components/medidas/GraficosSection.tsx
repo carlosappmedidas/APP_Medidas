@@ -23,7 +23,7 @@ type GraficosSeriesResponse = {
   energias_pf: GraficoSeriesGroup;
   autoconsumo: GraficoSeriesGroup;
   energia_generada: GraficoSeriesGroup;
-  adquisicion: GraficoSeriesGroup;           // ← NUEVO
+  adquisicion: GraficoSeriesGroup;
 };
 type GraficosPsSeriesResponse = {
   filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string; };
@@ -466,7 +466,12 @@ export default function GraficosSection({ token, currentUser }: Props) {
         for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
         for (const anio of selectedAnios) searchParams.append("anios", String(anio));
         for (const mes of selectedMeses) searchParams.append("meses", String(mes));
-        searchParams.set("aggregation", "avg");
+        // ── FIX: sum cuando hay varias/todas empresas, avg cuando es una sola ──
+        const allSelected =
+          !filtersData.empresas.length ||
+          selectedEmpresas.length === filtersData.empresas.length;
+        searchParams.set("aggregation", allSelected || selectedEmpresas.length > 1 ? "sum" : "avg");
+        // ─────────────────────────────────────────────────────────────────────
         const response = await fetch(`${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`, { method: "GET", headers: getAuthHeaders(token) });
         if (!response.ok) { const text = await response.text(); throw new Error(text || "No se pudieron cargar las gráficas."); }
         const json = (await response.json()) as GraficosSeriesResponse;
