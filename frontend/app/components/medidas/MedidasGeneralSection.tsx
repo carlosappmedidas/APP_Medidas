@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { MedidaGeneral } from "../../types";
 import DeletePreviewModal from "../ui/DeletePreviewModal";
 import ConfirmDeleteModal from "../ui/ConfirmDeleteModal";
@@ -39,6 +39,19 @@ export type ColumnDefGeneral = {
   align: "left" | "right";
   group: string;
   render: (m: MedidaGeneral | any) => any;
+};
+
+// Columnas que se quedan fijas a la izquierda al hacer scroll horizontal.
+// Si el usuario las oculta con el check, desaparecen igualmente.
+const STICKY_COLUMN_IDS = ["empresa_id", "empresa_codigo", "punto_id", "anio", "mes"];
+
+// Anchos fijos para calcular el `left` acumulado de cada columna sticky
+const STICKY_WIDTHS: Record<string, number> = {
+  empresa_id:     64,
+  empresa_codigo: 110,
+  punto_id:       64,
+  anio:           52,
+  mes:            44,
 };
 
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
@@ -110,13 +123,15 @@ export default function MedidasGeneralSection({
 }: MedidasProps) {
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
 
+  // Fila seleccionada (solo visual, para saber dónde estás)
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
+
   const {
     isSistema,
     data,
     loading,
     error,
     hasLoadedOnce,
-
     filtroTenant,
     setFiltroTenant,
     filtroEmpresaIds,
@@ -125,13 +140,11 @@ export default function MedidasGeneralSection({
     setFiltroAnios,
     filtroMeses,
     setFiltroMeses,
-
     opcionesEmpresa,
     opcionesAnio,
     opcionesMes,
     opcionesTenant,
     opcionesEmpresaFiltradas,
-
     pageSize,
     setPageSize,
     page,
@@ -141,19 +154,15 @@ export default function MedidasGeneralSection({
     currentPage,
     startIndex,
     endIndex,
-
     showAdjust,
     setShowAdjust,
     handleDragStart,
     handleDrop,
-
     safeColumnOrder,
     safeHiddenColumns,
     canEditAdjustments,
     orderForAdjustments,
-
     filtrosActivosCount,
-
     clearFilters,
     loadFilters,
     handleLoadData,
@@ -260,26 +269,34 @@ export default function MedidasGeneralSection({
 
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefGeneral[] = [];
-
     if (isSistema) {
       const tcol = columnasPorId.get("tenant_id");
       if (tcol) base.push(tcol);
     }
-
     for (const id of safeColumnOrder) {
       const col = columnasPorId.get(id);
       if (col && col.id !== "tenant_id") base.push(col);
     }
-
     const faltantes = ALL_COLUMNS_GENERAL.filter((c) => !safeColumnOrder.includes(c.id));
     const full = [...base, ...faltantes.filter((c) => !base.some((b) => b.id === c.id))];
-
     if (!safeHiddenColumns || safeHiddenColumns.length === 0) return full;
     return full.filter((c) => !safeHiddenColumns.includes(c.id));
   }, [isSistema, safeColumnOrder, columnasPorId, safeHiddenColumns]);
 
-  const totalColumnas = columnasOrdenadas.length || 1;
+  // Calcula el `left` acumulado de cada columna sticky visible
+  const stickyLeftMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    let acc = 0;
+    for (const col of columnasOrdenadas) {
+      if (STICKY_COLUMN_IDS.includes(col.id)) {
+        map[col.id] = acc;
+        acc += STICKY_WIDTHS[col.id] ?? 80;
+      }
+    }
+    return map;
+  }, [columnasOrdenadas]);
 
+  const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
   return (
@@ -289,7 +306,6 @@ export default function MedidasGeneralSection({
           <h4 className="ui-card-title">Medidas (General){isSistema ? " · Sistema" : ""}</h4>
           <p className="ui-card-subtitle">Resumen mensual de energía por empresa.</p>
         </div>
-
         <MedidasTableActions
           loading={loading}
           token={token}
@@ -322,7 +338,6 @@ export default function MedidasGeneralSection({
             {filtrosActivosCount}
           </span>
         </div>
-
         {hasLoadedOnce && (
           <div className="ui-muted">
             Total filas:{" "}
@@ -382,17 +397,34 @@ export default function MedidasGeneralSection({
       />
 
       <div className="ui-table-wrap">
-        <table className="ui-table text-[11px]">
+        <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
             <tr>
-              {columnasOrdenadas.map((col) => (
-                <th
-                  key={col.id}
-                  className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
-                >
-                  {col.label}
-                </th>
-              ))}
+              {columnasOrdenadas.map((col) => {
+                const isSticky = STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
+                return (
+                  <th
+                    key={col.id}
+                    className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
+                    style={
+                      isSticky
+                        ? {
+                            position: "sticky",
+                            left: stickyLeftMap[col.id],
+                            zIndex: 3,
+                            background: "var(--table-head-bg, var(--card-bg))",
+                            boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
+                            minWidth: STICKY_WIDTHS[col.id] ?? 80,
+                            maxWidth: STICKY_WIDTHS[col.id] ?? 80,
+                            width: STICKY_WIDTHS[col.id] ?? 80,
+                          }
+                        : undefined
+                    }
+                  >
+                    {col.label}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
@@ -424,18 +456,54 @@ export default function MedidasGeneralSection({
             )}
 
             {!loading &&
-              data.map((m: any) => (
-                <tr key={`${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`} className="ui-tr">
-                  {columnasOrdenadas.map((col) => (
-                    <td
-                      key={col.id}
-                      className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
-                    >
-                      {col.render(m)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              data.map((m: any) => {
+                const rowKey = `${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`;
+                const isSelected = selectedRowKey === rowKey;
+                return (
+                  <tr
+                    key={rowKey}
+                    className="ui-tr"
+                    onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
+                    style={{
+                      cursor: "pointer",
+                      background: isSelected
+                        ? "var(--nav-item-hover)"
+                        : undefined,
+                      outline: isSelected
+                        ? "1px solid var(--btn-secondary-bg)"
+                        : undefined,
+                    }}
+                  >
+                    {columnasOrdenadas.map((col) => {
+                      const isSticky = STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
+                      return (
+                        <td
+                          key={col.id}
+                          className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
+                          style={
+                            isSticky
+                              ? {
+                                  position: "sticky",
+                                  left: stickyLeftMap[col.id],
+                                  zIndex: 1,
+                                  background: isSelected
+                                    ? "var(--nav-item-hover)"
+                                    : "var(--card-bg)",
+                                  boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
+                                  minWidth: STICKY_WIDTHS[col.id] ?? 80,
+                                  maxWidth: STICKY_WIDTHS[col.id] ?? 80,
+                                  width: STICKY_WIDTHS[col.id] ?? 80,
+                                }
+                              : undefined
+                          }
+                        >
+                          {col.render(m)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
 
