@@ -227,7 +227,6 @@ export default function MedidasGeneralSection({
   const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
-  // Un solo botón — los demás (Quitar todo, Reset) están dentro del panel expandido
   const adjustButton = canEditAdjustments ? (
     <button
       type="button"
@@ -317,6 +316,7 @@ export default function MedidasGeneralSection({
         />
       )}
 
+      {/* Tabla — solo scroll horizontal aquí, paginación fuera */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
@@ -389,13 +389,15 @@ export default function MedidasGeneralSection({
             })}
           </tbody>
         </table>
-        <TablePaginationFooter
-          loading={loading} hasLoadedOnce={hasLoadedOnce}
-          totalFilas={totalFilas} startIndex={startIndex} endIndex={endIndex}
-          pageSize={pageSize} setPageSize={setPageSize}
-          currentPage={currentPage} totalPages={totalPages} setPage={setPage}
-        />
       </div>
+
+      {/* Paginación fuera del scroll horizontal — siempre visible */}
+      <TablePaginationFooter
+        loading={loading} hasLoadedOnce={hasLoadedOnce}
+        totalFilas={totalFilas} startIndex={startIndex} endIndex={endIndex}
+        pageSize={pageSize} setPageSize={setPageSize}
+        currentPage={currentPage} totalPages={totalPages} setPage={setPage}
+      />
 
       <ConfirmDeleteModal
         open={deleteOpen}
