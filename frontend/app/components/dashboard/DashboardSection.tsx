@@ -457,21 +457,21 @@ export default function DashboardSection({ token }: Props) {
         {/* ── Fila 1: Energía · Pérdidas · Consistencia ────────────── */}
         <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
 
-          {/* Energía facturada — título fuera sin fondo, datos con fondo de card */}
-          <div className="flex flex-col gap-2">
-            {/* Título fuera, sin fondo */}
+          {/* Energía facturada — borde exterior + título muted + datos con field-bg */}
+          <div
+            className="rounded-xl border p-3 flex flex-col gap-2"
+            style={{
+              borderColor: "var(--card-border)",
+              background: "var(--card-bg)",
+              borderLeft: "3px solid #378ADD",
+            }}
+          >
             <div className="text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
               {energiaCardTitle}
             </div>
-            {/* Solo los datos con fondo de card + borde izq azul */}
             <div
-              className="rounded-xl border flex flex-col items-center justify-center text-center p-4 flex-1"
-              style={{
-                borderColor: "var(--card-border)",
-                background: "var(--card-bg)",
-                borderLeft: "3px solid #378ADD",
-                minHeight: "100px",
-              }}
+              className="rounded-lg p-3 flex flex-col items-center justify-center text-center"
+              style={{ background: "var(--field-bg)", minHeight: "80px" }}
             >
               <div
                 className="group relative cursor-default"
@@ -491,21 +491,21 @@ export default function DashboardSection({ token }: Props) {
             </div>
           </div>
 
-          {/* Pérdidas — título fuera sin fondo, datos con fondo de card */}
-          <div className="flex flex-col gap-2">
-            {/* Título fuera, sin fondo */}
+          {/* Pérdidas — borde exterior + título muted + datos con field-bg */}
+          <div
+            className="rounded-xl border p-3 flex flex-col gap-2"
+            style={{
+              borderColor: "var(--card-border)",
+              background: "var(--card-bg)",
+              borderLeft: "3px solid #D85A30",
+            }}
+          >
             <div className="text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
               {perdidasCardTitle}
             </div>
-            {/* Solo los datos con fondo de card + borde izq naranja */}
             <div
-              className="rounded-xl border flex flex-col items-center justify-center text-center p-4 flex-1"
-              style={{
-                borderColor: "var(--card-border)",
-                background: "var(--card-bg)",
-                borderLeft: "3px solid #D85A30",
-                minHeight: "100px",
-              }}
+              className="rounded-lg p-3 flex flex-col items-center justify-center text-center"
+              style={{ background: "var(--field-bg)", minHeight: "80px" }}
             >
               <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
                 {perdidasTotal}
@@ -602,9 +602,7 @@ export default function DashboardSection({ token }: Props) {
                 {reeHitos.map((hito, idx) => (
                   <div
                     key={idx}
-                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg ${
-                      hito.isAlert ? "" : ""
-                    }`}
+                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
                     style={{
                       background: hito.isAlert ? "#FEF2F2" : "var(--field-bg)",
                       gridColumn: idx === 4 ? "1 / -1" : undefined,
@@ -642,7 +640,7 @@ export default function DashboardSection({ token }: Props) {
           </div>
         </div>
 
-        {/* ── Fila 3: 3 gráficas — título fuera, datos con fondo ───── */}
+        {/* ── Fila 3: 3 gráficas ───────────────────────────────────── */}
         <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
 
           <DashboardMiniCard
