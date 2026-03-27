@@ -124,7 +124,7 @@ export default function MedidasFiltersBar({
         />
       </div>
 
-      <div style={{ minWidth: 75 }}>
+      <div style={{ minWidth: 105 }}>
         <MultiSelectDropdown
           label="Mes"
           options={mesOptions}
