@@ -457,21 +457,21 @@ export default function DashboardSection({ token }: Props) {
         {/* ── Fila 1: Energía · Pérdidas · Consistencia ────────────── */}
         <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
 
-          {/* Energía facturada — título texto muted, borde izq azul */}
-          <div
-            className="rounded-xl border flex flex-col"
-            style={{
-              borderColor: "var(--card-border)",
-              background: "var(--card-bg)",
-              borderLeft: "3px solid #378ADD",
-              minHeight: "130px",
-            }}
-          >
-            <div className="px-4 pt-4 pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
+          {/* Energía facturada — título fuera sin fondo, datos con fondo de card */}
+          <div className="flex flex-col gap-2">
+            {/* Título fuera, sin fondo */}
+            <div className="text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
               {energiaCardTitle}
             </div>
+            {/* Solo los datos con fondo de card + borde izq azul */}
             <div
-              className="px-4 pb-4 flex-1 flex flex-col items-center justify-center text-center"
+              className="rounded-xl border flex flex-col items-center justify-center text-center p-4 flex-1"
+              style={{
+                borderColor: "var(--card-border)",
+                background: "var(--card-bg)",
+                borderLeft: "3px solid #378ADD",
+                minHeight: "100px",
+              }}
             >
               <div
                 className="group relative cursor-default"
@@ -491,21 +491,21 @@ export default function DashboardSection({ token }: Props) {
             </div>
           </div>
 
-          {/* Pérdidas — título texto muted, borde izq naranja */}
-          <div
-            className="rounded-xl border flex flex-col"
-            style={{
-              borderColor: "var(--card-border)",
-              background: "var(--card-bg)",
-              borderLeft: "3px solid #D85A30",
-              minHeight: "130px",
-            }}
-          >
-            <div className="px-4 pt-4 pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
+          {/* Pérdidas — título fuera sin fondo, datos con fondo de card */}
+          <div className="flex flex-col gap-2">
+            {/* Título fuera, sin fondo */}
+            <div className="text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
               {perdidasCardTitle}
             </div>
+            {/* Solo los datos con fondo de card + borde izq naranja */}
             <div
-              className="px-4 pb-4 flex-1 flex flex-col items-center justify-center text-center"
+              className="rounded-xl border flex flex-col items-center justify-center text-center p-4 flex-1"
+              style={{
+                borderColor: "var(--card-border)",
+                background: "var(--card-bg)",
+                borderLeft: "3px solid #D85A30",
+                minHeight: "100px",
+              }}
             >
               <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
                 {perdidasTotal}
@@ -642,7 +642,7 @@ export default function DashboardSection({ token }: Props) {
           </div>
         </div>
 
-        {/* ── Fila 3: 3 gráficas — DashboardMiniCard ya tiene el nuevo estilo ── */}
+        {/* ── Fila 3: 3 gráficas — título fuera, datos con fondo ───── */}
         <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
 
           <DashboardMiniCard
