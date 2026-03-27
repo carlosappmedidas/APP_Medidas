@@ -48,39 +48,39 @@ const ALL_COLUMNS_PS: ColumnDefPs[] = [
   { id: "empresa_codigo", label: "Código empresa", align: "left", group: "Identificación", render: (m) => m.empresa_codigo ?? "-" },
   { id: "anio", label: "Año", align: "left", group: "Identificación", render: (m) => m.anio },
   { id: "mes", label: "Mes", align: "left", group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
-  { id: "energia_ps_tipo_1_kwh", label: "E PS tipo 1", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_1_kwh) },
-  { id: "energia_ps_tipo_2_kwh", label: "E PS tipo 2", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_2_kwh) },
-  { id: "energia_ps_tipo_3_kwh", label: "E PS tipo 3", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_3_kwh) },
-  { id: "energia_ps_tipo_4_kwh", label: "E PS tipo 4", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_4_kwh) },
-  { id: "energia_ps_tipo_5_kwh", label: "E PS tipo 5", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_5_kwh) },
-  { id: "energia_ps_total_kwh", label: "E PS total", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_total_kwh) },
-  { id: "cups_tipo_1", label: "CUPS tipo 1", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_1 ?? "-" },
-  { id: "cups_tipo_2", label: "CUPS tipo 2", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_2 ?? "-" },
-  { id: "cups_tipo_3", label: "CUPS tipo 3", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_3 ?? "-" },
-  { id: "cups_tipo_4", label: "CUPS tipo 4", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_4 ?? "-" },
-  { id: "cups_tipo_5", label: "CUPS tipo 5", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_5 ?? "-" },
-  { id: "cups_total", label: "CUPS total", align: "right", group: "CUPS PS", render: (m) => m.cups_total ?? "-" },
-  { id: "importe_tipo_1_eur", label: "Importe tipo 1", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_1_eur) },
-  { id: "importe_tipo_2_eur", label: "Importe tipo 2", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_2_eur) },
-  { id: "importe_tipo_3_eur", label: "Importe tipo 3", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_3_eur) },
-  { id: "importe_tipo_4_eur", label: "Importe tipo 4", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_4_eur) },
-  { id: "importe_tipo_5_eur", label: "Importe tipo 5", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_5_eur) },
-  { id: "importe_total_eur", label: "Importe total", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_total_eur) },
+  { id: "energia_ps_tipo_1_kwh", label: "E PS T1", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_1_kwh) },
+  { id: "energia_ps_tipo_2_kwh", label: "E PS T2", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_2_kwh) },
+  { id: "energia_ps_tipo_3_kwh", label: "E PS T3", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_3_kwh) },
+  { id: "energia_ps_tipo_4_kwh", label: "E PS T4", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_4_kwh) },
+  { id: "energia_ps_tipo_5_kwh", label: "E PS T5", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_5_kwh) },
+  { id: "energia_ps_total_kwh", label: "E PS Total", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_total_kwh) },
+  { id: "cups_tipo_1", label: "CUPS T1", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_1 ?? "-" },
+  { id: "cups_tipo_2", label: "CUPS T2", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_2 ?? "-" },
+  { id: "cups_tipo_3", label: "CUPS T3", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_3 ?? "-" },
+  { id: "cups_tipo_4", label: "CUPS T4", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_4 ?? "-" },
+  { id: "cups_tipo_5", label: "CUPS T5", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_5 ?? "-" },
+  { id: "cups_total", label: "CUPS Total", align: "right", group: "CUPS PS", render: (m) => m.cups_total ?? "-" },
+  { id: "importe_tipo_1_eur", label: "Imp. T1", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_1_eur) },
+  { id: "importe_tipo_2_eur", label: "Imp. T2", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_2_eur) },
+  { id: "importe_tipo_3_eur", label: "Imp. T3", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_3_eur) },
+  { id: "importe_tipo_4_eur", label: "Imp. T4", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_4_eur) },
+  { id: "importe_tipo_5_eur", label: "Imp. T5", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_5_eur) },
+  { id: "importe_total_eur", label: "Imp. Total", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_total_eur) },
   { id: "energia_tarifa_20td_kwh", label: "E 2.0TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_20td_kwh) },
   { id: "energia_tarifa_30td_kwh", label: "E 3.0TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30td_kwh) },
   { id: "energia_tarifa_30tdve_kwh", label: "E 3.0TDVE", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30tdve_kwh) },
   { id: "energia_tarifa_61td_kwh", label: "E 6.1TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_61td_kwh) },
-  { id: "energia_tarifa_total_kwh", label: "E Tarifas Total", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_total_kwh) },
+  { id: "energia_tarifa_total_kwh", label: "E Tar. Total", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_total_kwh) },
   { id: "cups_tarifa_20td", label: "CUPS 2.0TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_20td ?? "-" },
   { id: "cups_tarifa_30td", label: "CUPS 3.0TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30td ?? "-" },
   { id: "cups_tarifa_30tdve", label: "CUPS 3.0TDVE", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30tdve ?? "-" },
   { id: "cups_tarifa_61td", label: "CUPS 6.1TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_61td ?? "-" },
-  { id: "cups_tarifa_total", label: "CUPS Tarifas Total", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_total ?? "-" },
-  { id: "importe_tarifa_20td_eur", label: "Importe 2.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_20td_eur) },
-  { id: "importe_tarifa_30td_eur", label: "Importe 3.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30td_eur) },
-  { id: "importe_tarifa_30tdve_eur", label: "Importe 3.0TDVE", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30tdve_eur) },
-  { id: "importe_tarifa_61td_eur", label: "Importe 6.1TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_61td_eur) },
-  { id: "importe_tarifa_total_eur", label: "Importe Tarifas Total", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_total_eur) },
+  { id: "cups_tarifa_total", label: "CUPS Tar. Total", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_total ?? "-" },
+  { id: "importe_tarifa_20td_eur", label: "Imp. 2.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_20td_eur) },
+  { id: "importe_tarifa_30td_eur", label: "Imp. 3.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30td_eur) },
+  { id: "importe_tarifa_30tdve_eur", label: "Imp. 3.0TDVE", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30tdve_eur) },
+  { id: "importe_tarifa_61td_eur", label: "Imp. 6.1TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_61td_eur) },
+  { id: "importe_tarifa_total_eur", label: "Imp. Tar. Total", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_total_eur) },
 ];
 
 export const COLUMNS_PS_META = ALL_COLUMNS_PS.map((c) => ({
@@ -216,23 +216,15 @@ export default function MedidasPsSection({
   const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
-  // Botón de toggle del panel de columnas — se pasa como slot a MedidasFiltersBar
+  // Un solo botón — los demás están dentro del panel expandido
   const adjustButton = canEditAdjustments ? (
-    <div className="flex items-center gap-2">
-      <button type="button" onClick={() => setShowAdjust((v) => !v)} className="ui-btn ui-btn-outline ui-btn-xs">
-        {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
-      </button>
-      {!showAdjust && (
-        <>
-          <button type="button" onClick={hideAllColumns} className="ui-btn ui-btn-outline ui-btn-xs">
-            Quitar todo
-          </button>
-          <button type="button" onClick={resetOrder} className="ui-btn ui-btn-outline ui-btn-xs">
-            Reset
-          </button>
-        </>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={() => setShowAdjust((v) => !v)}
+      className="ui-btn ui-btn-outline ui-btn-xs"
+    >
+      {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
+    </button>
   ) : null;
 
   return (
@@ -282,7 +274,6 @@ export default function MedidasPsSection({
         </div>
       )}
 
-      {/* Filtros + botón ajuste de columnas en la misma línea */}
       <MedidasFiltersBar
         isSistema={isSistema} token={token} loading={loading}
         filtroTenant={filtroTenant} setFiltroTenant={setFiltroTenant}
@@ -296,7 +287,6 @@ export default function MedidasPsSection({
         adjustButton={adjustButton}
       />
 
-      {/* Panel expandido de columnas — aparece debajo cuando showAdjust=true */}
       {showAdjust && (
         <ColumnVisibilityOrderPanel
           show={showAdjust}
@@ -331,8 +321,9 @@ export default function MedidasPsSection({
                     style={isSticky ? {
                       position: "sticky", left: stickyLeftMap[col.id], zIndex: 3,
                       background: "var(--sticky-head-bg)", boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
-                      minWidth: STICKY_WIDTHS_PS[col.id] ?? 80, maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80, width: STICKY_WIDTHS_PS[col.id] ?? 80,
-                    } : undefined}
+                      minWidth: STICKY_WIDTHS_PS[col.id] ?? 80, maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
+                      width: STICKY_WIDTHS_PS[col.id] ?? 80, whiteSpace: "nowrap",
+                    } : { whiteSpace: "nowrap" }}
                   >
                     {col.label}
                   </th>
@@ -376,7 +367,8 @@ export default function MedidasPsSection({
                           position: "sticky", left: stickyLeftMap[col.id], zIndex: 1,
                           background: isSelected ? "var(--sticky-selected-bg)" : "var(--sticky-bg)",
                           boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
-                          minWidth: STICKY_WIDTHS_PS[col.id] ?? 80, maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80, width: STICKY_WIDTHS_PS[col.id] ?? 80,
+                          minWidth: STICKY_WIDTHS_PS[col.id] ?? 80, maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
+                          width: STICKY_WIDTHS_PS[col.id] ?? 80,
                         } : undefined}
                       >
                         {col.render(m)}

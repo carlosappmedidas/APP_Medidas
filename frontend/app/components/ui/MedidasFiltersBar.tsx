@@ -100,6 +100,7 @@ export default function MedidasFiltersBar({
         </div>
       )}
 
+      {/* Empresa: más ancho porque los nombres pueden ser largos */}
       <div style={{ minWidth: 160 }}>
         <MultiSelectDropdown
           label="Empresa"
@@ -112,7 +113,8 @@ export default function MedidasFiltersBar({
         />
       </div>
 
-      <div style={{ minWidth: 90 }}>
+      {/* Año */}
+      <div style={{ minWidth: 95 }}>
         <MultiSelectDropdown
           label="Año"
           options={anioOptions}
@@ -124,7 +126,8 @@ export default function MedidasFiltersBar({
         />
       </div>
 
-      <div style={{ minWidth: 105 }}>
+      {/* Mes */}
+      <div style={{ minWidth: 95 }}>
         <MultiSelectDropdown
           label="Mes"
           options={mesOptions}
@@ -136,7 +139,7 @@ export default function MedidasFiltersBar({
         />
       </div>
 
-      {/* Botón ajuste de columnas — empuja al extremo derecho de la misma línea */}
+      {/* Solo el botón toggle — los demás aparecen dentro del panel expandido */}
       {adjustButton && (
         <div className="ml-auto flex items-end">
           {adjustButton}

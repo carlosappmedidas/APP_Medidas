@@ -56,46 +56,46 @@ const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   { id: "punto_id", label: "Punto", align: "left", group: "Identificación", render: (m) => m.punto_id },
   { id: "anio", label: "Año", align: "left", group: "Identificación", render: (m) => m.anio },
   { id: "mes", label: "Mes", align: "left", group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
-  { id: "energia_bruta_facturada", label: "E bruta facturada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_bruta_facturada) },
-  { id: "energia_autoconsumo_kwh", label: "E autoconsumo", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_autoconsumo_kwh) },
-  { id: "energia_neta_facturada_kwh", label: "E neta facturada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_neta_facturada_kwh) },
+  { id: "energia_bruta_facturada", label: "E bruta fact.", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_bruta_facturada) },
+  { id: "energia_autoconsumo_kwh", label: "E autoc.", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_autoconsumo_kwh) },
+  { id: "energia_neta_facturada_kwh", label: "E neta fact.", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_neta_facturada_kwh) },
   { id: "energia_generada_kwh", label: "E generada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_generada_kwh) },
-  { id: "energia_frontera_dd_kwh", label: "E frontera DD", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_frontera_dd_kwh) },
+  { id: "energia_frontera_dd_kwh", label: "E front. DD", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_frontera_dd_kwh) },
   { id: "energia_pf_final_kwh", label: "E PF final", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_pf_final_kwh) },
-  { id: "perdidas_e_facturada_kwh", label: "Pérdidas E facturada (kWh)", align: "right", group: "General", render: (m) => formatNumberEs(m.perdidas_e_facturada_kwh) },
-  { id: "perdidas_e_facturada_pct", label: "Pérdidas E facturada (%)", align: "right", group: "General", render: (m) => formatPercentEs(m.perdidas_e_facturada_pct) },
+  { id: "perdidas_e_facturada_kwh", label: "Pérd. fact. kWh", align: "right", group: "General", render: (m) => formatNumberEs(m.perdidas_e_facturada_kwh) },
+  { id: "perdidas_e_facturada_pct", label: "Pérd. fact. %", align: "right", group: "General", render: (m) => formatPercentEs(m.perdidas_e_facturada_pct) },
   { id: "energia_publicada_m2_kwh", label: "E publ M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_publicada_m2_kwh) },
   { id: "energia_autoconsumo_m2_kwh", label: "E autoc M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_autoconsumo_m2_kwh) },
   { id: "energia_pf_m2_kwh", label: "E PF M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_pf_m2_kwh) },
-  { id: "energia_frontera_dd_m2_kwh", label: "E front DD M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_frontera_dd_m2_kwh) },
+  { id: "energia_frontera_dd_m2_kwh", label: "E front M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_frontera_dd_m2_kwh) },
   { id: "energia_generada_m2_kwh", label: "E gen M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_generada_m2_kwh) },
   { id: "energia_neta_facturada_m2_kwh", label: "E neta M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_neta_facturada_m2_kwh) },
-  { id: "perdidas_e_facturada_m2_kwh", label: "Pérdidas M2 (kWh)", align: "right", group: "M2", render: (m) => formatNumberEs(m.perdidas_e_facturada_m2_kwh) },
-  { id: "perdidas_e_facturada_m2_pct", label: "Pérdidas M2 (%)", align: "right", group: "M2", render: (m) => formatPercentEs(m.perdidas_e_facturada_m2_pct) },
+  { id: "perdidas_e_facturada_m2_kwh", label: "Pérd. M2 kWh", align: "right", group: "M2", render: (m) => formatNumberEs(m.perdidas_e_facturada_m2_kwh) },
+  { id: "perdidas_e_facturada_m2_pct", label: "Pérd. M2 %", align: "right", group: "M2", render: (m) => formatPercentEs(m.perdidas_e_facturada_m2_pct) },
   { id: "energia_publicada_m7_kwh", label: "E publ M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_publicada_m7_kwh) },
   { id: "energia_autoconsumo_m7_kwh", label: "E autoc M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_autoconsumo_m7_kwh) },
   { id: "energia_pf_m7_kwh", label: "E PF M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_pf_m7_kwh) },
-  { id: "energia_frontera_dd_m7_kwh", label: "E front DD M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_frontera_dd_m7_kwh) },
+  { id: "energia_frontera_dd_m7_kwh", label: "E front M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_frontera_dd_m7_kwh) },
   { id: "energia_generada_m7_kwh", label: "E gen M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_generada_m7_kwh) },
   { id: "energia_neta_facturada_m7_kwh", label: "E neta M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_neta_facturada_m7_kwh) },
-  { id: "perdidas_e_facturada_m7_kwh", label: "Pérdidas M7 (kWh)", align: "right", group: "M7", render: (m) => formatNumberEs(m.perdidas_e_facturada_m7_kwh) },
-  { id: "perdidas_e_facturada_m7_pct", label: "Pérdidas M7 (%)", align: "right", group: "M7", render: (m) => formatPercentEs(m.perdidas_e_facturada_m7_pct) },
+  { id: "perdidas_e_facturada_m7_kwh", label: "Pérd. M7 kWh", align: "right", group: "M7", render: (m) => formatNumberEs(m.perdidas_e_facturada_m7_kwh) },
+  { id: "perdidas_e_facturada_m7_pct", label: "Pérd. M7 %", align: "right", group: "M7", render: (m) => formatPercentEs(m.perdidas_e_facturada_m7_pct) },
   { id: "energia_publicada_m11_kwh", label: "E publ M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_publicada_m11_kwh) },
   { id: "energia_autoconsumo_m11_kwh", label: "E autoc M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_autoconsumo_m11_kwh) },
   { id: "energia_pf_m11_kwh", label: "E PF M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_pf_m11_kwh) },
-  { id: "energia_frontera_dd_m11_kwh", label: "E front DD M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_frontera_dd_m11_kwh) },
+  { id: "energia_frontera_dd_m11_kwh", label: "E front M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_frontera_dd_m11_kwh) },
   { id: "energia_generada_m11_kwh", label: "E gen M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_generada_m11_kwh) },
   { id: "energia_neta_facturada_m11_kwh", label: "E neta M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_neta_facturada_m11_kwh) },
-  { id: "perdidas_e_facturada_m11_kwh", label: "Pérdidas M11 (kWh)", align: "right", group: "M11", render: (m) => formatNumberEs(m.perdidas_e_facturada_m11_kwh) },
-  { id: "perdidas_e_facturada_m11_pct", label: "Pérdidas M11 (%)", align: "right", group: "M11", render: (m) => formatPercentEs(m.perdidas_e_facturada_m11_pct) },
-  { id: "energia_publicada_art15_kwh", label: "E publ ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_publicada_art15_kwh) },
-  { id: "energia_autoconsumo_art15_kwh", label: "E autoc ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_autoconsumo_art15_kwh) },
-  { id: "energia_pf_art15_kwh", label: "E PF ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_pf_art15_kwh) },
-  { id: "energia_frontera_dd_art15_kwh", label: "E front DD ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_frontera_dd_art15_kwh) },
-  { id: "energia_generada_art15_kwh", label: "E gen ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_generada_art15_kwh) },
-  { id: "energia_neta_facturada_art15_kwh", label: "E neta ART15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_neta_facturada_art15_kwh) },
-  { id: "perdidas_e_facturada_art15_kwh", label: "Pérdidas ART15 (kWh)", align: "right", group: "ART15", render: (m) => formatNumberEs(m.perdidas_e_facturada_art15_kwh) },
-  { id: "perdidas_e_facturada_art15_pct", label: "Pérdidas ART15 (%)", align: "right", group: "ART15", render: (m) => formatPercentEs(m.perdidas_e_facturada_art15_pct) },
+  { id: "perdidas_e_facturada_m11_kwh", label: "Pérd. M11 kWh", align: "right", group: "M11", render: (m) => formatNumberEs(m.perdidas_e_facturada_m11_kwh) },
+  { id: "perdidas_e_facturada_m11_pct", label: "Pérd. M11 %", align: "right", group: "M11", render: (m) => formatPercentEs(m.perdidas_e_facturada_m11_pct) },
+  { id: "energia_publicada_art15_kwh", label: "E publ A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_publicada_art15_kwh) },
+  { id: "energia_autoconsumo_art15_kwh", label: "E autoc A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_autoconsumo_art15_kwh) },
+  { id: "energia_pf_art15_kwh", label: "E PF A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_pf_art15_kwh) },
+  { id: "energia_frontera_dd_art15_kwh", label: "E front A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_frontera_dd_art15_kwh) },
+  { id: "energia_generada_art15_kwh", label: "E gen A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_generada_art15_kwh) },
+  { id: "energia_neta_facturada_art15_kwh", label: "E neta A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_neta_facturada_art15_kwh) },
+  { id: "perdidas_e_facturada_art15_kwh", label: "Pérd. A15 kWh", align: "right", group: "ART15", render: (m) => formatNumberEs(m.perdidas_e_facturada_art15_kwh) },
+  { id: "perdidas_e_facturada_art15_pct", label: "Pérd. A15 %", align: "right", group: "ART15", render: (m) => formatPercentEs(m.perdidas_e_facturada_art15_pct) },
 ];
 
 export const COLUMNS_GENERAL_META = ALL_COLUMNS_GENERAL.map((c) => ({
@@ -227,23 +227,15 @@ export default function MedidasGeneralSection({
   const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
-  // Botón de toggle del panel de columnas — se pasa como slot a MedidasFiltersBar
+  // Un solo botón — los demás (Quitar todo, Reset) están dentro del panel expandido
   const adjustButton = canEditAdjustments ? (
-    <div className="flex items-center gap-2">
-      <button type="button" onClick={() => setShowAdjust((v) => !v)} className="ui-btn ui-btn-outline ui-btn-xs">
-        {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
-      </button>
-      {!showAdjust && (
-        <>
-          <button type="button" onClick={hideAllColumns} className="ui-btn ui-btn-outline ui-btn-xs">
-            Quitar todo
-          </button>
-          <button type="button" onClick={resetOrder} className="ui-btn ui-btn-outline ui-btn-xs">
-            Reset
-          </button>
-        </>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={() => setShowAdjust((v) => !v)}
+      className="ui-btn ui-btn-outline ui-btn-xs"
+    >
+      {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
+    </button>
   ) : null;
 
   return (
@@ -292,7 +284,6 @@ export default function MedidasGeneralSection({
         </div>
       )}
 
-      {/* Filtros + botón ajuste de columnas en la misma línea */}
       <MedidasFiltersBar
         isSistema={isSistema} token={token} loading={loading}
         filtroTenant={filtroTenant} setFiltroTenant={setFiltroTenant}
@@ -305,7 +296,6 @@ export default function MedidasGeneralSection({
         adjustButton={adjustButton}
       />
 
-      {/* Panel expandido de columnas — aparece debajo cuando showAdjust=true */}
       {showAdjust && (
         <ColumnVisibilityOrderPanel
           show={showAdjust}
@@ -340,8 +330,9 @@ export default function MedidasGeneralSection({
                     style={isSticky ? {
                       position: "sticky", left: stickyLeftMap[col.id], zIndex: 3,
                       background: "var(--sticky-head-bg)", boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
-                      minWidth: STICKY_WIDTHS[col.id] ?? 80, maxWidth: STICKY_WIDTHS[col.id] ?? 80, width: STICKY_WIDTHS[col.id] ?? 80,
-                    } : undefined}
+                      minWidth: STICKY_WIDTHS[col.id] ?? 80, maxWidth: STICKY_WIDTHS[col.id] ?? 80,
+                      width: STICKY_WIDTHS[col.id] ?? 80, whiteSpace: "nowrap",
+                    } : { whiteSpace: "nowrap" }}
                   >
                     {col.label}
                   </th>
@@ -385,7 +376,8 @@ export default function MedidasGeneralSection({
                           position: "sticky", left: stickyLeftMap[col.id], zIndex: 1,
                           background: isSelected ? "var(--sticky-selected-bg)" : "var(--sticky-bg)",
                           boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
-                          minWidth: STICKY_WIDTHS[col.id] ?? 80, maxWidth: STICKY_WIDTHS[col.id] ?? 80, width: STICKY_WIDTHS[col.id] ?? 80,
+                          minWidth: STICKY_WIDTHS[col.id] ?? 80, maxWidth: STICKY_WIDTHS[col.id] ?? 80,
+                          width: STICKY_WIDTHS[col.id] ?? 80,
                         } : undefined}
                       >
                         {col.render(m)}
