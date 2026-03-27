@@ -1,5 +1,4 @@
 "use client";
-
 import React from "react";
 
 export type MiniCardRow = {
@@ -31,14 +30,12 @@ export default function DashboardMiniCard({
   const hasTooltip = Boolean(tooltipTitle && tooltipRows.length > 0);
 
   return (
-    <div className="group relative ui-panel h-full overflow-visible p-0">
+    <div className="group relative rounded-xl border h-full overflow-visible"
+      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+    >
+      {/* Título como texto muted — mismo estilo que Consistencia Pérdidas */}
       <div
-        className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.04em]"
-        style={{
-          background: "var(--btn-secondary-bg)",
-          color: "#ffffff",
-          borderBottom: "1px solid var(--card-border)",
-        }}
+        className="px-4 pt-4 pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.04em] ui-muted"
       >
         {title}
       </div>
@@ -69,7 +66,6 @@ export default function DashboardMiniCard({
                       {row.label}
                     </span>
                   ) : null}
-
                   <span
                     className={
                       centered
@@ -82,7 +78,6 @@ export default function DashboardMiniCard({
                 </div>
               ))}
             </div>
-
             {helpText ? (
               <div className="mt-3 text-[10px] leading-relaxed ui-muted">{helpText}</div>
             ) : null}
@@ -100,7 +95,6 @@ export default function DashboardMiniCard({
           }}
         >
           <div className="mb-3 text-[11px] font-semibold">{tooltipTitle}</div>
-
           <div className="space-y-2">
             {tooltipRows.map((row, index) => (
               <div

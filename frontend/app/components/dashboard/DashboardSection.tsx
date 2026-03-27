@@ -457,9 +457,9 @@ export default function DashboardSection({ token }: Props) {
         {/* ── Fila 1: Energía · Pérdidas · Consistencia ────────────── */}
         <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
 
-          {/* Energía facturada */}
+          {/* Energía facturada — título texto muted, borde izq azul */}
           <div
-            className="rounded-xl border p-4 flex flex-col items-center justify-center text-center"
+            className="rounded-xl border flex flex-col"
             style={{
               borderColor: "var(--card-border)",
               background: "var(--card-bg)",
@@ -467,29 +467,33 @@ export default function DashboardSection({ token }: Props) {
               minHeight: "130px",
             }}
           >
-            <div className="text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted mb-2">
+            <div className="px-4 pt-4 pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
               {energiaCardTitle}
             </div>
             <div
-              className="group relative cursor-default"
-              title={`${variationTooltipTitle}: ${energiaFacturadaVariationKwh} kWh · ${energiaFacturadaVariationEur} €`}
+              className="px-4 pb-4 flex-1 flex flex-col items-center justify-center text-center"
             >
-              <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
-                {energiaFacturadaTotal}
+              <div
+                className="group relative cursor-default"
+                title={`${variationTooltipTitle}: ${energiaFacturadaVariationKwh} kWh · ${energiaFacturadaVariationEur} €`}
+              >
+                <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
+                  {energiaFacturadaTotal}
+                </div>
               </div>
-            </div>
-            <div
-              className="mt-2 pt-2 w-full text-[11px]"
-              style={{ borderTop: "0.5px solid var(--card-border)", color: "var(--text)" }}
-            >
-              <span className="ui-muted">{variationTooltipTitle}:</span>{" "}
-              <span>{energiaFacturadaVariationKwh} · {energiaFacturadaVariationEur}</span>
+              <div
+                className="mt-2 pt-2 w-full text-[11px]"
+                style={{ borderTop: "0.5px solid var(--card-border)", color: "var(--text)" }}
+              >
+                <span className="ui-muted">{variationTooltipTitle}:</span>{" "}
+                <span>{energiaFacturadaVariationKwh} · {energiaFacturadaVariationEur}</span>
+              </div>
             </div>
           </div>
 
-          {/* Pérdidas */}
+          {/* Pérdidas — título texto muted, borde izq naranja */}
           <div
-            className="rounded-xl border p-4 flex flex-col items-center justify-center text-center"
+            className="rounded-xl border flex flex-col"
             style={{
               borderColor: "var(--card-border)",
               background: "var(--card-bg)",
@@ -497,22 +501,26 @@ export default function DashboardSection({ token }: Props) {
               minHeight: "130px",
             }}
           >
-            <div className="text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted mb-2">
+            <div className="px-4 pt-4 pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.07em] ui-muted">
               {perdidasCardTitle}
             </div>
-            <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
-              {perdidasTotal}
-            </div>
             <div
-              className="mt-2 pt-2 w-full text-[11px]"
-              style={{ borderTop: "0.5px solid var(--card-border)", color: "var(--text)" }}
+              className="px-4 pb-4 flex-1 flex flex-col items-center justify-center text-center"
             >
-              <span className="ui-muted">{variationTooltipTitle}:</span>{" "}
-              <span>{perdidasVariation}</span>
+              <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
+                {perdidasTotal}
+              </div>
+              <div
+                className="mt-2 pt-2 w-full text-[11px]"
+                style={{ borderTop: "0.5px solid var(--card-border)", color: "var(--text)" }}
+              >
+                <span className="ui-muted">{variationTooltipTitle}:</span>{" "}
+                <span>{perdidasVariation}</span>
+              </div>
             </div>
           </div>
 
-          {/* Consistencia de pérdidas — grid 2×2 compacto */}
+          {/* Consistencia de pérdidas — sin cambios */}
           <div
             className="rounded-xl border p-4 flex flex-col items-center justify-center"
             style={{
@@ -599,7 +607,6 @@ export default function DashboardSection({ token }: Props) {
                     }`}
                     style={{
                       background: hito.isAlert ? "#FEF2F2" : "var(--field-bg)",
-
                       gridColumn: idx === 4 ? "1 / -1" : undefined,
                     }}
                   >
@@ -609,7 +616,6 @@ export default function DashboardSection({ token }: Props) {
                         width: "20px",
                         height: "20px",
                         background: hito.isAlert ? "#FCEBEB" : "var(--card-bg)",
-
                         color: hito.isAlert ? "#7F1D1D" : "var(--text)",
                       }}
                     >
@@ -636,7 +642,7 @@ export default function DashboardSection({ token }: Props) {
           </div>
         </div>
 
-        {/* ── Fila 3: 3 gráficas iguales ───────────────────────────── */}
+        {/* ── Fila 3: 3 gráficas — DashboardMiniCard ya tiene el nuevo estilo ── */}
         <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
 
           <DashboardMiniCard
