@@ -102,8 +102,10 @@ def _build_series_aggregated(
     empresa_ids: list[int] | None,
     anios: list[int] | None,
     meses: list[int] | None,
+    aggregation: str = "avg",
 ) -> list[graficos_schemas.GraficoSerie]:
     field = getattr(MedidaGeneral, field_name)
+    agg_func = func.sum(field) if aggregation == "sum" else func.avg(field)
     rows = (
         _base_general_query(
             db,
@@ -116,7 +118,7 @@ def _build_series_aggregated(
         .with_entities(
             MedidaGeneral.anio.label("anio"),
             MedidaGeneral.mes.label("mes"),
-            func.avg(field).label("value"),
+            agg_func.label("value"),
         )
         .group_by(MedidaGeneral.anio, MedidaGeneral.mes)
         .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
@@ -223,12 +225,14 @@ def _build_adquisicion_series(
     selected_empresa_ids: list[int],
     anios: list[int] | None,
     meses: list[int] | None,
+    aggregation: str = "avg",
 ) -> graficos_schemas.GraficoSerie:
     """
     Adquisición = E PF Final + E generada - E frontera DD
     Calculado directamente en SQL para mantener consistencia con el dashboard.
     """
-    effective_ids = empresa_ids  # None si all_selected, lista si filtrado
+    agg_func = func.sum if aggregation == "sum" else func.avg
+    effective_ids = empresa_ids
 
     if all_selected:
         rows = (
@@ -243,7 +247,7 @@ def _build_adquisicion_series(
             .with_entities(
                 MedidaGeneral.anio.label("anio"),
                 MedidaGeneral.mes.label("mes"),
-                func.avg(
+                agg_func(
                     MedidaGeneral.energia_pf_final_kwh
                     + MedidaGeneral.energia_generada_kwh
                     - MedidaGeneral.energia_frontera_dd_kwh
@@ -253,21 +257,7 @@ def _build_adquisicion_series(
             .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
             .all()
         )
-        points: list[graficos_schemas.GraficoPoint] = [
-            graficos_schemas.GraficoPoint(
-                period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
-                period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
-                value=float(cast(Any, row).value or 0.0),
-            )
-            for row in rows
-        ]
-        return graficos_schemas.GraficoSerie(
-            serie_key="adquisicion",
-            serie_label="Adquisición",
-            points=points,
-        )
     else:
-        # Por empresa — devolvemos serie agregada igualmente (avg de la fórmula)
         rows = (
             _base_general_query(
                 db,
@@ -280,7 +270,7 @@ def _build_adquisicion_series(
             .with_entities(
                 MedidaGeneral.anio.label("anio"),
                 MedidaGeneral.mes.label("mes"),
-                func.avg(
+                agg_func(
                     MedidaGeneral.energia_pf_final_kwh
                     + MedidaGeneral.energia_generada_kwh
                     - MedidaGeneral.energia_frontera_dd_kwh
@@ -290,19 +280,20 @@ def _build_adquisicion_series(
             .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
             .all()
         )
-        points = [
-            graficos_schemas.GraficoPoint(
-                period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
-                period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
-                value=float(cast(Any, row).value or 0.0),
-            )
-            for row in rows
-        ]
-        return graficos_schemas.GraficoSerie(
-            serie_key="adquisicion",
-            serie_label="Adquisición",
-            points=points,
+
+    points: list[graficos_schemas.GraficoPoint] = [
+        graficos_schemas.GraficoPoint(
+            period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+            period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
+            value=float(cast(Any, row).value or 0.0),
         )
+        for row in rows
+    ]
+    return graficos_schemas.GraficoSerie(
+        serie_key="adquisicion",
+        serie_label="Adquisición",
+        points=points,
+    )
 
 
 @router.get(
@@ -387,6 +378,7 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_neta_facturada_kwh", label="Todas las empresas",
             empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+            aggregation=aggregation,
         )
         if all_selected else
         _build_series_by_empresa(
@@ -400,6 +392,7 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="perdidas_e_facturada_pct", label="Todas las empresas",
             empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+            aggregation=aggregation,
         )
         if all_selected else
         _build_series_by_empresa(
@@ -413,6 +406,7 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="perdidas_e_facturada_kwh", label="Pérdidas E facturada (kWh)",
             empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+            aggregation=aggregation,
         )
         if all_selected else
         _build_series_by_empresa(
@@ -426,6 +420,7 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_autoconsumo_kwh", label="Todas las empresas",
             empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+            aggregation=aggregation,
         )
         if all_selected else
         _build_series_by_empresa(
@@ -439,6 +434,7 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name="energia_generada_kwh", label="Todas las empresas",
             empresa_ids=effective_empresa_ids, anios=anios, meses=meses,
+            aggregation=aggregation,
         )
         if all_selected else
         _build_series_by_empresa(
@@ -461,6 +457,7 @@ def get_medidas_graficos_series(
             field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
             anios=anios, meses=meses,
+            aggregation=aggregation,
         )[0]
         energias_publicadas_series.append(
             graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
@@ -480,6 +477,7 @@ def get_medidas_graficos_series(
             field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
             anios=anios, meses=meses,
+            aggregation=aggregation,
         )[0]
         energias_pf_series.append(
             graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
@@ -498,6 +496,7 @@ def get_medidas_graficos_series(
             field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
             anios=anios, meses=meses,
+            aggregation=aggregation,
         )[0]
         perdidas_ventanas_series.append(
             graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
@@ -513,6 +512,7 @@ def get_medidas_graficos_series(
         selected_empresa_ids=selected_empresa_ids,
         anios=anios,
         meses=meses,
+        aggregation=aggregation,
     )
 
     return graficos_schemas.GraficosSeriesResponse(
@@ -524,7 +524,7 @@ def get_medidas_graficos_series(
         ),
         scope=graficos_schemas.GraficosScope(
             all_empresas_selected=all_selected,
-            aggregation="avg",
+            aggregation=aggregation,
         ),
         energia_facturada=graficos_schemas.GraficoSeriesGroup(series=energia_facturada_series),
         perdidas=graficos_schemas.GraficoSeriesGroup(series=perdidas_series),
