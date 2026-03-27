@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis,
+  Brush, CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis,
 } from "recharts";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
@@ -79,7 +79,7 @@ const GRAFICA5_TIPOS: { key: Grafica5TipoKey; label: string }[] = [
 const GRAFICA5_MODO_CONFIG: Record<Grafica5Modo, { prefix: string; modeLabel: string; yFormatter?: (v: number) => string }> = {
   cups:    { prefix: "cups_", modeLabel: "CUPS" },
   energia: { prefix: "en_",   modeLabel: "Energía (kWh)" },
-  importe: { prefix: "im_",   modeLabel: "Importe (€)", yFormatter: (v) => `${new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(v)} €` },
+  importe: { prefix: "im_",   modeLabel: "Importe (€)", yFormatter: (v) => `${formatYAxis(v)} €` },
 };
 
 // ── Gráfica 6 — PS por tarifa ─────────────────────────────────────────────
@@ -95,7 +95,7 @@ const GRAFICA6_TARIFAS: { key: Grafica6TarifaKey; label: string }[] = [
 const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { prefix: string; modeLabel: string; yFormatter?: (v: number) => string }> = {
   cups:    { prefix: "ct_", modeLabel: "CUPS" },
   energia: { prefix: "et_", modeLabel: "Energía (kWh)" },
-  importe: { prefix: "it_", modeLabel: "Importe (€)", yFormatter: (v) => `${new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(v)} €` },
+  importe: { prefix: "it_", modeLabel: "Importe (€)", yFormatter: (v) => `${formatYAxis(v)} €` },
 };
 
 // Jerarquía de ventanas de adquisición: de más reciente a más antigua
@@ -115,6 +115,32 @@ const LINE_COLORS = [
   "#6D5EF8", "#22C55E", "#F59E0B", "#EF4444",
   "#06B6D4", "#A855F7", "#84CC16", "#F97316",
 ];
+
+// ── MEJORA 1: Formateador de eje Y unificado para todas las gráficas ──────
+// Escalonado: M (millones) / k (miles) / número entero. Funciona con negativos.
+function formatYAxis(value: number): string {
+  if (value === 0) return "0";
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs >= 1_000_000) return sign + (abs / 1_000_000).toFixed(abs % 1_000_000 === 0 ? 0 : 1) + "M";
+  if (abs >= 1_000)     return sign + (abs / 1_000).toFixed(abs % 1_000 === 0 ? 0 : 1) + "k";
+  return sign + abs.toString();
+}
+
+// ── MEJORA 1: Formateador de eje X para fechas cortas ("Feb 2022" → "Feb 22") ──
+// Acepta tanto "Feb 2022" (period_label) como "2022-02" (period_key ISO) por seguridad.
+function formatXAxisTick(tick: string): string {
+  // Formato "Mes YYYY" → "Mes YY"  (ej: "Feb 2022" → "Feb 22")
+  const matchLabel = tick.match(/^(\w+)\s(\d{2})(\d{2})$/);
+  if (matchLabel) return `${matchLabel[1]} ${matchLabel[3]}`;
+  // Formato "YYYY-MM" → busca mes en MESES_LABEL (ej: "2022-02" → "Feb 22")
+  const matchKey = tick.match(/^(\d{4})-(\d{2})$/);
+  if (matchKey) {
+    const mes = MESES_LABEL[parseInt(matchKey[2])] ?? matchKey[2];
+    return `${mes} ${matchKey[1].slice(2)}`;
+  }
+  return tick;
+}
 
 function formatNumberEs(value: number | string | null | undefined): string {
   const numericValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : null;
@@ -281,9 +307,26 @@ function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll,
   );
 }
 
+// ── MEJORAS 2 y 3: ChartCard con Brush y leyenda clickable abajo ──────────
 function ChartCard({ title, subtitle, data, series, companyLabel, yAxisFormatter, headerExtra, tooltipExtraByLabel }: ChartCardProps) {
   const { ref, mounted, width, height } = useElementSize<HTMLDivElement>();
   const canRenderChart = mounted && width > 0 && height > 0;
+
+  // MEJORA 3: estado local de series ocultas — no toca filtros del backend
+  const [hiddenSeries, setHiddenSeries] = useState<Record<string, boolean>>({});
+  const toggleSerie = (dataKey: string) => {
+    setHiddenSeries((prev) => ({ ...prev, [dataKey]: !prev[dataKey] }));
+  };
+
+  // Resetear series ocultas cuando cambian las series disponibles
+  const seriesKey = series.map((s) => s.serie_key).join(",");
+  useEffect(() => {
+    setHiddenSeries({});
+  }, [seriesKey]);
+
+  // MEJORA 1: yFormatter final — usa formatYAxis si no se pasa formatter propio
+  const yTickFormatter = yAxisFormatter ?? formatYAxis;
+
   return (
     <div className="min-w-0 rounded-xl border p-4" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
       <div className="mb-2 flex items-start justify-between gap-3">
@@ -294,7 +337,8 @@ function ChartCard({ title, subtitle, data, series, companyLabel, yAxisFormatter
         {headerExtra && <div className="shrink-0">{headerExtra}</div>}
       </div>
       <div className="mb-4 text-center text-xs font-medium" style={{ color: "var(--text)" }}>{companyLabel}</div>
-      <div ref={ref} className="h-[320px] min-w-0 w-full">
+      {/* MEJORA 2: altura aumentada para acomodar el Brush */}
+      <div ref={ref} className="h-[370px] min-w-0 w-full">
         {data.length === 0 ? (
           <div className="ui-muted flex h-full items-center justify-center text-sm">Sin datos para los filtros seleccionados.</div>
         ) : !canRenderChart ? (
@@ -302,18 +346,47 @@ function ChartCard({ title, subtitle, data, series, companyLabel, yAxisFormatter
         ) : (
           <LineChart width={width} height={height} data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-            <XAxis dataKey="period_label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} tickFormatter={yAxisFormatter} />
+            {/* MEJORA 1: tickFormatter para fechas cortas */}
+            <XAxis dataKey="period_label" tick={{ fontSize: 12 }} tickFormatter={formatXAxisTick} />
+            {/* MEJORA 1: yTickFormatter unificado */}
+            <YAxis tick={{ fontSize: 12 }} tickFormatter={yTickFormatter} />
             <Tooltip content={(props) => (
               <CustomTooltip active={props.active}
                 payload={props.payload as readonly CustomTooltipEntry[] | undefined}
                 label={props.label as string | number | undefined}
                 extraByLabel={tooltipExtraByLabel} />
             )} />
-            <Legend />
+            {/* MEJORA 3: leyenda abajo, clickable */}
+            <Legend
+              verticalAlign="bottom"
+              wrapperStyle={{ paddingTop: "12px" }}
+              onClick={(e) => { if (e?.dataKey) toggleSerie(String(e.dataKey)); }}
+              formatter={(value, entry) => (
+                <span style={{ opacity: hiddenSeries[String(entry.dataKey)] ? 0.35 : 1, cursor: "pointer" }}>
+                  {value}
+                </span>
+              )}
+            />
+            {/* MEJORA 2: Brush sin startIndex → muestra todo lo que venga del filtro */}
+            <Brush
+              dataKey="period_label"
+              height={24}
+              stroke="#6D5EF8"
+              fill="rgba(109,94,248,0.08)"
+              travellerWidth={6}
+            />
             {series.map((serie, index) => (
-              <Line key={serie.serie_key} type="monotone" dataKey={serie.serie_key} name={serie.serie_label}
-                stroke={LINE_COLORS[index % LINE_COLORS.length]} strokeWidth={2} dot={false} connectNulls />
+              <Line
+                key={serie.serie_key}
+                type="monotone"
+                dataKey={serie.serie_key}
+                name={serie.serie_label}
+                stroke={LINE_COLORS[index % LINE_COLORS.length]}
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+                hide={hiddenSeries[serie.serie_key] ?? false}
+              />
             ))}
           </LineChart>
         )}
@@ -863,7 +936,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
             title="Gráfica 2. Evolución de pérdidas"
             subtitle={grafica2Subtitle} companyLabel={selectedEmpresaNames}
             data={grafica2Rows} series={grafica2Series}
-            yAxisFormatter={(value) => `${formatNumberEs(value)}%`}
+            yAxisFormatter={(value) => `${formatYAxis(value)}%`}
             tooltipExtraByLabel={perdidasKwhByLabel}
             headerExtra={<Grafica2Selector active={grafica2Active} onChange={setGrafica2Active} />}
           />
@@ -883,7 +956,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
             title="Gráfica 5. Evolución PS por tipo"
             subtitle={grafica5Subtitle} companyLabel={selectedEmpresaNames}
             data={grafica5Rows} series={grafica5Series}
-            yAxisFormatter={grafica5Config.yFormatter}
+            yAxisFormatter={grafica5Config.yFormatter ?? formatYAxis}
             headerExtra={
               <TwoLevelSelector
                 modos={GRAFICA5_MODOS} currentModo={grafica5Modo}
@@ -897,7 +970,7 @@ export default function GraficosSection({ token, currentUser }: Props) {
             title="Gráfica 6. Evolución PS por tarifa"
             subtitle={grafica6Subtitle} companyLabel={selectedEmpresaNames}
             data={grafica6Rows} series={grafica6Series}
-            yAxisFormatter={grafica6Config.yFormatter}
+            yAxisFormatter={grafica6Config.yFormatter ?? formatYAxis}
             headerExtra={
               <TwoLevelSelector
                 modos={GRAFICA6_MODOS} currentModo={grafica6Modo}
