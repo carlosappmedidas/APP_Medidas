@@ -40,11 +40,8 @@ export type ColumnDefGeneral = {
   render: (m: MedidaGeneral | any) => any;
 };
 
-// Columnas que se quedan fijas a la izquierda al hacer scroll horizontal.
-// Si el usuario las oculta con el check, desaparecen igualmente.
 const STICKY_COLUMN_IDS = ["empresa_id", "empresa_codigo", "punto_id", "anio", "mes"];
 
-// Anchos fijos para calcular el `left` acumulado de cada columna sticky
 const STICKY_WIDTHS: Record<string, number> = {
   empresa_id: 64,
   empresa_codigo: 110,
@@ -116,99 +113,47 @@ export default function MedidasGeneralSection({
   setHiddenColumns,
 }: MedidasProps) {
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
-
-  // Fila seleccionada (solo visual, para saber dónde estás)
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
 
   const {
-    isSistema,
-    data,
-    loading,
-    error,
-    hasLoadedOnce,
-    filtroTenant,
-    setFiltroTenant,
-    filtroEmpresaIds,
-    setFiltroEmpresaIds,
-    filtroAnios,
-    setFiltroAnios,
-    filtroMeses,
-    setFiltroMeses,
-    opcionesEmpresa,
-    opcionesAnio,
-    opcionesMes,
-    opcionesTenant,
-    opcionesEmpresaFiltradas,
-    pageSize,
-    setPageSize,
-    page,
-    setPage,
-    totalFilas,
-    totalPages,
-    currentPage,
-    startIndex,
-    endIndex,
-    showAdjust,
-    setShowAdjust,
-    handleDragStart,
-    handleDrop,
-    safeColumnOrder,
-    safeHiddenColumns,
-    canEditAdjustments,
-    orderForAdjustments,
-    filtrosActivosCount,
-    clearFilters,
-    loadFilters,
-    handleLoadData,
-    toggleVisible,
-    resetOrder,
-    hideAllColumns,
+    isSistema, data, loading, error, hasLoadedOnce,
+    filtroTenant, setFiltroTenant,
+    filtroEmpresaIds, setFiltroEmpresaIds,
+    filtroAnios, setFiltroAnios,
+    filtroMeses, setFiltroMeses,
+    opcionesEmpresa, opcionesAnio, opcionesMes, opcionesTenant, opcionesEmpresaFiltradas,
+    pageSize, setPageSize, page, setPage,
+    totalFilas, totalPages, currentPage, startIndex, endIndex,
+    showAdjust, setShowAdjust,
+    handleDragStart, handleDrop,
+    safeColumnOrder, safeHiddenColumns,
+    canEditAdjustments, orderForAdjustments,
+    filtrosActivosCount, clearFilters, loadFilters, handleLoadData,
+    toggleVisible, resetOrder, hideAllColumns,
   } = useMedidasTable<MedidaGeneral>({
-    token,
-    scope,
+    token, scope,
     filtersEndpointTenant: "/medidas/general/filters",
     filtersEndpointAll: "/medidas/general/all/filters",
     pageEndpointTenant: "/medidas/general/page",
     pageEndpointAll: "/medidas/general/all/page",
     defaultColumnOrder: defaultOrder,
-    columnOrder,
-    setColumnOrder,
-    hiddenColumns,
-    setHiddenColumns,
+    columnOrder, setColumnOrder, hiddenColumns, setHiddenColumns,
     loadErrorMessage: "Error cargando medidas. Revisa la API y el token.",
   });
 
   const {
-    deleteOpen,
-    deleteBusy,
-    deleteError,
-    deletePreviewOpen,
-    setDeletePreviewOpen,
-    deletePreviewLoading,
-    deletePreviewError,
-    deletePreviewData,
-    canDeleteByFilters,
-    totalDeleteOps,
-    clearDeleteState,
-    openDelete,
-    closeDelete,
-    handleOpenDeletePreview,
-    confirmDelete,
+    deleteOpen, deleteBusy, deleteError,
+    deletePreviewOpen, setDeletePreviewOpen,
+    deletePreviewLoading, deletePreviewError, deletePreviewData,
+    canDeleteByFilters, totalDeleteOps, clearDeleteState,
+    openDelete, closeDelete, handleOpenDeletePreview, confirmDelete,
   } = useDeleteByIngestion({
-    token,
-    isSistema,
-    filtroTenant,
-    filtroEmpresaIds,
-    filtroAnios,
-    filtroMeses,
-    opcionesEmpresa,
+    token, isSistema, filtroTenant, filtroEmpresaIds, filtroAnios, filtroMeses, opcionesEmpresa,
     resolveTenantId: (_empresaId, _empresas, tenantActual) => tenantActual || null,
     previewTipo: "GENERAL",
     deleteTipo: "GENERAL",
-    previewMissingFiltersMessage:
-      "Selecciona tenant, empresa, año y mes para habilitar la vista previa.",
-    deleteErrorMessage:
-      "No se pudo completar el borrado por ingestion de General. Revisa filtros, endpoint y permisos.",
+    previewMissingFiltersMessage: "Selecciona tenant, empresa, año y mes para habilitar la vista previa.",
+    deleteErrorMessage: "No se pudo completar el borrado por ingestion de General. Revisa filtros, endpoint y permisos.",
     onAfterDelete: async () => {
       await loadFilters();
       setPage(0);
@@ -217,26 +162,20 @@ export default function MedidasGeneralSection({
   });
 
   const systemTenantColumn: ColumnDefGeneral = useMemo(
-    () => ({
-      id: "tenant_id",
-      label: "Cliente",
-      align: "left",
-      group: "Identificación",
-      render: (m) => (m as any).tenant_id ?? "-",
-    }),
+    () => ({ id: "tenant_id", label: "Cliente", align: "left", group: "Identificación", render: (m) => (m as any).tenant_id ?? "-" }),
     []
   );
 
-  const baseColumns = useMemo(() => {
-    return isSistema ? [systemTenantColumn, ...ALL_COLUMNS_GENERAL] : ALL_COLUMNS_GENERAL;
-  }, [isSistema, systemTenantColumn]);
+  const baseColumns = useMemo(
+    () => (isSistema ? [systemTenantColumn, ...ALL_COLUMNS_GENERAL] : ALL_COLUMNS_GENERAL),
+    [isSistema, systemTenantColumn]
+  );
 
   const empresaOptions = useMemo(() => {
     const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;
     return source.map((e) => ({
       value: String(e.id),
-      label:
-        `${e.nombre ?? e.codigo ?? `Empresa ${e.id}`}` +
+      label: `${e.nombre ?? e.codigo ?? `Empresa ${e.id}`}` +
         (isSistema && typeof e.tenant_id === "number" ? ` · T${e.tenant_id}` : ""),
     }));
   }, [isSistema, opcionesEmpresa, opcionesEmpresaFiltradas]);
@@ -247,11 +186,7 @@ export default function MedidasGeneralSection({
   );
 
   const mesOptions = useMemo(
-    () =>
-      opcionesMes.map((mes) => ({
-        value: String(mes),
-        label: mes.toString().padStart(2, "0"),
-      })),
+    () => opcionesMes.map((mes) => ({ value: String(mes), label: mes.toString().padStart(2, "0") })),
     [opcionesMes]
   );
 
@@ -277,7 +212,6 @@ export default function MedidasGeneralSection({
     return full.filter((c) => !safeHiddenColumns.includes(c.id));
   }, [isSistema, safeColumnOrder, columnasPorId, safeHiddenColumns]);
 
-  // Calcula el `left` acumulado de cada columna sticky visible
   const stickyLeftMap = useMemo(() => {
     const map: Record<string, number> = {};
     let acc = 0;
@@ -291,8 +225,26 @@ export default function MedidasGeneralSection({
   }, [columnasOrdenadas]);
 
   const totalColumnas = columnasOrdenadas.length || 1;
-
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
+
+  // Botón de toggle del panel de columnas — se pasa como slot a MedidasFiltersBar
+  const adjustButton = canEditAdjustments ? (
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={() => setShowAdjust((v) => !v)} className="ui-btn ui-btn-outline ui-btn-xs">
+        {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
+      </button>
+      {!showAdjust && (
+        <>
+          <button type="button" onClick={hideAllColumns} className="ui-btn ui-btn-outline ui-btn-xs">
+            Quitar todo
+          </button>
+          <button type="button" onClick={resetOrder} className="ui-btn ui-btn-outline ui-btn-xs">
+            Reset
+          </button>
+        </>
+      )}
+    </div>
+  ) : null;
 
   return (
     <section className="ui-card text-sm">
@@ -302,20 +254,13 @@ export default function MedidasGeneralSection({
           <p className="ui-card-subtitle">Resumen mensual de energía por empresa.</p>
         </div>
         <MedidasTableActions
-          loading={loading}
-          token={token}
-          isSistema={isSistema}
-          canDeleteByFilters={canDeleteByFilters}
-          totalDeleteOps={totalDeleteOps}
-          deletePreviewLoading={deletePreviewLoading}
-          filtrosActivosCount={filtrosActivosCount}
+          loading={loading} token={token} isSistema={isSistema}
+          canDeleteByFilters={canDeleteByFilters} totalDeleteOps={totalDeleteOps}
+          deletePreviewLoading={deletePreviewLoading} filtrosActivosCount={filtrosActivosCount}
           onRefresh={() => void handleLoadData(page)}
           onOpenDeletePreview={() => void handleOpenDeletePreview()}
           onOpenDelete={openDelete}
-          onClearFilters={() => {
-            clearFilters();
-            clearDeleteState();
-          }}
+          onClearFilters={() => { clearFilters(); clearDeleteState(); }}
           deletePreviewTitleEnabled="Ver impacto antes de borrar"
           deletePreviewTitleDisabled="Selecciona tenant, empresa, año y mes para ver la vista previa"
           deleteTitleEnabled="Borrar por ingestion de la familia General usando tenant + empresa + año + mes"
@@ -329,16 +274,12 @@ export default function MedidasGeneralSection({
       <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
         <div className="ui-muted">
           Filtros activos:{" "}
-          <span className="font-medium" style={{ color: "var(--text)" }}>
-            {filtrosActivosCount}
-          </span>
+          <span className="font-medium" style={{ color: "var(--text)" }}>{filtrosActivosCount}</span>
         </div>
         {hasLoadedOnce && (
           <div className="ui-muted">
             Total filas:{" "}
-            <span className="font-medium" style={{ color: "var(--text)" }}>
-              {totalFilas}
-            </span>
+            <span className="font-medium" style={{ color: "var(--text)" }}>{totalFilas}</span>
           </div>
         )}
       </div>
@@ -346,56 +287,48 @@ export default function MedidasGeneralSection({
       {isSistema && (
         <div className="mb-3 ui-alert ui-alert--warning">
           En Sistema, el borrado de General se hace siempre por <strong>ingestion</strong> usando{" "}
-          <strong> tenant + empresa + año + mes</strong> y forzando la familia{" "}
-          <strong> GENERAL</strong>. Esto no borra PS.
+          <strong>tenant + empresa + año + mes</strong> y forzando la familia{" "}
+          <strong>GENERAL</strong>. Esto no borra PS.
         </div>
       )}
 
+      {/* Filtros + botón ajuste de columnas en la misma línea */}
       <MedidasFiltersBar
-        isSistema={isSistema}
-        token={token}
-        loading={loading}
-        filtroTenant={filtroTenant}
-        setFiltroTenant={setFiltroTenant}
-        filtroEmpresaIds={filtroEmpresaIds}
-        setFiltroEmpresaIds={setFiltroEmpresaIds}
-        filtroAnios={filtroAnios}
-        setFiltroAnios={setFiltroAnios}
-        filtroMeses={filtroMeses}
-        setFiltroMeses={setFiltroMeses}
+        isSistema={isSistema} token={token} loading={loading}
+        filtroTenant={filtroTenant} setFiltroTenant={setFiltroTenant}
+        filtroEmpresaIds={filtroEmpresaIds} setFiltroEmpresaIds={setFiltroEmpresaIds}
+        filtroAnios={filtroAnios} setFiltroAnios={setFiltroAnios}
+        filtroMeses={filtroMeses} setFiltroMeses={setFiltroMeses}
         opcionesTenant={opcionesTenant}
-        empresaOptions={empresaOptions}
-        anioOptions={anioOptions}
-        mesOptions={mesOptions}
-        empresaPlaceholder="Todas"
-        anioPlaceholder="Todos"
-        mesPlaceholder="Todos"
+        empresaOptions={empresaOptions} anioOptions={anioOptions} mesOptions={mesOptions}
+        empresaPlaceholder="Todas" anioPlaceholder="Todos" mesPlaceholder="Todos"
+        adjustButton={adjustButton}
       />
 
-      <ColumnVisibilityOrderPanel
-        show={showAdjust}
-        onToggleShow={() => setShowAdjust((v) => !v)}
-        canEdit={canEditAdjustments}
-        order={orderForAdjustments}
-        hiddenColumns={safeHiddenColumns}
-        columnsMeta={
-          isSistema
-            ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_GENERAL_META]
-            : COLUMNS_GENERAL_META
-        }
-        onToggleVisible={toggleVisible}
-        onReset={resetOrder}
-        onHideAll={hideAllColumns}
-        onDragStart={handleDragStart}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-      />
+      {/* Panel expandido de columnas — aparece debajo cuando showAdjust=true */}
+      {showAdjust && (
+        <ColumnVisibilityOrderPanel
+          show={showAdjust}
+          onToggleShow={() => setShowAdjust((v) => !v)}
+          canEdit={canEditAdjustments}
+          order={orderForAdjustments}
+          hiddenColumns={safeHiddenColumns}
+          columnsMeta={
+            isSistema
+              ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_GENERAL_META]
+              : COLUMNS_GENERAL_META
+          }
+          onToggleVisible={toggleVisible}
+          onReset={resetOrder}
+          onHideAll={hideAllColumns}
+          onDragStart={handleDragStart}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+        />
+      )}
 
       <div className="ui-table-wrap">
-        <table
-          className="ui-table text-[11px]"
-          style={{ borderCollapse: "separate", borderSpacing: 0 }}
-        >
+        <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
             <tr>
               {columnasOrdenadas.map((col) => {
@@ -404,21 +337,11 @@ export default function MedidasGeneralSection({
                   <th
                     key={col.id}
                     className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
-                    style={
-                      isSticky
-                        ? {
-                            position: "sticky",
-                            left: stickyLeftMap[col.id],
-                            zIndex: 3,
-                            // MEJORA B: fondo opaco para que no se transparente al scrollar
-                            background: "var(--sticky-head-bg)",
-                            boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
-                            minWidth: STICKY_WIDTHS[col.id] ?? 80,
-                            maxWidth: STICKY_WIDTHS[col.id] ?? 80,
-                            width: STICKY_WIDTHS[col.id] ?? 80,
-                          }
-                        : undefined
-                    }
+                    style={isSticky ? {
+                      position: "sticky", left: stickyLeftMap[col.id], zIndex: 3,
+                      background: "var(--sticky-head-bg)", boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
+                      minWidth: STICKY_WIDTHS[col.id] ?? 80, maxWidth: STICKY_WIDTHS[col.id] ?? 80, width: STICKY_WIDTHS[col.id] ?? 80,
+                    } : undefined}
                   >
                     {col.label}
                   </th>
@@ -427,23 +350,15 @@ export default function MedidasGeneralSection({
             </tr>
           </thead>
           <tbody>
-            {loading &&
-              Array.from({ length: 8 }).map((_, i) => (
-                <tr key={`sk-${i}`} className="ui-tr">
-                  {Array.from({ length: totalColumnas }).map((__, j) => (
-                    <td key={`sk-${i}-${j}`} className="ui-td">
-                      <span
-                        className="inline-block h-3 w-full rounded-md"
-                        style={{
-                          background: "var(--field-bg-soft)",
-                          border: "1px solid var(--field-border)",
-                          opacity: 0.6,
-                        }}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))}
+            {loading && Array.from({ length: 8 }).map((_, i) => (
+              <tr key={`sk-${i}`} className="ui-tr">
+                {Array.from({ length: totalColumnas }).map((__, j) => (
+                  <td key={`sk-${i}-${j}`} className="ui-td">
+                    <span className="inline-block h-3 w-full rounded-md" style={{ background: "var(--field-bg-soft)", border: "1px solid var(--field-border)", opacity: 0.6 }} />
+                  </td>
+                ))}
+              </tr>
+            ))}
             {!loading && hasLoadedOnce && totalFilas === 0 && (
               <tr className="ui-tr">
                 <td colSpan={totalColumnas} className="ui-td text-center ui-muted">
@@ -451,66 +366,42 @@ export default function MedidasGeneralSection({
                 </td>
               </tr>
             )}
-            {!loading &&
-              data.map((m: any) => {
-                const rowKey = `${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`;
-                const isSelected = selectedRowKey === rowKey;
-                return (
-                  <tr
-                    key={rowKey}
-                    className="ui-tr"
-                    onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
-                    style={{
-                      cursor: "pointer",
-                      background: isSelected ? "var(--nav-item-hover)" : undefined,
-                      outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined,
-                    }}
-                  >
-                    {columnasOrdenadas.map((col) => {
-                      const isSticky =
-                        STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
-                      return (
-                        <td
-                          key={col.id}
-                          className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
-                          style={
-                            isSticky
-                              ? {
-                                  position: "sticky",
-                                  left: stickyLeftMap[col.id],
-                                  zIndex: 1,
-                                  // MEJORA B: fondo opaco — respeta selección de fila
-                                  background: isSelected
-                                    ? "var(--sticky-selected-bg)"
-                                    : "var(--sticky-bg)",
-                                  boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
-                                  minWidth: STICKY_WIDTHS[col.id] ?? 80,
-                                  maxWidth: STICKY_WIDTHS[col.id] ?? 80,
-                                  width: STICKY_WIDTHS[col.id] ?? 80,
-                                }
-                              : undefined
-                          }
-                        >
-                          {col.render(m)}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+            {!loading && data.map((m: any) => {
+              const rowKey = `${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`;
+              const isSelected = selectedRowKey === rowKey;
+              return (
+                <tr
+                  key={rowKey} className="ui-tr"
+                  onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
+                  style={{ cursor: "pointer", background: isSelected ? "var(--nav-item-hover)" : undefined, outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined }}
+                >
+                  {columnasOrdenadas.map((col) => {
+                    const isSticky = STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
+                    return (
+                      <td
+                        key={col.id}
+                        className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
+                        style={isSticky ? {
+                          position: "sticky", left: stickyLeftMap[col.id], zIndex: 1,
+                          background: isSelected ? "var(--sticky-selected-bg)" : "var(--sticky-bg)",
+                          boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
+                          minWidth: STICKY_WIDTHS[col.id] ?? 80, maxWidth: STICKY_WIDTHS[col.id] ?? 80, width: STICKY_WIDTHS[col.id] ?? 80,
+                        } : undefined}
+                      >
+                        {col.render(m)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <TablePaginationFooter
-          loading={loading}
-          hasLoadedOnce={hasLoadedOnce}
-          totalFilas={totalFilas}
-          startIndex={startIndex}
-          endIndex={endIndex}
-          pageSize={pageSize}
-          setPageSize={setPageSize}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          setPage={setPage}
+          loading={loading} hasLoadedOnce={hasLoadedOnce}
+          totalFilas={totalFilas} startIndex={startIndex} endIndex={endIndex}
+          pageSize={pageSize} setPageSize={setPageSize}
+          currentPage={currentPage} totalPages={totalPages} setPage={setPage}
         />
       </div>
 
@@ -522,21 +413,12 @@ export default function MedidasGeneralSection({
             ? `Se van a lanzar ${totalDeleteOps} operación(es) de borrado por ingestion de la familia GENERAL usando tenant + empresa + año + mes. Esto elimina contribuciones y medidas derivadas de General, sin tocar PS.`
             : "Selecciona tenant, empresa, año y mes para habilitar el borrado."
         }
-        error={deleteError}
-        loading={deleteBusy}
-        loadingText="Borrando..."
-        confirmText="Borrar definitivamente"
-        onConfirm={confirmDelete}
-        onClose={closeDelete}
+        error={deleteError} loading={deleteBusy} loadingText="Borrando..."
+        confirmText="Borrar definitivamente" onConfirm={confirmDelete} onClose={closeDelete}
       />
       <DeletePreviewModal
-        open={deletePreviewOpen}
-        preview={deletePreviewData}
-        loading={deleteBusy}
-        onClose={() => {
-          if (deleteBusy) return;
-          setDeletePreviewOpen(false);
-        }}
+        open={deletePreviewOpen} preview={deletePreviewData} loading={deleteBusy}
+        onClose={() => { if (deleteBusy) return; setDeletePreviewOpen(false); }}
         onConfirm={confirmDelete}
       />
     </section>

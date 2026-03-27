@@ -29,63 +29,60 @@ type MedidasFiltersBarProps = {
   mesPlaceholder?: string;
 
   compact?: boolean;
+
+  /** Slot opcional: botón de ajuste de columnas en la misma línea que los filtros */
+  adjustButton?: React.ReactNode;
 };
 
 export default function MedidasFiltersBar({
   isSistema,
   token,
   loading,
-
   filtroTenant,
   setFiltroTenant,
-
   filtroEmpresaIds,
   setFiltroEmpresaIds,
-
   filtroAnios,
   setFiltroAnios,
-
   filtroMeses,
   setFiltroMeses,
-
   opcionesTenant,
   empresaOptions,
   anioOptions,
   mesOptions,
-
   empresaPlaceholder = "Todas",
   anioPlaceholder = "Todos",
   mesPlaceholder = "Todos",
-
   compact = false,
+  adjustButton,
 }: MedidasFiltersBarProps) {
+  const selectStyle = compact
+    ? {
+        minHeight: 28,
+        height: 28,
+        paddingTop: 2,
+        paddingBottom: 2,
+        paddingLeft: 8,
+        paddingRight: 8,
+        lineHeight: 1.05,
+      }
+    : {
+        minHeight: 30,
+        paddingTop: 4,
+        paddingBottom: 4,
+        paddingLeft: 8,
+        paddingRight: 8,
+        lineHeight: 1.15,
+      };
+
   return (
-    <div className={isSistema ? "mb-4 grid gap-2 md:grid-cols-4" : "mb-4 grid gap-2 md:grid-cols-3"}>
+    <div className="mb-4 flex flex-wrap items-end gap-2">
       {isSistema && (
-        <div>
+        <div style={{ minWidth: 110 }}>
           <label className="ui-label">Cliente</label>
           <select
-            className="ui-select text-[10px]"
-            style={
-              compact
-                ? {
-                    minHeight: 28,
-                    height: 28,
-                    paddingTop: 2,
-                    paddingBottom: 2,
-                    paddingLeft: 8,
-                    paddingRight: 8,
-                    lineHeight: 1.05,
-                  }
-                : {
-                    minHeight: 30,
-                    paddingTop: 4,
-                    paddingBottom: 4,
-                    paddingLeft: 8,
-                    paddingRight: 8,
-                    lineHeight: 1.15,
-                  }
-            }
+            className="ui-select w-full text-[10px]"
+            style={selectStyle}
             value={filtroTenant}
             onChange={(e) => {
               setFiltroTenant(e.target.value);
@@ -103,35 +100,48 @@ export default function MedidasFiltersBar({
         </div>
       )}
 
-      <MultiSelectDropdown
-        label="Empresa"
-        options={empresaOptions}
-        selectedValues={filtroEmpresaIds}
-        onChange={setFiltroEmpresaIds}
-        disabled={!token || loading}
-        placeholder={empresaPlaceholder}
-        compact={compact}
-      />
+      <div style={{ minWidth: 160 }}>
+        <MultiSelectDropdown
+          label="Empresa"
+          options={empresaOptions}
+          selectedValues={filtroEmpresaIds}
+          onChange={setFiltroEmpresaIds}
+          disabled={!token || loading}
+          placeholder={empresaPlaceholder}
+          compact={compact}
+        />
+      </div>
 
-      <MultiSelectDropdown
-        label="Año"
-        options={anioOptions}
-        selectedValues={filtroAnios}
-        onChange={setFiltroAnios}
-        disabled={!token || loading}
-        placeholder={anioPlaceholder}
-        compact={compact}
-      />
+      <div style={{ minWidth: 90 }}>
+        <MultiSelectDropdown
+          label="Año"
+          options={anioOptions}
+          selectedValues={filtroAnios}
+          onChange={setFiltroAnios}
+          disabled={!token || loading}
+          placeholder={anioPlaceholder}
+          compact={compact}
+        />
+      </div>
 
-      <MultiSelectDropdown
-        label="Mes"
-        options={mesOptions}
-        selectedValues={filtroMeses}
-        onChange={setFiltroMeses}
-        disabled={!token || loading}
-        placeholder={mesPlaceholder}
-        compact={compact}
-      />
+      <div style={{ minWidth: 75 }}>
+        <MultiSelectDropdown
+          label="Mes"
+          options={mesOptions}
+          selectedValues={filtroMeses}
+          onChange={setFiltroMeses}
+          disabled={!token || loading}
+          placeholder={mesPlaceholder}
+          compact={compact}
+        />
+      </div>
+
+      {/* Botón ajuste de columnas — empuja al extremo derecho de la misma línea */}
+      {adjustButton && (
+        <div className="ml-auto flex items-end">
+          {adjustButton}
+        </div>
+      )}
     </div>
   );
 }
