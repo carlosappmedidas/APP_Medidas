@@ -586,7 +586,7 @@ def _build_empty_operativo_response(
 def _get_proximos_hitos(
     items: list[ReeCalendarEvent],
     *,
-    limit: int = 3,
+    limit: int = 6,
 ) -> list[ReeCalendarOperativoItemRead]:
     proximos_models = [
         item
@@ -935,7 +935,7 @@ def seed_calendar_operativo(
         item
         for item in sorted_items
         if _is_open_estado(_estado_from_fecha(cast(date, _event_any(item).fecha)))
-    ][:3]
+    ][:6]
 
     proximo_hito_model = proximos_hitos_models[0] if proximos_hitos_models else None
     proximo_hito = (
