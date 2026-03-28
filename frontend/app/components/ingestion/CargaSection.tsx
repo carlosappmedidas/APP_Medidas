@@ -12,9 +12,9 @@ const EXPECTED_TYPES = [
 ];
 const STATUS_OPTIONS = ["pending", "processing", "ok", "error"] as const;
 const PLANTILLAS = [
-  { label: "M1 – Facturación", file: "XXXX_XXXX_Facturacion.xlsm" },
+  { label: "M1 – Facturación",  file: "XXXX_XXXX_Facturacion.xlsm" },
   { label: "M1 – Autoconsumos", file: "XXXX_XXXXXX_autoconsumos.xlsx" },
-  { label: "PS", file: "PS_XXXX_XXXXXX.xlsx" },
+  { label: "PS",                 file: "PS_XXXX_XXXXXX.xlsx" },
 ] as const;
 
 type SessionLogFilter = "all" | "warnings" | "errors" | "ok" | "omitted";
@@ -34,10 +34,10 @@ function inferTipoFromFilename(filename: string): string | null {
 }
 
 function extractCodigoFromFilename(tipo: string, filename: string): string | null {
-  const stem = filename.replace(/\.[^/.]+$/, "");
-  const name = stem.replace(/^\d{10,}_/, "");
+  const stem  = filename.replace(/\.[^/.]+$/, "");
+  const name  = stem.replace(/^\d{10,}_/, "");
   const parts = name.split("_");
-  const t = tipo.toUpperCase();
+  const t     = tipo.toUpperCase();
   try {
     if (t === "PS") return parts[1] ?? null;
     if (t === "M1" || t === "M1_AUTOCONSUMO") return parts[0] ?? null;
@@ -67,9 +67,9 @@ function fmtDateMadrid(value?: string | null) {
 
 function statusBadgeStyle(status: string): React.CSSProperties {
   const s = (status || "").toLowerCase();
-  if (s === "ok")         return { background: "rgba(5,150,105,0.2)", color: "#6ee7b7", border: "1px solid rgba(5,150,105,0.3)" };
-  if (s === "error")      return { background: "rgba(220,38,38,0.2)", color: "#fca5a5", border: "1px solid rgba(220,38,38,0.3)" };
-  if (s === "processing") return { background: "rgba(245,158,11,0.2)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)" };
+  if (s === "ok")         return { background: "rgba(5,150,105,0.2)",   color: "#6ee7b7", border: "1px solid rgba(5,150,105,0.3)" };
+  if (s === "error")      return { background: "rgba(220,38,38,0.2)",   color: "#fca5a5", border: "1px solid rgba(220,38,38,0.3)" };
+  if (s === "processing") return { background: "rgba(245,158,11,0.2)",  color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)" };
   return { background: "rgba(255,255,255,0.06)", color: "rgba(226,232,240,0.5)", border: "1px solid rgba(255,255,255,0.1)" };
 }
 
@@ -85,50 +85,25 @@ function formatWarningItem(item: IngestionWarningItem): string {
     parts.push(`(periodo ${item.anio}-${String(item.mes).padStart(2, "0")})`);
   if (typeof item.energia_kwh === "number") parts.push(`energia=${item.energia_kwh}`);
   if (item.fecha_final) parts.push(`fecha_final=${item.fecha_final}`);
-  const out = parts.join(" ").trim();
-  return out || JSON.stringify(item);
+  return parts.join(" ").trim() || JSON.stringify(item);
 }
 
 async function extractErrorDetail(res: Response): Promise<string> {
   try {
-    const errJson = await res.json();
-    if (typeof errJson?.detail === "string") return errJson.detail;
-    return JSON.stringify(errJson);
+    const j = await res.json();
+    if (typeof j?.detail === "string") return j.detail;
+    return JSON.stringify(j);
   } catch {
     try { return await res.text() || ""; } catch { return ""; }
   }
 }
 
-// ── Estilos inline compartidos ────────────────────────────────────────
+// ── Estilos inline compartidos ─────────────────────────────────────
+const cardBorder = "1px solid var(--card-border)";
+const cardBg     = "var(--card-bg)";
+
 const S = {
-  outer: {
-    background: "#1a2e45",
-    border: "1px solid rgba(30,58,95,0.8)",
-    borderRadius: 12,
-    overflow: "hidden",
-  } as React.CSSProperties,
-  outerHdr: {
-    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
-    padding: "13px 16px 11px",
-    borderBottom: "1px solid rgba(30,58,95,0.8)",
-  } as React.CSSProperties,
-  outerTitle: {
-    fontSize: 13, fontWeight: 600, letterSpacing: "0.04em",
-    color: "var(--text)", marginBottom: 2,
-  } as React.CSSProperties,
-  outerSub: { fontSize: 11, color: "rgba(226,232,240,0.55)" } as React.CSSProperties,
-  inner: { padding: "14px 16px" } as React.CSSProperties,
-  lbl: {
-    fontSize: 10, textTransform: "uppercase" as const,
-    letterSpacing: "0.05em", color: "rgba(226,232,240,0.55)",
-    display: "block", marginBottom: 3,
-  } as React.CSSProperties,
-  sel: {
-    fontSize: 11, padding: "5px 8px",
-    border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8,
-    background: "rgba(0,0,0,0.4)", color: "var(--text)",
-  } as React.CSSProperties,
-  // Botón base — todos los botones de acción tienen este aspecto
+  // Botón de acción base — Elegir archivos, Limpiar logs, ↓ Logs
   actionBtn: {
     fontSize: 11, padding: "5px 13px", borderRadius: 8,
     cursor: "pointer", whiteSpace: "nowrap" as const,
@@ -136,16 +111,15 @@ const S = {
     background: "rgba(0,0,0,0.2)", color: "var(--text)",
     height: 30, display: "flex", alignItems: "center", gap: 4,
   } as React.CSSProperties,
+  // Botón verde — Subir y procesar
   actionBtnGreen: {
     fontSize: 11, padding: "5px 13px", borderRadius: 8,
     cursor: "pointer", whiteSpace: "nowrap" as const,
-    border: "1px solid #059669",
-    background: "#059669", color: "#fff",
+    border: "1px solid #059669", background: "#059669", color: "#fff",
     height: 30, display: "flex", alignItems: "center",
   } as React.CSSProperties,
-  actionBtnDisabled: {
-    opacity: 0.45, cursor: "not-allowed",
-  } as React.CSSProperties,
+  disabled: { opacity: 0.45, cursor: "not-allowed" } as React.CSSProperties,
+  // Icono pequeño (↻ ⨯ ↙)
   iconBtn: {
     width: 28, height: 28, borderRadius: 8,
     border: "1px solid rgba(255,255,255,0.15)",
@@ -160,10 +134,16 @@ const S = {
     cursor: "pointer", display: "flex", alignItems: "center",
     justifyContent: "center", fontSize: 13, flexShrink: 0,
   } as React.CSSProperties,
-  pill: (status: string) => ({
-    fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 500,
-    ...statusBadgeStyle(status),
-  } as React.CSSProperties),
+  lbl: {
+    fontSize: 10, textTransform: "uppercase" as const,
+    letterSpacing: "0.05em", color: "rgba(226,232,240,0.55)",
+    display: "block", marginBottom: 3,
+  } as React.CSSProperties,
+  sel: {
+    fontSize: 11, padding: "5px 8px",
+    border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8,
+    background: "rgba(0,0,0,0.4)", color: "var(--text)",
+  } as React.CSSProperties,
   kpi: {
     background: "rgba(0,0,0,0.2)", border: "1px solid rgba(30,58,95,0.6)",
     borderRadius: 8, padding: "7px 10px",
@@ -176,42 +156,47 @@ const S = {
     color: "rgba(226,232,240,0.55)", lineHeight: 1.6,
     overflowY: "auto" as const, maxHeight: 200,
   } as React.CSSProperties,
+  pill: (status: string) => ({
+    fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 500,
+    ...statusBadgeStyle(status),
+  } as React.CSSProperties),
   tblWrap: {
     border: "1px solid rgba(30,58,95,0.8)", borderRadius: 10, overflow: "hidden",
   } as React.CSSProperties,
 };
 
 export default function CargaSection({ token }: Props) {
-  const [empresas, setEmpresas]           = useState<Empresa[]>([]);
-  const [empresaId, setEmpresaId]         = useState<number | null>(null);
-  const [files, setFiles]                 = useState<FileList | null>(null);
-  const [logLines, setLogLines]           = useState<string[]>([]);
-  const [loading, setLoading]             = useState(false);
-  const [mismatchErrors, setMismatchErrors] = useState<string[]>([]);
-  const fileInputRef                      = useRef<HTMLInputElement>(null);
-  const [history, setHistory]             = useState<IngestionFile[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError]   = useState<string | null>(null);
+  const [empresas, setEmpresas]               = useState<Empresa[]>([]);
+  const [empresaId, setEmpresaId]             = useState<number | null>(null);
+  const [files, setFiles]                     = useState<FileList | null>(null);
+  const [logLines, setLogLines]               = useState<string[]>([]);
+  const [loading, setLoading]                 = useState(false);
+  const [mismatchErrors, setMismatchErrors]   = useState<string[]>([]);
+  const fileInputRef                          = useRef<HTMLInputElement>(null);
+  const [history, setHistory]                 = useState<IngestionFile[]>([]);
+  const [historyLoading, setHistoryLoading]   = useState(false);
+  const [historyError, setHistoryError]       = useState<string | null>(null);
   const [histHasLoadedOnce, setHistHasLoadedOnce] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<IngestionFile | null>(null);
-  const [histEmpresaId, setHistEmpresaId] = useState<number | "">("");
-  const [histTipo, setHistTipo]           = useState<string>("");
-  const [histStatus, setHistStatus]       = useState<string>("");
-  const [histAnio, setHistAnio]           = useState<number | "">("");
-  const [histMes, setHistMes]             = useState<number | "">("");
-  const [histPage, setHistPage]           = useState<number>(0);
-  const [histPageSize, setHistPageSize]   = useState<number>(20);
-  const [histTotal, setHistTotal]         = useState<number>(0);
-  const [histTotalPages, setHistTotalPages] = useState<number>(1);
-  const [plantillaSel, setPlantillaSel]   = useState<string>("");
-  const [cargaOpen, setCargaOpen]         = useState<boolean>(false);
-  const [historyOpen, setHistoryOpen]     = useState<boolean>(false);
-  const historyOpenRef                    = useRef<boolean>(false);
-  const [logFilter, setLogFilter]         = useState<SessionLogFilter>("all");
+  const [histEmpresaId, setHistEmpresaId]     = useState<number | "">("");
+  const [histTipo, setHistTipo]               = useState<string>("");
+  const [histStatus, setHistStatus]           = useState<string>("");
+  const [histAnio, setHistAnio]               = useState<number | "">("");
+  const [histMes, setHistMes]                 = useState<number | "">("");
+  const [histPage, setHistPage]               = useState<number>(0);
+  const [histPageSize, setHistPageSize]       = useState<number>(20);
+  const [histTotal, setHistTotal]             = useState<number>(0);
+  const [histTotalPages, setHistTotalPages]   = useState<number>(1);
+  const [plantillaSel, setPlantillaSel]       = useState<string>("");
+  const [cargaOpen, setCargaOpen]             = useState<boolean>(false);
+  const [historyOpen, setHistoryOpen]         = useState<boolean>(false);
+  const historyOpenRef                        = useRef<boolean>(false);
+  const [logFilter, setLogFilter]             = useState<SessionLogFilter>("all");
   const canUse = !!token;
 
+  // ── Cargar empresas ──────────────────────────────────────────────
   useEffect(() => {
-    const loadEmpresas = async () => {
+    const load = async () => {
       if (!token) return;
       try {
         const res = await fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) });
@@ -221,23 +206,21 @@ export default function CargaSection({ token }: Props) {
         if (json.length > 0 && empresaId === null) setEmpresaId(json[0].id);
       } catch (err) { console.error("Error cargando empresas:", err); }
     };
-    void loadEmpresas();
+    void load();
   }, [token, empresaId]);
 
-  const appendLog = (line: string) => {
+  const appendLog = (line: string) =>
     setLogLines((prev) => [...prev, `${new Date().toISOString()} - ${line}`]);
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files);
     setMismatchErrors([]);
   };
 
-  // ── Descarga de logs ─────────────────────────────────────────────
+  // ── Descarga logs ────────────────────────────────────────────────
   const handleDownloadLogs = () => {
     if (logLines.length === 0) return;
-    const content = logLines.join("\n");
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([logLines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url  = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href     = url;
@@ -248,22 +231,22 @@ export default function CargaSection({ token }: Props) {
     window.URL.revokeObjectURL(url);
   };
 
+  // ── Resumen sesión ───────────────────────────────────────────────
   const sessionSummary = useMemo(() => {
     let totalSeleccionados = files?.length ?? 0;
     let subidosOk = 0, erroresSubida = 0, procesadosOk = 0;
-    let erroresProcesado = 0, avisos = 0, notas = 0, omitidos = 0;
-    let finalizado = false;
+    let erroresProcesado = 0, avisos = 0, notas = 0, omitidos = 0, finalizado = false;
     for (const line of logLines) {
       if (line.includes("Iniciando carga de")) {
         const m = line.match(/Iniciando carga de\s+(\d+)\s+fichero/i);
         if (m) totalSeleccionados = Number.parseInt(m[1], 10) || totalSeleccionados;
       }
-      if (line.includes("✅ Subido"))              subidosOk += 1;
-      if (line.includes("❌ Error subiendo"))       erroresSubida += 1;
-      if (line.includes("✅ Procesado"))            procesadosOk += 1;
+      if (line.includes("✅ Subido"))              subidosOk      += 1;
+      if (line.includes("❌ Error subiendo"))       erroresSubida  += 1;
+      if (line.includes("✅ Procesado"))            procesadosOk   += 1;
       if (line.includes("❌ Error procesando"))     erroresProcesado += 1;
       if (line.includes("⚠ Avisos") || line.includes("↳ ⚠")) avisos += 1;
-      if (line.includes("ℹ️ Notas") || line.includes("↳ ℹ️")) notas += 1;
+      if (line.includes("ℹ️ Notas")  || line.includes("↳ ℹ️")) notas += 1;
       if (line.includes("Se omite"))               omitidos += 1;
       if (line.includes("✔ Carga y procesado de ficheros finalizados.")) finalizado = true;
     }
@@ -286,6 +269,7 @@ export default function CargaSection({ token }: Props) {
     });
   }, [logFilter, logLines]);
 
+  // ── Procesar ficheros ────────────────────────────────────────────
   const handleProcess = async () => {
     if (!token)     { appendLog("No hay token, haz login primero."); return; }
     if (!empresaId) { appendLog("Debes seleccionar una empresa."); return; }
@@ -300,7 +284,7 @@ export default function CargaSection({ token }: Props) {
         if (!tipo) continue;
         const codigoFichero = extractCodigoFromFilename(tipo, file.name);
         if (codigoFichero !== null && codigoFichero !== codigoReeEmpresa)
-          errores.push(`"${file.name}" → código detectado: ${codigoFichero} (empresa seleccionada: ${codigoReeEmpresa})`);
+          errores.push(`"${file.name}" → código detectado: ${codigoFichero} (empresa: ${codigoReeEmpresa})`);
       }
       if (errores.length > 0) { setMismatchErrors(errores); return; }
     }
@@ -308,7 +292,6 @@ export default function CargaSection({ token }: Props) {
     setMismatchErrors([]);
     setLoading(true);
     appendLog(`Iniciando carga de ${files.length} fichero(s)...`);
-
     try {
       const uploaded: IngestionFile[] = [];
       for (const file of Array.from(files)) {
@@ -317,7 +300,7 @@ export default function CargaSection({ token }: Props) {
           appendLog(`⚠ Fichero "${file.name}": no se ha podido inferir el tipo (esperado ${EXPECTED_TYPES.join(" / ")}). Se omite.`);
           continue;
         }
-        appendLog(`→ Subiendo fichero "${file.name}" como tipo ${tipo} (empresa ${empresaId})...`);
+        appendLog(`→ Subiendo "${file.name}" como tipo ${tipo} (empresa ${empresaId})...`);
         const formData = new FormData();
         formData.append("empresa_id", String(empresaId));
         formData.append("tipo", tipo);
@@ -332,11 +315,10 @@ export default function CargaSection({ token }: Props) {
         }
         const json = (await res.json()) as IngestionFile;
         uploaded.push(json);
-        appendLog(`✅ Subido "${file.name}" (id ingestion=${json.id}, periodo=${json.anio}${String(json.mes).padStart(2, "0")}, tipo=${json.tipo}).`);
+        appendLog(`✅ Subido "${file.name}" (id=${json.id}, periodo=${json.anio}${String(json.mes).padStart(2, "0")}, tipo=${json.tipo}).`);
       }
-
       for (const ing of uploaded) {
-        appendLog(`⚙ Procesando fichero id=${ing.id} (${ing.filename}, tipo=${ing.tipo})...`);
+        appendLog(`⚙ Procesando id=${ing.id} (${ing.filename}, tipo=${ing.tipo})...`);
         const res = await fetch(`${API_BASE_URL}/ingestion/files/${ing.id}/process`, {
           method: "POST", headers: getAuthHeaders(token),
         });
@@ -346,24 +328,22 @@ export default function CargaSection({ token }: Props) {
           continue;
         }
         const json = (await res.json()) as IngestionFile;
-        appendLog(`✅ Procesado id=${json.id} (status=${json.status}, filas OK=${json.rows_ok ?? 0}, filas error=${json.rows_error ?? 0}).`);
-
+        appendLog(`✅ Procesado id=${json.id} (status=${json.status}, filas OK=${json.rows_ok ?? 0}, error=${json.rows_error ?? 0}).`);
         const warnings = Array.isArray((json as any).warnings) ? ((json as any).warnings as IngestionWarningItem[]) : [];
         const notices  = Array.isArray((json as any).notices)  ? ((json as any).notices  as IngestionWarningItem[]) : [];
-        if (warnings.length > 0) { appendLog(`⚠ Avisos (${warnings.length}) detectados:`); for (const w of warnings) appendLog(`↳ ⚠ ${formatWarningItem(w)}`); }
-        if (notices.length  > 0) { appendLog(`ℹ️ Notas (${notices.length}):`);            for (const n of notices)  appendLog(`↳ ℹ️ ${formatWarningItem(n)}`); }
-        const warningsMessage = (json as any).warnings_message ?? "";
-        if (warningsMessage) appendLog(`⚠ Avisos: ${warningsMessage}`);
+        if (warnings.length > 0) { appendLog(`⚠ Avisos (${warnings.length}):`); for (const w of warnings) appendLog(`↳ ⚠ ${formatWarningItem(w)}`); }
+        if (notices.length  > 0) { appendLog(`ℹ️ Notas (${notices.length}):`);   for (const n of notices)  appendLog(`↳ ℹ️ ${formatWarningItem(n)}`); }
+        const wm = (json as any).warnings_message ?? "";
+        if (wm) appendLog(`⚠ Avisos: ${wm}`);
         if ((json.status || "").toLowerCase() === "error")
-          appendLog(`↳ Motivo: ${json.error_message ?? "(sin detalle en error_message)"}`);
+          appendLog(`↳ Motivo: ${json.error_message ?? "(sin detalle)"}`);
       }
-
       appendLog("✔ Carga y procesado de ficheros finalizados.");
       setFiles(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       if (historyOpenRef.current) { setHistPage(0); void handleLoadHistory(0); }
     } catch (err) {
-      appendLog(`❌ Error general en la carga: ${(err as Error).message}`);
+      appendLog(`❌ Error general: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -374,6 +354,7 @@ export default function CargaSection({ token }: Props) {
     return e ? `${e.id} – ${e.nombre}` : String(id);
   };
 
+  // ── Cargar histórico ─────────────────────────────────────────────
   const handleLoadHistory = async (targetPage?: number) => {
     if (!token) { setHistoryError("Haz login para poder cargar el histórico."); setHistory([]); setSelectedHistory(null); return; }
     const pageToLoad = targetPage ?? histPage;
@@ -395,7 +376,7 @@ export default function CargaSection({ token }: Props) {
       setHistTotalPages(typeof json?.total_pages === "number" ? json.total_pages : 1);
       setHistHasLoadedOnce(true);
       setSelectedHistory((prev) => prev ? (json.items.find((x) => x.id === prev.id) ?? null) : null);
-    } catch (err) {
+    } catch {
       setHistoryError("No se pudo cargar el histórico de cargas.");
       setHistory([]); setHistTotal(0); setHistTotalPages(1); setHistHasLoadedOnce(true);
     } finally {
@@ -413,32 +394,29 @@ export default function CargaSection({ token }: Props) {
     setHistAnio(""); setHistMes(""); setHistPage(0);
   };
 
-  const handleDownloadPlantilla = (fileName: string) => {
+  const handleDownloadPlantilla = (fileName: string) =>
     window.open(`${API_BASE_URL}/plantillas/${encodeURIComponent(fileName)}`, "_blank", "noopener,noreferrer");
-  };
 
   const countAvisos = (h: IngestionFile) => {
-    const warnings = Array.isArray((h as any).warnings) ? ((h as any).warnings as unknown[]).length : 0;
-    const notices  = Array.isArray((h as any).notices)  ? ((h as any).notices  as unknown[]).length : 0;
-    const msg      = (h as any).warnings_message ? 1 : 0;
-    return warnings + notices + msg;
+    const w = Array.isArray((h as any).warnings) ? ((h as any).warnings as unknown[]).length : 0;
+    const n = Array.isArray((h as any).notices)  ? ((h as any).notices  as unknown[]).length : 0;
+    const m = (h as any).warnings_message ? 1 : 0;
+    return w + n + m;
   };
 
-  const selectedWarnings = useMemo(() => {
-    if (!selectedHistory) return [];
-    return Array.isArray((selectedHistory as any).warnings) ? ((selectedHistory as any).warnings as IngestionWarningItem[]) : [];
-  }, [selectedHistory]);
+  const selectedWarnings = useMemo(() =>
+    Array.isArray((selectedHistory as any)?.warnings) ? ((selectedHistory as any).warnings as IngestionWarningItem[]) : [],
+  [selectedHistory]);
 
-  const selectedNotices = useMemo(() => {
-    if (!selectedHistory) return [];
-    return Array.isArray((selectedHistory as any).notices) ? ((selectedHistory as any).notices as IngestionWarningItem[]) : [];
-  }, [selectedHistory]);
+  const selectedNotices = useMemo(() =>
+    Array.isArray((selectedHistory as any)?.notices)  ? ((selectedHistory as any).notices  as IngestionWarningItem[]) : [],
+  [selectedHistory]);
 
-  const histStartIndex   = histTotal === 0 ? 0 : histPage * histPageSize;
-  const histEndIndex     = Math.min(histStartIndex + histPageSize, histTotal);
-  const histCurrentPage  = Math.min(histPage, Math.max(0, histTotalPages - 1));
+  const histStartIndex  = histTotal === 0 ? 0 : histPage * histPageSize;
+  const histEndIndex    = Math.min(histStartIndex + histPageSize, histTotal);
+  const histCurrentPage = Math.min(histPage, Math.max(0, histTotalPages - 1));
 
-  // ── LOG FILTER PILL ────────────────────────────────────────────────
+  // ── Log filter pill ───────────────────────────────────────────────
   const LogPill = ({ f, label }: { f: SessionLogFilter; label: string }) => (
     <button
       type="button"
@@ -457,27 +435,33 @@ export default function CargaSection({ token }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-      {/* ══════════════════════════════════════════════════════════════
+      {/* ══════════════════════════════════════════════════════════
           TARJETA 1 — CARGA DE FICHEROS
-      ══════════════════════════════════════════════════════════════ */}
-      <div style={S.outer}>
-        {/* Header */}
-        <div style={S.outerHdr}>
+          Header idéntico al CollapsibleCard: button full-width +
+          span.ui-btn.ui-btn-ghost.ui-btn-xs para Mostrar/Ocultar
+      ══════════════════════════════════════════════════════════ */}
+      <div
+        className="rounded-xl border"
+        style={{ borderColor: "var(--card-border)", background: cardBg }}
+      >
+        <button
+          type="button"
+          onClick={() => setCargaOpen((v) => !v)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+        >
           <div>
-            <div style={S.outerTitle}>CARGA DE FICHEROS</div>
-            <div style={S.outerSub}>Sube ficheros BALD, M1, ACUM*, PS_*, etc. El tipo se infiere del nombre.</div>
+            <div className="ui-card-title text-base md:text-lg">CARGA DE FICHEROS</div>
+            <p className="ui-card-subtitle mt-1">
+              Sube ficheros BALD, M1, ACUM*, PS_*, etc. El tipo se infiere del nombre.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setCargaOpen((v) => !v)}
-            style={S.actionBtn}
-          >
+          <span className="ui-btn ui-btn-ghost ui-btn-xs">
             {cargaOpen ? "Ocultar" : "Mostrar"}
-          </button>
-        </div>
+          </span>
+        </button>
 
         {cargaOpen && (
-          <div style={S.inner}>
+          <div className="px-4 pb-4">
 
             {/* Alerta mismatch */}
             {mismatchErrors.length > 0 && (
@@ -491,11 +475,21 @@ export default function CargaSection({ token }: Props) {
                 <div style={{ marginTop: 6, fontSize: 11 }}>
                   Selecciona la empresa correcta o sube los ficheros correspondientes a esta empresa.
                 </div>
-                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ marginTop: 8 }} onClick={() => setMismatchErrors([])}>
+                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs mt-2" onClick={() => setMismatchErrors([])}>
                   Cerrar aviso
                 </button>
               </div>
             )}
+
+            {/* Input file oculto */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileChange}
+              style={{ display: "none" }}
+              disabled={!canUse || loading}
+            />
 
             {/* Tira: empresa + plantilla + spacer + 4 botones */}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 14, flexWrap: "wrap" }}>
@@ -505,9 +499,14 @@ export default function CargaSection({ token }: Props) {
                   style={S.sel}
                   value={empresaId ?? ""}
                   disabled={!canUse || loading}
-                  onChange={(e) => { setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null); setMismatchErrors([]); }}
+                  onChange={(e) => {
+                    setEmpresaId(e.target.value ? Number.parseInt(e.target.value, 10) : null);
+                    setMismatchErrors([]);
+                  }}
                 >
-                  {empresas.map((e) => <option key={e.id} value={e.id}>{e.id} – {e.nombre}</option>)}
+                  {empresas.map((e) => (
+                    <option key={e.id} value={e.id}>{e.id} – {e.nombre}</option>
+                  ))}
                 </select>
               </div>
 
@@ -530,32 +529,22 @@ export default function CargaSection({ token }: Props) {
 
               {/* fichero seleccionado */}
               {files && files.length > 0 && (
-                <div style={{ alignSelf: "flex-end", fontSize: 10, color: "rgba(226,232,240,0.45)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {files.length === 1 ? files[0].name : `${files.length} ficheros seleccionados`}
+                <div style={{ alignSelf: "flex-end", fontSize: 10, color: "rgba(226,232,240,0.45)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingBottom: 6 }}>
+                  {files.length === 1 ? files[0].name : `${files.length} ficheros`}
                 </div>
               )}
 
               <div style={{ flex: 1 }} />
 
-              {/* 4 botones — mismo estilo base */}
+              {/* 4 botones en línea — mismo estilo base */}
               <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
                 <span style={{ ...S.lbl, visibility: "hidden" }}>x</span>
                 <div style={{ display: "flex", gap: 6 }}>
-                  {/* input file oculto */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    style={{ display: "none" }}
-                    disabled={!canUse || loading}
-                    accept="*"
-                  />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!canUse || loading}
-                    style={{ ...S.actionBtn, ...((!canUse || loading) ? S.actionBtnDisabled : {}) }}
+                    style={{ ...S.actionBtn, ...((!canUse || loading) ? S.disabled : {}) }}
                   >
                     Elegir archivos
                   </button>
@@ -563,7 +552,7 @@ export default function CargaSection({ token }: Props) {
                     type="button"
                     onClick={() => { setLogLines([]); setLogFilter("all"); }}
                     disabled={logLines.length === 0}
-                    style={{ ...S.actionBtn, ...(logLines.length === 0 ? S.actionBtnDisabled : {}) }}
+                    style={{ ...S.actionBtn, ...(logLines.length === 0 ? S.disabled : {}) }}
                   >
                     Limpiar logs
                   </button>
@@ -572,7 +561,7 @@ export default function CargaSection({ token }: Props) {
                     onClick={handleDownloadLogs}
                     disabled={logLines.length === 0}
                     title="Descargar logs como fichero .txt"
-                    style={{ ...S.actionBtn, ...(logLines.length === 0 ? S.actionBtnDisabled : {}) }}
+                    style={{ ...S.actionBtn, ...(logLines.length === 0 ? S.disabled : {}) }}
                   >
                     ↓ Logs
                   </button>
@@ -580,7 +569,7 @@ export default function CargaSection({ token }: Props) {
                     type="button"
                     onClick={() => void handleProcess()}
                     disabled={!canUse || loading}
-                    style={{ ...S.actionBtnGreen, ...((!canUse || loading) ? S.actionBtnDisabled : {}) }}
+                    style={{ ...S.actionBtnGreen, ...((!canUse || loading) ? S.disabled : {}) }}
                   >
                     {loading ? "Procesando…" : "Subir y procesar"}
                   </button>
@@ -609,8 +598,8 @@ export default function CargaSection({ token }: Props) {
                 ))}
                 <div style={{ fontSize: 10, color: "rgba(226,232,240,0.3)", marginTop: 2 }}>
                   {sessionSummary.estado === "processing" ? "Procesando…"
-                    : sessionSummary.estado === "done" ? "Completado"
-                    : sessionSummary.estado === "idle" ? "Listo"
+                    : sessionSummary.estado === "done"    ? "Completado"
+                    : sessionSummary.estado === "idle"    ? "Listo"
                     : "Sin actividad"}
                 </div>
               </div>
@@ -643,37 +632,43 @@ export default function CargaSection({ token }: Props) {
                 </div>
               </div>
             </div>
+
           </div>
         )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
+      {/* ══════════════════════════════════════════════════════════
           TARJETA 2 — HISTÓRICO DE CARGAS
-      ══════════════════════════════════════════════════════════════ */}
-      <div style={S.outer}>
-        {/* Header */}
-        <div style={S.outerHdr}>
+          Mismo patrón de header que CollapsibleCard
+      ══════════════════════════════════════════════════════════ */}
+      <div
+        className="rounded-xl border"
+        style={{ borderColor: "var(--card-border)", background: cardBg }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            const next = !historyOpen;
+            historyOpenRef.current = next;
+            setHistoryOpen(next);
+          }}
+          className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+        >
           <div>
-            <div style={S.outerTitle}>HISTÓRICO DE CARGAS</div>
-            <div style={S.outerSub}>Listado de cargas (ingestion_files) del tenant. Fechas en horario de Madrid.</div>
+            <div className="ui-card-title text-base md:text-lg">HISTÓRICO DE CARGAS</div>
+            <p className="ui-card-subtitle mt-1">
+              Listado de cargas (ingestion_files) del tenant. Fechas en horario de Madrid.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              const next = !historyOpen;
-              historyOpenRef.current = next;
-              setHistoryOpen(next);
-            }}
-            style={S.actionBtn}
-          >
+          <span className="ui-btn ui-btn-ghost ui-btn-xs">
             {historyOpen ? "Ocultar" : "Mostrar"}
-          </button>
-        </div>
+          </span>
+        </button>
 
         {historyOpen && (
-          <div style={S.inner}>
+          <div className="px-4 pb-4">
 
-            {/* Barra encima de filtros — total + iconos */}
+            {/* Barra: total + iconos encima de filtros */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div style={{ fontSize: 10, color: "rgba(226,232,240,0.4)" }}>
                 Total:{" "}
@@ -694,7 +689,7 @@ export default function CargaSection({ token }: Props) {
                   title="Cargar histórico"
                   onClick={() => { setHistPage(0); void handleLoadHistory(0); }}
                   disabled={!canUse || historyLoading}
-                  style={{ ...S.iconBtnBlue, ...((!canUse || historyLoading) ? S.actionBtnDisabled : {}) }}
+                  style={{ ...S.iconBtnBlue, ...((!canUse || historyLoading) ? S.disabled : {}) }}
                 >
                   ↻
                 </button>
@@ -703,7 +698,7 @@ export default function CargaSection({ token }: Props) {
                   title="Cerrar detalle"
                   onClick={() => setSelectedHistory(null)}
                   disabled={!selectedHistory}
-                  style={{ ...S.iconBtn, ...((!selectedHistory) ? S.actionBtnDisabled : {}) }}
+                  style={{ ...S.iconBtn, ...(!selectedHistory ? S.disabled : {}) }}
                 >
                   ↙
                 </button>
@@ -713,37 +708,17 @@ export default function CargaSection({ token }: Props) {
             {/* Filtros */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8, marginBottom: 12 }}>
               {[
-                {
-                  label: "Empresa", value: histEmpresaId,
-                  onChange: (v: string) => setHistEmpresaId(v ? Number.parseInt(v, 10) : ""),
-                  options: [{ value: "", label: "(todas)" }, ...empresas.map((e) => ({ value: String(e.id), label: `${e.id} – ${e.nombre}` }))],
-                },
-                {
-                  label: "Tipo", value: histTipo,
-                  onChange: (v: string) => setHistTipo(v),
-                  options: [{ value: "", label: "(todos)" }, ...EXPECTED_TYPES.map((t) => ({ value: t, label: t }))],
-                },
-                {
-                  label: "Estado", value: histStatus,
-                  onChange: (v: string) => setHistStatus(v),
-                  options: [{ value: "", label: "(todos)" }, ...STATUS_OPTIONS.map((s) => ({ value: s, label: s }))],
-                },
-                {
-                  label: "Año", value: histAnio,
-                  onChange: (v: string) => setHistAnio(v ? Number.parseInt(v, 10) : ""),
-                  options: [{ value: "", label: "(todos)" }, ...Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map((y) => ({ value: String(y), label: String(y) }))],
-                },
-                {
-                  label: "Mes", value: histMes,
-                  onChange: (v: string) => setHistMes(v ? Number.parseInt(v, 10) : ""),
-                  options: [{ value: "", label: "(todos)" }, ...Array.from({ length: 12 }, (_, i) => i + 1).map((m) => ({ value: String(m), label: String(m).padStart(2, "0") }))],
-                },
+                { label: "Empresa", value: String(histEmpresaId), onChange: (v: string) => setHistEmpresaId(v ? Number.parseInt(v, 10) : ""), options: [{ value: "", label: "(todas)" }, ...empresas.map((e) => ({ value: String(e.id), label: `${e.id} – ${e.nombre}` }))] },
+                { label: "Tipo",    value: histTipo,              onChange: (v: string) => setHistTipo(v),                                    options: [{ value: "", label: "(todos)" }, ...EXPECTED_TYPES.map((t) => ({ value: t, label: t }))] },
+                { label: "Estado",  value: histStatus,            onChange: (v: string) => setHistStatus(v),                                  options: [{ value: "", label: "(todos)" }, ...STATUS_OPTIONS.map((s) => ({ value: s, label: s }))] },
+                { label: "Año",     value: String(histAnio),      onChange: (v: string) => setHistAnio(v ? Number.parseInt(v, 10) : ""),      options: [{ value: "", label: "(todos)" }, ...Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map((y) => ({ value: String(y), label: String(y) }))] },
+                { label: "Mes",     value: String(histMes),       onChange: (v: string) => setHistMes(v ? Number.parseInt(v, 10) : ""),       options: [{ value: "", label: "(todos)" }, ...Array.from({ length: 12 }, (_, i) => i + 1).map((m) => ({ value: String(m), label: String(m).padStart(2, "0") }))] },
               ].map(({ label, value, onChange, options }) => (
                 <div key={label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <span style={S.lbl}>{label}</span>
                   <select
                     style={{ ...S.sel, width: "100%" }}
-                    value={String(value)}
+                    value={value}
                     disabled={!canUse || historyLoading}
                     onChange={(e) => onChange(e.target.value)}
                   >
@@ -785,7 +760,7 @@ export default function CargaSection({ token }: Props) {
                     </tr>
                   )}
                   {!historyLoading && history.map((h) => {
-                    const avisos = countAvisos(h);
+                    const avisos     = countAvisos(h);
                     const isSelected = selectedHistory?.id === h.id;
                     return (
                       <tr
@@ -819,7 +794,6 @@ export default function CargaSection({ token }: Props) {
                   })}
                 </tbody>
               </table>
-
               <div style={{ fontSize: 10, color: "rgba(226,232,240,0.3)", padding: "8px 12px", borderTop: "1px solid rgba(30,58,95,0.4)" }}>
                 El borrado y su vista previa están disponibles en la pestaña Sistema.
               </div>
@@ -849,23 +823,27 @@ export default function CargaSection({ token }: Props) {
                       Detalle de carga #{selectedHistory.id}
                     </div>
                     <div style={{ fontSize: 11, color: "rgba(226,232,240,0.5)", marginTop: 2 }}>
-                      {empresaLabelById(selectedHistory.empresa_id)} · <span style={{ fontFamily: "monospace" }}>{selectedHistory.tipo}</span> · <span style={{ fontFamily: "monospace" }}>{fmtPeriodo(selectedHistory.anio, selectedHistory.mes)}</span>
+                      {empresaLabelById(selectedHistory.empresa_id)} ·{" "}
+                      <span style={{ fontFamily: "monospace" }}>{selectedHistory.tipo}</span> ·{" "}
+                      <span style={{ fontFamily: "monospace" }}>{fmtPeriodo(selectedHistory.anio, selectedHistory.mes)}</span>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                     <span style={S.pill(selectedHistory.status)}>{selectedHistory.status}</span>
-                    <button type="button" onClick={() => setSelectedHistory(null)} style={S.actionBtn}>Cerrar</button>
+                    <button type="button" onClick={() => setSelectedHistory(null)} style={{ ...S.actionBtn, fontSize: 10, padding: "3px 9px", height: "auto" }}>
+                      Cerrar
+                    </button>
                   </div>
                 </div>
                 <div className="ui-panel text-[11px]">
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 12 }}>
                     {[
-                      { label: "Fichero",   val: selectedHistory.filename },
-                      { label: "Subido",    val: fmtDateMadrid(selectedHistory.created_at) },
-                      { label: "Procesado", val: fmtDateMadrid(selectedHistory.processed_at) },
-                      { label: "Filas OK",  val: String(selectedHistory.rows_ok ?? 0) },
-                      { label: "Filas Error", val: String(selectedHistory.rows_error ?? 0) },
-                      { label: "Error",     val: selectedHistory.error_message ?? "-" },
+                      { label: "Fichero",    val: selectedHistory.filename },
+                      { label: "Subido",     val: fmtDateMadrid(selectedHistory.created_at) },
+                      { label: "Procesado",  val: fmtDateMadrid(selectedHistory.processed_at) },
+                      { label: "Filas OK",   val: String(selectedHistory.rows_ok ?? 0) },
+                      { label: "Filas Error",val: String(selectedHistory.rows_error ?? 0) },
+                      { label: "Error",      val: selectedHistory.error_message ?? "-" },
                     ].map(({ label, val }) => (
                       <div key={label}>
                         <div style={{ fontSize: 10, color: "rgba(226,232,240,0.5)", marginBottom: 2 }}>{label}</div>
@@ -904,9 +882,11 @@ export default function CargaSection({ token }: Props) {
                 </div>
               </div>
             )}
+
           </div>
         )}
       </div>
+
     </div>
   );
 }
