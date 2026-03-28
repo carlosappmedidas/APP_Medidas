@@ -1074,7 +1074,7 @@ def get_calendar_operativo(
         else None
     )
 
-    proximos_hitos = _get_proximos_hitos(estado_filtered_items, limit=3)
+    proximos_hitos = _get_proximos_hitos(estado_filtered_items, limit=5)
 
     return ReeCalendarOperativoResponse(
         anio=selected_anio,
