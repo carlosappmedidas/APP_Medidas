@@ -225,70 +225,89 @@ def _build_adquisicion_series(
     selected_empresa_ids: list[int],
     anios: list[int] | None,
     meses: list[int] | None,
-    aggregation: str = "avg",
+    aggregation: str = "sum",
 ) -> graficos_schemas.GraficoSerie:
     """
-    Adquisición = E PF Final + E generada - E frontera DD
-    Calculado directamente en SQL para mantener consistencia con el dashboard.
+    Adquisición = PF + E generada - E frontera DD, usando jerarquía de ventanas:
+    ART15 > M11 > M7 > M2 > M1(final)
+    Para cada período elige la ventana más actualizada que tenga datos.
+    Devuelve el campo ventana en cada GraficoPoint para mostrarlo en el tooltip.
     """
+    effective_ids = None if all_selected else selected_empresa_ids
     agg_func = func.sum if aggregation == "sum" else func.avg
-    effective_ids = empresa_ids
 
-    if all_selected:
-        rows = (
-            _base_general_query(
-                db,
-                tenant_id=tenant_id,
-                allowed_empresa_ids=allowed_empresa_ids,
-                empresa_ids=effective_ids,
-                anios=anios,
-                meses=meses,
-            )
-            .with_entities(
-                MedidaGeneral.anio.label("anio"),
-                MedidaGeneral.mes.label("mes"),
-                agg_func(
-                    MedidaGeneral.energia_pf_final_kwh
-                    + MedidaGeneral.energia_generada_kwh
-                    - MedidaGeneral.energia_frontera_dd_kwh
-                ).label("value"),
-            )
-            .group_by(MedidaGeneral.anio, MedidaGeneral.mes)
-            .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
-            .all()
+    rows = (
+        _base_general_query(
+            db,
+            tenant_id=tenant_id,
+            allowed_empresa_ids=allowed_empresa_ids,
+            empresa_ids=effective_ids,
+            anios=anios,
+            meses=meses,
         )
-    else:
-        rows = (
-            _base_general_query(
-                db,
-                tenant_id=tenant_id,
-                allowed_empresa_ids=allowed_empresa_ids,
-                empresa_ids=selected_empresa_ids,
-                anios=anios,
-                meses=meses,
-            )
-            .with_entities(
-                MedidaGeneral.anio.label("anio"),
-                MedidaGeneral.mes.label("mes"),
-                agg_func(
-                    MedidaGeneral.energia_pf_final_kwh
-                    + MedidaGeneral.energia_generada_kwh
-                    - MedidaGeneral.energia_frontera_dd_kwh
-                ).label("value"),
-            )
-            .group_by(MedidaGeneral.anio, MedidaGeneral.mes)
-            .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
-            .all()
+        .with_entities(
+            MedidaGeneral.anio.label("anio"),
+            MedidaGeneral.mes.label("mes"),
+            agg_func(MedidaGeneral.energia_pf_final_kwh).label("pf_m1"),
+            agg_func(MedidaGeneral.energia_generada_kwh).label("gen_m1"),
+            agg_func(MedidaGeneral.energia_frontera_dd_kwh).label("front_m1"),
+            agg_func(MedidaGeneral.energia_pf_m2_kwh).label("pf_m2"),
+            agg_func(MedidaGeneral.energia_generada_m2_kwh).label("gen_m2"),
+            agg_func(MedidaGeneral.energia_frontera_dd_m2_kwh).label("front_m2"),
+            agg_func(MedidaGeneral.energia_pf_m7_kwh).label("pf_m7"),
+            agg_func(MedidaGeneral.energia_generada_m7_kwh).label("gen_m7"),
+            agg_func(MedidaGeneral.energia_frontera_dd_m7_kwh).label("front_m7"),
+            agg_func(MedidaGeneral.energia_pf_m11_kwh).label("pf_m11"),
+            agg_func(MedidaGeneral.energia_generada_m11_kwh).label("gen_m11"),
+            agg_func(MedidaGeneral.energia_frontera_dd_m11_kwh).label("front_m11"),
+            agg_func(MedidaGeneral.energia_pf_art15_kwh).label("pf_art15"),
+            agg_func(MedidaGeneral.energia_generada_art15_kwh).label("gen_art15"),
+            agg_func(MedidaGeneral.energia_frontera_dd_art15_kwh).label("front_art15"),
         )
+        .group_by(MedidaGeneral.anio, MedidaGeneral.mes)
+        .order_by(MedidaGeneral.anio.asc(), MedidaGeneral.mes.asc())
+        .all()
+    )
 
-    points: list[graficos_schemas.GraficoPoint] = [
-        graficos_schemas.GraficoPoint(
+    def _f(v: Any) -> float:
+        if v is None:
+            return 0.0
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
+    _VENTANA_NAMES = {
+        "pf_art15": "ART15", "pf_m11": "M11",
+        "pf_m7": "M7", "pf_m2": "M2", "pf_m1": "M1",
+    }
+
+    def _resolve_adq(row: Any) -> tuple[float, str]:
+        """Jerarquía ART15 > M11 > M7 > M2 > M1. Devuelve (valor, nombre_ventana)."""
+        for pf_key, gen_key, front_key in (
+            ("pf_art15", "gen_art15", "front_art15"),
+            ("pf_m11",   "gen_m11",   "front_m11"),
+            ("pf_m7",    "gen_m7",    "front_m7"),
+            ("pf_m2",    "gen_m2",    "front_m2"),
+            ("pf_m1",    "gen_m1",    "front_m1"),
+        ):
+            pf    = _f(getattr(row, pf_key, None))
+            gen   = _f(getattr(row, gen_key, None))
+            front = _f(getattr(row, front_key, None))
+            if pf != 0.0 or gen != 0.0 or front != 0.0:
+                return pf + gen - front, _VENTANA_NAMES[pf_key]
+        return 0.0, "M1"
+
+    points: list[graficos_schemas.GraficoPoint] = []
+    for row in rows:
+        value, ventana = _resolve_adq(row)
+        points.append(graficos_schemas.GraficoPoint(
             period_key=_period_key(int(cast(Any, row).anio), int(cast(Any, row).mes)),
             period_label=_period_label(int(cast(Any, row).anio), int(cast(Any, row).mes)),
-            value=float(cast(Any, row).value or 0.0),
-        )
-        for row in rows
-    ]
+            value=value,
+            ventana=ventana,
+        ))
+
     return graficos_schemas.GraficoSerie(
         serie_key="adquisicion",
         serie_label="Adquisición",
@@ -304,7 +323,7 @@ def _build_adquisicion_por_ventana(
     empresa_ids: list[int] | None,
     anios: list[int] | None,
     meses: list[int] | None,
-    aggregation: str = "avg",
+    aggregation: str = "sum",
 ) -> list[graficos_schemas.GraficoSerie]:
     """
     Devuelve 5 series de adquisición, una por ventana de publicación:
@@ -318,36 +337,31 @@ def _build_adquisicion_por_ventana(
 
     ventanas = [
         (
-            "adq_m1",
-            "Adq. M1",
+            "adq_m1", "Adq. M1",
             MedidaGeneral.energia_pf_final_kwh,
             MedidaGeneral.energia_generada_kwh,
             MedidaGeneral.energia_frontera_dd_kwh,
         ),
         (
-            "adq_m2",
-            "Adq. M2",
+            "adq_m2", "Adq. M2",
             MedidaGeneral.energia_pf_m2_kwh,
             MedidaGeneral.energia_generada_m2_kwh,
             MedidaGeneral.energia_frontera_dd_m2_kwh,
         ),
         (
-            "adq_m7",
-            "Adq. M7",
+            "adq_m7", "Adq. M7",
             MedidaGeneral.energia_pf_m7_kwh,
             MedidaGeneral.energia_generada_m7_kwh,
             MedidaGeneral.energia_frontera_dd_m7_kwh,
         ),
         (
-            "adq_m11",
-            "Adq. M11",
+            "adq_m11", "Adq. M11",
             MedidaGeneral.energia_pf_m11_kwh,
             MedidaGeneral.energia_generada_m11_kwh,
             MedidaGeneral.energia_frontera_dd_m11_kwh,
         ),
         (
-            "adq_art15",
-            "Adq. ART15",
+            "adq_art15", "Adq. ART15",
             MedidaGeneral.energia_pf_art15_kwh,
             MedidaGeneral.energia_generada_art15_kwh,
             MedidaGeneral.energia_frontera_dd_art15_kwh,
@@ -469,7 +483,7 @@ def get_medidas_graficos_series(
     )
     effective_empresa_ids = None if all_selected else selected_empresa_ids
 
-    # Energía facturada — kWh: siempre suma entre empresas
+    # Energía facturada — kWh: siempre suma
     energia_facturada_series = (
         _build_series_aggregated(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
@@ -485,7 +499,7 @@ def get_medidas_graficos_series(
         )
     )
 
-    # Pérdidas % — promedio entre empresas
+    # Pérdidas % — promedio
     perdidas_series = (
         _build_series_aggregated(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
@@ -501,7 +515,7 @@ def get_medidas_graficos_series(
         )
     )
 
-    # Pérdidas kWh total — siempre suma
+    # Pérdidas kWh total — suma
     perdidas_kwh_series = (
         _build_series_aggregated(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
@@ -517,7 +531,7 @@ def get_medidas_graficos_series(
         )
     )
 
-    # Autoconsumo kWh — siempre suma
+    # Autoconsumo kWh — suma
     autoconsumo_series = (
         _build_series_aggregated(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
@@ -533,7 +547,7 @@ def get_medidas_graficos_series(
         )
     )
 
-    # Energía generada kWh — siempre suma
+    # Energía generada kWh — suma
     energia_generada_series = (
         _build_series_aggregated(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
@@ -549,7 +563,7 @@ def get_medidas_graficos_series(
         )
     )
 
-    # Energías publicadas — E neta publicada M2, M7, M11, ART15 (kWh: suma)
+    # Energías publicadas — suma
     energias_publicadas_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
         ("energia_neta_facturada_m2_kwh",    "M2",    "m2"),
@@ -561,34 +575,32 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
-            anios=anios, meses=meses,
-            aggregation="sum",
+            anios=anios, meses=meses, aggregation="sum",
         )[0]
         energias_publicadas_series.append(
             graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
         )
 
-    # Energías PF (kWh: suma)
+    # Energías PF — suma
     energias_pf_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
-        ("energia_pf_final_kwh",   "E PF Final",   "pf_final"),
-        ("energia_pf_m2_kwh",      "E PF M2",      "pf_m2"),
-        ("energia_pf_m7_kwh",      "E PF M7",      "pf_m7"),
-        ("energia_pf_m11_kwh",     "E PF M11",     "pf_m11"),
-        ("energia_pf_art15_kwh",   "E PF ART15",   "pf_art15"),
+        ("energia_pf_final_kwh",   "E PF Final",  "pf_final"),
+        ("energia_pf_m2_kwh",      "E PF M2",     "pf_m2"),
+        ("energia_pf_m7_kwh",      "E PF M7",     "pf_m7"),
+        ("energia_pf_m11_kwh",     "E PF M11",    "pf_m11"),
+        ("energia_pf_art15_kwh",   "E PF ART15",  "pf_art15"),
     ):
         aggregated = _build_series_aggregated(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
-            anios=anios, meses=meses,
-            aggregation="sum",
+            anios=anios, meses=meses, aggregation="sum",
         )[0]
         energias_pf_series.append(
             graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
         )
 
-    # Pérdidas por ventana en % — promedio
+    # Pérdidas ventanas % — promedio
     perdidas_ventanas_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
         ("perdidas_e_facturada_m2_pct",    "Pérdidas M2 (%)",    "perd_m2"),
@@ -600,14 +612,13 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
-            anios=anios, meses=meses,
-            aggregation="avg",
+            anios=anios, meses=meses, aggregation="avg",
         )[0]
         perdidas_ventanas_series.append(
             graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
         )
 
-    # Pérdidas por ventana en kWh — suma
+    # Pérdidas ventanas kWh — suma
     perdidas_kwh_ventanas_series: list[graficos_schemas.GraficoSerie] = []
     for field_name, label, key in (
         ("perdidas_e_facturada_m2_kwh",    "Pérdidas M2 (kWh)",    "perd_kwh_m2"),
@@ -619,14 +630,13 @@ def get_medidas_graficos_series(
             db, tenant_id=tenant_id_int, allowed_empresa_ids=allowed_empresa_ids,
             field_name=field_name, label=label,
             empresa_ids=effective_empresa_ids if all_selected else selected_empresa_ids,
-            anios=anios, meses=meses,
-            aggregation="sum",
+            anios=anios, meses=meses, aggregation="sum",
         )[0]
         perdidas_kwh_ventanas_series.append(
             graficos_schemas.GraficoSerie(serie_key=key, serie_label=label, points=aggregated.points)
         )
 
-    # ── Adquisición = E PF Final + E generada - E frontera DD ────────────
+    # ── Adquisición con jerarquía ART15 > M11 > M7 > M2 > M1 ────────────
     adquisicion_serie = _build_adquisicion_series(
         db,
         tenant_id=tenant_id_int,
@@ -639,7 +649,7 @@ def get_medidas_graficos_series(
         aggregation="sum",
     )
 
-    # ── Adquisición por ventana (M1, M2, M7, M11, ART15) ────
+    # ── Adquisición por ventana individual ────────────────────────────────
     adquisicion_ventanas_series = _build_adquisicion_por_ventana(
         db,
         tenant_id=tenant_id_int,

@@ -21,6 +21,7 @@ class GraficoPoint(BaseModel):
     period_key: str
     period_label: str
     value: float
+    ventana: str | None = None  # ← qué ventana usó este punto (ej: "M2", "M1")
 
 
 class GraficoSerie(BaseModel):

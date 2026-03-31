@@ -29,7 +29,7 @@ type GraficoFiltersResponse = {
   anios: number[];
   meses: number[];
 };
-type GraficoPoint  = { period_key: string; period_label: string; value: number };
+type GraficoPoint  = { period_key: string; period_label: string; value: number; ventana?: string };
 type GraficoSerie  = { serie_key: string; serie_label: string; points: GraficoPoint[] };
 type GraficoSeriesGroup = { series: GraficoSerie[] };
 type GraficosSeriesResponse = {
@@ -58,7 +58,7 @@ type GraficosPsSeriesResponse = {
   importe_por_tarifa: GraficoSeriesGroup;
 };
 type ChartRow    = { period_key: string; period_label: string; [key: string]: string | number };
-type CustomTooltipEntry = { value?: number | string; name?: number | string; dataKey?: number | string };
+type CustomTooltipEntry = { value?: number | string; name?: number | string; dataKey?: number | string; payload?: ChartRow };
 type CustomTooltipProps = { active?: boolean; payload?: readonly CustomTooltipEntry[]; label?: string; extraByLabel?: Record<string, string[]> };
 type MultiCheckOption   = { value: number; label: string };
 type ElementSize        = { width: number; height: number };
@@ -168,12 +168,8 @@ const LINE_COLORS = [
 ];
 
 const GRAFICA_ACCENT: Record<number, string> = {
-  1: "#60a5fa",
-  2: "#fbbf24",
-  3: "#f87171",
-  4: "#34d399",
-  5: "#a78bfa",
-  6: "#fb923c",
+  1: "#60a5fa", 2: "#fbbf24", 3: "#f87171",
+  4: "#34d399", 5: "#a78bfa", 6: "#fb923c",
 };
 
 const GRAFICA_BADGE: Record<number, string> = {
@@ -215,6 +211,10 @@ function buildChartRows(series: GraficoSerie[]): ChartRow[] {
       }
       const row = map.get(point.period_key)!;
       row[serie.serie_key] = point.value;
+      // Guardar ventana si existe, con key específica por serie para el tooltip
+      if (point.ventana) {
+        row[`${serie.serie_key}__ventana`] = point.ventana;
+      }
     }
   }
   return Array.from(map.values()).sort((a, b) => a.period_key.localeCompare(b.period_key));
@@ -253,9 +253,12 @@ function CustomTooltip({ active, payload, label, extraByLabel }: CustomTooltipPr
         const matchLabel = typeof entry.name === "string" ? entry.name : String(entry.name ?? "");
         const matchKey   = typeof entry.dataKey === "string" ? entry.dataKey : String(entry.dataKey ?? "");
         const numericValue = typeof entry.value === "number" ? entry.value : Number(entry.value);
+        // Mostrar ventana en el label si este punto tiene una asignada
+        const ventana = entry.payload ? (entry.payload[`${matchKey}__ventana`] as string | undefined) : undefined;
+        const displayLabel = ventana ? `${matchLabel} (${ventana})` : matchLabel;
         return (
           <div key={`${matchKey}-${i}`} className="flex items-center justify-between gap-3">
-            <span style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>{matchLabel}</span>
+            <span style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>{displayLabel}</span>
             <span className="font-mono">{formatNumberEs(numericValue)}</span>
           </div>
         );
@@ -668,7 +671,6 @@ function ExpandedChart({
     return { last, prev, max, min, avg, maxLabel: maxRow?.period_label, minLabel: minRow?.period_label, pct };
   }, [rows, visibleSeries, canRenderChart]);
 
-  // Shortcuts de rango — integrados en la fila de año
   const rangeShortcuts = [
     { label: "Último año", anios: [currentYear] },
     { label: "2 años",     anios: [currentYear, currentYear - 1] },
@@ -702,7 +704,7 @@ function ExpandedChart({
             {subtitle} — vista expandida · filtro ampliado a 4 años
           </div>
 
-          {/* Fila única de año: shortcuts de rango + separador + pills de años individuales */}
+          {/* Fila única de año: shortcuts de rango + separador + pills de años */}
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
             <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.45)", marginRight: 2 }}>Año:</span>
             {rangeShortcuts.map((sc) => {
@@ -819,7 +821,6 @@ function ExpandedChart({
           )}
         </div>
       </div>
-      {/* Bloque "Acceso rápido" eliminado — shortcuts integrados en la fila de año */}
     </div>
   );
 }
