@@ -52,12 +52,13 @@ class GraficosSeriesResponse(BaseModel):
     perdidas: GraficoSeriesGroup
     perdidas_kwh: GraficoSeriesGroup
     perdidas_ventanas: GraficoSeriesGroup
+    perdidas_kwh_ventanas: GraficoSeriesGroup  # ← NUEVO: kWh por ventana M2/M7/M11/ART15
     energias_publicadas: GraficoSeriesGroup
     energias_pf: GraficoSeriesGroup
     autoconsumo: GraficoSeriesGroup
     energia_generada: GraficoSeriesGroup
     adquisicion: GraficoSeriesGroup
-    adquisicion_ventanas: GraficoSeriesGroup  # ← NUEVO: una serie por ventana (m1, m2, m7, m11, art15)
+    adquisicion_ventanas: GraficoSeriesGroup
 
 
 class GraficosPsSeriesResponse(BaseModel):

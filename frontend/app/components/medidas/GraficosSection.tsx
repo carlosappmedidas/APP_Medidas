@@ -39,6 +39,7 @@ type GraficosSeriesResponse = {
   perdidas: GraficoSeriesGroup;
   perdidas_kwh: GraficoSeriesGroup;
   perdidas_ventanas: GraficoSeriesGroup;
+  perdidas_kwh_ventanas: GraficoSeriesGroup; // ← NUEVO: kWh por ventana M2/M7/M11/ART15
   energias_publicadas: GraficoSeriesGroup;
   energias_pf: GraficoSeriesGroup;
   autoconsumo: GraficoSeriesGroup;
@@ -86,11 +87,8 @@ type ChartCardProps = {
   badgeLabel?: string;
 };
 
-// G2 — solo las series que realmente existen en el backend:
-// pct/pct_m2/pct_m7/pct_m11/pct_art15 → perdidas_ventanas (porcentajes)
-// kwh → perdidas_kwh (total kWh, única serie disponible)
-// Las opciones kwh_m2/kwh_m7/kwh_m11/kwh_art15 NO existen en el backend
-type Grafica2SerieKey = "pct" | "pct_m2" | "pct_m7" | "pct_m11" | "pct_art15" | "kwh";
+// G2 — todas las series: % (perdidas_ventanas) + kWh total (perdidas_kwh) + kWh ventanas (perdidas_kwh_ventanas)
+type Grafica2SerieKey = "pct" | "pct_m2" | "pct_m7" | "pct_m11" | "pct_art15" | "kwh" | "kwh_m2" | "kwh_m7" | "kwh_m11" | "kwh_art15";
 // G5 — keys de posición (independientes del modo)
 type Grafica5Modo    = "cups" | "energia" | "importe";
 type Grafica5TipoKey = "total" | "t1" | "t2" | "t3" | "t4" | "t5";
@@ -101,14 +99,18 @@ type TwoFlagsState   = { a: boolean; b: boolean };
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-// G2 — solo las 6 series que el backend realmente proporciona
+// G2 — todas las series disponibles en el backend
 const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string; grupo: "pct" | "kwh" }[] = [
-  { key: "pct",       label: "Pérdidas (%)",      grupo: "pct" },
-  { key: "pct_m2",    label: "Pérdidas M2 (%)",   grupo: "pct" },
-  { key: "pct_m7",    label: "Pérdidas M7 (%)",   grupo: "pct" },
-  { key: "pct_m11",   label: "Pérdidas M11 (%)",  grupo: "pct" },
-  { key: "pct_art15", label: "Pérdidas ART15 (%)", grupo: "pct" },
-  { key: "kwh",       label: "Pérdidas (kWh)",    grupo: "kwh" },
+  { key: "pct",       label: "Pérdidas (%)",         grupo: "pct" },
+  { key: "pct_m2",    label: "Pérdidas M2 (%)",      grupo: "pct" },
+  { key: "pct_m7",    label: "Pérdidas M7 (%)",      grupo: "pct" },
+  { key: "pct_m11",   label: "Pérdidas M11 (%)",     grupo: "pct" },
+  { key: "pct_art15", label: "Pérdidas ART15 (%)",   grupo: "pct" },
+  { key: "kwh",       label: "Pérdidas (kWh)",       grupo: "kwh" },
+  { key: "kwh_m2",    label: "Pérdidas M2 (kWh)",    grupo: "kwh" },
+  { key: "kwh_m7",    label: "Pérdidas M7 (kWh)",    grupo: "kwh" },
+  { key: "kwh_m11",   label: "Pérdidas M11 (kWh)",   grupo: "kwh" },
+  { key: "kwh_art15", label: "Pérdidas ART15 (kWh)", grupo: "kwh" },
 ];
 
 const GRAFICA5_TIPOS: { key: Grafica5TipoKey; label: string }[] = [
@@ -1122,7 +1124,7 @@ export default function GraficosSection({ token }: Props) {
     return `Histórico de ${labels.join(" y ")}.`;
   }, [g1Flags]);
 
-  // ── Series G2 — solo las series que el backend proporciona realmente
+  // ── Series G2 — % desde perdidas/perdidas_ventanas, kWh desde perdidas_kwh/perdidas_kwh_ventanas
   const grafica2Series = useMemo((): GraficoSerie[] => {
     if (!seriesData) return [];
     const result: GraficoSerie[] = [];
@@ -1130,11 +1132,11 @@ export default function GraficosSection({ token }: Props) {
       if (!g2Active.has(opcion.key)) continue;
       if (opcion.grupo === "pct") {
         if (opcion.key === "pct") {
-          // Pérdidas % total — viene de perdidas con key "all", renombramos a "pct"
+          // Pérdidas % total — perdidas con key "all"
           const s = seriesData.perdidas.series[0];
           if (s) result.push({ ...s, serie_key: "pct", serie_label: "Pérdidas (%)" });
         } else {
-          // Pérdidas % por ventana — vienen de perdidas_ventanas con keys perd_m2, perd_m7...
+          // Pérdidas % por ventana — perdidas_ventanas con keys perd_m2, perd_m7...
           const ventana = opcion.key.replace("pct_", "").toUpperCase();
           const s = seriesData.perdidas_ventanas.series.find((x) =>
             x.serie_key.toLowerCase().includes(ventana.toLowerCase())
@@ -1142,10 +1144,17 @@ export default function GraficosSection({ token }: Props) {
           if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label });
         }
       } else {
-        // grupo === "kwh" — solo existe el total kWh, no hay ventanas kWh en el backend
         if (opcion.key === "kwh") {
+          // Pérdidas kWh total — perdidas_kwh con key "all"
           const s = seriesData.perdidas_kwh.series[0];
           if (s) result.push({ ...s, serie_key: "kwh", serie_label: "Pérdidas (kWh)" });
+        } else {
+          // Pérdidas kWh por ventana — perdidas_kwh_ventanas con keys perd_kwh_m2, perd_kwh_m7...
+          const ventana = opcion.key.replace("kwh_", "");
+          const s = seriesData.perdidas_kwh_ventanas.series.find((x) =>
+            x.serie_key === `perd_kwh_${ventana}`
+          );
+          if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label });
         }
       }
     }
