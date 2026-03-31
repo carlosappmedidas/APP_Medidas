@@ -39,7 +39,7 @@ type GraficosSeriesResponse = {
   perdidas: GraficoSeriesGroup;
   perdidas_kwh: GraficoSeriesGroup;
   perdidas_ventanas: GraficoSeriesGroup;
-  perdidas_kwh_ventanas: GraficoSeriesGroup; // ← NUEVO: kWh por ventana M2/M7/M11/ART15
+  perdidas_kwh_ventanas: GraficoSeriesGroup;
   energias_publicadas: GraficoSeriesGroup;
   energias_pf: GraficoSeriesGroup;
   autoconsumo: GraficoSeriesGroup;
@@ -87,19 +87,16 @@ type ChartCardProps = {
   badgeLabel?: string;
 };
 
-// G2 — todas las series: % (perdidas_ventanas) + kWh total (perdidas_kwh) + kWh ventanas (perdidas_kwh_ventanas)
+// G2
 type Grafica2SerieKey = "pct" | "pct_m2" | "pct_m7" | "pct_m11" | "pct_art15" | "kwh" | "kwh_m2" | "kwh_m7" | "kwh_m11" | "kwh_art15";
-// G5 — keys de posición (independientes del modo)
 type Grafica5Modo    = "cups" | "energia" | "importe";
 type Grafica5TipoKey = "total" | "t1" | "t2" | "t3" | "t4" | "t5";
-// G6 — keys de posición (independientes del modo)
 type Grafica6Modo    = "cups" | "energia" | "importe";
 type Grafica6TarifaKey = "total" | "t20td" | "t30td" | "t30tdve" | "t61td" | "t62td" | "t63td" | "t64td";
 type TwoFlagsState   = { a: boolean; b: boolean };
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-// G2 — todas las series disponibles en el backend
 const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string; grupo: "pct" | "kwh" }[] = [
   { key: "pct",       label: "Pérdidas (%)",         grupo: "pct" },
   { key: "pct_m2",    label: "Pérdidas M2 (%)",      grupo: "pct" },
@@ -652,6 +649,7 @@ function ExpandedChart({
   const rows = useMemo(() => buildChartRows(series), [series]);
   const visibleSeries = series.filter((s) => !hiddenSeries[s.serie_key]);
   const canRenderChart = size.width > 50 && rows.length > 0 && visibleSeries.length > 0;
+  const currentYear = new Date().getFullYear();
 
   const kpis = useMemo(() => {
     if (!canRenderChart) return null;
@@ -670,14 +668,25 @@ function ExpandedChart({
     return { last, prev, max, min, avg, maxLabel: maxRow?.period_label, minLabel: minRow?.period_label, pct };
   }, [rows, visibleSeries, canRenderChart]);
 
-  const currentYear = new Date().getFullYear();
-  const shortcuts = [
-    { label: "4 años (defecto)", anios: [currentYear, currentYear-1, currentYear-2, currentYear-3] },
-    { label: "Último año",       anios: [currentYear] },
-    { label: "2 años",           anios: [currentYear, currentYear-1] },
-    { label: "Todo",             anios: [] },
-    ...allAnios.slice(0, 4).map((y) => ({ label: String(y), anios: [y] })),
+  // Shortcuts de rango — integrados en la fila de año
+  const rangeShortcuts = [
+    { label: "Último año", anios: [currentYear] },
+    { label: "2 años",     anios: [currentYear, currentYear - 1] },
+    { label: "4 años",     anios: [currentYear, currentYear - 1, currentYear - 2, currentYear - 3] },
   ];
+
+  const applyShortcut = (anios: number[]) => {
+    anios.forEach((y) => { if (!expandedAnios.includes(y)) onToggleExpandedAnio(y); });
+    expandedAnios.filter((y) => !anios.includes(y)).forEach((y) => onToggleExpandedAnio(y));
+  };
+
+  const shortcutPillStyle = (isActive: boolean): React.CSSProperties => ({
+    fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer", whiteSpace: "nowrap",
+    border: isActive ? "1px solid rgba(37,99,235,.5)" : "1px solid rgba(255,255,255,.14)",
+    background: isActive ? "rgba(37,99,235,.25)" : "rgba(0,0,0,.22)",
+    color: isActive ? "#93c5fd" : "rgba(226,232,240,.45)",
+    height: 28, display: "flex", alignItems: "center",
+  });
 
   return (
     <div className="rounded-xl border" style={{ background: "#111f35", borderColor: "rgba(30,58,95,.9)", overflow: "hidden" }}>
@@ -692,8 +701,19 @@ function ExpandedChart({
           <div style={{ fontSize: 10, color: "rgba(226,232,240,.4)" }}>
             {subtitle} — vista expandida · filtro ampliado a 4 años
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-            <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.45)" }}>Año:</span>
+
+          {/* Fila única de año: shortcuts de rango + separador + pills de años individuales */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.45)", marginRight: 2 }}>Año:</span>
+            {rangeShortcuts.map((sc) => {
+              const isActive = sc.anios.every((y) => expandedAnios.includes(y)) && expandedAnios.length === sc.anios.length;
+              return (
+                <button key={sc.label} type="button" onClick={() => applyShortcut(sc.anios)} style={shortcutPillStyle(isActive)}>
+                  {sc.label}
+                </button>
+              );
+            })}
+            <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
             <YearPillsFilter
               allAnios={allAnios}
               selectedAnios={expandedAnios}
@@ -701,6 +721,7 @@ function ExpandedChart({
               onSelectAll={onSelectAllExpandedAnios}
             />
           </div>
+
           {selector && <div style={{ marginTop: 4 }}>{selector}</div>}
           {!selector && series.length > 0 && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
@@ -756,7 +777,7 @@ function ExpandedChart({
         </div>
       )}
 
-      <div ref={containerRef} style={{ padding: "12px 16px 0" }}>
+      <div ref={containerRef} style={{ padding: "12px 16px 12px" }}>
         <div style={{ height: 260, background: "rgba(0,0,0,.15)", borderRadius: 10, overflow: "hidden" }}>
           {loading && (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "rgba(226,232,240,.35)" }}>
@@ -798,36 +819,7 @@ function ExpandedChart({
           )}
         </div>
       </div>
-
-      <div style={{ display: "flex", gap: 6, padding: "8px 16px 12px", alignItems: "center", borderTop: "1px solid rgba(30,58,95,.5)", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, color: "rgba(226,232,240,.38)" }}>Acceso rápido:</span>
-        {shortcuts.map((sc) => {
-          const isActive = sc.anios.length === 0
-            ? expandedAnios.length === 0
-            : sc.anios.every((y) => expandedAnios.includes(y)) && expandedAnios.length === sc.anios.length;
-          return (
-            <button
-              key={sc.label}
-              type="button"
-              onClick={() => {
-                if (sc.anios.length === 0) { onSelectAllExpandedAnios(); }
-                else {
-                  sc.anios.forEach((y) => { if (!expandedAnios.includes(y)) onToggleExpandedAnio(y); });
-                  expandedAnios.filter((y) => !sc.anios.includes(y)).forEach((y) => onToggleExpandedAnio(y));
-                }
-              }}
-              style={{
-                fontSize: 10, padding: "3px 9px", borderRadius: 6, cursor: "pointer",
-                border: isActive ? "1px solid rgba(37,99,235,.4)" : "1px solid rgba(255,255,255,.1)",
-                background: isActive ? "rgba(37,99,235,.2)" : "transparent",
-                color: isActive ? "#93c5fd" : "rgba(226,232,240,.42)",
-              }}
-            >
-              {sc.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* Bloque "Acceso rápido" eliminado — shortcuts integrados en la fila de año */}
     </div>
   );
 }
@@ -1011,7 +1003,6 @@ export default function GraficosSection({ token }: Props) {
     setHiddenSeries((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  // ── Cargar filtros
   const loadFilters = useCallback(async () => {
     if (!token) return;
     setFiltersLoading(true); setFiltersError(null);
@@ -1027,7 +1018,6 @@ export default function GraficosSection({ token }: Props) {
     }
   }, [token]);
 
-  // ── Cargar series generales
   const loadSeries = useCallback(async (aniosOverride?: number[]) => {
     if (!token) return;
     setSeriesLoading(true); setSeriesError(null);
@@ -1048,7 +1038,6 @@ export default function GraficosSection({ token }: Props) {
     }
   }, [token, selectedEmpresas, selectedAnios, selectedMeses]);
 
-  // ── Cargar series PS
   const loadPsSeries = useCallback(async (aniosOverride?: number[]) => {
     if (!token) return;
     setPsSeriesLoading(true); setPsSeriesError(null);
@@ -1072,7 +1061,6 @@ export default function GraficosSection({ token }: Props) {
   useEffect(() => { void loadFilters(); }, [loadFilters]);
   useEffect(() => { void loadSeries(); void loadPsSeries(); }, [loadSeries, loadPsSeries]);
 
-  // Recargar datos cuando cambian los años en vista expandida
   useEffect(() => {
     if (expandedGrafica === null) return;
     void loadSeries(expandedAnios);
@@ -1104,7 +1092,6 @@ export default function GraficosSection({ token }: Props) {
     [filtersData]
   );
 
-  // ── Series G1
   const grafica1Series = useMemo((): GraficoSerie[] => {
     if (!seriesData) return [];
     const m1Serie = seriesData.energia_facturada.series[0];
@@ -1124,7 +1111,6 @@ export default function GraficosSection({ token }: Props) {
     return `Histórico de ${labels.join(" y ")}.`;
   }, [g1Flags]);
 
-  // ── Series G2 — % desde perdidas/perdidas_ventanas, kWh desde perdidas_kwh/perdidas_kwh_ventanas
   const grafica2Series = useMemo((): GraficoSerie[] => {
     if (!seriesData) return [];
     const result: GraficoSerie[] = [];
@@ -1132,11 +1118,9 @@ export default function GraficosSection({ token }: Props) {
       if (!g2Active.has(opcion.key)) continue;
       if (opcion.grupo === "pct") {
         if (opcion.key === "pct") {
-          // Pérdidas % total — perdidas con key "all"
           const s = seriesData.perdidas.series[0];
           if (s) result.push({ ...s, serie_key: "pct", serie_label: "Pérdidas (%)" });
         } else {
-          // Pérdidas % por ventana — perdidas_ventanas con keys perd_m2, perd_m7...
           const ventana = opcion.key.replace("pct_", "").toUpperCase();
           const s = seriesData.perdidas_ventanas.series.find((x) =>
             x.serie_key.toLowerCase().includes(ventana.toLowerCase())
@@ -1145,11 +1129,9 @@ export default function GraficosSection({ token }: Props) {
         }
       } else {
         if (opcion.key === "kwh") {
-          // Pérdidas kWh total — perdidas_kwh con key "all"
           const s = seriesData.perdidas_kwh.series[0];
           if (s) result.push({ ...s, serie_key: "kwh", serie_label: "Pérdidas (kWh)" });
         } else {
-          // Pérdidas kWh por ventana — perdidas_kwh_ventanas con keys perd_kwh_m2, perd_kwh_m7...
           const ventana = opcion.key.replace("kwh_", "");
           const s = seriesData.perdidas_kwh_ventanas.series.find((x) =>
             x.serie_key === `perd_kwh_${ventana}`
@@ -1166,7 +1148,6 @@ export default function GraficosSection({ token }: Props) {
     return `Histórico de ${labels.join(", ")}.`;
   }, [g2Active]);
 
-  // ── Series G3
   const energiasPfSinFinal = useMemo(
     () => seriesData?.energias_pf.series.filter((s) => !s.serie_key.includes("final")) ?? [],
     [seriesData]
@@ -1186,7 +1167,6 @@ export default function GraficosSection({ token }: Props) {
     return `Histórico de ${parts.join(" y ")}.`;
   }, [g3Flags]);
 
-  // ── Series G4 — serie_key única para evitar colisión (ambas vienen con key "all")
   const grafica4Series = useMemo((): GraficoSerie[] => {
     if (!seriesData) return [];
     const result: GraficoSerie[] = [];
@@ -1208,7 +1188,6 @@ export default function GraficosSection({ token }: Props) {
     return `Histórico de ${parts.join(" y ")}.`;
   }, [g4Flags]);
 
-  // ── Series G5 — usa mapa de keys reales por modo
   const grafica5Series = useMemo((): GraficoSerie[] => {
     if (!psSeriesData) return [];
     const groupKey = GRAFICA5_MODO_CONFIG[g5Modo].groupKey;
@@ -1219,7 +1198,6 @@ export default function GraficosSection({ token }: Props) {
 
   const grafica5Subtitle = `${GRAFICA5_MODO_CONFIG[g5Modo].label} PS por tipo — ${[...g5ActiveTipos].map((k) => GRAFICA5_TIPOS.find((t) => t.key === k)?.label ?? k).join(", ")}.`;
 
-  // ── Series G6 — usa mapa de keys reales por modo
   const grafica6Series = useMemo((): GraficoSerie[] => {
     if (!psSeriesData) return [];
     const groupKey = GRAFICA6_MODO_CONFIG[g6Modo].groupKey;
@@ -1230,7 +1208,6 @@ export default function GraficosSection({ token }: Props) {
 
   const grafica6Subtitle = `${GRAFICA6_MODO_CONFIG[g6Modo].label} PS por tarifa — ${[...g6ActiveTarifas].map((k) => GRAFICA6_TARIFAS.find((t) => t.key === k)?.label ?? k).join(", ")}.`;
 
-  // ── Último valor / tendencia
   function getLastValueInfo(series: GraficoSerie[]): { label: string; value: string; trend: { value: number; label: string } | undefined } {
     const s = series[0];
     if (!s || s.points.length === 0) return { label: "—", value: "—", trend: undefined };
@@ -1286,7 +1263,6 @@ export default function GraficosSection({ token }: Props) {
     setExpandedAnios([]);
   }, []);
 
-  // ── Render
   return (
     <section className="text-sm">
       <div className="flex flex-col gap-6">
