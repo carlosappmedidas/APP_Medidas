@@ -1,5 +1,11 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Brush,
   CartesianGrid,
@@ -13,15 +19,18 @@ import {
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
-type Props = {
-  token: string | null;
-  currentUser?: User | null;
-};
+// ── Tipos ────────────────────────────────────────────────────────────────────
+
+type Props = { token: string | null; currentUser?: User | null };
 
 type GraficoEmpresaOption = { id: number; nombre: string };
-type GraficoFiltersResponse = { empresas: GraficoEmpresaOption[]; anios: number[]; meses: number[] };
-type GraficoPoint = { period_key: string; period_label: string; value: number };
-type GraficoSerie = { serie_key: string; serie_label: string; points: GraficoPoint[] };
+type GraficoFiltersResponse = {
+  empresas: GraficoEmpresaOption[];
+  anios: number[];
+  meses: number[];
+};
+type GraficoPoint  = { period_key: string; period_label: string; value: number };
+type GraficoSerie  = { serie_key: string; serie_label: string; points: GraficoPoint[] };
 type GraficoSeriesGroup = { series: GraficoSerie[] };
 type GraficosSeriesResponse = {
   filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string };
@@ -47,20 +56,11 @@ type GraficosPsSeriesResponse = {
   cups_por_tarifa: GraficoSeriesGroup;
   importe_por_tarifa: GraficoSeriesGroup;
 };
-type ChartRow = { period_key: string; period_label: string; [key: string]: string | number };
-type CustomTooltipEntry = {
-  value?: number | string;
-  name?: number | string;
-  dataKey?: number | string;
-};
-type CustomTooltipProps = {
-  active?: boolean;
-  payload?: readonly CustomTooltipEntry[];
-  label?: number | string;
-  extraByLabel?: Record<string, { label: string; value: number }[]>;
-};
-type MultiCheckOption = { value: number; label: string };
-type ElementSize = { width: number; height: number };
+type ChartRow    = { period_key: string; period_label: string; [key: string]: string | number };
+type CustomTooltipEntry = { value?: number | string; name?: number | string; dataKey?: number | string };
+type CustomTooltipProps = { active?: boolean; payload?: readonly CustomTooltipEntry[]; label?: string; extraByLabel?: Record<string, string[]> };
+type MultiCheckOption   = { value: number; label: string };
+type ElementSize        = { width: number; height: number };
 type FilterDropdownProps = {
   title: string;
   options: MultiCheckOption[];
@@ -72,65 +72,78 @@ type FilterDropdownProps = {
 type ChartCardProps = {
   title: string;
   subtitle: string;
-  data: ChartRow[];
   series: GraficoSerie[];
-  companyLabel: string;
-  yAxisFormatter?: (value: number) => string;
-  headerExtra?: React.ReactNode;
-  tooltipExtraByLabel?: Record<string, { label: string; value: number }[]>;
+  hiddenSeries: Record<string, boolean>;
+  onToggleSerie: (key: string) => void;
+  selector?: React.ReactNode;
+  loading?: boolean;
+  error?: string | null;
+  onExpand?: () => void;
+  lastValueLabel?: string;
+  lastValue?: string;
+  trend?: { value: number; label: string };
+  accentColor?: string;
+  badgeLabel?: string;
 };
 
-// ── Gráfica 2 ──────────────────────────────────────────────────────────────
-type Grafica2SerieKey = "pct" | "perd_m2" | "perd_m7" | "perd_m11" | "perd_art15";
-const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string }[] = [
-  { key: "pct", label: "Pérdidas (%)" },
-  { key: "perd_m2", label: "Pérdidas M2 (%)" },
-  { key: "perd_m7", label: "Pérdidas M7 (%)" },
-  { key: "perd_m11", label: "Pérdidas M11 (%)" },
-  { key: "perd_art15", label: "Pérdidas ART15 (%)" },
+// G2
+type Grafica2SerieKey = "pct" | "pct_m2" | "pct_m7" | "pct_m11" | "pct_art15" | "kwh" | "kwh_m2" | "kwh_m7" | "kwh_m11" | "kwh_art15";
+// G5
+type Grafica5Modo    = "cups" | "energia" | "importe";
+type Grafica5TipoKey = "total" | "tipo_1" | "tipo_2" | "tipo_3" | "tipo_4" | "tipo_5";
+// G6
+type Grafica6Modo    = "cups" | "energia" | "importe";
+type Grafica6TarifaKey = "total" | "td_2_0" | "td_3_0" | "td_3_0ve" | "td_6_1" | "td_6_2" | "td_6_3" | "td_6_4";
+type TwoFlagsState   = { a: boolean; b: boolean };
+
+// ── Constantes ────────────────────────────────────────────────────────────────
+
+const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string; grupo: "pct" | "kwh" }[] = [
+  { key: "pct",      label: "Pérdidas (%)",    grupo: "pct" },
+  { key: "pct_m2",   label: "Pérdidas M2 (%)", grupo: "pct" },
+  { key: "pct_m7",   label: "Pérdidas M7 (%)", grupo: "pct" },
+  { key: "pct_m11",  label: "Pérdidas M11 (%)", grupo: "pct" },
+  { key: "pct_art15",label: "Pérdidas ART15 (%)", grupo: "pct" },
+  { key: "kwh",      label: "Pérdidas (kWh)",  grupo: "kwh" },
+  { key: "kwh_m2",   label: "Pérdidas M2 (kWh)", grupo: "kwh" },
+  { key: "kwh_m7",   label: "Pérdidas M7 (kWh)", grupo: "kwh" },
+  { key: "kwh_m11",  label: "Pérdidas M11 (kWh)", grupo: "kwh" },
+  { key: "kwh_art15",label: "Pérdidas ART15 (kWh)", grupo: "kwh" },
 ];
 
-// ── Gráfica 5 — PS por tipo ────────────────────────────────────────────────
-type Grafica5Modo = "cups" | "energia" | "importe";
-type Grafica5TipoKey = "t1" | "t2" | "t3" | "t4" | "t5" | "total";
 const GRAFICA5_TIPOS: { key: Grafica5TipoKey; label: string }[] = [
-  { key: "t1", label: "Tipo 1" },
-  { key: "t2", label: "Tipo 2" },
-  { key: "t3", label: "Tipo 3" },
-  { key: "t4", label: "Tipo 4" },
-  { key: "t5", label: "Tipo 5" },
-  { key: "total", label: "Total" },
+  { key: "total",  label: "Total"  },
+  { key: "tipo_1", label: "Tipo 1" },
+  { key: "tipo_2", label: "Tipo 2" },
+  { key: "tipo_3", label: "Tipo 3" },
+  { key: "tipo_4", label: "Tipo 4" },
+  { key: "tipo_5", label: "Tipo 5" },
 ];
-const GRAFICA5_MODO_CONFIG: Record<Grafica5Modo, { prefix: string; modeLabel: string; yFormatter?: (v: number) => string }> = {
-  cups: { prefix: "cups_", modeLabel: "CUPS" },
-  energia: { prefix: "en_", modeLabel: "Energía (kWh)" },
-  importe: { prefix: "im_", modeLabel: "Importe (€)", yFormatter: (v) => `${formatYAxis(v)} €` },
+
+const GRAFICA5_MODO_CONFIG: Record<Grafica5Modo, { groupKey: keyof GraficosPsSeriesResponse; label: string }> = {
+  cups:    { groupKey: "cups_por_tipo",    label: "CUPS"    },
+  energia: { groupKey: "energia_por_tipo", label: "Energía" },
+  importe: { groupKey: "importe_por_tipo", label: "Importe" },
 };
 
-// ── Gráfica 6 — PS por tarifa ──────────────────────────────────────────────
-type Grafica6Modo = "cups" | "energia" | "importe";
-type Grafica6TarifaKey = "20td" | "30td" | "30tdve" | "61td" | "total";
 const GRAFICA6_TARIFAS: { key: Grafica6TarifaKey; label: string }[] = [
-  { key: "20td", label: "2.0TD" },
-  { key: "30td", label: "3.0TD" },
-  { key: "30tdve", label: "3.0TDVE" },
-  { key: "61td", label: "6.1TD" },
-  { key: "total", label: "Total" },
+  { key: "total",    label: "Total"    },
+  { key: "td_2_0",  label: "2.0TD"   },
+  { key: "td_3_0",  label: "3.0TD"   },
+  { key: "td_3_0ve",label: "3.0TDVE" },
+  { key: "td_6_1",  label: "6.1TD"   },
+  { key: "td_6_2",  label: "6.2TD"   },
+  { key: "td_6_3",  label: "6.3TD"   },
+  { key: "td_6_4",  label: "6.4TD"   },
 ];
-const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { prefix: string; modeLabel: string; yFormatter?: (v: number) => string }> = {
-  cups: { prefix: "ct_", modeLabel: "CUPS" },
-  energia: { prefix: "et_", modeLabel: "Energía (kWh)" },
-  importe: { prefix: "it_", modeLabel: "Importe (€)", yFormatter: (v) => `${formatYAxis(v)} €` },
+
+const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { groupKey: keyof GraficosPsSeriesResponse; label: string }> = {
+  cups:    { groupKey: "cups_por_tarifa",    label: "CUPS"    },
+  energia: { groupKey: "energia_por_tarifa", label: "Energía" },
+  importe: { groupKey: "importe_por_tarifa", label: "Importe" },
 };
 
-// Jerarquía de ventanas de adquisición: de más reciente a más antigua
-const ADQ_VENTANAS: { key: string; label: string }[] = [
-  { key: "adq_art15", label: "Adq. ART15" },
-  { key: "adq_m11", label: "Adq. M11" },
-  { key: "adq_m7", label: "Adq. M7" },
-  { key: "adq_m2", label: "Adq. M2" },
-  { key: "adq_m1", label: "Adq. M1" },
-];
+const ADQ_VENTANAS = ["M2", "M7", "M11", "ART15"] as const;
 
 const MESES_LABEL: Record<number, string> = {
   1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
@@ -138,433 +151,752 @@ const MESES_LABEL: Record<number, string> = {
 };
 
 const LINE_COLORS = [
-  "#6D5EF8", "#22C55E", "#F59E0B", "#EF4444",
-  "#06B6D4", "#A855F7", "#84CC16", "#F97316",
+  "#6D5EF8","#F5A623","#7ED321","#D0021B","#4A90E2",
+  "#9B59B6","#1ABC9C","#E67E22","#2ECC71","#E74C3C",
+  "#3498DB","#F39C12","#16A085","#8E44AD","#27AE60",
 ];
 
-// ── MEJORA 1: Formateador de eje Y unificado ───────────────────────────────
+// Colores por gráfica para el nuevo diseño
+const GRAFICA_ACCENT: Record<number, string> = {
+  1: "#60a5fa",
+  2: "#fbbf24",
+  3: "#f87171",
+  4: "#34d399",
+  5: "#a78bfa",
+  6: "#fb923c",
+};
+
+const GRAFICA_BADGE: Record<number, string> = {
+  1: "G1", 2: "G2", 3: "G3", 4: "G4", 5: "G5", 6: "G6",
+};
+
+// ── Utilidades ────────────────────────────────────────────────────────────────
+
 function formatYAxis(value: number): string {
-  if (value === 0) return "0";
   const abs = Math.abs(value);
   const sign = value < 0 ? "-" : "";
-  if (abs >= 1_000_000) return sign + (abs / 1_000_000).toFixed(abs % 1_000_000 === 0 ? 0 : 1) + "M";
-  if (abs >= 1_000) return sign + (abs / 1_000).toFixed(abs % 1_000 === 0 ? 0 : 1) + "k";
-  return sign + abs.toString();
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000)     return `${sign}${(abs / 1_000).toFixed(0)}k`;
+  if (abs < 1 && abs > 0) return `${sign}${abs.toFixed(2)}`;
+  return `${sign}${abs.toFixed(0)}`;
 }
 
-// ── MEJORA 1: Formateador de eje X para fechas cortas ─────────────────────
-function formatXAxisTick(tick: string): string {
-  const matchLabel = tick.match(/^(\w+)\s(\d{2})(\d{2})$/);
-  if (matchLabel) return `${matchLabel[1]} ${matchLabel[3]}`;
-  const matchKey = tick.match(/^(\d{4})-(\d{2})$/);
-  if (matchKey) {
-    const mes = MESES_LABEL[parseInt(matchKey[2])] ?? matchKey[2];
-    return `${mes} ${matchKey[1].slice(2)}`;
+function formatXAxisTick(value: string): string {
+  if (!value) return "";
+  const parts = value.split("-");
+  if (parts.length === 2) {
+    const mes = Number.parseInt(parts[1], 10);
+    return `${MESES_LABEL[mes] ?? parts[1]} ${parts[0].slice(2)}`;
   }
-  return tick;
+  return value;
 }
 
-function formatNumberEs(value: number | string | null | undefined): string {
-  const numericValue =
-    typeof value === "number" ? value
-    : typeof value === "string" ? Number(value)
-    : null;
-  if (numericValue === null || Number.isNaN(numericValue)) return "—";
-  return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(numericValue);
+function formatNumberEs(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return value.toLocaleString("es-ES", { maximumFractionDigits: 2 });
 }
 
-function buildChartRows(group: GraficoSeriesGroup | null): ChartRow[] {
-  if (!group?.series?.length) return [];
+function buildChartRows(series: GraficoSerie[]): ChartRow[] {
   const map = new Map<string, ChartRow>();
-  for (const serie of group.series) {
+  for (const serie of series) {
     for (const point of serie.points) {
-      const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-      current[serie.serie_key] = point.value;
-      map.set(point.period_key, current);
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
-}
-
-function buildChartRowsCombined(groups: (GraficoSeriesGroup | null)[]): ChartRow[] {
-  const map = new Map<string, ChartRow>();
-  for (const group of groups) {
-    if (!group?.series?.length) continue;
-    for (const serie of group.series) {
-      for (const point of serie.points) {
-        const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-        current[serie.serie_key] = point.value;
-        map.set(point.period_key, current);
+      if (!map.has(point.period_key)) {
+        map.set(point.period_key, { period_key: point.period_key, period_label: point.period_label });
       }
+      const row = map.get(point.period_key)!;
+      row[serie.serie_key] = point.value;
     }
   }
-  return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
+  return Array.from(map.values()).sort((a, b) => a.period_key.localeCompare(b.period_key));
 }
 
-function relabelSeries(series: GraficoSerie[], legendLabel: string): GraficoSerie[] {
-  if (series.length !== 1) return series;
-  return [{ ...series[0], serie_label: legendLabel }];
+function buildChartRowsCombined(seriesA: GraficoSerie[], seriesB: GraficoSerie[]): ChartRow[] {
+  return buildChartRows([...seriesA, ...seriesB]);
 }
 
-function buildTooltipExtraByLabel(
-  group: GraficoSeriesGroup | null,
-  labelOverride?: string
-): Record<string, { label: string; value: number }[]> {
-  const result: Record<string, { label: string; value: number }[]> = {};
-  if (!group?.series?.length) return result;
-  for (const serie of group.series) {
-    const displayLabel = labelOverride ?? serie.serie_label;
-    for (const point of serie.points) {
-      if (!result[point.period_label]) result[point.period_label] = [];
-      result[point.period_label].push({ label: displayLabel, value: point.value });
-    }
+function relabelSeries(series: GraficoSerie[], overrides: Record<string, string>): GraficoSerie[] {
+  return series.map((s) => ({ ...s, serie_label: overrides[s.serie_key] ?? s.serie_label }));
+}
+
+function buildTooltipExtraByLabel(rows: ChartRow[], extraKeys: string[]): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const row of rows) {
+    const extras = extraKeys
+      .filter((k) => row[k] != null)
+      .map((k) => `${k}: ${formatNumberEs(row[k] as number)}`);
+    if (extras.length > 0) result[row.period_label] = extras;
   }
   return result;
 }
 
+// ── Componentes auxiliares ────────────────────────────────────────────────────
+
 function CustomTooltip({ active, payload, label, extraByLabel }: CustomTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null;
-  const labelStr = String(label ?? "—");
-  const extras = extraByLabel?.[labelStr] ?? [];
+  if (!active || !payload?.length) return null;
   return (
     <div
-      className="rounded-lg border px-3 py-2 text-xs shadow-lg"
-      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--text)" }}
+      className="rounded-xl border px-3 py-2 text-xs"
+      style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", minWidth: 140 }}
     >
-      <div className="mb-2 font-semibold">{labelStr}</div>
-      <div className="flex flex-col gap-1">
-        {payload.map((entry, index) => (
-          <div
-            key={`${String(entry.dataKey ?? "serie")}-${index}`}
-            className="flex items-center justify-between gap-3"
-          >
-            <span>{String(entry.name ?? entry.dataKey ?? "Serie")}</span>
-            <span className="font-medium">
-              {formatNumberEs(
-                typeof entry.value === "number" || typeof entry.value === "string"
-                  ? entry.value
-                  : null
-              )}
-            </span>
+      <div className="mb-1 font-medium ui-muted">{label}</div>
+      {payload.map((entry, i) => {
+        const matchLabel = typeof entry.name === "string" ? entry.name : String(entry.name ?? "");
+        const matchKey   = typeof entry.dataKey === "string" ? entry.dataKey : String(entry.dataKey ?? "");
+        const numericValue = typeof entry.value === "number" ? entry.value : Number(entry.value);
+        return (
+          <div key={`${matchKey}-${i}`} className="flex items-center justify-between gap-3">
+            <span style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>{matchLabel}</span>
+            <span className="font-mono">{formatNumberEs(numericValue)}</span>
           </div>
-        ))}
-        {extras.length > 0 && (
-          <>
-            <div className="my-1 border-t" style={{ borderColor: "var(--card-border)" }} />
-            {extras.map((extra, i) => (
-              <div key={`extra-${i}`} className="flex items-center justify-between gap-3 ui-muted">
-                <span>{extra.label}</span>
-                <span className="font-medium">{formatNumberEs(extra.value)}</span>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
+        );
+      })}
+      {extraByLabel?.[label ?? ""]?.map((extra, i) => (
+        <div key={i} className="mt-0.5 ui-muted">{extra}</div>
+      ))}
     </div>
   );
 }
 
-function useElementSize<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
-  const [mounted, setMounted] = useState(false);
+function useElementSize(): [React.MutableRefObject<HTMLDivElement | null>, ElementSize] {
+  const ref = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 });
-  useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
     const element = ref.current;
-    if (!mounted || !element) return;
+    if (!element) return;
     const updateSize = () => {
       const rect = element.getBoundingClientRect();
-      const nextWidth = Math.max(0, Math.round(rect.width));
-      const nextHeight = Math.max(0, Math.round(rect.height));
-      setSize((prev) => {
-        if (prev.width === nextWidth && prev.height === nextHeight) return prev;
-        return { width: nextWidth, height: nextHeight };
-      });
+      const nextWidth  = Math.floor(rect.width);
+      const nextHeight = Math.floor(rect.height);
+      setSize((prev) => prev.width === nextWidth && prev.height === nextHeight ? prev : { width: nextWidth, height: nextHeight });
     };
     updateSize();
-    const observer = new ResizeObserver(() => { updateSize(); });
+    const observer = new ResizeObserver(updateSize);
     observer.observe(element);
-    return () => { observer.disconnect(); };
-  }, [mounted]);
-  return { ref, mounted, width: size.width, height: size.height };
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size];
 }
 
-// ── FilterDropdown — ÚNICO CAMBIO: botón trigger usa className="ui-select" ─
-function FilterDropdown({
-  title,
-  options,
-  selectedValues,
-  onToggle,
-  onSelectAll,
-  allLabel = "Todas",
-}: FilterDropdownProps) {
+// ── FilterDropdown (multi-check, igual que antes) ─────────────────────────────
+
+function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll, allLabel = "Todas" }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const allSelected = options.length > 0 && selectedValues.length === options.length;
-
-  const summary = useMemo(() => {
-    if (options.length === 0) return "Sin opciones";
-    if (allSelected) return allLabel;
-    if (selectedValues.length === 0) return "Ninguna";
-    if (selectedValues.length === 1) {
-      const selected = options.find((o) => o.value === selectedValues[0]);
-      return selected?.label ?? "1 seleccionada";
-    }
-    return `${selectedValues.length} seleccionadas`;
-  }, [allLabel, allSelected, options, selectedValues]);
-
+  const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const targetNode = event.target;
-      if (!(targetNode instanceof Node)) return;
-      if (containerRef.current && !containerRef.current.contains(targetNode)) setOpen(false);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => { document.removeEventListener("mousedown", handleClickOutside); };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
+  const allSelected = selectedValues.length === 0 || selectedValues.length === options.length;
+  const summary = allSelected ? allLabel : `${selectedValues.length} sel.`;
   return (
-    <div ref={containerRef} className="relative min-w-0">
-      <div
-        className="min-w-0 rounded-xl border p-3"
-        style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+    <div ref={wrapRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="ui-select"
+        style={{ minWidth: 160, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, cursor: "pointer" }}
       >
-        <label className="ui-label">{title}</label>
-        {/* CAMBIO: reemplazado estilos inline por className="ui-select" */}
-        <button
-          type="button"
-          onClick={() => setOpen((prev) => !prev)}
-          className="ui-select flex w-full items-center justify-between text-left"
-        >
-          <span className="truncate">{summary}</span>
-          <span className="ml-3 shrink-0">{open ? "▴" : "▾"}</span>
-        </button>
-      </div>
+        <span>{title}: {summary}</span>
+        <span style={{ fontSize: 10, color: "rgba(226,232,240,.5)" }}>▾</span>
+      </button>
       {open && (
         <div
-          className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border p-3 shadow-lg"
-          style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+          className="rounded-xl border"
+          style={{
+            position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50,
+            background: "var(--card-bg)", borderColor: "var(--card-border)",
+            padding: 8, minWidth: 160, boxShadow: "0 8px 24px rgba(0,0,0,.4)",
+          }}
         >
-          <label className="mb-2 flex cursor-pointer items-center gap-2 text-xs">
-            <input type="checkbox" checked={allSelected} onChange={onSelectAll} />
-            <span>{allLabel}</span>
-          </label>
-          <div className="grid gap-1">
-            {options.map((option) => (
-              <label
-                key={`${title}-${option.value}`}
-                className="ui-muted flex cursor-pointer items-center gap-2 text-xs"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedValues.includes(option.value)}
-                  onChange={() => onToggle(option.value)}
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--card-border)" }}>
+            <span style={{ fontSize: 10, color: "rgba(226,232,240,.5)" }}>{title}</span>
+            <button type="button" onClick={onSelectAll} className="ui-btn ui-btn-outline ui-btn-xs">
+              {allLabel}
+            </button>
           </div>
+          {options.map((opt) => (
+            <div
+              key={opt.value}
+              onClick={() => onToggle(opt.value)}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 6, cursor: "pointer", fontSize: 11, color: "var(--text)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(30,58,95,.5)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <div style={{
+                width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                background: selectedValues.includes(opt.value) ? "#2563eb" : "transparent",
+                border: `1px solid ${selectedValues.includes(opt.value) ? "#2563eb" : "rgba(255,255,255,.2)"}`,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff",
+              }}>
+                {selectedValues.includes(opt.value) ? "✓" : ""}
+              </div>
+              {opt.label}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ── MEJORAS 2 y 3: ChartCard con Brush y leyenda clickable abajo ───────────
-function ChartCard({
-  title,
-  subtitle,
-  data,
-  series,
-  companyLabel,
-  yAxisFormatter,
-  headerExtra,
-  tooltipExtraByLabel,
-}: ChartCardProps) {
-  const { ref, mounted, width, height } = useElementSize<HTMLDivElement>();
-  const canRenderChart = mounted && width > 0 && height > 0;
+// ── YearPillsFilter — nuevo componente híbrido ────────────────────────────────
+// Muestra los últimos 4 años como pills + desplegable "Anteriores" si hay más
 
-  // MEJORA 3: estado local de series ocultas
-  const [hiddenSeries, setHiddenSeries] = useState<Record<string, boolean>>({});
-  const toggleSerie = (dataKey: string) => {
-    setHiddenSeries((prev) => ({ ...prev, [dataKey]: !prev[dataKey] }));
+function YearPillsFilter({
+  allAnios,
+  selectedAnios,
+  onToggle,
+  onSelectAll,
+}: {
+  allAnios: number[];
+  selectedAnios: number[];
+  onToggle: (anio: number) => void;
+  onSelectAll: () => void;
+}) {
+  const [prevOpen, setPrevOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setPrevOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  const sorted      = [...allAnios].sort((a, b) => b - a);
+  const recent      = sorted.slice(0, 4);
+  const previous    = sorted.slice(4);
+  const allSelected = selectedAnios.length === 0 || selectedAnios.length === allAnios.length;
+  const prevActive  = previous.filter((y) => selectedAnios.includes(y));
+
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer", whiteSpace: "nowrap",
+    border: active ? "1px solid #3b82f6" : "1px solid rgba(255,255,255,.14)",
+    background: active ? "#1d4ed8" : "rgba(0,0,0,.22)",
+    color: active ? "#fff" : "rgba(226,232,240,.45)",
+    height: 28, display: "flex", alignItems: "center",
+  });
+
+  const allPillStyle: React.CSSProperties = {
+    fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer",
+    border: allSelected ? "1px solid #34d399" : "1px solid rgba(52,211,153,.28)",
+    background: allSelected ? "rgba(52,211,153,.2)" : "transparent",
+    color: allSelected ? "#34d399" : "rgba(52,211,153,.6)",
+    height: 28, display: "flex", alignItems: "center",
   };
 
-  const seriesKey = series.map((s) => s.serie_key).join(",");
-  useEffect(() => { setHiddenSeries({}); }, [seriesKey]);
-
-  const yTickFormatter = yAxisFormatter ?? formatYAxis;
-
   return (
-    <div
-      className="min-w-0 rounded-xl border p-4"
-      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
-    >
-      <div className="mb-2 flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold">{title}</div>
-          <div className="ui-muted mt-1 text-xs">{subtitle}</div>
-        </div>
-        {headerExtra && <div className="shrink-0">{headerExtra}</div>}
-      </div>
-      <div className="mb-4 text-center text-xs font-medium" style={{ color: "var(--text)" }}>
-        {companyLabel}
-      </div>
-      {/* MEJORA 2: altura aumentada para acomodar el Brush */}
-      <div ref={ref} className="h-[370px] min-w-0 w-full">
-        {data.length === 0 ? (
-          <div className="ui-muted flex h-full items-center justify-center text-sm">
-            Sin datos para los filtros seleccionados.
-          </div>
-        ) : !canRenderChart ? (
-          <div className="ui-muted flex h-full items-center justify-center text-sm">
-            Preparando gráfica...
-          </div>
-        ) : (
-          <LineChart
-            width={width}
-            height={height}
-            data={data}
-            margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-            <XAxis dataKey="period_label" tick={{ fontSize: 12 }} tickFormatter={formatXAxisTick} />
-            <YAxis tick={{ fontSize: 12 }} tickFormatter={yTickFormatter} />
-            <Tooltip
-              content={(props) => (
-                <CustomTooltip
-                  active={props.active}
-                  payload={props.payload as readonly CustomTooltipEntry[] | undefined}
-                  label={props.label as string | number | undefined}
-                  extraByLabel={tooltipExtraByLabel}
-                />
-              )}
-            />
-            {/* MEJORA 3: leyenda abajo, clickable */}
-            <Legend
-              verticalAlign="bottom"
-              wrapperStyle={{ paddingTop: "12px" }}
-              onClick={(e) => { if (e?.dataKey) toggleSerie(String(e.dataKey)); }}
-              formatter={(value, entry) => (
-                <span style={{ opacity: hiddenSeries[String(entry.dataKey)] ? 0.35 : 1, cursor: "pointer" }}>
-                  {value}
+    <div ref={wrapRef} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {/* Pill "Todos" */}
+      <button type="button" onClick={onSelectAll} style={allPillStyle}>Todos</button>
+
+      {/* Separador */}
+      <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
+
+      {/* Últimos 4 años */}
+      {recent.map((y) => (
+        <button key={y} type="button" onClick={() => onToggle(y)} style={pillStyle(selectedAnios.includes(y))}>
+          {y}
+        </button>
+      ))}
+
+      {/* Desplegable "Anteriores" — solo si hay años previos */}
+      {previous.length > 0 && (
+        <>
+          <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setPrevOpen((v) => !v)}
+              style={{
+                fontSize: 11, padding: "0 10px", borderRadius: 7, cursor: "pointer",
+                height: 28, display: "flex", alignItems: "center", gap: 5,
+                border: prevActive.length > 0 ? "1px solid rgba(37,99,235,.4)" : "1px solid rgba(255,255,255,.1)",
+                background: prevActive.length > 0 ? "rgba(37,99,235,.15)" : "rgba(0,0,0,.18)",
+                color: prevActive.length > 0 ? "#93c5fd" : "rgba(226,232,240,.38)",
+              }}
+            >
+              Anteriores
+              {prevActive.length > 0 && (
+                <span style={{ fontSize: 9, background: "rgba(37,99,235,.5)", color: "#fff", borderRadius: 8, padding: "1px 5px" }}>
+                  {prevActive.length}
                 </span>
               )}
-            />
-            {/* MEJORA 2: Brush sin startIndex */}
-            <Brush
-              dataKey="period_label"
-              height={24}
-              stroke="#6D5EF8"
-              fill="rgba(109,94,248,0.08)"
-              travellerWidth={6}
-            />
-            {series.map((serie, index) => (
-              <Line
-                key={serie.serie_key}
-                type="monotone"
-                dataKey={serie.serie_key}
-                name={serie.serie_label}
-                stroke={LINE_COLORS[index % LINE_COLORS.length]}
-                strokeWidth={2}
-                dot={false}
-                connectNulls
-                hide={hiddenSeries[serie.serie_key] ?? false}
-              />
-            ))}
-          </LineChart>
+              {prevOpen ? " ▴" : " ▾"}
+            </button>
+
+            {prevOpen && (
+              <div
+                className="rounded-xl border"
+                style={{
+                  position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50,
+                  background: "var(--card-bg)", borderColor: "var(--card-border)",
+                  padding: 6, minWidth: 110, boxShadow: "0 8px 24px rgba(0,0,0,.5)",
+                }}
+              >
+                {previous.map((y) => (
+                  <div
+                    key={y}
+                    onClick={() => onToggle(y)}
+                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 6, cursor: "pointer", fontSize: 11, color: "var(--text)" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(30,58,95,.5)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <div style={{
+                      width: 13, height: 13, borderRadius: 3, flexShrink: 0,
+                      background: selectedAnios.includes(y) ? "#2563eb" : "transparent",
+                      border: `1px solid ${selectedAnios.includes(y) ? "#2563eb" : "rgba(255,255,255,.2)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#fff",
+                    }}>
+                      {selectedAnios.includes(y) ? "✓" : ""}
+                    </div>
+                    {y}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── MonthPillsFilter — meses como pills de 3 letras ───────────────────────────
+
+function MonthPillsFilter({
+  selectedMeses,
+  onToggle,
+  onSelectAll,
+}: {
+  selectedMeses: number[];
+  onToggle: (mes: number) => void;
+  onSelectAll: () => void;
+}) {
+  const allSelected = selectedMeses.length === 0 || selectedMeses.length === 12;
+
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    fontSize: 10, padding: "0 6px", borderRadius: 6, cursor: "pointer",
+    border: active ? "1px solid rgba(37,99,235,.5)" : "1px solid rgba(255,255,255,.1)",
+    background: active ? "rgba(37,99,235,.28)" : "rgba(0,0,0,.18)",
+    color: active ? "#93c5fd" : "rgba(226,232,240,.38)",
+    height: 26, display: "flex", alignItems: "center", minWidth: 30, justifyContent: "center",
+  });
+
+  const allStyle: React.CSSProperties = {
+    fontSize: 10, padding: "0 7px", borderRadius: 6, cursor: "pointer",
+    border: allSelected ? "1px solid #34d399" : "1px solid rgba(52,211,153,.22)",
+    background: allSelected ? "rgba(52,211,153,.14)" : "transparent",
+    color: allSelected ? "#34d399" : "rgba(52,211,153,.55)",
+    height: 26, display: "flex", alignItems: "center",
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+      <button type="button" onClick={onSelectAll} style={allStyle}>Todos</button>
+      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+        <button key={m} type="button" onClick={() => onToggle(m)} style={pillStyle(selectedMeses.includes(m))}>
+          {MESES_LABEL[m]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── ChartCard — card del grid 3×2 ────────────────────────────────────────────
+
+function ChartCard({
+  title, subtitle, series, hiddenSeries, onToggleSerie,
+  selector, loading, error, onExpand,
+  lastValueLabel, lastValue, trend, accentColor = "#60a5fa", badgeLabel = "G",
+}: ChartCardProps) {
+  const [containerRef, size] = useElementSize();
+  const rows = useMemo(() => buildChartRows(series), [series]);
+  const visibleSeries = series.filter((s) => !hiddenSeries[s.serie_key]);
+
+  const canRenderChart = size.width > 50 && rows.length > 0 && visibleSeries.length > 0;
+
+  return (
+    <div
+      className="rounded-xl border"
+      style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", display: "flex", flexDirection: "column", overflow: "hidden" }}
+    >
+      {/* Header */}
+      <div style={{ padding: "8px 11px 6px", borderBottom: "1px solid var(--card-border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+          <span style={{
+            fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 9,
+            background: `${accentColor}28`, color: accentColor,
+          }}>
+            {badgeLabel}
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{title}</span>
+        </div>
+        <div style={{ fontSize: 9, color: "rgba(226,232,240,.38)", marginTop: 1 }}>{subtitle}</div>
+        {selector && <div style={{ marginTop: 5 }}>{selector}</div>}
+
+        {/* Pills de series */}
+        {series.length > 0 && (
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 5 }}>
+            {series.map((s) => {
+              const active = !hiddenSeries[s.serie_key];
+              return (
+                <button
+                  key={s.serie_key}
+                  type="button"
+                  onClick={() => onToggleSerie(s.serie_key)}
+                  style={{
+                    fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer",
+                    border: active ? `1px solid ${accentColor}80` : "1px solid rgba(255,255,255,.1)",
+                    background: active ? `${accentColor}30` : "transparent",
+                    color: active ? accentColor : "rgba(226,232,240,.45)",
+                  }}
+                >
+                  {s.serie_label}
+                </button>
+              );
+            })}
+          </div>
         )}
+      </div>
+
+      {/* Chart */}
+      <div ref={containerRef} style={{ flex: 1, padding: "6px 9px 3px" }}>
+        <div style={{ height: 110, borderRadius: 7, background: "rgba(0,0,0,.18)", overflow: "hidden" }}>
+          {loading && (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(226,232,240,.35)" }}>
+              Cargando...
+            </div>
+          )}
+          {!loading && error && (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fca5a5", padding: "0 8px", textAlign: "center" }}>
+              {error}
+            </div>
+          )}
+          {!loading && !error && canRenderChart && (
+            <LineChart width={size.width - 18} height={110} data={rows} margin={{ top: 6, right: 6, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.12} />
+              <XAxis dataKey="period_label" tick={{ fontSize: 8 }} tickFormatter={formatXAxisTick} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 8 }} tickFormatter={formatYAxis} tickLine={false} axisLine={false} width={42} />
+              <Tooltip content={(props) => <CustomTooltip active={props.active} payload={props.payload as readonly CustomTooltipEntry[]} label={typeof props.label === "string" ? props.label : String(props.label ?? "")} />} />
+              <Brush dataKey="period_label" height={16} stroke={accentColor} fill="rgba(0,0,0,.3)" travellerWidth={6} />
+              {visibleSeries.map((s, i) => (
+                <Line
+                  key={s.serie_key}
+                  type="monotone"
+                  dataKey={s.serie_key}
+                  name={s.serie_label}
+                  stroke={LINE_COLORS[i % LINE_COLORS.length]}
+                  strokeWidth={i === 0 ? 2 : 1.5}
+                  dot={false}
+                  activeDot={{ r: 3 }}
+                  strokeDasharray={i === 0 ? undefined : i % 2 === 0 ? "5 2" : "3 2"}
+                />
+              ))}
+            </LineChart>
+          )}
+          {!loading && !error && !canRenderChart && rows.length === 0 && (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(226,232,240,.3)" }}>
+              Sin datos para el filtro seleccionado
+            </div>
+          )}
+        </div>
+        {/* Brush label */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 0 2px" }}>
+          <span style={{ fontSize: 8, color: "rgba(226,232,240,.28)", whiteSpace: "nowrap" }}>
+            {rows[0]?.period_label ?? ""}
+          </span>
+          <div style={{ flex: 1, height: 2, background: "rgba(255,255,255,.06)", borderRadius: 1 }}>
+            <div style={{ height: 2, background: `${accentColor}40`, borderRadius: 1, width: "100%" }} />
+          </div>
+          <span style={{ fontSize: 8, color: "rgba(226,232,240,.28)", whiteSpace: "nowrap" }}>
+            {rows[rows.length - 1]?.period_label ?? ""}
+          </span>
+        </div>
+      </div>
+
+      {/* Footer KPI */}
+      <div style={{ padding: "6px 11px", borderTop: "1px solid var(--card-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          {lastValueLabel && <div style={{ fontSize: 9, color: "rgba(226,232,240,.38)" }}>{lastValueLabel}</div>}
+          {lastValue && <div style={{ fontSize: 13, fontWeight: 500, color: accentColor }}>{lastValue}</div>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {trend && (
+            <span style={{ fontSize: 10, fontWeight: 500, color: trend.value >= 0 ? "#34d399" : "#fca5a5" }}>
+              {trend.value >= 0 ? "▲" : "▼"} {Math.abs(trend.value).toFixed(1)}{trend.label}
+            </span>
+          )}
+          {onExpand && (
+            <button
+              type="button"
+              onClick={onExpand}
+              title="Expandir gráfica"
+              style={{
+                fontSize: 10, padding: "3px 7px", border: "1px solid rgba(255,255,255,.12)",
+                borderRadius: 6, background: "transparent", color: "rgba(226,232,240,.32)", cursor: "pointer",
+              }}
+            >
+              ⤢
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Selector genérico de dos opciones toggleables ─────────────────────────
-type TwoFlagsState = { a: boolean; b: boolean };
-function TwoFlagsSelector({
-  labelA,
-  labelB,
-  flags,
-  onChange,
+// ── ExpandedChart — modal de gráfica expandida ────────────────────────────────
+
+function ExpandedChart({
+  title, subtitle, series, hiddenSeries, onToggleSerie,
+  selector, loading, error,
+  onClose, accentColor = "#60a5fa", badgeLabel = "G",
+  allAnios, expandedAnios, onToggleExpandedAnio, onSelectAllExpandedAnios,
 }: {
-  labelA: string;
-  labelB: string;
-  flags: TwoFlagsState;
-  onChange: (flags: TwoFlagsState) => void;
+  title: string;
+  subtitle: string;
+  series: GraficoSerie[];
+  hiddenSeries: Record<string, boolean>;
+  onToggleSerie: (key: string) => void;
+  selector?: React.ReactNode;
+  loading?: boolean;
+  error?: string | null;
+  onClose: () => void;
+  accentColor?: string;
+  badgeLabel?: string;
+  allAnios: number[];
+  expandedAnios: number[];
+  onToggleExpandedAnio: (anio: number) => void;
+  onSelectAllExpandedAnios: () => void;
 }) {
-  const toggle = (key: keyof TwoFlagsState) => {
-    const next = { ...flags, [key]: !flags[key] };
-    if (!next.a && !next.b) { next[key === "a" ? "b" : "a"] = true; }
-    onChange(next);
-  };
+  const [containerRef, size] = useElementSize();
+  const rows = useMemo(() => buildChartRows(series), [series]);
+  const visibleSeries = series.filter((s) => !hiddenSeries[s.serie_key]);
+  const canRenderChart = size.width > 50 && rows.length > 0 && visibleSeries.length > 0;
+
+  // KPIs calculados sobre los datos visibles
+  const kpis = useMemo(() => {
+    if (!canRenderChart) return null;
+    const mainKey  = visibleSeries[0]?.serie_key;
+    if (!mainKey) return null;
+    const values   = rows.map((r) => r[mainKey] as number).filter((v) => typeof v === "number" && !isNaN(v));
+    if (!values.length) return null;
+    const last     = values[values.length - 1];
+    const prev     = values[values.length - 2];
+    const max      = Math.max(...values);
+    const min      = Math.min(...values);
+    const avg      = values.reduce((a, b) => a + b, 0) / values.length;
+    const maxRow   = rows.find((r) => r[mainKey] === max);
+    const minRow   = rows.find((r) => r[mainKey] === min);
+    const pct      = prev && prev !== 0 ? ((last - prev) / Math.abs(prev)) * 100 : null;
+    return { last, prev, max, min, avg, maxLabel: maxRow?.period_label, minLabel: minRow?.period_label, pct };
+  }, [rows, visibleSeries, canRenderChart]);
+
+  // Shortcuts de rango
+  const currentYear = new Date().getFullYear();
+  const shortcuts = [
+    { label: "4 años (defecto)", anios: [currentYear, currentYear-1, currentYear-2, currentYear-3] },
+    { label: "Último año",       anios: [currentYear] },
+    { label: "2 años",           anios: [currentYear, currentYear-1] },
+    { label: "Todo",             anios: [] },
+    ...allAnios.slice(0, 4).map((y) => ({ label: String(y), anios: [y] })),
+  ];
+
   return (
     <div
-      className="flex rounded-lg border text-[11px] overflow-hidden"
-      style={{ borderColor: "var(--field-border)" }}
+      className="rounded-xl border"
+      style={{ background: "#111f35", borderColor: "rgba(30,58,95,.9)", overflow: "hidden" }}
     >
-      <button
-        type="button"
-        onClick={() => toggle("a")}
-        className="px-2 py-1 transition-colors"
-        style={{
-          background: flags.a ? "var(--primary)" : "var(--field-bg)",
-          color: flags.a ? "var(--primary-fg, #fff)" : "var(--field-text)",
-        }}
-      >
-        {labelA}
-      </button>
-      <button
-        type="button"
-        onClick={() => toggle("b")}
-        className="px-2 py-1 transition-colors"
-        style={{
-          background: flags.b ? "var(--primary)" : "var(--field-bg)",
-          color: flags.b ? "var(--primary-fg, #fff)" : "var(--field-text)",
-        }}
-      >
-        {labelB}
-      </button>
+      {/* Header modal */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "12px 16px 10px", borderBottom: "1px solid rgba(30,58,95,.7)", background: "var(--card-bg)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: `${accentColor}28`, color: accentColor }}>
+              {badgeLabel}
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>{title}</span>
+          </div>
+          <div style={{ fontSize: 10, color: "rgba(226,232,240,.4)" }}>
+            {subtitle} — vista expandida · filtro ampliado a 4 años
+          </div>
+
+          {/* Filtro de año en expandida — últimos 4 + anteriores */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+            <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.45)" }}>Año:</span>
+            <YearPillsFilter
+              allAnios={allAnios}
+              selectedAnios={expandedAnios}
+              onToggle={onToggleExpandedAnio}
+              onSelectAll={onSelectAllExpandedAnios}
+            />
+          </div>
+
+          {selector && <div style={{ marginTop: 4 }}>{selector}</div>}
+
+          {/* Pills de series */}
+          {series.length > 0 && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+              {series.map((s, i) => {
+                const active = !hiddenSeries[s.serie_key];
+                return (
+                  <button
+                    key={s.serie_key}
+                    type="button"
+                    onClick={() => onToggleSerie(s.serie_key)}
+                    style={{
+                      fontSize: 10, padding: "2px 8px", borderRadius: 20, cursor: "pointer",
+                      border: active ? `1px solid ${accentColor}80` : "1px solid rgba(255,255,255,.12)",
+                      background: active ? `${accentColor}30` : "transparent",
+                      color: active ? accentColor : "rgba(226,232,240,.5)",
+                    }}
+                  >
+                    {s.serie_label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexShrink: 0 }}>
+          <div style={{ fontSize: 10, color: "rgba(96,165,250,.7)", background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 7, padding: "4px 10px", whiteSpace: "nowrap" }}>
+            ↑ 4 años cargados al expandir
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ fontSize: 11, padding: "5px 12px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, background: "transparent", color: "rgba(226,232,240,.6)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            ✕ Volver al grid
+          </button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      {kpis && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderBottom: "1px solid rgba(30,58,95,.6)" }}>
+          {[
+            { label: "Último valor",     val: formatYAxis(kpis.last), sub: kpis.pct != null ? `${kpis.pct >= 0 ? "▲" : "▼"} ${Math.abs(kpis.pct).toFixed(1)}% vs anterior` : "", subColor: kpis.pct != null ? (kpis.pct >= 0 ? "#34d399" : "#fca5a5") : undefined, valColor: accentColor },
+            { label: "Máximo histórico", val: formatYAxis(kpis.max),  sub: kpis.maxLabel ?? "",  subColor: undefined, valColor: "#34d399" },
+            { label: "Mínimo del período",val: formatYAxis(kpis.min), sub: kpis.minLabel ?? "",  subColor: undefined, valColor: "#fca5a5" },
+            { label: `Media (${rows.length} meses)`, val: formatYAxis(kpis.avg), sub: "", subColor: undefined, valColor: "var(--text)" },
+          ].map((k, i) => (
+            <div key={i} style={{ padding: "10px 14px", borderRight: i < 3 ? "1px solid rgba(30,58,95,.45)" : "none" }}>
+              <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.38)", marginBottom: 3 }}>{k.label}</div>
+              <div style={{ fontSize: 16, fontWeight: 500, color: k.valColor }}>{k.val}</div>
+              {k.sub && <div style={{ fontSize: 9, color: k.subColor ?? "rgba(226,232,240,.32)", marginTop: 2 }}>{k.sub}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Gráfica grande */}
+      <div ref={containerRef} style={{ padding: "12px 16px 0" }}>
+        <div style={{ height: 260, background: "rgba(0,0,0,.15)", borderRadius: 10, overflow: "hidden" }}>
+          {loading && (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "rgba(226,232,240,.35)" }}>
+              Cargando...
+            </div>
+          )}
+          {!loading && error && (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#fca5a5" }}>
+              {error}
+            </div>
+          )}
+          {!loading && !error && canRenderChart && (
+            <LineChart width={size.width - 32} height={260} data={rows} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+              <XAxis dataKey="period_label" tick={{ fontSize: 9 }} tickFormatter={formatXAxisTick} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 9 }} tickFormatter={formatYAxis} tickLine={false} axisLine={false} width={52} />
+              <Tooltip content={(props) => <CustomTooltip active={props.active} payload={props.payload as readonly CustomTooltipEntry[]} label={typeof props.label === "string" ? props.label : String(props.label ?? "")} />} />
+              <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: 8, fontSize: 10 }} />
+              <Brush dataKey="period_label" height={20} stroke={accentColor} fill="rgba(0,0,0,.3)" travellerWidth={8} />
+              {visibleSeries.map((s, i) => (
+                <Line
+                  key={s.serie_key}
+                  type="monotone"
+                  dataKey={s.serie_key}
+                  name={s.serie_label}
+                  stroke={LINE_COLORS[i % LINE_COLORS.length]}
+                  strokeWidth={i === 0 ? 2.5 : 1.5}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  strokeDasharray={i === 0 ? undefined : i % 2 === 0 ? "5 2" : "3 2"}
+                />
+              ))}
+            </LineChart>
+          )}
+          {!loading && !error && !canRenderChart && (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "rgba(226,232,240,.3)" }}>
+              Sin datos para el filtro seleccionado
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Shortcuts de rango */}
+      <div style={{ display: "flex", gap: 6, padding: "8px 16px 12px", alignItems: "center", borderTop: "1px solid rgba(30,58,95,.5)", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: "rgba(226,232,240,.38)" }}>Acceso rápido:</span>
+        {shortcuts.map((sc) => {
+          const isActive = sc.anios.length === 0
+            ? expandedAnios.length === 0
+            : sc.anios.every((y) => expandedAnios.includes(y)) && expandedAnios.length === sc.anios.length;
+          return (
+            <button
+              key={sc.label}
+              type="button"
+              onClick={() => {
+                if (sc.anios.length === 0) { onSelectAllExpandedAnios(); }
+                else {
+                  // Seleccionar exactamente esos años
+                  sc.anios.forEach((y) => { if (!expandedAnios.includes(y)) onToggleExpandedAnio(y); });
+                  expandedAnios.filter((y) => !sc.anios.includes(y)).forEach((y) => onToggleExpandedAnio(y));
+                }
+              }}
+              style={{
+                fontSize: 10, padding: "3px 9px", borderRadius: 6, cursor: "pointer",
+                border: isActive ? "1px solid rgba(37,99,235,.4)" : "1px solid rgba(255,255,255,.1)",
+                background: isActive ? "rgba(37,99,235,.2)" : "transparent",
+                color: isActive ? "#93c5fd" : "rgba(226,232,240,.42)",
+              }}
+            >
+              {sc.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// ── Selector multi para Gráfica 2 ─────────────────────────────────────────
-function Grafica2Selector({
-  active,
-  onChange,
-}: {
-  active: Set<Grafica2SerieKey>;
-  onChange: (next: Set<Grafica2SerieKey>) => void;
-}) {
-  const toggle = (key: Grafica2SerieKey) => {
-    const next = new Set(active);
-    if (next.has(key)) {
-      if (next.size === 1) return;
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    onChange(next);
-  };
+// ── Selectores de series (G2, G5, G6) ─────────────────────────────────────────
+
+function TwoFlagsSelector({
+  flags, setFlags, labelA, labelB, accentColor,
+}: { flags: TwoFlagsState; setFlags: (f: TwoFlagsState) => void; labelA: string; labelB: string; accentColor?: string }) {
+  const color = accentColor ?? "#6D5EF8";
   return (
-    <div
-      className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
-      style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
-    >
-      {GRAFICA2_OPCIONES.map((opcion) => {
-        const isActive = active.has(opcion.key);
+    <div style={{ display: "flex", gap: 4 }}>
+      {([{ flag: "a" as const, label: labelA }, { flag: "b" as const, label: labelB }]).map(({ flag, label }) => {
+        const active = flags[flag];
         return (
           <button
-            key={opcion.key}
+            key={flag}
             type="button"
-            onClick={() => toggle(opcion.key)}
-            className="rounded px-2 py-0.5 transition-colors"
+            onClick={() => setFlags({ ...flags, [flag]: !flags[flag] })}
             style={{
-              background: isActive ? "var(--primary)" : "transparent",
-              color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)",
+              fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer",
+              border: active ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)",
+              background: active ? `${color}30` : "transparent",
+              color: active ? color : "rgba(226,232,240,.45)",
             }}
           >
-            {opcion.label}
+            {label}
           </button>
         );
       })}
@@ -572,60 +904,81 @@ function Grafica2Selector({
   );
 }
 
-// ── Selector de dos niveles genérico (modo + items) ───────────────────────
+function Grafica2Selector({
+  active, onChange, accentColor,
+}: { active: Set<Grafica2SerieKey>; onChange: (next: Set<Grafica2SerieKey>) => void; accentColor?: string }) {
+  const color = accentColor ?? "#fbbf24";
+  const toggle = (key: Grafica2SerieKey) => {
+    const next = new Set(active);
+    if (next.has(key)) { if (next.size > 1) next.delete(key); }
+    else next.add(key);
+    onChange(next);
+  };
+  const pcts = GRAFICA2_OPCIONES.filter((o) => o.grupo === "pct");
+  const kwhs = GRAFICA2_OPCIONES.filter((o) => o.grupo === "kwh");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+        {pcts.map((o) => {
+          const isActive = active.has(o.key);
+          return (
+            <button key={o.key} type="button" onClick={() => toggle(o.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: isActive ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)", background: isActive ? `${color}30` : "transparent", color: isActive ? color : "rgba(226,232,240,.45)" }}>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+        {kwhs.map((o) => {
+          const isActive = active.has(o.key);
+          return (
+            <button key={o.key} type="button" onClick={() => toggle(o.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: isActive ? `1px solid rgba(96,165,250,.5)` : "1px solid rgba(255,255,255,.1)", background: isActive ? "rgba(96,165,250,.25)" : "transparent", color: isActive ? "#93c5fd" : "rgba(226,232,240,.45)" }}>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TwoLevelSelector<M extends string, K extends string>({
-  modos,
-  activeItems,
-  items,
-  currentModo,
-  onModoChange,
-  onItemToggle,
+  modos, modoActivo, onModo,
+  items, activoItems, onToggleItem,
+  accentColor,
 }: {
   modos: { key: M; label: string }[];
-  activeItems: Set<K>;
+  modoActivo: M;
+  onModo: (m: M) => void;
   items: { key: K; label: string }[];
-  currentModo: M;
-  onModoChange: (m: M) => void;
-  onItemToggle: (k: K) => void;
+  activoItems: Set<K>;
+  onToggleItem: (k: K) => void;
+  accentColor?: string;
 }) {
+  const color = accentColor ?? "#a78bfa";
+  const toggle = (k: K) => {
+    const next = new Set(activoItems);
+    if (next.has(k)) { if (next.size > 1) next.delete(k); }
+    else next.add(k);
+    onToggleItem(k);
+  };
   return (
-    <div className="flex flex-col gap-1 items-end">
-      <div
-        className="flex rounded-lg border text-[11px] overflow-hidden"
-        style={{ borderColor: "var(--field-border)" }}
-      >
-        {modos.map((m) => (
-          <button
-            key={m.key}
-            type="button"
-            onClick={() => onModoChange(m.key)}
-            className="px-2 py-1 transition-colors"
-            style={{
-              background: currentModo === m.key ? "var(--primary)" : "var(--field-bg)",
-              color: currentModo === m.key ? "var(--primary-fg, #fff)" : "var(--field-text)",
-            }}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      <div
-        className="flex flex-wrap gap-1 rounded-lg border p-1 text-[11px]"
-        style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
-      >
-        {items.map((item) => {
-          const isActive = activeItems.has(item.key);
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", gap: 3 }}>
+        {modos.map((m) => {
+          const active = modoActivo === m.key;
           return (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => onItemToggle(item.key)}
-              className="rounded px-2 py-0.5 transition-colors"
-              style={{
-                background: isActive ? "var(--primary)" : "transparent",
-                color: isActive ? "var(--primary-fg, #fff)" : "var(--field-text)",
-              }}
-            >
+            <button key={m.key} type="button" onClick={() => onModo(m.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 5, cursor: "pointer", border: active ? "1px solid rgba(255,255,255,.2)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(255,255,255,.1)" : "transparent", color: active ? "var(--text)" : "rgba(226,232,240,.4)" }}>
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+        {items.map((item) => {
+          const active = activoItems.has(item.key);
+          return (
+            <button key={item.key} type="button" onClick={() => toggle(item.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: active ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)", background: active ? `${color}30` : "transparent", color: active ? color : "rgba(226,232,240,.45)" }}>
               {item.label}
             </button>
           );
@@ -635,622 +988,603 @@ function TwoLevelSelector<M extends string, K extends string>({
   );
 }
 
-const GRAFICA5_MODOS: { key: Grafica5Modo; label: string }[] = [
-  { key: "cups", label: "CUPS" },
-  { key: "energia", label: "Energía" },
-  { key: "importe", label: "Importe" },
-];
-const GRAFICA6_MODOS: { key: Grafica6Modo; label: string }[] = [
-  { key: "cups", label: "CUPS" },
-  { key: "energia", label: "Energía" },
-  { key: "importe", label: "Importe" },
-];
+// ── Utilidades de selección ────────────────────────────────────────────────────
 
-export default function GraficosSection({ token, currentUser }: Props) {
-  const [filtersData, setFiltersData] = useState<GraficoFiltersResponse | null>(null);
-  const [seriesData, setSeriesData] = useState<GraficosSeriesResponse | null>(null);
-  const [filtersLoading, setFiltersLoading] = useState(false);
-  const [seriesLoading, setSeriesLoading] = useState(false);
-  const [filtersError, setFiltersError] = useState<string | null>(null);
-  const [seriesError, setSeriesError] = useState<string | null>(null);
-  const [psSeriesData, setPsSeriesData] = useState<GraficosPsSeriesResponse | null>(null);
-  const [psSeriesLoading, setPsSeriesLoading] = useState(false);
-  const [psSeriesError, setPsSeriesError] = useState<string | null>(null);
+function toggleSelection<T>(value: T, setter: React.Dispatch<React.SetStateAction<T[]>>) {
+  setter((prev) => prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]);
+}
 
+function selectAll<T>(all: T[], current: T[], setter: React.Dispatch<React.SetStateAction<T[]>>) {
+  if (current.length === all.length) setter([]);
+  else setter(all);
+}
+
+// ── GraficosSection — componente principal ────────────────────────────────────
+
+export default function GraficosSection({ token }: Props) {
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+
+  // ── Estados de filtros globales (pantalla inicial — 2 últimos años por defecto)
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
-  const [selectedAnios, setSelectedAnios] = useState<number[]>([]);
-  const [selectedMeses, setSelectedMeses] = useState<number[]>([]);
-  const [grafica1Flags, setGrafica1Flags] = useState<TwoFlagsState>({ a: true, b: false });
-  const [grafica2Active, setGrafica2Active] = useState<Set<Grafica2SerieKey>>(new Set(["pct"]));
-  const [grafica3Flags, setGrafica3Flags] = useState<TwoFlagsState>({ a: true, b: false });
-  const [grafica4Flags, setGrafica4Flags] = useState<TwoFlagsState>({ a: true, b: false });
-  const [grafica5Modo, setGrafica5Modo] = useState<Grafica5Modo>("cups");
-  const [grafica5Tipos, setGrafica5Tipos] = useState<Set<Grafica5TipoKey>>(new Set(["total"]));
-  const [grafica6Modo, setGrafica6Modo] = useState<Grafica6Modo>("cups");
-  const [grafica6Tarifas, setGrafica6Tarifas] = useState<Set<Grafica6TarifaKey>>(new Set(["total"]));
+  const [selectedAnios,    setSelectedAnios]    = useState<number[]>([currentYear, currentYear - 1]);
+  const [selectedMeses,    setSelectedMeses]    = useState<number[]>([]);
 
-  useEffect(() => {
-    const loadFilters = async () => {
-      if (!token) { setFiltersData(null); return; }
-      setFiltersLoading(true);
-      setFiltersError(null);
-      try {
-        const response = await fetch(`${API_BASE_URL}/medidas-graficos/filters`, {
-          method: "GET",
-          headers: getAuthHeaders(token),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || "No se pudieron cargar los filtros.");
-        }
-        const json = (await response.json()) as GraficoFiltersResponse;
-        setFiltersData(json);
-        setSelectedEmpresas(json.empresas.map((item) => item.id));
-        setSelectedAnios(json.anios);
-        setSelectedMeses(json.meses);
-      } catch (err) {
-        setFiltersError(err instanceof Error ? err.message : "No se pudieron cargar los filtros.");
-        setFiltersData(null);
-      } finally {
-        setFiltersLoading(false);
-      }
-    };
-    void loadFilters();
+  // ── Estados de datos
+  const [filtersData,    setFiltersData]    = useState<GraficoFiltersResponse | null>(null);
+  const [seriesData,     setSeriesData]     = useState<GraficosSeriesResponse | null>(null);
+  const [psSeriesData,   setPsSeriesData]   = useState<GraficosPsSeriesResponse | null>(null);
+  const [filtersLoading, setFiltersLoading] = useState(false);
+  const [seriesLoading,  setSeriesLoading]  = useState(false);
+  const [psSeriesLoading,setPsSeriesLoading]= useState(false);
+  const [filtersError,   setFiltersError]   = useState<string | null>(null);
+  const [seriesError,    setSeriesError]    = useState<string | null>(null);
+  const [psSeriesError,  setPsSeriesError]  = useState<string | null>(null);
+
+  // ── Estado expandida
+  const [expandedGrafica, setExpandedGrafica] = useState<number | null>(null);
+
+  // ── Años en vista expandida — por defecto últimos 4
+  const [expandedAnios, setExpandedAnios] = useState<number[]>([
+    currentYear, currentYear - 1, currentYear - 2, currentYear - 3,
+  ]);
+
+  // ── Series activas G1/G3/G4
+  const [g1Flags,  setG1Flags]  = useState<TwoFlagsState>({ a: true, b: false });
+  const [g3Flags,  setG3Flags]  = useState<TwoFlagsState>({ a: true, b: false });
+  const [g4Flags,  setG4Flags]  = useState<TwoFlagsState>({ a: true, b: false });
+
+  // ── Series activas G2
+  const [g2Active, setG2Active] = useState<Set<Grafica2SerieKey>>(new Set(["pct"]));
+
+  // ── G5
+  const [g5Modo,       setG5Modo]       = useState<Grafica5Modo>("cups");
+  const [g5ActiveTipos,setG5ActiveTipos]= useState<Set<Grafica5TipoKey>>(new Set(["total"]));
+
+  // ── G6
+  const [g6Modo,        setG6Modo]        = useState<Grafica6Modo>("cups");
+  const [g6ActiveTarifas,setG6ActiveTarifas]= useState<Set<Grafica6TarifaKey>>(new Set(["total"]));
+
+  // ── hiddenSeries global
+  const [hiddenSeries, setHiddenSeries] = useState<Record<string, boolean>>({});
+
+  const toggleSerie = useCallback((key: string) => {
+    setHiddenSeries((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  // ── Cargar filtros
+  const loadFilters = useCallback(async () => {
+    if (!token) return;
+    setFiltersLoading(true); setFiltersError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/graficos/filters`, { headers: getAuthHeaders(token) });
+      if (!response.ok) throw new Error(`Error ${response.status}`);
+      const json = (await response.json()) as GraficoFiltersResponse;
+      setFiltersData(json);
+    } catch (err) {
+      setFiltersError(err instanceof Error ? err.message : "Error cargando filtros");
+    } finally {
+      setFiltersLoading(false);
+    }
   }, [token]);
 
-  useEffect(() => {
-    const loadSeries = async () => {
-      if (!token) { setSeriesData(null); return; }
-      if (!filtersData) return;
-      setSeriesLoading(true);
-      setSeriesError(null);
-      try {
-        const searchParams = new URLSearchParams();
-        for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
-        for (const anio of selectedAnios) searchParams.append("anios", String(anio));
-        for (const mes of selectedMeses) searchParams.append("meses", String(mes));
-        const allSelected = !filtersData.empresas.length || selectedEmpresas.length === filtersData.empresas.length;
-        searchParams.set("aggregation", allSelected || selectedEmpresas.length > 1 ? "sum" : "avg");
-        const response = await fetch(`${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`, {
-          method: "GET",
-          headers: getAuthHeaders(token),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || "No se pudieron cargar las gráficas.");
-        }
-        const json = (await response.json()) as GraficosSeriesResponse;
-        setSeriesData(json);
-      } catch (err) {
-        setSeriesError(err instanceof Error ? err.message : "No se pudieron cargar las gráficas.");
-        setSeriesData(null);
-      } finally {
-        setSeriesLoading(false);
-      }
-    };
+  // ── Cargar series generales
+  const loadSeries = useCallback(async (aniosOverride?: number[]) => {
+    if (!token) return;
+    setSeriesLoading(true); setSeriesError(null);
+    try {
+      const searchParams = new URLSearchParams();
+      const aniosToUse = aniosOverride ?? selectedAnios;
+      for (const id  of selectedEmpresas) searchParams.append("empresa_ids", String(id));
+      for (const anio of aniosToUse)      searchParams.append("anios", String(anio));
+      for (const mes  of selectedMeses)   searchParams.append("meses", String(mes));
+      const response = await fetch(`${API_BASE_URL}/graficos/series?${searchParams.toString()}`, { headers: getAuthHeaders(token) });
+      if (!response.ok) throw new Error(`Error ${response.status}`);
+      const json = (await response.json()) as GraficosSeriesResponse;
+      setSeriesData(json);
+    } catch (err) {
+      setSeriesError(err instanceof Error ? err.message : "Error cargando series");
+    } finally {
+      setSeriesLoading(false);
+    }
+  }, [token, selectedEmpresas, selectedAnios, selectedMeses]);
+
+  // ── Cargar series PS
+  const loadPsSeries = useCallback(async (aniosOverride?: number[]) => {
+    if (!token) return;
+    setPsSeriesLoading(true); setPsSeriesError(null);
+    try {
+      const searchParams = new URLSearchParams();
+      const aniosToUse = aniosOverride ?? selectedAnios;
+      for (const id  of selectedEmpresas) searchParams.append("empresa_ids", String(id));
+      for (const anio of aniosToUse)      searchParams.append("anios", String(anio));
+      for (const mes  of selectedMeses)   searchParams.append("meses", String(mes));
+      const response = await fetch(`${API_BASE_URL}/graficos/ps-series?${searchParams.toString()}`, { headers: getAuthHeaders(token) });
+      if (!response.ok) throw new Error(`Error ${response.status}`);
+      const json = (await response.json()) as GraficosPsSeriesResponse;
+      setPsSeriesData(json);
+    } catch (err) {
+      setPsSeriesError(err instanceof Error ? err.message : "Error cargando series PS");
+    } finally {
+      setPsSeriesLoading(false);
+    }
+  }, [token, selectedEmpresas, selectedAnios, selectedMeses]);
+
+  useEffect(() => { void loadFilters(); }, [loadFilters]);
+  useEffect(() => { void loadSeries(); void loadPsSeries(); }, [loadSeries, loadPsSeries]);
+
+  // ── Al abrir expandida — cargar con 4 años
+  const handleExpand = useCallback((graficaNum: number) => {
+    const anios4 = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3].filter((y) =>
+      !filtersData || filtersData.anios.includes(y)
+    );
+    setExpandedAnios(anios4.length > 0 ? anios4 : [currentYear]);
+    setExpandedGrafica(graficaNum);
+    void loadSeries(anios4);
+    void loadPsSeries(anios4);
+  }, [currentYear, filtersData, loadSeries, loadPsSeries]);
+
+  const handleCloseExpanded = useCallback(() => {
+    setExpandedGrafica(null);
+    // Recargar con los filtros originales
     void loadSeries();
-  }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
-
-  useEffect(() => {
-    const loadPsSeries = async () => {
-      if (!token) { setPsSeriesData(null); return; }
-      if (!filtersData) return;
-      setPsSeriesLoading(true);
-      setPsSeriesError(null);
-      try {
-        const searchParams = new URLSearchParams();
-        for (const empresaId of selectedEmpresas) searchParams.append("empresa_ids", String(empresaId));
-        for (const anio of selectedAnios) searchParams.append("anios", String(anio));
-        for (const mes of selectedMeses) searchParams.append("meses", String(mes));
-        const response = await fetch(`${API_BASE_URL}/medidas-graficos-ps/series-cups?${searchParams.toString()}`, {
-          method: "GET",
-          headers: getAuthHeaders(token),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || "No se pudieron cargar los datos PS.");
-        }
-        const json = (await response.json()) as GraficosPsSeriesResponse;
-        setPsSeriesData(json);
-      } catch (err) {
-        setPsSeriesError(err instanceof Error ? err.message : "No se pudieron cargar los datos PS.");
-        setPsSeriesData(null);
-      } finally {
-        setPsSeriesLoading(false);
-      }
-    };
     void loadPsSeries();
-  }, [token, filtersData, selectedEmpresas, selectedAnios, selectedMeses]);
+  }, [loadSeries, loadPsSeries]);
 
+  // ── Opciones para dropdowns/filtros
   const empresaOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.empresas ?? []).map((item) => ({ value: item.id, label: item.nombre })),
+    () => (filtersData?.empresas ?? []).map((e) => ({ value: e.id, label: `${e.id} – ${e.nombre}` })),
     [filtersData]
   );
   const anioOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.anios ?? []).map((item) => ({ value: item, label: String(item) })),
-    [filtersData]
-  );
-  const mesOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.meses ?? []).map((item) => ({ value: item, label: MESES_LABEL[item] ?? String(item) })),
+    () => (filtersData?.anios ?? []).map((y) => ({ value: y, label: String(y) })),
     [filtersData]
   );
 
-  const selectedEmpresaNames = useMemo(() => {
-    if (!filtersData?.empresas?.length) return "Todas las empresas";
-    if (selectedEmpresas.length === 0 || selectedEmpresas.length === filtersData.empresas.length)
-      return "Todas las empresas";
-    const names = filtersData.empresas
-      .filter((e) => selectedEmpresas.includes(e.id))
-      .map((e) => e.nombre);
-    if (names.length === 0) return "Todas las empresas";
-    return names.join(" · ");
-  }, [filtersData, selectedEmpresas]);
+  // ── Series para cada gráfica ───────────────────────────────────────────────
 
-  // ── Adquisición por ventanas ───────────────────────────────────────────────
-  const adqVentanasByPeriod = useMemo(() => {
-    const map = new Map<string, Record<string, number>>();
-    for (const serie of seriesData?.adquisicion_ventanas?.series ?? []) {
-      for (const point of serie.points) {
-        const current = map.get(point.period_key) ?? {};
-        current[serie.serie_key] = point.value;
-        map.set(point.period_key, current);
-      }
-    }
-    return map;
-  }, [seriesData]);
+  // G1 — E facturada / Adquisición
+  const grafica1Series = useMemo((): GraficoSerie[] => {
+    if (!seriesData) return [];
+    const allPeriodKeys = new Set<string>();
+    const m1Serie = seriesData.energia_facturada.series[0];
+    if (m1Serie) m1Serie.points.forEach((p) => allPeriodKeys.add(p.period_key));
 
-  // ── Gráfica 1 ────────────────────────────────────────────────────────────
-  const grafica1Series = useMemo(() => {
-    const result: GraficoSerie[] = [];
-    if (grafica1Flags.a) {
-      result.push(
-        ...relabelSeries(
-          (seriesData?.energia_facturada.series ?? []).map((s) => ({ ...s, serie_key: `ef_${s.serie_key}` })),
-          "E neta facturada"
-        )
-      );
-    }
-    if (grafica1Flags.b) {
-      const allPeriodKeys = Array.from(adqVentanasByPeriod.keys()).sort();
-      if (allPeriodKeys.length > 0) {
-        const m1Serie = seriesData?.adquisicion_ventanas?.series?.find((s) => s.serie_key === "adq_m1");
-        const labelByKey: Record<string, string> = {};
-        for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
-        const points: GraficoPoint[] = allPeriodKeys.map((pk) => {
-          const ventanas = adqVentanasByPeriod.get(pk) ?? {};
-          let value = 0;
-          for (const v of ADQ_VENTANAS) {
-            const val = ventanas[v.key] ?? 0;
-            if (val !== 0) { value = val; break; }
-          }
-          return { period_key: pk, period_label: labelByKey[pk] ?? pk, value };
-        });
-        result.push({ serie_key: "adquisicion", serie_label: "Adquisición", points });
-      }
-    }
-    return result;
-  }, [seriesData, grafica1Flags, adqVentanasByPeriod]);
-
-  const grafica1Rows = useMemo(() => {
-    const map = new Map<string, ChartRow>();
-    if (grafica1Flags.a) {
-      for (const serie of seriesData?.energia_facturada.series ?? []) {
-        for (const point of serie.points) {
-          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-          current[`ef_${serie.serie_key}`] = point.value;
-          map.set(point.period_key, current);
-        }
-      }
-    }
-    if (grafica1Flags.b) {
-      const m1Serie = seriesData?.adquisicion_ventanas?.series?.find((s) => s.serie_key === "adq_m1");
-      const labelByKey: Record<string, string> = {};
-      for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
-      for (const [pk, ventanas] of adqVentanasByPeriod) {
-        let value = 0;
-        for (const v of ADQ_VENTANAS) {
-          const val = ventanas[v.key] ?? 0;
-          if (val !== 0) { value = val; break; }
-        }
-        const current = map.get(pk) ?? { period_key: pk, period_label: labelByKey[pk] ?? pk };
-        current["adquisicion"] = value;
-        map.set(pk, current);
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
-  }, [seriesData, grafica1Flags, adqVentanasByPeriod]);
-
-  const grafica1TooltipExtra = useMemo((): Record<string, { label: string; value: number }[]> => {
-    if (!grafica1Flags.b) return {};
-    const result: Record<string, { label: string; value: number }[]> = {};
-    const m1Serie = seriesData?.adquisicion_ventanas?.series?.find((s) => s.serie_key === "adq_m1");
     const labelByKey: Record<string, string> = {};
-    for (const p of m1Serie?.points ?? []) labelByKey[p.period_key] = p.period_label;
-    for (const [pk, ventanas] of adqVentanasByPeriod) {
-      const periodLabel = labelByKey[pk] ?? pk;
-      const entries: { label: string; value: number }[] = [];
-      for (const v of [...ADQ_VENTANAS].reverse()) {
-        const val = ventanas[v.key] ?? 0;
-        if (val !== 0) entries.push({ label: v.label, value: val });
+    m1Serie?.points.forEach((p) => { labelByKey[p.period_key] = p.period_label; });
+
+    const ventanas = ADQ_VENTANAS;
+    const adqVentanasByPeriod: Record<string, Record<string, number>> = {};
+    for (const v of ventanas) {
+      const serie = seriesData.adquisicion_ventanas.series.find((s) => s.serie_key === `adq_${v.toLowerCase()}`);
+      if (!serie) continue;
+      for (const pt of serie.points) {
+        if (!adqVentanasByPeriod[pt.period_key]) adqVentanasByPeriod[pt.period_key] = {};
+        adqVentanasByPeriod[pt.period_key][`adq_${v.toLowerCase()}`] = pt.value;
+        labelByKey[pt.period_key] = pt.period_label;
+        allPeriodKeys.add(pt.period_key);
       }
-      if (entries.length > 0) result[periodLabel] = entries;
+    }
+
+    const result: GraficoSerie[] = [];
+    if (g1Flags.a && m1Serie) result.push({ ...m1Serie, serie_label: "E neta facturada" });
+    if (g1Flags.b) {
+      const adqSerie = seriesData.adquisicion.series[0];
+      if (adqSerie) result.push({ ...adqSerie, serie_label: "Adquisición" });
     }
     return result;
-  }, [seriesData, grafica1Flags, adqVentanasByPeriod]);
+  }, [seriesData, g1Flags]);
 
   const grafica1Subtitle = useMemo(() => {
-    if (grafica1Flags.a && grafica1Flags.b) return "Histórico de E neta facturada y Adquisición (publicación más reciente).";
-    if (grafica1Flags.a) return "Histórico de E neta facturada.";
-    return "Histórico de Adquisición (publicación más reciente disponible).";
-  }, [grafica1Flags]);
+    const labels = [];
+    if (g1Flags.a) labels.push("E neta facturada");
+    if (g1Flags.b) labels.push("Adquisición (pub. más reciente)");
+    return `Histórico de ${labels.join(" y ")}.`;
+  }, [g1Flags]);
 
-  // ── Gráfica 2 ────────────────────────────────────────────────────────────
-  const grafica2Series = useMemo(() => {
+  // G2 — Pérdidas
+  const grafica2Series = useMemo((): GraficoSerie[] => {
+    if (!seriesData) return [];
     const result: GraficoSerie[] = [];
-    if (grafica2Active.has("pct"))
-      result.push(...relabelSeries((seriesData?.perdidas.series ?? []).map((s) => ({ ...s, serie_key: `pct_${s.serie_key}` })), "Pérdidas (%)"));
-    for (const opcion of GRAFICA2_OPCIONES.filter((o) => o.key !== "pct")) {
-      if (grafica2Active.has(opcion.key)) {
-        const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key);
-        if (serie) result.push({ ...serie, serie_label: opcion.label });
+    for (const opcion of GRAFICA2_OPCIONES) {
+      if (!g2Active.has(opcion.key)) continue;
+      if (opcion.grupo === "pct") {
+        if (opcion.key === "pct") {
+          const s = seriesData.perdidas.series[0];
+          if (s) result.push({ ...s, serie_key: "pct", serie_label: "Pérdidas (%)" });
+        } else {
+          const ventana = opcion.key.replace("pct_", "").toUpperCase();
+          const s = seriesData.perdidas_ventanas.series.find((x) => x.serie_key.toUpperCase().includes(ventana));
+          if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label });
+        }
+      } else {
+        if (opcion.key === "kwh") {
+          const s = seriesData.perdidas_kwh.series[0];
+          if (s) result.push({ ...s, serie_key: "kwh", serie_label: "Pérdidas (kWh)" });
+        } else {
+          const ventana = opcion.key.replace("kwh_", "").toUpperCase();
+          const s = seriesData.perdidas_ventanas.series.find((x) => x.serie_key.toUpperCase().includes(ventana));
+          if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label });
+        }
       }
     }
     return result;
-  }, [seriesData, grafica2Active]);
-
-  const grafica2Rows = useMemo(() => {
-    const map = new Map<string, ChartRow>();
-    if (grafica2Active.has("pct")) {
-      for (const serie of seriesData?.perdidas.series ?? []) {
-        for (const point of serie.points) {
-          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-          current[`pct_${serie.serie_key}`] = point.value;
-          map.set(point.period_key, current);
-        }
-      }
-    }
-    for (const opcion of GRAFICA2_OPCIONES.filter((o) => o.key !== "pct")) {
-      if (grafica2Active.has(opcion.key)) {
-        const serie = (seriesData?.perdidas_ventanas.series ?? []).find((s) => s.serie_key === opcion.key);
-        if (serie) {
-          for (const point of serie.points) {
-            const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-            current[opcion.key] = point.value;
-            map.set(point.period_key, current);
-          }
-        }
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
-  }, [seriesData, grafica2Active]);
+  }, [seriesData, g2Active]);
 
   const grafica2Subtitle = useMemo(() => {
-    const labels = GRAFICA2_OPCIONES.filter((o) => grafica2Active.has(o.key)).map((o) => o.label);
+    const labels = [...g2Active].map((k) => GRAFICA2_OPCIONES.find((o) => o.key === k)?.label ?? k);
     return `Histórico de ${labels.join(", ")}.`;
-  }, [grafica2Active]);
+  }, [g2Active]);
 
-  const perdidasKwhByLabel = useMemo(
-    () => buildTooltipExtraByLabel(seriesData?.perdidas_kwh ?? null, "Pérdidas E facturada (kWh)"),
+  // G3 — Energías publicadas / E PF
+  const energiasPfSinFinal = useMemo(
+    () => seriesData?.energias_pf.series.filter((s) => !s.serie_key.includes("final")) ?? [],
     [seriesData]
   );
-
-  // ── Gráfica 3 ────────────────────────────────────────────────────────────
-  const energiasPfSinFinal = useMemo((): GraficoSeriesGroup => ({
-    series: (seriesData?.energias_pf.series ?? []).filter((s) => s.serie_key !== "pf_final"),
-  }), [seriesData]);
-
-  const grafica3Series = useMemo(() => {
+  const grafica3Series = useMemo((): GraficoSerie[] => {
+    if (!seriesData) return [];
     const result: GraficoSerie[] = [];
-    if (grafica3Flags.a) result.push(...(seriesData?.energias_publicadas.series ?? []));
-    if (grafica3Flags.b) result.push(...energiasPfSinFinal.series);
+    if (g3Flags.a) result.push(...relabelSeries(seriesData.energias_publicadas.series, {}));
+    if (g3Flags.b) result.push(...relabelSeries(energiasPfSinFinal, {}));
     return result;
-  }, [seriesData, grafica3Flags, energiasPfSinFinal]);
-
-  const grafica3Rows = useMemo(() => {
-    const groups: (GraficoSeriesGroup | null)[] = [];
-    if (grafica3Flags.a) groups.push(seriesData?.energias_publicadas ?? null);
-    if (grafica3Flags.b) groups.push(energiasPfSinFinal);
-    return buildChartRowsCombined(groups);
-  }, [seriesData, grafica3Flags, energiasPfSinFinal]);
+  }, [seriesData, g3Flags, energiasPfSinFinal]);
 
   const grafica3Subtitle = useMemo(() => {
-    if (grafica3Flags.a && grafica3Flags.b) return "Histórico de E neta publicada (M2, M7, M11, ART15) y E PF (M2, M7, M11, ART15).";
-    if (grafica3Flags.a) return "Histórico de E neta publicada M2, M7, M11 y ART15.";
-    return "Histórico de E PF M2, M7, M11 y ART15.";
-  }, [grafica3Flags]);
+    const parts = [];
+    if (g3Flags.a) parts.push("E neta publicada (M2, M7, M11, ART15)");
+    if (g3Flags.b) parts.push("E PF (M2, M7, M11, ART15)");
+    return `Histórico de ${parts.join(" y ")}.`;
+  }, [g3Flags]);
 
-  // ── Gráfica 4 ────────────────────────────────────────────────────────────
-  const grafica4Series = useMemo(() => {
+  // G4 — Autoconsumo / E generada
+  const grafica4Series = useMemo((): GraficoSerie[] => {
+    if (!seriesData) return [];
     const result: GraficoSerie[] = [];
-    if (grafica4Flags.a)
-      result.push(...(seriesData?.autoconsumo.series ?? []).map((s) => ({
-        ...s, serie_key: `autoc_${s.serie_key}`,
-        serie_label: seriesData?.autoconsumo.series.length === 1 ? "E autoconsumo" : s.serie_label,
-      })));
-    if (grafica4Flags.b)
-      result.push(...(seriesData?.energia_generada.series ?? []).map((s) => ({
-        ...s, serie_key: `gen_${s.serie_key}`,
-        serie_label: seriesData?.energia_generada.series.length === 1 ? "E generada" : s.serie_label,
-      })));
+    if (g4Flags.a) {
+      const s = seriesData.autoconsumo.series[0];
+      if (s) result.push({ ...s, serie_label: "E autoconsumo" });
+    }
+    if (g4Flags.b) {
+      const s = seriesData.energia_generada.series[0];
+      if (s) result.push({ ...s, serie_label: "E generada" });
+    }
     return result;
-  }, [seriesData, grafica4Flags]);
-
-  const grafica4Rows = useMemo(() => {
-    const map = new Map<string, ChartRow>();
-    if (grafica4Flags.a) {
-      for (const serie of seriesData?.autoconsumo.series ?? []) {
-        for (const point of serie.points) {
-          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-          current[`autoc_${serie.serie_key}`] = point.value;
-          map.set(point.period_key, current);
-        }
-      }
-    }
-    if (grafica4Flags.b) {
-      for (const serie of seriesData?.energia_generada.series ?? []) {
-        for (const point of serie.points) {
-          const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-          current[`gen_${serie.serie_key}`] = point.value;
-          map.set(point.period_key, current);
-        }
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
-  }, [seriesData, grafica4Flags]);
+  }, [seriesData, g4Flags]);
 
   const grafica4Subtitle = useMemo(() => {
-    if (grafica4Flags.a && grafica4Flags.b) return "Histórico de E autoconsumo y E generada.";
-    if (grafica4Flags.a) return "Histórico de E autoconsumo.";
-    return "Histórico de E generada.";
-  }, [grafica4Flags]);
+    const parts = [];
+    if (g4Flags.a) parts.push("E autoconsumo");
+    if (g4Flags.b) parts.push("E generada");
+    return `Histórico de ${parts.join(" y ")}.`;
+  }, [g4Flags]);
 
-  // ── Gráfica 5: PS por tipo ────────────────────────────────────────────────
-  const grafica5Group = useMemo((): GraficoSeriesGroup | null => {
-    if (!psSeriesData) return null;
-    if (grafica5Modo === "cups") return psSeriesData.cups_por_tipo;
-    if (grafica5Modo === "energia") return psSeriesData.energia_por_tipo;
-    return psSeriesData.importe_por_tipo;
-  }, [psSeriesData, grafica5Modo]);
-
-  const grafica5Config = GRAFICA5_MODO_CONFIG[grafica5Modo];
-
+  // G5 — PS por tipo
   const grafica5Series = useMemo((): GraficoSerie[] => {
-    if (!grafica5Group) return [];
-    return GRAFICA5_TIPOS.filter((t) => grafica5Tipos.has(t.key)).map((t) => {
-      const serieKey = `${grafica5Config.prefix}${t.key}`;
-      const serie = grafica5Group.series.find((s) => s.serie_key === serieKey);
-      if (!serie) return null;
-      return { ...serie, serie_label: `${grafica5Config.modeLabel} ${t.label}` };
-    }).filter((s): s is GraficoSerie => s !== null);
-  }, [grafica5Group, grafica5Tipos, grafica5Config]);
-
-  const grafica5Rows = useMemo((): ChartRow[] => {
-    if (!grafica5Group) return [];
-    const map = new Map<string, ChartRow>();
-    for (const tipo of GRAFICA5_TIPOS) {
-      if (!grafica5Tipos.has(tipo.key)) continue;
-      const serieKey = `${grafica5Config.prefix}${tipo.key}`;
-      const serie = grafica5Group.series.find((s) => s.serie_key === serieKey);
-      if (!serie) continue;
-      for (const point of serie.points) {
-        const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-        current[serieKey] = point.value;
-        map.set(point.period_key, current);
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
-  }, [grafica5Group, grafica5Tipos, grafica5Config]);
-
-  const grafica5Subtitle = useMemo(() => {
-    const tipoLabels = GRAFICA5_TIPOS.filter((t) => grafica5Tipos.has(t.key)).map((t) => t.label);
-    return `${grafica5Config.modeLabel} — ${tipoLabels.join(", ")}.`;
-  }, [grafica5Tipos, grafica5Config]);
-
-  const handleGrafica5TipoToggle = (key: Grafica5TipoKey) => {
-    setGrafica5Tipos((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) { if (next.size === 1) return prev; next.delete(key); } else { next.add(key); }
-      return next;
+    if (!psSeriesData) return [];
+    const groupKey = GRAFICA5_MODO_CONFIG[g5Modo].groupKey;
+    const group = psSeriesData[groupKey] as GraficoSeriesGroup;
+    return group.series.filter((s) => {
+      const key = s.serie_key as Grafica5TipoKey;
+      return g5ActiveTipos.has(key);
     });
-  };
+  }, [psSeriesData, g5Modo, g5ActiveTipos]);
 
-  // ── Gráfica 6: PS por tarifa ──────────────────────────────────────────────
-  const grafica6Group = useMemo((): GraficoSeriesGroup | null => {
-    if (!psSeriesData) return null;
-    if (grafica6Modo === "cups") return psSeriesData.cups_por_tarifa;
-    if (grafica6Modo === "energia") return psSeriesData.energia_por_tarifa;
-    return psSeriesData.importe_por_tarifa;
-  }, [psSeriesData, grafica6Modo]);
+  const grafica5Subtitle = `${GRAFICA5_MODO_CONFIG[g5Modo].label} PS por tipo — ${[...g5ActiveTipos].map((k) => GRAFICA5_TIPOS.find((t) => t.key === k)?.label ?? k).join(", ")}.`;
 
-  const grafica6Config = GRAFICA6_MODO_CONFIG[grafica6Modo];
-
+  // G6 — PS por tarifa
   const grafica6Series = useMemo((): GraficoSerie[] => {
-    if (!grafica6Group) return [];
-    return GRAFICA6_TARIFAS.filter((t) => grafica6Tarifas.has(t.key)).map((t) => {
-      const serieKey = `${grafica6Config.prefix}${t.key}`;
-      const serie = grafica6Group.series.find((s) => s.serie_key === serieKey);
-      if (!serie) return null;
-      return { ...serie, serie_label: `${grafica6Config.modeLabel} ${t.label}` };
-    }).filter((s): s is GraficoSerie => s !== null);
-  }, [grafica6Group, grafica6Tarifas, grafica6Config]);
-
-  const grafica6Rows = useMemo((): ChartRow[] => {
-    if (!grafica6Group) return [];
-    const map = new Map<string, ChartRow>();
-    for (const tarifa of GRAFICA6_TARIFAS) {
-      if (!grafica6Tarifas.has(tarifa.key)) continue;
-      const serieKey = `${grafica6Config.prefix}${tarifa.key}`;
-      const serie = grafica6Group.series.find((s) => s.serie_key === serieKey);
-      if (!serie) continue;
-      for (const point of serie.points) {
-        const current = map.get(point.period_key) ?? { period_key: point.period_key, period_label: point.period_label };
-        current[serieKey] = point.value;
-        map.set(point.period_key, current);
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key)));
-  }, [grafica6Group, grafica6Tarifas, grafica6Config]);
-
-  const grafica6Subtitle = useMemo(() => {
-    const tarifaLabels = GRAFICA6_TARIFAS.filter((t) => grafica6Tarifas.has(t.key)).map((t) => t.label);
-    return `${grafica6Config.modeLabel} — ${tarifaLabels.join(", ")}.`;
-  }, [grafica6Tarifas, grafica6Config]);
-
-  const handleGrafica6TarifaToggle = (key: Grafica6TarifaKey) => {
-    setGrafica6Tarifas((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) { if (next.size === 1) return prev; next.delete(key); } else { next.add(key); }
-      return next;
+    if (!psSeriesData) return [];
+    const groupKey = GRAFICA6_MODO_CONFIG[g6Modo].groupKey;
+    const group = psSeriesData[groupKey] as GraficoSeriesGroup;
+    return group.series.filter((s) => {
+      const key = s.serie_key as Grafica6TarifaKey;
+      return g6ActiveTarifas.has(key);
     });
-  };
+  }, [psSeriesData, g6Modo, g6ActiveTarifas]);
 
-  const toggleSelection = (value: number, setter: React.Dispatch<React.SetStateAction<number[]>>) => {
-    setter((prev) => prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]);
-  };
-  const selectAll = (values: number[], selected: number[], setter: React.Dispatch<React.SetStateAction<number[]>>) => {
-    if (selected.length === values.length) { setter([]); return; }
-    setter(values);
-  };
+  const grafica6Subtitle = `${GRAFICA6_MODO_CONFIG[g6Modo].label} PS por tarifa — ${[...g6ActiveTarifas].map((k) => GRAFICA6_TARIFAS.find((t) => t.key === k)?.label ?? k).join(", ")}.`;
+
+  // ── Helpers de último valor / tendencia ──────────────────────────────────────
+
+  function getLastValueInfo(series: GraficoSerie[]): { label: string; value: string; trend: { value: number; label: string } | undefined } {
+    const s = series[0];
+    if (!s || s.points.length === 0) return { label: "—", value: "—", trend: undefined };
+    const pts    = [...s.points].sort((a, b) => a.period_key.localeCompare(b.period_key));
+    const last   = pts[pts.length - 1];
+    const prev   = pts[pts.length - 2];
+    const pct    = prev && prev.value !== 0 ? ((last.value - prev.value) / Math.abs(prev.value)) * 100 : undefined;
+    return {
+      label: `${s.serie_label} · ${last.period_label}`,
+      value: formatYAxis(last.value),
+      trend: pct !== undefined ? { value: pct, label: "%" } : undefined,
+    };
+  }
+
+  const g1Info = useMemo(() => getLastValueInfo(grafica1Series), [grafica1Series]);
+  const g2Info = useMemo(() => getLastValueInfo(grafica2Series), [grafica2Series]);
+  const g3Info = useMemo(() => getLastValueInfo(grafica3Series), [grafica3Series]);
+  const g4Info = useMemo(() => getLastValueInfo(grafica4Series), [grafica4Series]);
+  const g5Info = useMemo(() => getLastValueInfo(grafica5Series), [grafica5Series]);
+  const g6Info = useMemo(() => getLastValueInfo(grafica6Series), [grafica6Series]);
+
+  // ── Config de cada gráfica para el grid y la expandida ───────────────────────
+
+  const GRAFICAS_MODOS = useMemo(() => [
+    { key: "cups" as Grafica5Modo, label: "CUPS" },
+    { key: "energia" as Grafica5Modo, label: "Energía" },
+    { key: "importe" as Grafica5Modo, label: "Importe" },
+  ], []);
+
+  const GRAFICA5_MODOS = GRAFICAS_MODOS;
+  const GRAFICA6_MODOS: { key: Grafica6Modo; label: string }[] = [
+    { key: "cups", label: "CUPS" }, { key: "energia", label: "Energía" }, { key: "importe", label: "Importe" },
+  ];
+
+  // ── Datos de la gráfica expandida actualmente ─────────────────────────────────
+
+  const expandedData = useMemo(() => {
+    if (expandedGrafica === null) return null;
+    const map: Record<number, { series: GraficoSerie[]; subtitle: string; selector?: React.ReactNode }> = {
+      1: { series: grafica1Series, subtitle: grafica1Subtitle, selector: <TwoFlagsSelector flags={g1Flags} setFlags={setG1Flags} labelA="E neta fact." labelB="Adquisición" accentColor={GRAFICA_ACCENT[1]} /> },
+      2: { series: grafica2Series, subtitle: grafica2Subtitle, selector: <Grafica2Selector active={g2Active} onChange={setG2Active} accentColor={GRAFICA_ACCENT[2]} /> },
+      3: { series: grafica3Series, subtitle: grafica3Subtitle, selector: <TwoFlagsSelector flags={g3Flags} setFlags={setG3Flags} labelA="E neta publ." labelB="E PF" accentColor={GRAFICA_ACCENT[3]} /> },
+      4: { series: grafica4Series, subtitle: grafica4Subtitle, selector: <TwoFlagsSelector flags={g4Flags} setFlags={setG4Flags} labelA="E autoconsumo" labelB="E generada" accentColor={GRAFICA_ACCENT[4]} /> },
+      5: { series: grafica5Series, subtitle: grafica5Subtitle, selector: <TwoLevelSelector modos={GRAFICA5_MODOS} modoActivo={g5Modo} onModo={setG5Modo} items={GRAFICA5_TIPOS} activoItems={g5ActiveTipos} onToggleItem={(k) => { setG5ActiveTipos((prev) => { const n = new Set(prev); n.has(k) ? (n.size > 1 && n.delete(k)) : n.add(k); return n; }); }} accentColor={GRAFICA_ACCENT[5]} /> },
+      6: { series: grafica6Series, subtitle: grafica6Subtitle, selector: <TwoLevelSelector modos={GRAFICA6_MODOS} modoActivo={g6Modo} onModo={setG6Modo} items={GRAFICA6_TARIFAS} activoItems={g6ActiveTarifas} onToggleItem={(k) => { setG6ActiveTarifas((prev) => { const n = new Set(prev); n.has(k) ? (n.size > 1 && n.delete(k)) : n.add(k); return n; }); }} accentColor={GRAFICA_ACCENT[6]} /> },
+    };
+    return map[expandedGrafica] ?? null;
+  }, [expandedGrafica, grafica1Series, grafica2Series, grafica3Series, grafica4Series, grafica5Series, grafica6Series, grafica1Subtitle, grafica2Subtitle, grafica3Subtitle, grafica4Subtitle, grafica5Subtitle, grafica6Subtitle, g1Flags, g2Active, g3Flags, g4Flags, g5Modo, g5ActiveTipos, g6Modo, g6ActiveTarifas, GRAFICA5_MODOS]);
+
+  const isLoading  = seriesLoading || psSeriesLoading;
+  const mainError  = seriesError ?? psSeriesError ?? null;
+
+  // ── Helper toggle expandedAnios
+  const handleToggleExpandedAnio = useCallback((anio: number) => {
+    setExpandedAnios((prev) =>
+      prev.includes(anio) ? prev.filter((y) => y !== anio) : [...prev, anio]
+    );
+  }, []);
+
+  const handleSelectAllExpandedAnios = useCallback(() => {
+    setExpandedAnios((prev) =>
+      prev.length === 0 ? [] : []
+    );
+  }, []);
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <section className="ui-card min-w-0 text-sm">
-      <div className="flex min-w-0 flex-col gap-4">
-        <div>
-          <h3 className="ui-card-title text-base md:text-lg">GRÁFICOS</h3>
-          <p className="ui-card-subtitle mt-1">Histórico visual de medidas por empresa, año y mes.</p>
-          <div className="ui-muted mt-1 text-[11px]">
-            Usuario: {currentUser?.email ?? "—"} · Tenant: {currentUser?.tenant_id ?? "—"}
-          </div>
-        </div>
+    <section className="text-sm">
+      <div className="flex flex-col gap-6">
 
-        {filtersError && <div className="ui-alert ui-alert--danger">Error cargando filtros: {filtersError}</div>}
-        {seriesError && <div className="ui-alert ui-alert--danger">Error cargando gráficas: {seriesError}</div>}
-        {psSeriesError && <div className="ui-alert ui-alert--danger">Error cargando datos PS: {psSeriesError}</div>}
-
-        <div className="grid min-w-0 gap-4 lg:grid-cols-3">
-          <FilterDropdown
-            title="Empresa"
-            options={empresaOptions}
-            selectedValues={selectedEmpresas}
-            onToggle={(value) => toggleSelection(value, setSelectedEmpresas)}
-            onSelectAll={() => selectAll(empresaOptions.map((item) => item.value), selectedEmpresas, setSelectedEmpresas)}
+        {/* ── Vista expandida ── */}
+        {expandedGrafica !== null && expandedData && (
+          <ExpandedChart
+            title={`Gráfica ${expandedGrafica}. ${["Evolución de energía facturada / Adquisición","Evolución de pérdidas","Evolución de energías publicadas / E PF","Evolución de autoconsumo / energía generada","Evolución PS por tipo","Evolución PS por tarifa"][expandedGrafica - 1]}`}
+            subtitle={expandedData.subtitle}
+            series={expandedData.series}
+            hiddenSeries={hiddenSeries}
+            onToggleSerie={toggleSerie}
+            selector={expandedData.selector}
+            loading={isLoading}
+            error={mainError}
+            onClose={handleCloseExpanded}
+            accentColor={GRAFICA_ACCENT[expandedGrafica]}
+            badgeLabel={GRAFICA_BADGE[expandedGrafica]}
+            allAnios={filtersData?.anios ?? []}
+            expandedAnios={expandedAnios}
+            onToggleExpandedAnio={handleToggleExpandedAnio}
+            onSelectAllExpandedAnios={handleSelectAllExpandedAnios}
           />
-          <FilterDropdown
-            title="Año"
-            options={anioOptions}
-            selectedValues={selectedAnios}
-            allLabel="Todos"
-            onToggle={(value) => toggleSelection(value, setSelectedAnios)}
-            onSelectAll={() => selectAll(anioOptions.map((item) => item.value), selectedAnios, setSelectedAnios)}
-          />
-          <FilterDropdown
-            title="Mes"
-            options={mesOptions}
-            selectedValues={selectedMeses}
-            allLabel="Todos"
-            onToggle={(value) => toggleSelection(value, setSelectedMeses)}
-            onSelectAll={() => selectAll(mesOptions.map((item) => item.value), selectedMeses, setSelectedMeses)}
-          />
-        </div>
-
-        {(filtersLoading || seriesLoading || psSeriesLoading) && (
-          <div className="ui-alert ui-alert--info">Cargando gráficos...</div>
         )}
 
-        <div className="grid min-w-0 gap-4">
-          <ChartCard
-            title="Gráfica 1. Evolución de energía facturada / Adquisición"
-            subtitle={grafica1Subtitle}
-            companyLabel={selectedEmpresaNames}
-            data={grafica1Rows}
-            series={grafica1Series}
-            tooltipExtraByLabel={grafica1TooltipExtra}
-            headerExtra={
-              <TwoFlagsSelector
-                labelA="E neta fact."
-                labelB="Adquisición"
-                flags={grafica1Flags}
-                onChange={setGrafica1Flags}
+        {/* ── Filtros + nota (solo visibles cuando NO hay gráfica expandida) ── */}
+        {expandedGrafica === null && (
+          <>
+            {/* Barra de filtros */}
+            <div
+              className="rounded-xl border"
+              style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", padding: "10px 14px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}
+            >
+              {/* Empresa */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Empresa</span>
+                {filtersLoading ? (
+                  <div className="ui-select" style={{ minWidth: 160, color: "rgba(226,232,240,.4)" }}>Cargando...</div>
+                ) : (
+                  <FilterDropdown
+                    title="Empresa"
+                    options={empresaOptions}
+                    selectedValues={selectedEmpresas}
+                    onToggle={(v) => toggleSelection(v, setSelectedEmpresas)}
+                    onSelectAll={() => selectAll(empresaOptions.map((e) => e.value), selectedEmpresas, setSelectedEmpresas)}
+                    allLabel="Todas"
+                  />
+                )}
+              </div>
+
+              {/* Año — pills híbridas */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Año</span>
+                <YearPillsFilter
+                  allAnios={filtersData?.anios ?? [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]}
+                  selectedAnios={selectedAnios}
+                  onToggle={(v) => toggleSelection(v, setSelectedAnios)}
+                  onSelectAll={() => selectAll(filtersData?.anios ?? [], selectedAnios, setSelectedAnios)}
+                />
+              </div>
+
+              {/* Mes — pills de 3 letras */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Mes</span>
+                <MonthPillsFilter
+                  selectedMeses={selectedMeses}
+                  onToggle={(v) => toggleSelection(v, setSelectedMeses)}
+                  onSelectAll={() => selectAll(Array.from({ length: 12 }, (_, i) => i + 1), selectedMeses, setSelectedMeses)}
+                />
+              </div>
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                type="button"
+                onClick={() => { void loadSeries(); void loadPsSeries(); }}
+                disabled={isLoading}
+                className="ui-btn ui-btn-primary"
+                style={{ height: 28, fontSize: 11 }}
+              >
+                {isLoading ? "Cargando..." : "Aplicar"}
+              </button>
+            </div>
+
+            {/* Nota informativa */}
+            <div style={{ fontSize: 10, color: "rgba(96,165,250,.7)", background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.2)", borderRadius: 8, padding: "6px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#60a5fa", fontSize: 12 }}>i</span>
+              Mostrando {selectedAnios.length > 0 ? selectedAnios.sort((a,b)=>b-a).join(", ") : "todos los años"} — pulsa "Todos" para ver el histórico completo · Haz clic en ⤢ para expandir cualquier gráfica con 4 años de datos
+            </div>
+
+            {/* Grid 3×2 */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+
+              {/* G1 */}
+              <ChartCard
+                badgeLabel="G1" accentColor={GRAFICA_ACCENT[1]}
+                title="E facturada / Adquisición"
+                subtitle={grafica1Subtitle}
+                series={grafica1Series}
+                hiddenSeries={hiddenSeries}
+                onToggleSerie={toggleSerie}
+                selector={<TwoFlagsSelector flags={g1Flags} setFlags={setG1Flags} labelA="E neta fact." labelB="Adquisición" accentColor={GRAFICA_ACCENT[1]} />}
+                loading={seriesLoading}
+                error={seriesError}
+                onExpand={() => handleExpand(1)}
+                lastValueLabel={g1Info.label}
+                lastValue={g1Info.value}
+                trend={g1Info.trend}
               />
-            }
-          />
-          <ChartCard
-            title="Gráfica 2. Evolución de pérdidas"
-            subtitle={grafica2Subtitle}
-            companyLabel={selectedEmpresaNames}
-            data={grafica2Rows}
-            series={grafica2Series}
-            yAxisFormatter={(value) => `${formatYAxis(value)}%`}
-            tooltipExtraByLabel={perdidasKwhByLabel}
-            headerExtra={<Grafica2Selector active={grafica2Active} onChange={setGrafica2Active} />}
-          />
-          <ChartCard
-            title="Gráfica 3. Evolución de energías publicadas / E PF"
-            subtitle={grafica3Subtitle}
-            companyLabel={selectedEmpresaNames}
-            data={grafica3Rows}
-            series={grafica3Series}
-            headerExtra={
-              <TwoFlagsSelector
-                labelA="E neta publ."
-                labelB="E PF"
-                flags={grafica3Flags}
-                onChange={setGrafica3Flags}
+
+              {/* G2 */}
+              <ChartCard
+                badgeLabel="G2" accentColor={GRAFICA_ACCENT[2]}
+                title="Evolución de pérdidas"
+                subtitle={grafica2Subtitle}
+                series={grafica2Series}
+                hiddenSeries={hiddenSeries}
+                onToggleSerie={toggleSerie}
+                selector={<Grafica2Selector active={g2Active} onChange={setG2Active} accentColor={GRAFICA_ACCENT[2]} />}
+                loading={seriesLoading}
+                error={seriesError}
+                onExpand={() => handleExpand(2)}
+                lastValueLabel={g2Info.label}
+                lastValue={g2Info.value}
+                trend={g2Info.trend}
               />
-            }
-          />
-          <ChartCard
-            title="Gráfica 4. Evolución de autoconsumo / energía generada"
-            subtitle={grafica4Subtitle}
-            companyLabel={selectedEmpresaNames}
-            data={grafica4Rows}
-            series={grafica4Series}
-            headerExtra={
-              <TwoFlagsSelector
-                labelA="E autoconsumo"
-                labelB="E generada"
-                flags={grafica4Flags}
-                onChange={setGrafica4Flags}
+
+              {/* G3 */}
+              <ChartCard
+                badgeLabel="G3" accentColor={GRAFICA_ACCENT[3]}
+                title="Energías publicadas / E PF"
+                subtitle={grafica3Subtitle}
+                series={grafica3Series}
+                hiddenSeries={hiddenSeries}
+                onToggleSerie={toggleSerie}
+                selector={<TwoFlagsSelector flags={g3Flags} setFlags={setG3Flags} labelA="E neta publ." labelB="E PF" accentColor={GRAFICA_ACCENT[3]} />}
+                loading={seriesLoading}
+                error={seriesError}
+                onExpand={() => handleExpand(3)}
+                lastValueLabel={g3Info.label}
+                lastValue={g3Info.value}
+                trend={g3Info.trend}
               />
-            }
-          />
-          <ChartCard
-            title="Gráfica 5. Evolución PS por tipo"
-            subtitle={grafica5Subtitle}
-            companyLabel={selectedEmpresaNames}
-            data={grafica5Rows}
-            series={grafica5Series}
-            yAxisFormatter={grafica5Config.yFormatter ?? formatYAxis}
-            headerExtra={
-              <TwoLevelSelector
-                modos={GRAFICA5_MODOS}
-                currentModo={grafica5Modo}
-                items={GRAFICA5_TIPOS}
-                activeItems={grafica5Tipos}
-                onModoChange={(m) => { setGrafica5Modo(m); setGrafica5Tipos(new Set(["total"])); }}
-                onItemToggle={handleGrafica5TipoToggle}
+
+              {/* G4 */}
+              <ChartCard
+                badgeLabel="G4" accentColor={GRAFICA_ACCENT[4]}
+                title="Autoconsumo / E generada"
+                subtitle={grafica4Subtitle}
+                series={grafica4Series}
+                hiddenSeries={hiddenSeries}
+                onToggleSerie={toggleSerie}
+                selector={<TwoFlagsSelector flags={g4Flags} setFlags={setG4Flags} labelA="E autoconsumo" labelB="E generada" accentColor={GRAFICA_ACCENT[4]} />}
+                loading={seriesLoading}
+                error={seriesError}
+                onExpand={() => handleExpand(4)}
+                lastValueLabel={g4Info.label}
+                lastValue={g4Info.value}
+                trend={g4Info.trend}
               />
-            }
-          />
-          <ChartCard
-            title="Gráfica 6. Evolución PS por tarifa"
-            subtitle={grafica6Subtitle}
-            companyLabel={selectedEmpresaNames}
-            data={grafica6Rows}
-            series={grafica6Series}
-            yAxisFormatter={grafica6Config.yFormatter ?? formatYAxis}
-            headerExtra={
-              <TwoLevelSelector
-                modos={GRAFICA6_MODOS}
-                currentModo={grafica6Modo}
-                items={GRAFICA6_TARIFAS}
-                activeItems={grafica6Tarifas}
-                onModoChange={(m) => { setGrafica6Modo(m); setGrafica6Tarifas(new Set(["total"])); }}
-                onItemToggle={handleGrafica6TarifaToggle}
+
+              {/* G5 */}
+              <ChartCard
+                badgeLabel="G5" accentColor={GRAFICA_ACCENT[5]}
+                title="PS por tipo"
+                subtitle={grafica5Subtitle}
+                series={grafica5Series}
+                hiddenSeries={hiddenSeries}
+                onToggleSerie={toggleSerie}
+                selector={
+                  <TwoLevelSelector
+                    modos={GRAFICA5_MODOS}
+                    modoActivo={g5Modo}
+                    onModo={setG5Modo}
+                    items={GRAFICA5_TIPOS}
+                    activoItems={g5ActiveTipos}
+                    onToggleItem={(k) => {
+                      setG5ActiveTipos((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(k)) { if (n.size > 1) n.delete(k); }
+                        else n.add(k);
+                        return n;
+                      });
+                    }}
+                    accentColor={GRAFICA_ACCENT[5]}
+                  />
+                }
+                loading={psSeriesLoading}
+                error={psSeriesError}
+                onExpand={() => handleExpand(5)}
+                lastValueLabel={g5Info.label}
+                lastValue={g5Info.value}
+                trend={g5Info.trend}
               />
-            }
-          />
-        </div>
+
+              {/* G6 */}
+              <ChartCard
+                badgeLabel="G6" accentColor={GRAFICA_ACCENT[6]}
+                title="PS por tarifa"
+                subtitle={grafica6Subtitle}
+                series={grafica6Series}
+                hiddenSeries={hiddenSeries}
+                onToggleSerie={toggleSerie}
+                selector={
+                  <TwoLevelSelector
+                    modos={GRAFICA6_MODOS}
+                    modoActivo={g6Modo}
+                    onModo={setG6Modo}
+                    items={GRAFICA6_TARIFAS}
+                    activoItems={g6ActiveTarifas}
+                    onToggleItem={(k) => {
+                      setG6ActiveTarifas((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(k)) { if (n.size > 1) n.delete(k); }
+                        else n.add(k);
+                        return n;
+                      });
+                    }}
+                    accentColor={GRAFICA_ACCENT[6]}
+                  />
+                }
+                loading={psSeriesLoading}
+                error={psSeriesError}
+                onExpand={() => handleExpand(6)}
+                lastValueLabel={g6Info.label}
+                lastValue={g6Info.value}
+                trend={g6Info.trend}
+              />
+
+            </div>
+          </>
+        )}
+
       </div>
     </section>
   );
