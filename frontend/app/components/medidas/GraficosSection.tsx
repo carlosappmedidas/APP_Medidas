@@ -19,83 +19,47 @@ import {
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
-// ── Tipos ────────────────────────────────────────────────────────────────────
-
 type Props = { token: string | null; currentUser?: User | null };
-
 type GraficoEmpresaOption = { id: number; nombre: string };
-type GraficoFiltersResponse = {
-  empresas: GraficoEmpresaOption[];
-  anios: number[];
-  meses: number[];
-};
+type GraficoFiltersResponse = { empresas: GraficoEmpresaOption[]; anios: number[]; meses: number[] };
 type GraficoPoint  = { period_key: string; period_label: string; value: number; ventana?: string };
 type GraficoSerie  = { serie_key: string; serie_label: string; points: GraficoPoint[] };
 type GraficoSeriesGroup = { series: GraficoSerie[] };
 type GraficosSeriesResponse = {
   filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string };
   scope: { all_empresas_selected: boolean; aggregation: string };
-  energia_facturada: GraficoSeriesGroup;
-  perdidas: GraficoSeriesGroup;
-  perdidas_kwh: GraficoSeriesGroup;
-  perdidas_ventanas: GraficoSeriesGroup;
-  perdidas_kwh_ventanas: GraficoSeriesGroup;
-  energias_publicadas: GraficoSeriesGroup;
-  energias_pf: GraficoSeriesGroup;
-  autoconsumo: GraficoSeriesGroup;
-  energia_generada: GraficoSeriesGroup;
-  adquisicion: GraficoSeriesGroup;
+  energia_facturada: GraficoSeriesGroup; perdidas: GraficoSeriesGroup;
+  perdidas_kwh: GraficoSeriesGroup; perdidas_ventanas: GraficoSeriesGroup;
+  perdidas_kwh_ventanas: GraficoSeriesGroup; energias_publicadas: GraficoSeriesGroup;
+  energias_pf: GraficoSeriesGroup; autoconsumo: GraficoSeriesGroup;
+  energia_generada: GraficoSeriesGroup; adquisicion: GraficoSeriesGroup;
   adquisicion_ventanas: GraficoSeriesGroup;
 };
 type GraficosPsSeriesResponse = {
   filters: { empresa_ids: number[]; anios: number[]; meses: number[]; aggregation: string };
   scope: { all_empresas_selected: boolean; aggregation: string };
-  cups_por_tipo: GraficoSeriesGroup;
-  energia_por_tipo: GraficoSeriesGroup;
-  importe_por_tipo: GraficoSeriesGroup;
-  energia_por_tarifa: GraficoSeriesGroup;
-  cups_por_tarifa: GraficoSeriesGroup;
-  importe_por_tarifa: GraficoSeriesGroup;
+  cups_por_tipo: GraficoSeriesGroup; energia_por_tipo: GraficoSeriesGroup;
+  importe_por_tipo: GraficoSeriesGroup; energia_por_tarifa: GraficoSeriesGroup;
+  cups_por_tarifa: GraficoSeriesGroup; importe_por_tarifa: GraficoSeriesGroup;
 };
-type ChartRow    = { period_key: string; period_label: string; [key: string]: string | number };
+type ChartRow = { period_key: string; period_label: string; [key: string]: string | number };
 type CustomTooltipEntry = { value?: number | string; name?: number | string; dataKey?: number | string; payload?: ChartRow };
 type CustomTooltipProps = { active?: boolean; payload?: readonly CustomTooltipEntry[]; label?: string; extraByLabel?: Record<string, string[]> };
-type MultiCheckOption   = { value: number; label: string };
-type ElementSize        = { width: number; height: number };
-type FilterDropdownProps = {
-  title: string;
-  options: MultiCheckOption[];
-  selectedValues: number[];
-  onToggle: (value: number) => void;
-  onSelectAll: () => void;
-  allLabel?: string;
-};
+type MultiCheckOption = { value: number; label: string };
+type ElementSize = { width: number; height: number };
+type FilterDropdownProps = { title: string; options: MultiCheckOption[]; selectedValues: number[]; onToggle: (value: number) => void; onSelectAll: () => void; allLabel?: string };
 type ChartCardProps = {
-  title: string;
-  subtitle: string;
-  series: GraficoSerie[];
-  hiddenSeries: Record<string, boolean>;
-  onToggleSerie: (key: string) => void;
-  selector?: React.ReactNode;
-  loading?: boolean;
-  error?: string | null;
-  onExpand?: () => void;
-  lastValueLabel?: string;
-  lastValue?: string;
-  trend?: { value: number; label: string };
-  accentColor?: string;
-  badgeLabel?: string;
+  title: string; subtitle: string; series: GraficoSerie[]; hiddenSeries: Record<string, boolean>;
+  onToggleSerie: (key: string) => void; selector?: React.ReactNode; loading?: boolean;
+  error?: string | null; onExpand?: () => void; lastValueLabel?: string; lastValue?: string;
+  trend?: { value: number; label: string }; accentColor?: string; badgeLabel?: string;
 };
-
-// G2
 type Grafica2SerieKey = "pct" | "pct_m2" | "pct_m7" | "pct_m11" | "pct_art15" | "kwh" | "kwh_m2" | "kwh_m7" | "kwh_m11" | "kwh_art15";
-type Grafica5Modo    = "cups" | "energia" | "importe";
+type Grafica5Modo = "cups" | "energia" | "importe";
 type Grafica5TipoKey = "total" | "t1" | "t2" | "t3" | "t4" | "t5";
-type Grafica6Modo    = "cups" | "energia" | "importe";
+type Grafica6Modo = "cups" | "energia" | "importe";
 type Grafica6TarifaKey = "total" | "t20td" | "t30td" | "t30tdve" | "t61td" | "t62td" | "t63td" | "t64td";
-type TwoFlagsState   = { a: boolean; b: boolean };
-
-// ── Constantes ────────────────────────────────────────────────────────────────
+type TwoFlagsState = { a: boolean; b: boolean };
 
 const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string; grupo: "pct" | "kwh" }[] = [
   { key: "pct",       label: "Pérdidas (%)",         grupo: "pct" },
@@ -109,74 +73,55 @@ const GRAFICA2_OPCIONES: { key: Grafica2SerieKey; label: string; grupo: "pct" | 
   { key: "kwh_m11",   label: "Pérdidas M11 (kWh)",   grupo: "kwh" },
   { key: "kwh_art15", label: "Pérdidas ART15 (kWh)", grupo: "kwh" },
 ];
-
 const GRAFICA5_TIPOS: { key: Grafica5TipoKey; label: string }[] = [
-  { key: "total", label: "Total"  },
-  { key: "t1",    label: "Tipo 1" },
-  { key: "t2",    label: "Tipo 2" },
-  { key: "t3",    label: "Tipo 3" },
-  { key: "t4",    label: "Tipo 4" },
-  { key: "t5",    label: "Tipo 5" },
+  { key: "total", label: "Total" }, { key: "t1", label: "Tipo 1" }, { key: "t2", label: "Tipo 2" },
+  { key: "t3", label: "Tipo 3" }, { key: "t4", label: "Tipo 4" }, { key: "t5", label: "Tipo 5" },
 ];
-
 const G5_KEYS_BY_MODO: Record<Grafica5Modo, Record<Grafica5TipoKey, string>> = {
   cups:    { total: "cups_total", t1: "cups_t1", t2: "cups_t2", t3: "cups_t3", t4: "cups_t4", t5: "cups_t5" },
   energia: { total: "en_total",   t1: "en_t1",   t2: "en_t2",   t3: "en_t3",   t4: "en_t4",   t5: "en_t5"   },
   importe: { total: "im_total",   t1: "im_t1",   t2: "im_t2",   t3: "im_t3",   t4: "im_t4",   t5: "im_t5"   },
 };
-
 const GRAFICA5_MODO_CONFIG: Record<Grafica5Modo, { groupKey: keyof GraficosPsSeriesResponse; label: string }> = {
   cups:    { groupKey: "cups_por_tipo",    label: "CUPS"    },
   energia: { groupKey: "energia_por_tipo", label: "Energía" },
   importe: { groupKey: "importe_por_tipo", label: "Importe" },
 };
-
 const GRAFICA6_TARIFAS: { key: Grafica6TarifaKey; label: string }[] = [
-  { key: "total",   label: "Total"   },
-  { key: "t20td",   label: "2.0TD"   },
-  { key: "t30td",   label: "3.0TD"   },
-  { key: "t30tdve", label: "3.0TDVE" },
-  { key: "t61td",   label: "6.1TD"   },
-  { key: "t62td",   label: "6.2TD"   },
-  { key: "t63td",   label: "6.3TD"   },
-  { key: "t64td",   label: "6.4TD"   },
+  { key: "total", label: "Total" }, { key: "t20td", label: "2.0TD" }, { key: "t30td", label: "3.0TD" },
+  { key: "t30tdve", label: "3.0TDVE" }, { key: "t61td", label: "6.1TD" }, { key: "t62td", label: "6.2TD" },
+  { key: "t63td", label: "6.3TD" }, { key: "t64td", label: "6.4TD" },
 ];
-
 const G6_KEYS_BY_MODO: Record<Grafica6Modo, Record<Grafica6TarifaKey, string>> = {
   cups:    { total: "ct_total", t20td: "ct_20td", t30td: "ct_30td", t30tdve: "ct_30tdve", t61td: "ct_61td", t62td: "ct_total", t63td: "ct_total", t64td: "ct_total" },
   energia: { total: "et_total", t20td: "et_20td", t30td: "et_30td", t30tdve: "et_30tdve", t61td: "et_61td", t62td: "et_total", t63td: "et_total", t64td: "et_total" },
   importe: { total: "it_total", t20td: "it_20td", t30td: "it_30td", t30tdve: "it_30tdve", t61td: "it_61td", t62td: "it_total", t63td: "it_total", t64td: "it_total" },
 };
-
 const GRAFICA6_MODO_CONFIG: Record<Grafica6Modo, { groupKey: keyof GraficosPsSeriesResponse; label: string }> = {
   cups:    { groupKey: "cups_por_tarifa",    label: "CUPS"    },
   energia: { groupKey: "energia_por_tarifa", label: "Energía" },
   importe: { groupKey: "importe_por_tarifa", label: "Importe" },
 };
-
 const ADQ_VENTANAS = ["M2", "M7", "M11", "ART15"] as const;
-
 const MESES_LABEL: Record<number, string> = {
   1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
   7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
 };
-
 const LINE_COLORS = [
   "#6D5EF8","#F5A623","#7ED321","#D0021B","#4A90E2",
   "#9B59B6","#1ABC9C","#E67E22","#2ECC71","#E74C3C",
   "#3498DB","#F39C12","#16A085","#8E44AD","#27AE60",
 ];
-
 const GRAFICA_ACCENT: Record<number, string> = {
-  1: "#60a5fa", 2: "#fbbf24", 3: "#f87171",
-  4: "#34d399", 5: "#a78bfa", 6: "#fb923c",
+  1: "#60a5fa", 2: "#fbbf24", 3: "#f87171", 4: "#34d399", 5: "#a78bfa", 6: "#fb923c",
 };
-
 const GRAFICA_BADGE: Record<number, string> = {
   1: "G1", 2: "G2", 3: "G3", 4: "G4", 5: "G5", 6: "G6",
 };
 
-// ── Utilidades ────────────────────────────────────────────────────────────────
+// ── CONSTANTES DE LAYOUT ──────────────────────────────────────────────────────
+const CHART_AREA_HEIGHT = 120;
+const CARD_MIN_HEIGHT   = 265;
 
 function formatYAxis(value: number): string {
   const abs = Math.abs(value);
@@ -186,7 +131,6 @@ function formatYAxis(value: number): string {
   if (abs < 1 && abs > 0) return `${sign}${abs.toFixed(2)}`;
   return `${sign}${abs.toFixed(0)}`;
 }
-
 function formatXAxisTick(value: string): string {
   if (!value) return "";
   const parts = value.split("-");
@@ -196,64 +140,47 @@ function formatXAxisTick(value: string): string {
   }
   return value;
 }
-
 function formatNumberEs(value: number | null | undefined): string {
   if (value == null) return "—";
   return value.toLocaleString("es-ES", { maximumFractionDigits: 2 });
 }
-
 function buildChartRows(series: GraficoSerie[]): ChartRow[] {
   const map = new Map<string, ChartRow>();
   for (const serie of series) {
     for (const point of serie.points) {
-      if (!map.has(point.period_key)) {
+      if (!map.has(point.period_key))
         map.set(point.period_key, { period_key: point.period_key, period_label: point.period_label });
-      }
       const row = map.get(point.period_key)!;
       row[serie.serie_key] = point.value;
-      // Guardar ventana si existe, con key específica por serie para el tooltip
-      if (point.ventana) {
-        row[`${serie.serie_key}__ventana`] = point.ventana;
-      }
+      if (point.ventana) row[`${serie.serie_key}__ventana`] = point.ventana;
     }
   }
   return Array.from(map.values()).sort((a, b) => a.period_key.localeCompare(b.period_key));
 }
-
 function buildChartRowsCombined(seriesA: GraficoSerie[], seriesB: GraficoSerie[]): ChartRow[] {
   return buildChartRows([...seriesA, ...seriesB]);
 }
-
 function relabelSeries(series: GraficoSerie[], overrides: Record<string, string>): GraficoSerie[] {
   return series.map((s) => ({ ...s, serie_label: overrides[s.serie_key] ?? s.serie_label }));
 }
-
 function buildTooltipExtraByLabel(rows: ChartRow[], extraKeys: string[]): Record<string, string[]> {
   const result: Record<string, string[]> = {};
   for (const row of rows) {
-    const extras = extraKeys
-      .filter((k) => row[k] != null)
-      .map((k) => `${k}: ${formatNumberEs(row[k] as number)}`);
+    const extras = extraKeys.filter((k) => row[k] != null).map((k) => `${k}: ${formatNumberEs(row[k] as number)}`);
     if (extras.length > 0) result[row.period_label] = extras;
   }
   return result;
 }
 
-// ── Componentes auxiliares ────────────────────────────────────────────────────
-
 function CustomTooltip({ active, payload, label, extraByLabel }: CustomTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div
-      className="rounded-xl border px-3 py-2 text-xs"
-      style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", minWidth: 140 }}
-    >
+    <div className="rounded-xl border px-3 py-2 text-xs" style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", minWidth: 140 }}>
       <div className="mb-1 font-medium ui-muted">{label}</div>
       {payload.map((entry, i) => {
         const matchLabel = typeof entry.name === "string" ? entry.name : String(entry.name ?? "");
         const matchKey   = typeof entry.dataKey === "string" ? entry.dataKey : String(entry.dataKey ?? "");
         const numericValue = typeof entry.value === "number" ? entry.value : Number(entry.value);
-        // Mostrar ventana en el label si este punto tiene una asignada
         const ventana = entry.payload ? (entry.payload[`${matchKey}__ventana`] as string | undefined) : undefined;
         const displayLabel = ventana ? `${matchLabel} (${ventana})` : matchLabel;
         return (
@@ -290,8 +217,6 @@ function useElementSize(): [React.MutableRefObject<HTMLDivElement | null>, Eleme
   return [ref, size];
 }
 
-// ── FilterDropdown ────────────────────────────────────────────────────────────
-
 function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll, allLabel = "Todas" }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -306,44 +231,23 @@ function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll,
   const summary = allSelected ? allLabel : `${selectedValues.length} sel.`;
   return (
     <div ref={wrapRef} style={{ position: "relative", display: "inline-block" }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="ui-select"
-        style={{ minWidth: 160, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, cursor: "pointer" }}
-      >
+      <button type="button" onClick={() => setOpen((v) => !v)} className="ui-select"
+        style={{ minWidth: 160, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, cursor: "pointer" }}>
         <span>{title}: {summary}</span>
         <span style={{ fontSize: 10, color: "rgba(226,232,240,.5)" }}>▾</span>
       </button>
       {open && (
-        <div
-          className="rounded-xl border"
-          style={{
-            position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50,
-            background: "var(--card-bg)", borderColor: "var(--card-border)",
-            padding: 8, minWidth: 160, boxShadow: "0 8px 24px rgba(0,0,0,.4)",
-          }}
-        >
+        <div className="rounded-xl border" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50, background: "var(--card-bg)", borderColor: "var(--card-border)", padding: 8, minWidth: 160, boxShadow: "0 8px 24px rgba(0,0,0,.4)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--card-border)" }}>
             <span style={{ fontSize: 10, color: "rgba(226,232,240,.5)" }}>{title}</span>
-            <button type="button" onClick={onSelectAll} className="ui-btn ui-btn-outline ui-btn-xs">
-              {allLabel}
-            </button>
+            <button type="button" onClick={onSelectAll} className="ui-btn ui-btn-outline ui-btn-xs">{allLabel}</button>
           </div>
           {options.map((opt) => (
-            <div
-              key={opt.value}
-              onClick={() => onToggle(opt.value)}
+            <div key={opt.value} onClick={() => onToggle(opt.value)}
               style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 6, cursor: "pointer", fontSize: 11, color: "var(--text)" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(30,58,95,.5)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <div style={{
-                width: 14, height: 14, borderRadius: 3, flexShrink: 0,
-                background: selectedValues.includes(opt.value) ? "#2563eb" : "transparent",
-                border: `1px solid ${selectedValues.includes(opt.value) ? "#2563eb" : "rgba(255,255,255,.2)"}`,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff",
-              }}>
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+              <div style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0, background: selectedValues.includes(opt.value) ? "#2563eb" : "transparent", border: `1px solid ${selectedValues.includes(opt.value) ? "#2563eb" : "rgba(255,255,255,.2)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff" }}>
                 {selectedValues.includes(opt.value) ? "✓" : ""}
               </div>
               {opt.label}
@@ -355,104 +259,56 @@ function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll,
   );
 }
 
-// ── YearPillsFilter ───────────────────────────────────────────────────────────
-
-function YearPillsFilter({
-  allAnios, selectedAnios, onToggle, onSelectAll,
-}: {
-  allAnios: number[];
-  selectedAnios: number[];
-  onToggle: (anio: number) => void;
-  onSelectAll: () => void;
-}) {
+function YearPillsFilter({ allAnios, selectedAnios, onToggle, onSelectAll }: { allAnios: number[]; selectedAnios: number[]; onToggle: (anio: number) => void; onSelectAll: () => void }) {
   const [prevOpen, setPrevOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setPrevOpen(false);
-    };
+    const handle = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setPrevOpen(false); };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
-
   const sorted      = [...allAnios].sort((a, b) => b - a);
   const recent      = sorted.slice(0, 4);
   const previous    = sorted.slice(4);
   const allSelected = selectedAnios.length === 0 || selectedAnios.length === allAnios.length;
   const prevActive  = previous.filter((y) => selectedAnios.includes(y));
-
   const pillStyle = (active: boolean): React.CSSProperties => ({
     fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer", whiteSpace: "nowrap",
     border: active ? "1px solid #3b82f6" : "1px solid rgba(255,255,255,.14)",
     background: active ? "#1d4ed8" : "rgba(0,0,0,.22)",
-    color: active ? "#fff" : "rgba(226,232,240,.45)",
-    height: 28, display: "flex", alignItems: "center",
+    color: active ? "#fff" : "rgba(226,232,240,.45)", height: 28, display: "flex", alignItems: "center",
   });
-
   const allPillStyle: React.CSSProperties = {
     fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer",
     border: allSelected ? "1px solid #34d399" : "1px solid rgba(52,211,153,.28)",
     background: allSelected ? "rgba(52,211,153,.2)" : "transparent",
-    color: allSelected ? "#34d399" : "rgba(52,211,153,.6)",
-    height: 28, display: "flex", alignItems: "center",
+    color: allSelected ? "#34d399" : "rgba(52,211,153,.6)", height: 28, display: "flex", alignItems: "center",
   };
-
   return (
     <div ref={wrapRef} style={{ display: "flex", alignItems: "center", gap: 4 }}>
       <button type="button" onClick={onSelectAll} style={allPillStyle}>Todos</button>
       <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
       {recent.map((y) => (
-        <button key={y} type="button" onClick={() => onToggle(y)} style={pillStyle(selectedAnios.includes(y))}>
-          {y}
-        </button>
+        <button key={y} type="button" onClick={() => onToggle(y)} style={pillStyle(selectedAnios.includes(y))}>{y}</button>
       ))}
       {previous.length > 0 && (
         <>
           <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
           <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => setPrevOpen((v) => !v)}
-              style={{
-                fontSize: 11, padding: "0 10px", borderRadius: 7, cursor: "pointer",
-                height: 28, display: "flex", alignItems: "center", gap: 5,
-                border: prevActive.length > 0 ? "1px solid rgba(37,99,235,.4)" : "1px solid rgba(255,255,255,.1)",
-                background: prevActive.length > 0 ? "rgba(37,99,235,.15)" : "rgba(0,0,0,.18)",
-                color: prevActive.length > 0 ? "#93c5fd" : "rgba(226,232,240,.38)",
-              }}
-            >
+            <button type="button" onClick={() => setPrevOpen((v) => !v)}
+              style={{ fontSize: 11, padding: "0 10px", borderRadius: 7, cursor: "pointer", height: 28, display: "flex", alignItems: "center", gap: 5, border: prevActive.length > 0 ? "1px solid rgba(37,99,235,.4)" : "1px solid rgba(255,255,255,.1)", background: prevActive.length > 0 ? "rgba(37,99,235,.15)" : "rgba(0,0,0,.18)", color: prevActive.length > 0 ? "#93c5fd" : "rgba(226,232,240,.38)" }}>
               Anteriores
-              {prevActive.length > 0 && (
-                <span style={{ fontSize: 9, background: "rgba(37,99,235,.5)", color: "#fff", borderRadius: 8, padding: "1px 5px" }}>
-                  {prevActive.length}
-                </span>
-              )}
+              {prevActive.length > 0 && (<span style={{ fontSize: 9, background: "rgba(37,99,235,.5)", color: "#fff", borderRadius: 8, padding: "1px 5px" }}>{prevActive.length}</span>)}
               {prevOpen ? " ▴" : " ▾"}
             </button>
             {prevOpen && (
-              <div
-                className="rounded-xl border"
-                style={{
-                  position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50,
-                  background: "var(--card-bg)", borderColor: "var(--card-border)",
-                  padding: 6, minWidth: 110, boxShadow: "0 8px 24px rgba(0,0,0,.5)",
-                }}
-              >
+              <div className="rounded-xl border" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50, background: "var(--card-bg)", borderColor: "var(--card-border)", padding: 6, minWidth: 110, boxShadow: "0 8px 24px rgba(0,0,0,.5)" }}>
                 {previous.map((y) => (
-                  <div
-                    key={y}
-                    onClick={() => onToggle(y)}
+                  <div key={y} onClick={() => onToggle(y)}
                     style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 6, cursor: "pointer", fontSize: 11, color: "var(--text)" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(30,58,95,.5)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <div style={{
-                      width: 13, height: 13, borderRadius: 3, flexShrink: 0,
-                      background: selectedAnios.includes(y) ? "#2563eb" : "transparent",
-                      border: `1px solid ${selectedAnios.includes(y) ? "#2563eb" : "rgba(255,255,255,.2)"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#fff",
-                    }}>
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                    <div style={{ width: 13, height: 13, borderRadius: 3, flexShrink: 0, background: selectedAnios.includes(y) ? "#2563eb" : "transparent", border: `1px solid ${selectedAnios.includes(y) ? "#2563eb" : "rgba(255,255,255,.2)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#fff" }}>
                       {selectedAnios.includes(y) ? "✓" : ""}
                     </div>
                     {y}
@@ -467,40 +323,25 @@ function YearPillsFilter({
   );
 }
 
-// ── MonthPillsFilter ──────────────────────────────────────────────────────────
-
-function MonthPillsFilter({
-  selectedMeses, onToggle, onSelectAll,
-}: {
-  selectedMeses: number[];
-  onToggle: (mes: number) => void;
-  onSelectAll: () => void;
-}) {
+function MonthPillsFilter({ selectedMeses, onToggle, onSelectAll }: { selectedMeses: number[]; onToggle: (mes: number) => void; onSelectAll: () => void }) {
   const allSelected = selectedMeses.length === 0 || selectedMeses.length === 12;
-
   const pillStyle = (active: boolean): React.CSSProperties => ({
     fontSize: 10, padding: "0 6px", borderRadius: 6, cursor: "pointer",
     border: active ? "1px solid rgba(37,99,235,.5)" : "1px solid rgba(255,255,255,.1)",
     background: active ? "rgba(37,99,235,.28)" : "rgba(0,0,0,.18)",
-    color: active ? "#93c5fd" : "rgba(226,232,240,.38)",
-    height: 26, display: "flex", alignItems: "center", minWidth: 30, justifyContent: "center",
+    color: active ? "#93c5fd" : "rgba(226,232,240,.38)", height: 26, display: "flex", alignItems: "center", minWidth: 30, justifyContent: "center",
   });
-
   const allStyle: React.CSSProperties = {
     fontSize: 10, padding: "0 7px", borderRadius: 6, cursor: "pointer",
     border: allSelected ? "1px solid #34d399" : "1px solid rgba(52,211,153,.22)",
     background: allSelected ? "rgba(52,211,153,.14)" : "transparent",
-    color: allSelected ? "#34d399" : "rgba(52,211,153,.55)",
-    height: 26, display: "flex", alignItems: "center",
+    color: allSelected ? "#34d399" : "rgba(52,211,153,.55)", height: 26, display: "flex", alignItems: "center",
   };
-
   return (
     <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
       <button type="button" onClick={onSelectAll} style={allStyle}>Todos</button>
       {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-        <button key={m} type="button" onClick={() => onToggle(m)} style={pillStyle(selectedMeses.includes(m))}>
-          {MESES_LABEL[m]}
-        </button>
+        <button key={m} type="button" onClick={() => onToggle(m)} style={pillStyle(selectedMeses.includes(m))}>{MESES_LABEL[m]}</button>
       ))}
     </div>
   );
@@ -517,18 +358,44 @@ function ChartCard({
   const rows = useMemo(() => buildChartRows(series), [series]);
   const visibleSeries = series.filter((s) => !hiddenSeries[s.serie_key]);
   const canRenderChart = size.width > 50 && rows.length > 0 && visibleSeries.length > 0;
+  const CHART_BOTTOM_PADDING = CHART_AREA_HEIGHT + 10;
 
   return (
     <div
       className="rounded-xl border"
-      style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", display: "flex", flexDirection: "column", overflow: "hidden" }}
+      style={{
+        background: "var(--card-bg)",
+        borderColor: "var(--card-border)",
+        position: "relative",
+        overflow: "visible",      // ← CAMBIO: era "hidden", "visible" permite que el tooltip no se corte
+        paddingBottom: CHART_BOTTOM_PADDING,
+        minHeight: CARD_MIN_HEIGHT,
+      }}
     >
+      {/* Header con KPI arriba a la derecha */}
       <div style={{ padding: "8px 11px 6px", borderBottom: "1px solid var(--card-border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 9, background: `${accentColor}28`, color: accentColor }}>
-            {badgeLabel}
-          </span>
-          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{title}</span>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 9, background: `${accentColor}28`, color: accentColor, flexShrink: 0 }}>
+              {badgeLabel}
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{title}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {(lastValue || trend) && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 0 }}>
+                {lastValueLabel && <span style={{ fontSize: 8, color: "rgba(226,232,240,.38)", whiteSpace: "nowrap" }}>{lastValueLabel}</span>}
+                {lastValue && <span style={{ fontSize: 13, fontWeight: 500, color: accentColor, lineHeight: 1.2 }}>{lastValue}</span>}
+                {trend && <span style={{ fontSize: 9, fontWeight: 500, color: trend.value >= 0 ? "#34d399" : "#fca5a5" }}>{trend.value >= 0 ? "▲" : "▼"} {Math.abs(trend.value).toFixed(1)}{trend.label}</span>}
+              </div>
+            )}
+            {onExpand && (
+              <button type="button" onClick={onExpand} title="Expandir gráfica"
+                style={{ fontSize: 10, padding: "3px 7px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 6, background: "transparent", color: "rgba(226,232,240,.32)", cursor: "pointer", flexShrink: 0 }}>
+                ⤢
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ fontSize: 9, color: "rgba(226,232,240,.38)", marginTop: 1 }}>{subtitle}</div>
         {selector && <div style={{ marginTop: 5 }}>{selector}</div>}
@@ -537,17 +404,8 @@ function ChartCard({
             {series.map((s) => {
               const active = !hiddenSeries[s.serie_key];
               return (
-                <button
-                  key={s.serie_key}
-                  type="button"
-                  onClick={() => onToggleSerie(s.serie_key)}
-                  style={{
-                    fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer",
-                    border: active ? `1px solid ${accentColor}80` : "1px solid rgba(255,255,255,.1)",
-                    background: active ? `${accentColor}30` : "transparent",
-                    color: active ? accentColor : "rgba(226,232,240,.45)",
-                  }}
-                >
+                <button key={s.serie_key} type="button" onClick={() => onToggleSerie(s.serie_key)}
+                  style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: active ? `1px solid ${accentColor}80` : "1px solid rgba(255,255,255,.1)", background: active ? `${accentColor}30` : "transparent", color: active ? accentColor : "rgba(226,232,240,.45)" }}>
                   {s.serie_label}
                 </button>
               );
@@ -556,67 +414,61 @@ function ChartCard({
         )}
       </div>
 
-      <div ref={containerRef} style={{ flex: 1, padding: "6px 9px 6px" }}>
-        <div style={{ height: 118, borderRadius: 7, background: "rgba(0,0,0,.18)", overflow: "hidden" }}>
+      {/* Recuadro del gráfico: posición absoluta fija desde abajo */}
+      {/* ← CAMBIO: overflow "visible" + position "relative" para que el tooltip no se corte */}
+      <div
+        ref={containerRef}
+        style={{
+          position: "absolute",
+          bottom: 0, left: 0, right: 0,
+          height: CHART_AREA_HEIGHT,
+          padding: "5px 9px 7px",
+          background: "var(--card-bg)",
+        }}
+      >
+        <div style={{
+          height: "100%",
+          borderRadius: 7,
+          background: "rgba(0,0,0,.18)",
+          overflow: "visible",       // ← CAMBIO: era "hidden", ahora "visible" para que el tooltip salga
+          position: "relative",      // ← CAMBIO: necesario para que z-index del tooltip funcione
+        }}>
           {loading && (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(226,232,240,.35)" }}>
-              Cargando...
-            </div>
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(226,232,240,.35)" }}>Cargando...</div>
           )}
           {!loading && error && (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fca5a5", padding: "0 8px", textAlign: "center" }}>
-              {error}
-            </div>
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fca5a5", padding: "0 8px", textAlign: "center" }}>{error}</div>
           )}
           {!loading && !error && canRenderChart && (
-            <LineChart width={size.width - 18} height={118} data={rows} margin={{ top: 6, right: 6, left: -20, bottom: 6 }}>
+            <LineChart width={size.width - 18} height={CHART_AREA_HEIGHT - 12} data={rows}
+              margin={{ top: 6, right: 8, left: -14, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.12} />
               <XAxis dataKey="period_label" tick={{ fontSize: 8 }} tickFormatter={formatXAxisTick} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 8 }} tickFormatter={formatYAxis} tickLine={false} axisLine={false} width={42} domain={["auto", "auto"]} />
-              <Tooltip content={(props) => <CustomTooltip active={props.active} payload={props.payload as readonly CustomTooltipEntry[]} label={typeof props.label === "string" ? props.label : String(props.label ?? "")} />} />
+              <YAxis tick={{ fontSize: 8 }} tickFormatter={formatYAxis} tickLine={false} axisLine={false}
+                width={48}
+                domain={["auto", "auto"]} />
+              {/* ← CAMBIO: allowEscapeViewBox + wrapperStyle para que el tooltip salga fuera del SVG */}
+              <Tooltip
+                content={(props) => (
+                  <CustomTooltip
+                    active={props.active}
+                    payload={props.payload as readonly CustomTooltipEntry[]}
+                    label={typeof props.label === "string" ? props.label : String(props.label ?? "")}
+                  />
+                )}
+                allowEscapeViewBox={{ x: true, y: true }}
+                wrapperStyle={{ zIndex: 9999, pointerEvents: "none" }}
+              />
               {visibleSeries.map((s, i) => (
-                <Line
-                  key={s.serie_key}
-                  type="monotone"
-                  dataKey={s.serie_key}
-                  name={s.serie_label}
+                <Line key={s.serie_key} type="monotone" dataKey={s.serie_key} name={s.serie_label}
                   stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                  strokeWidth={i === 0 ? 2 : 1.5}
-                  dot={false}
-                  activeDot={{ r: 3 }}
-                  strokeDasharray={i === 0 ? undefined : i % 2 === 0 ? "5 2" : "3 2"}
-                />
+                  strokeWidth={i === 0 ? 2 : 1.5} dot={false} activeDot={{ r: 3 }}
+                  strokeDasharray={i === 0 ? undefined : i % 2 === 0 ? "5 2" : "3 2"} />
               ))}
             </LineChart>
           )}
           {!loading && !error && !canRenderChart && rows.length === 0 && (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(226,232,240,.3)" }}>
-              Sin datos para el filtro seleccionado
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div style={{ padding: "6px 11px", borderTop: "1px solid var(--card-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          {lastValueLabel && <div style={{ fontSize: 9, color: "rgba(226,232,240,.38)" }}>{lastValueLabel}</div>}
-          {lastValue && <div style={{ fontSize: 13, fontWeight: 500, color: accentColor }}>{lastValue}</div>}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {trend && (
-            <span style={{ fontSize: 10, fontWeight: 500, color: trend.value >= 0 ? "#34d399" : "#fca5a5" }}>
-              {trend.value >= 0 ? "▲" : "▼"} {Math.abs(trend.value).toFixed(1)}{trend.label}
-            </span>
-          )}
-          {onExpand && (
-            <button
-              type="button"
-              onClick={onExpand}
-              title="Expandir gráfica"
-              style={{ fontSize: 10, padding: "3px 7px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 6, background: "transparent", color: "rgba(226,232,240,.32)", cursor: "pointer" }}
-            >
-              ⤢
-            </button>
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(226,232,240,.3)" }}>Sin datos para el filtro seleccionado</div>
           )}
         </div>
       </div>
@@ -632,20 +484,10 @@ function ExpandedChart({
   onClose, accentColor = "#60a5fa", badgeLabel = "G",
   allAnios, expandedAnios, onToggleExpandedAnio, onSelectAllExpandedAnios,
 }: {
-  title: string;
-  subtitle: string;
-  series: GraficoSerie[];
-  hiddenSeries: Record<string, boolean>;
-  onToggleSerie: (key: string) => void;
-  selector?: React.ReactNode;
-  loading?: boolean;
-  error?: string | null;
-  onClose: () => void;
-  accentColor?: string;
-  badgeLabel?: string;
-  allAnios: number[];
-  expandedAnios: number[];
-  onToggleExpandedAnio: (anio: number) => void;
+  title: string; subtitle: string; series: GraficoSerie[]; hiddenSeries: Record<string, boolean>;
+  onToggleSerie: (key: string) => void; selector?: React.ReactNode; loading?: boolean;
+  error?: string | null; onClose: () => void; accentColor?: string; badgeLabel?: string;
+  allAnios: number[]; expandedAnios: number[]; onToggleExpandedAnio: (anio: number) => void;
   onSelectAllExpandedAnios: () => void;
 }) {
   const [containerRef, size] = useElementSize();
@@ -660,14 +502,14 @@ function ExpandedChart({
     if (!mainKey) return null;
     const values = rows.map((r) => r[mainKey] as number).filter((v) => typeof v === "number" && !isNaN(v));
     if (!values.length) return null;
-    const last   = values[values.length - 1];
-    const prev   = values[values.length - 2];
-    const max    = Math.max(...values);
-    const min    = Math.min(...values);
-    const avg    = values.reduce((a, b) => a + b, 0) / values.length;
+    const last = values[values.length - 1];
+    const prev = values[values.length - 2];
+    const max  = Math.max(...values);
+    const min  = Math.min(...values);
+    const avg  = values.reduce((a, b) => a + b, 0) / values.length;
     const maxRow = rows.find((r) => r[mainKey] === max);
     const minRow = rows.find((r) => r[mainKey] === min);
-    const pct    = prev && prev !== 0 ? ((last - prev) / Math.abs(prev)) * 100 : null;
+    const pct = prev && prev !== 0 ? ((last - prev) / Math.abs(prev)) * 100 : null;
     return { last, prev, max, min, avg, maxLabel: maxRow?.period_label, minLabel: minRow?.period_label, pct };
   }, [rows, visibleSeries, canRenderChart]);
 
@@ -676,18 +518,15 @@ function ExpandedChart({
     { label: "2 años",     anios: [currentYear, currentYear - 1] },
     { label: "4 años",     anios: [currentYear, currentYear - 1, currentYear - 2, currentYear - 3] },
   ];
-
   const applyShortcut = (anios: number[]) => {
     anios.forEach((y) => { if (!expandedAnios.includes(y)) onToggleExpandedAnio(y); });
     expandedAnios.filter((y) => !anios.includes(y)).forEach((y) => onToggleExpandedAnio(y));
   };
-
   const shortcutPillStyle = (isActive: boolean): React.CSSProperties => ({
     fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer", whiteSpace: "nowrap",
     border: isActive ? "1px solid rgba(37,99,235,.5)" : "1px solid rgba(255,255,255,.14)",
     background: isActive ? "rgba(37,99,235,.25)" : "rgba(0,0,0,.22)",
-    color: isActive ? "#93c5fd" : "rgba(226,232,240,.45)",
-    height: 28, display: "flex", alignItems: "center",
+    color: isActive ? "#93c5fd" : "rgba(226,232,240,.45)", height: 28, display: "flex", alignItems: "center",
   });
 
   return (
@@ -695,52 +534,27 @@ function ExpandedChart({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "12px 16px 10px", borderBottom: "1px solid rgba(30,58,95,.7)", background: "var(--card-bg)" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: `${accentColor}28`, color: accentColor }}>
-              {badgeLabel}
-            </span>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: `${accentColor}28`, color: accentColor }}>{badgeLabel}</span>
             <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>{title}</span>
           </div>
-          <div style={{ fontSize: 10, color: "rgba(226,232,240,.4)" }}>
-            {subtitle} — vista expandida · filtro ampliado a 4 años
-          </div>
-
-          {/* Fila única de año: shortcuts de rango + separador + pills de años */}
+          <div style={{ fontSize: 10, color: "rgba(226,232,240,.4)" }}>{subtitle} — vista expandida · filtro ampliado a 4 años</div>
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
             <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.45)", marginRight: 2 }}>Año:</span>
             {rangeShortcuts.map((sc) => {
               const isActive = sc.anios.every((y) => expandedAnios.includes(y)) && expandedAnios.length === sc.anios.length;
-              return (
-                <button key={sc.label} type="button" onClick={() => applyShortcut(sc.anios)} style={shortcutPillStyle(isActive)}>
-                  {sc.label}
-                </button>
-              );
+              return (<button key={sc.label} type="button" onClick={() => applyShortcut(sc.anios)} style={shortcutPillStyle(isActive)}>{sc.label}</button>);
             })}
             <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
-            <YearPillsFilter
-              allAnios={allAnios}
-              selectedAnios={expandedAnios}
-              onToggle={onToggleExpandedAnio}
-              onSelectAll={onSelectAllExpandedAnios}
-            />
+            <YearPillsFilter allAnios={allAnios} selectedAnios={expandedAnios} onToggle={onToggleExpandedAnio} onSelectAll={onSelectAllExpandedAnios} />
           </div>
-
           {selector && <div style={{ marginTop: 4 }}>{selector}</div>}
           {!selector && series.length > 0 && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
               {series.map((s) => {
                 const active = !hiddenSeries[s.serie_key];
                 return (
-                  <button
-                    key={s.serie_key}
-                    type="button"
-                    onClick={() => onToggleSerie(s.serie_key)}
-                    style={{
-                      fontSize: 10, padding: "2px 8px", borderRadius: 20, cursor: "pointer",
-                      border: active ? `1px solid ${accentColor}80` : "1px solid rgba(255,255,255,.12)",
-                      background: active ? `${accentColor}30` : "transparent",
-                      color: active ? accentColor : "rgba(226,232,240,.5)",
-                    }}
-                  >
+                  <button key={s.serie_key} type="button" onClick={() => onToggleSerie(s.serie_key)}
+                    style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, cursor: "pointer", border: active ? `1px solid ${accentColor}80` : "1px solid rgba(255,255,255,.12)", background: active ? `${accentColor}30` : "transparent", color: active ? accentColor : "rgba(226,232,240,.5)" }}>
                     {s.serie_label}
                   </button>
                 );
@@ -749,25 +563,17 @@ function ExpandedChart({
           )}
         </div>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexShrink: 0 }}>
-          <div style={{ fontSize: 10, color: "rgba(96,165,250,.7)", background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 7, padding: "4px 10px", whiteSpace: "nowrap" }}>
-            ↑ 4 años cargados al expandir
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ fontSize: 11, padding: "5px 12px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, background: "transparent", color: "rgba(226,232,240,.6)", cursor: "pointer", whiteSpace: "nowrap" }}
-          >
-            ✕ Volver al grid
-          </button>
+          <div style={{ fontSize: 10, color: "rgba(96,165,250,.7)", background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.25)", borderRadius: 7, padding: "4px 10px", whiteSpace: "nowrap" }}>↑ 4 años cargados al expandir</div>
+          <button type="button" onClick={onClose} style={{ fontSize: 11, padding: "5px 12px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, background: "transparent", color: "rgba(226,232,240,.6)", cursor: "pointer", whiteSpace: "nowrap" }}>✕ Volver al grid</button>
         </div>
       </div>
 
       {kpis && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderBottom: "1px solid rgba(30,58,95,.6)" }}>
           {[
-            { label: "Último valor",      val: formatYAxis(kpis.last), sub: kpis.pct != null ? `${kpis.pct >= 0 ? "▲" : "▼"} ${Math.abs(kpis.pct).toFixed(1)}% vs anterior` : "", subColor: kpis.pct != null ? (kpis.pct >= 0 ? "#34d399" : "#fca5a5") : undefined, valColor: accentColor },
-            { label: "Máximo histórico",  val: formatYAxis(kpis.max),  sub: kpis.maxLabel ?? "", subColor: undefined, valColor: "#34d399" },
-            { label: "Mínimo del período",val: formatYAxis(kpis.min),  sub: kpis.minLabel ?? "", subColor: undefined, valColor: "#fca5a5" },
+            { label: "Último valor",       val: formatYAxis(kpis.last), sub: kpis.pct != null ? `${kpis.pct >= 0 ? "▲" : "▼"} ${Math.abs(kpis.pct).toFixed(1)}% vs anterior` : "", subColor: kpis.pct != null ? (kpis.pct >= 0 ? "#34d399" : "#fca5a5") : undefined, valColor: accentColor },
+            { label: "Máximo histórico",   val: formatYAxis(kpis.max),  sub: kpis.maxLabel ?? "", subColor: undefined, valColor: "#34d399" },
+            { label: "Mínimo del período", val: formatYAxis(kpis.min),  sub: kpis.minLabel ?? "", subColor: undefined, valColor: "#fca5a5" },
             { label: `Media (${rows.length} meses)`, val: formatYAxis(kpis.avg), sub: "", subColor: undefined, valColor: "var(--text)" },
           ].map((k, i) => (
             <div key={i} style={{ padding: "10px 14px", borderRight: i < 3 ? "1px solid rgba(30,58,95,.45)" : "none" }}>
@@ -781,16 +587,8 @@ function ExpandedChart({
 
       <div ref={containerRef} style={{ padding: "12px 16px 12px" }}>
         <div style={{ height: 260, background: "rgba(0,0,0,.15)", borderRadius: 10, overflow: "hidden" }}>
-          {loading && (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "rgba(226,232,240,.35)" }}>
-              Cargando...
-            </div>
-          )}
-          {!loading && error && (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#fca5a5" }}>
-              {error}
-            </div>
-          )}
+          {loading && <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "rgba(226,232,240,.35)" }}>Cargando...</div>}
+          {!loading && error && <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#fca5a5" }}>{error}</div>}
           {!loading && !error && canRenderChart && (
             <LineChart width={size.width - 32} height={260} data={rows} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
@@ -800,25 +598,13 @@ function ExpandedChart({
               <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: 8, fontSize: 10 }} />
               <Brush dataKey="period_label" height={20} stroke={accentColor} fill="rgba(0,0,0,.3)" travellerWidth={8} />
               {visibleSeries.map((s, i) => (
-                <Line
-                  key={s.serie_key}
-                  type="monotone"
-                  dataKey={s.serie_key}
-                  name={s.serie_label}
-                  stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                  strokeWidth={i === 0 ? 2.5 : 1.5}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                  strokeDasharray={i === 0 ? undefined : i % 2 === 0 ? "5 2" : "3 2"}
-                />
+                <Line key={s.serie_key} type="monotone" dataKey={s.serie_key} name={s.serie_label}
+                  stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={i === 0 ? 2.5 : 1.5}
+                  dot={false} activeDot={{ r: 4 }} strokeDasharray={i === 0 ? undefined : i % 2 === 0 ? "5 2" : "3 2"} />
               ))}
             </LineChart>
           )}
-          {!loading && !error && !canRenderChart && (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "rgba(226,232,240,.3)" }}>
-              Sin datos para el filtro seleccionado
-            </div>
-          )}
+          {!loading && !error && !canRenderChart && <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "rgba(226,232,240,.3)" }}>Sin datos para el filtro seleccionado</div>}
         </div>
       </div>
     </div>
@@ -827,26 +613,15 @@ function ExpandedChart({
 
 // ── Selectores ────────────────────────────────────────────────────────────────
 
-function TwoFlagsSelector({
-  flags, setFlags, labelA, labelB, accentColor,
-}: { flags: TwoFlagsState; setFlags: (f: TwoFlagsState) => void; labelA: string; labelB: string; accentColor?: string }) {
+function TwoFlagsSelector({ flags, setFlags, labelA, labelB, accentColor }: { flags: TwoFlagsState; setFlags: (f: TwoFlagsState) => void; labelA: string; labelB: string; accentColor?: string }) {
   const color = accentColor ?? "#6D5EF8";
   return (
     <div style={{ display: "flex", gap: 4 }}>
       {([{ flag: "a" as const, label: labelA }, { flag: "b" as const, label: labelB }]).map(({ flag, label }) => {
         const active = flags[flag];
         return (
-          <button
-            key={flag}
-            type="button"
-            onClick={() => setFlags({ ...flags, [flag]: !flags[flag] })}
-            style={{
-              fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer",
-              border: active ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)",
-              background: active ? `${color}30` : "transparent",
-              color: active ? color : "rgba(226,232,240,.45)",
-            }}
-          >
+          <button key={flag} type="button" onClick={() => setFlags({ ...flags, [flag]: !flags[flag] })}
+            style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: active ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)", background: active ? `${color}30` : "transparent", color: active ? color : "rgba(226,232,240,.45)" }}>
             {label}
           </button>
         );
@@ -855,14 +630,11 @@ function TwoFlagsSelector({
   );
 }
 
-function Grafica2Selector({
-  active, onChange, accentColor,
-}: { active: Set<Grafica2SerieKey>; onChange: (next: Set<Grafica2SerieKey>) => void; accentColor?: string }) {
+function Grafica2Selector({ active, onChange, accentColor }: { active: Set<Grafica2SerieKey>; onChange: (next: Set<Grafica2SerieKey>) => void; accentColor?: string }) {
   const color = accentColor ?? "#fbbf24";
   const toggle = (key: Grafica2SerieKey) => {
     const next = new Set(active);
-    if (next.has(key)) { if (next.size > 1) next.delete(key); }
-    else next.add(key);
+    if (next.has(key)) { if (next.size > 1) next.delete(key); } else next.add(key);
     onChange(next);
   };
   const pcts = GRAFICA2_OPCIONES.filter((o) => o.grupo === "pct");
@@ -872,53 +644,24 @@ function Grafica2Selector({
       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
         {pcts.map((o) => {
           const isActive = active.has(o.key);
-          return (
-            <button key={o.key} type="button" onClick={() => toggle(o.key)}
-              style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer",
-                border: isActive ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)",
-                background: isActive ? `${color}30` : "transparent",
-                color: isActive ? color : "rgba(226,232,240,.45)" }}>
-              {o.label}
-            </button>
-          );
+          return (<button key={o.key} type="button" onClick={() => toggle(o.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: isActive ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)", background: isActive ? `${color}30` : "transparent", color: isActive ? color : "rgba(226,232,240,.45)" }}>{o.label}</button>);
         })}
       </div>
       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
         {kwhs.map((o) => {
           const isActive = active.has(o.key);
-          return (
-            <button key={o.key} type="button" onClick={() => toggle(o.key)}
-              style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer",
-                border: isActive ? "1px solid rgba(96,165,250,.5)" : "1px solid rgba(255,255,255,.1)",
-                background: isActive ? "rgba(96,165,250,.25)" : "transparent",
-                color: isActive ? "#93c5fd" : "rgba(226,232,240,.45)" }}>
-              {o.label}
-            </button>
-          );
+          return (<button key={o.key} type="button" onClick={() => toggle(o.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: isActive ? "1px solid rgba(96,165,250,.5)" : "1px solid rgba(255,255,255,.1)", background: isActive ? "rgba(96,165,250,.25)" : "transparent", color: isActive ? "#93c5fd" : "rgba(226,232,240,.45)" }}>{o.label}</button>);
         })}
       </div>
     </div>
   );
 }
 
-function TwoLevelSelector<M extends string, K extends string>({
-  modos, modoActivo, onModo,
-  items, activoItems, onToggleItem,
-  accentColor,
-}: {
-  modos: { key: M; label: string }[];
-  modoActivo: M;
-  onModo: (m: M) => void;
-  items: { key: K; label: string }[];
-  activoItems: Set<K>;
-  onToggleItem: (k: K) => void;
-  accentColor?: string;
-}) {
+function TwoLevelSelector<M extends string, K extends string>({ modos, modoActivo, onModo, items, activoItems, onToggleItem, accentColor }: { modos: { key: M; label: string }[]; modoActivo: M; onModo: (m: M) => void; items: { key: K; label: string }[]; activoItems: Set<K>; onToggleItem: (k: K) => void; accentColor?: string }) {
   const color = accentColor ?? "#a78bfa";
   const toggle = (k: K) => {
     const next = new Set(activoItems);
-    if (next.has(k)) { if (next.size > 1) next.delete(k); }
-    else next.add(k);
+    if (next.has(k)) { if (next.size > 1) next.delete(k); } else next.add(k);
     onToggleItem(k);
   };
   return (
@@ -926,55 +669,31 @@ function TwoLevelSelector<M extends string, K extends string>({
       <div style={{ display: "flex", gap: 3 }}>
         {modos.map((m) => {
           const active = modoActivo === m.key;
-          return (
-            <button key={m.key} type="button" onClick={() => onModo(m.key)}
-              style={{ fontSize: 9, padding: "2px 7px", borderRadius: 5, cursor: "pointer",
-                border: active ? "1px solid rgba(255,255,255,.2)" : "1px solid rgba(255,255,255,.07)",
-                background: active ? "rgba(255,255,255,.1)" : "transparent",
-                color: active ? "var(--text)" : "rgba(226,232,240,.4)" }}>
-              {m.label}
-            </button>
-          );
+          return (<button key={m.key} type="button" onClick={() => onModo(m.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 5, cursor: "pointer", border: active ? "1px solid rgba(255,255,255,.2)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(255,255,255,.1)" : "transparent", color: active ? "var(--text)" : "rgba(226,232,240,.4)" }}>{m.label}</button>);
         })}
       </div>
       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
         {items.map((item) => {
           const active = activoItems.has(item.key);
-          return (
-            <button key={item.key} type="button" onClick={() => toggle(item.key)}
-              style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer",
-                border: active ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)",
-                background: active ? `${color}30` : "transparent",
-                color: active ? color : "rgba(226,232,240,.45)" }}>
-              {item.label}
-            </button>
-          );
+          return (<button key={item.key} type="button" onClick={() => toggle(item.key)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, cursor: "pointer", border: active ? `1px solid ${color}80` : "1px solid rgba(255,255,255,.1)", background: active ? `${color}30` : "transparent", color: active ? color : "rgba(226,232,240,.45)" }}>{item.label}</button>);
         })}
       </div>
     </div>
   );
 }
 
-// ── Utilidades de selección ───────────────────────────────────────────────────
-
 function toggleSelection<T>(value: T, setter: React.Dispatch<React.SetStateAction<T[]>>) {
   setter((prev) => prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]);
 }
-
 function selectAll<T>(all: T[], current: T[], setter: React.Dispatch<React.SetStateAction<T[]>>) {
-  if (current.length === all.length) setter([]);
-  else setter(all);
+  if (current.length === all.length) setter([]); else setter(all);
 }
-
-// ── GraficosSection ───────────────────────────────────────────────────────────
 
 export default function GraficosSection({ token }: Props) {
   const currentYear = useMemo(() => new Date().getFullYear(), []);
-
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
   const [selectedAnios,    setSelectedAnios]    = useState<number[]>([currentYear, currentYear - 1]);
   const [selectedMeses,    setSelectedMeses]    = useState<number[]>([]);
-
   const [filtersData,    setFiltersData]    = useState<GraficoFiltersResponse | null>(null);
   const [seriesData,     setSeriesData]     = useState<GraficosSeriesResponse | null>(null);
   const [psSeriesData,   setPsSeriesData]   = useState<GraficosPsSeriesResponse | null>(null);
@@ -984,12 +703,8 @@ export default function GraficosSection({ token }: Props) {
   const [filtersError,   setFiltersError]   = useState<string | null>(null);
   const [seriesError,    setSeriesError]    = useState<string | null>(null);
   const [psSeriesError,  setPsSeriesError]  = useState<string | null>(null);
-
   const [expandedGrafica, setExpandedGrafica] = useState<number | null>(null);
-  const [expandedAnios,   setExpandedAnios]   = useState<number[]>([
-    currentYear, currentYear - 1, currentYear - 2, currentYear - 3,
-  ]);
-
+  const [expandedAnios,   setExpandedAnios]   = useState<number[]>([currentYear, currentYear - 1, currentYear - 2, currentYear - 3]);
   const [g1Flags,  setG1Flags]  = useState<TwoFlagsState>({ a: true, b: false });
   const [g3Flags,  setG3Flags]  = useState<TwoFlagsState>({ a: true, b: false });
   const [g4Flags,  setG4Flags]  = useState<TwoFlagsState>({ a: true, b: false });
@@ -1000,9 +715,7 @@ export default function GraficosSection({ token }: Props) {
   const [g6ActiveTarifas, setG6ActiveTarifas] = useState<Set<Grafica6TarifaKey>>(new Set(["total"]));
   const [hiddenSeries, setHiddenSeries] = useState<Record<string, boolean>>({});
 
-  const toggleSerie = useCallback((key: string) => {
-    setHiddenSeries((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
+  const toggleSerie = useCallback((key: string) => { setHiddenSeries((prev) => ({ ...prev, [key]: !prev[key] })); }, []);
 
   const loadFilters = useCallback(async () => {
     if (!token) return;
@@ -1010,13 +723,9 @@ export default function GraficosSection({ token }: Props) {
     try {
       const response = await fetch(`${API_BASE_URL}/medidas-graficos/filters`, { headers: getAuthHeaders(token) });
       if (!response.ok) throw new Error(`Error ${response.status}`);
-      const json = (await response.json()) as GraficoFiltersResponse;
-      setFiltersData(json);
-    } catch (err) {
-      setFiltersError(err instanceof Error ? err.message : "Error cargando filtros");
-    } finally {
-      setFiltersLoading(false);
-    }
+      setFiltersData((await response.json()) as GraficoFiltersResponse);
+    } catch (err) { setFiltersError(err instanceof Error ? err.message : "Error cargando filtros"); }
+    finally { setFiltersLoading(false); }
   }, [token]);
 
   const loadSeries = useCallback(async (aniosOverride?: number[]) => {
@@ -1030,13 +739,9 @@ export default function GraficosSection({ token }: Props) {
       for (const mes  of selectedMeses)    searchParams.append("meses", String(mes));
       const response = await fetch(`${API_BASE_URL}/medidas-graficos/series?${searchParams.toString()}`, { headers: getAuthHeaders(token) });
       if (!response.ok) throw new Error(`Error ${response.status}`);
-      const json = (await response.json()) as GraficosSeriesResponse;
-      setSeriesData(json);
-    } catch (err) {
-      setSeriesError(err instanceof Error ? err.message : "Error cargando series");
-    } finally {
-      setSeriesLoading(false);
-    }
+      setSeriesData((await response.json()) as GraficosSeriesResponse);
+    } catch (err) { setSeriesError(err instanceof Error ? err.message : "Error cargando series"); }
+    finally { setSeriesLoading(false); }
   }, [token, selectedEmpresas, selectedAnios, selectedMeses]);
 
   const loadPsSeries = useCallback(async (aniosOverride?: number[]) => {
@@ -1050,58 +755,37 @@ export default function GraficosSection({ token }: Props) {
       for (const mes  of selectedMeses)    searchParams.append("meses", String(mes));
       const response = await fetch(`${API_BASE_URL}/medidas-graficos-ps/series-cups?${searchParams.toString()}`, { headers: getAuthHeaders(token) });
       if (!response.ok) throw new Error(`Error ${response.status}`);
-      const json = (await response.json()) as GraficosPsSeriesResponse;
-      setPsSeriesData(json);
-    } catch (err) {
-      setPsSeriesError(err instanceof Error ? err.message : "Error cargando series PS");
-    } finally {
-      setPsSeriesLoading(false);
-    }
+      setPsSeriesData((await response.json()) as GraficosPsSeriesResponse);
+    } catch (err) { setPsSeriesError(err instanceof Error ? err.message : "Error cargando series PS"); }
+    finally { setPsSeriesLoading(false); }
   }, [token, selectedEmpresas, selectedAnios, selectedMeses]);
 
   useEffect(() => { void loadFilters(); }, [loadFilters]);
   useEffect(() => { void loadSeries(); void loadPsSeries(); }, [loadSeries, loadPsSeries]);
-
   useEffect(() => {
     if (expandedGrafica === null) return;
-    void loadSeries(expandedAnios);
-    void loadPsSeries(expandedAnios);
+    void loadSeries(expandedAnios); void loadPsSeries(expandedAnios);
   }, [expandedAnios, expandedGrafica]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExpand = useCallback((graficaNum: number) => {
-    const anios4 = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3].filter((y) =>
-      !filtersData || filtersData.anios.includes(y)
-    );
+    const anios4 = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3].filter((y) => !filtersData || filtersData.anios.includes(y));
     setExpandedAnios(anios4.length > 0 ? anios4 : [currentYear]);
     setExpandedGrafica(graficaNum);
-    void loadSeries(anios4);
-    void loadPsSeries(anios4);
+    void loadSeries(anios4); void loadPsSeries(anios4);
   }, [currentYear, filtersData, loadSeries, loadPsSeries]);
 
   const handleCloseExpanded = useCallback(() => {
-    setExpandedGrafica(null);
-    void loadSeries();
-    void loadPsSeries();
+    setExpandedGrafica(null); void loadSeries(); void loadPsSeries();
   }, [loadSeries, loadPsSeries]);
 
-  const empresaOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.empresas ?? []).map((e) => ({ value: e.id, label: `${e.id} – ${e.nombre}` })),
-    [filtersData]
-  );
-  const anioOptions = useMemo<MultiCheckOption[]>(
-    () => (filtersData?.anios ?? []).map((y) => ({ value: y, label: String(y) })),
-    [filtersData]
-  );
+  const empresaOptions = useMemo<MultiCheckOption[]>(() => (filtersData?.empresas ?? []).map((e) => ({ value: e.id, label: `${e.id} – ${e.nombre}` })), [filtersData]);
+  const anioOptions    = useMemo<MultiCheckOption[]>(() => (filtersData?.anios ?? []).map((y) => ({ value: y, label: String(y) })), [filtersData]);
 
   const grafica1Series = useMemo((): GraficoSerie[] => {
     if (!seriesData) return [];
-    const m1Serie = seriesData.energia_facturada.series[0];
     const result: GraficoSerie[] = [];
-    if (g1Flags.a && m1Serie) result.push({ ...m1Serie, serie_key: "g1_facturada", serie_label: "E neta facturada" });
-    if (g1Flags.b) {
-      const adqSerie = seriesData.adquisicion.series[0];
-      if (adqSerie) result.push({ ...adqSerie, serie_label: "Adquisición" });
-    }
+    if (g1Flags.a && seriesData.energia_facturada.series[0]) result.push({ ...seriesData.energia_facturada.series[0], serie_key: "g1_facturada", serie_label: "E neta facturada" });
+    if (g1Flags.b && seriesData.adquisicion.series[0]) result.push({ ...seriesData.adquisicion.series[0], serie_label: "Adquisición" });
     return result;
   }, [seriesData, g1Flags]);
 
@@ -1118,41 +802,19 @@ export default function GraficosSection({ token }: Props) {
     for (const opcion of GRAFICA2_OPCIONES) {
       if (!g2Active.has(opcion.key)) continue;
       if (opcion.grupo === "pct") {
-        if (opcion.key === "pct") {
-          const s = seriesData.perdidas.series[0];
-          if (s) result.push({ ...s, serie_key: "pct", serie_label: "Pérdidas (%)" });
-        } else {
-          const ventana = opcion.key.replace("pct_", "").toUpperCase();
-          const s = seriesData.perdidas_ventanas.series.find((x) =>
-            x.serie_key.toLowerCase().includes(ventana.toLowerCase())
-          );
-          if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label });
-        }
+        if (opcion.key === "pct") { const s = seriesData.perdidas.series[0]; if (s) result.push({ ...s, serie_key: "pct", serie_label: "Pérdidas (%)" }); }
+        else { const ventana = opcion.key.replace("pct_", "").toUpperCase(); const s = seriesData.perdidas_ventanas.series.find((x) => x.serie_key.toLowerCase().includes(ventana.toLowerCase())); if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label }); }
       } else {
-        if (opcion.key === "kwh") {
-          const s = seriesData.perdidas_kwh.series[0];
-          if (s) result.push({ ...s, serie_key: "kwh", serie_label: "Pérdidas (kWh)" });
-        } else {
-          const ventana = opcion.key.replace("kwh_", "");
-          const s = seriesData.perdidas_kwh_ventanas.series.find((x) =>
-            x.serie_key === `perd_kwh_${ventana}`
-          );
-          if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label });
-        }
+        if (opcion.key === "kwh") { const s = seriesData.perdidas_kwh.series[0]; if (s) result.push({ ...s, serie_key: "kwh", serie_label: "Pérdidas (kWh)" }); }
+        else { const ventana = opcion.key.replace("kwh_", ""); const s = seriesData.perdidas_kwh_ventanas.series.find((x) => x.serie_key === `perd_kwh_${ventana}`); if (s) result.push({ ...s, serie_key: opcion.key, serie_label: opcion.label }); }
       }
     }
     return result;
   }, [seriesData, g2Active]);
 
-  const grafica2Subtitle = useMemo(() => {
-    const labels = [...g2Active].map((k) => GRAFICA2_OPCIONES.find((o) => o.key === k)?.label ?? k);
-    return `Histórico de ${labels.join(", ")}.`;
-  }, [g2Active]);
+  const grafica2Subtitle = useMemo(() => `Histórico de ${[...g2Active].map((k) => GRAFICA2_OPCIONES.find((o) => o.key === k)?.label ?? k).join(", ")}.`, [g2Active]);
 
-  const energiasPfSinFinal = useMemo(
-    () => seriesData?.energias_pf.series.filter((s) => !s.serie_key.includes("final")) ?? [],
-    [seriesData]
-  );
+  const energiasPfSinFinal = useMemo(() => seriesData?.energias_pf.series.filter((s) => !s.serie_key.includes("final")) ?? [], [seriesData]);
   const grafica3Series = useMemo((): GraficoSerie[] => {
     if (!seriesData) return [];
     const result: GraficoSerie[] = [];
@@ -1171,28 +833,16 @@ export default function GraficosSection({ token }: Props) {
   const grafica4Series = useMemo((): GraficoSerie[] => {
     if (!seriesData) return [];
     const result: GraficoSerie[] = [];
-    if (g4Flags.a) {
-      const s = seriesData.autoconsumo.series[0];
-      if (s) result.push({ ...s, serie_key: "g4_autoconsumo", serie_label: "E autoconsumo" });
-    }
-    if (g4Flags.b) {
-      const s = seriesData.energia_generada.series[0];
-      if (s) result.push({ ...s, serie_key: "g4_generada", serie_label: "E generada" });
-    }
+    if (g4Flags.a && seriesData.autoconsumo.series[0]) result.push({ ...seriesData.autoconsumo.series[0], serie_key: "g4_autoconsumo", serie_label: "E autoconsumo" });
+    if (g4Flags.b && seriesData.energia_generada.series[0]) result.push({ ...seriesData.energia_generada.series[0], serie_key: "g4_generada", serie_label: "E generada" });
     return result;
   }, [seriesData, g4Flags]);
 
-  const grafica4Subtitle = useMemo(() => {
-    const parts = [];
-    if (g4Flags.a) parts.push("E autoconsumo");
-    if (g4Flags.b) parts.push("E generada");
-    return `Histórico de ${parts.join(" y ")}.`;
-  }, [g4Flags]);
+  const grafica4Subtitle = useMemo(() => { const p = []; if (g4Flags.a) p.push("E autoconsumo"); if (g4Flags.b) p.push("E generada"); return `Histórico de ${p.join(" y ")}.`; }, [g4Flags]);
 
   const grafica5Series = useMemo((): GraficoSerie[] => {
     if (!psSeriesData) return [];
-    const groupKey = GRAFICA5_MODO_CONFIG[g5Modo].groupKey;
-    const group = psSeriesData[groupKey] as GraficoSeriesGroup;
+    const group = psSeriesData[GRAFICA5_MODO_CONFIG[g5Modo].groupKey] as GraficoSeriesGroup;
     const realKeys = new Set([...g5ActiveTipos].map((k) => G5_KEYS_BY_MODO[g5Modo][k]).filter(Boolean));
     return group.series.filter((s) => realKeys.has(s.serie_key));
   }, [psSeriesData, g5Modo, g5ActiveTipos]);
@@ -1201,26 +851,21 @@ export default function GraficosSection({ token }: Props) {
 
   const grafica6Series = useMemo((): GraficoSerie[] => {
     if (!psSeriesData) return [];
-    const groupKey = GRAFICA6_MODO_CONFIG[g6Modo].groupKey;
-    const group = psSeriesData[groupKey] as GraficoSeriesGroup;
+    const group = psSeriesData[GRAFICA6_MODO_CONFIG[g6Modo].groupKey] as GraficoSeriesGroup;
     const realKeys = new Set([...g6ActiveTarifas].map((k) => G6_KEYS_BY_MODO[g6Modo][k]).filter(Boolean));
     return group.series.filter((s) => realKeys.has(s.serie_key));
   }, [psSeriesData, g6Modo, g6ActiveTarifas]);
 
   const grafica6Subtitle = `${GRAFICA6_MODO_CONFIG[g6Modo].label} PS por tarifa — ${[...g6ActiveTarifas].map((k) => GRAFICA6_TARIFAS.find((t) => t.key === k)?.label ?? k).join(", ")}.`;
 
-  function getLastValueInfo(series: GraficoSerie[]): { label: string; value: string; trend: { value: number; label: string } | undefined } {
+  function getLastValueInfo(series: GraficoSerie[]) {
     const s = series[0];
     if (!s || s.points.length === 0) return { label: "—", value: "—", trend: undefined };
     const pts  = [...s.points].sort((a, b) => a.period_key.localeCompare(b.period_key));
     const last = pts[pts.length - 1];
     const prev = pts[pts.length - 2];
     const pct  = prev && prev.value !== 0 ? ((last.value - prev.value) / Math.abs(prev.value)) * 100 : undefined;
-    return {
-      label: `${s.serie_label} · ${last.period_label}`,
-      value: formatYAxis(last.value),
-      trend: pct !== undefined ? { value: pct, label: "%" } : undefined,
-    };
+    return { label: `${s.serie_label} · ${last.period_label}`, value: formatYAxis(last.value), trend: pct !== undefined ? { value: pct, label: "%" } : undefined };
   }
 
   const g1Info = useMemo(() => getLastValueInfo(grafica1Series), [grafica1Series]);
@@ -1231,11 +876,8 @@ export default function GraficosSection({ token }: Props) {
   const g6Info = useMemo(() => getLastValueInfo(grafica6Series), [grafica6Series]);
 
   const GRAFICA5_MODOS = useMemo(() => [
-    { key: "cups"    as Grafica5Modo, label: "CUPS"    },
-    { key: "energia" as Grafica5Modo, label: "Energía" },
-    { key: "importe" as Grafica5Modo, label: "Importe" },
+    { key: "cups" as Grafica5Modo, label: "CUPS" }, { key: "energia" as Grafica5Modo, label: "Energía" }, { key: "importe" as Grafica5Modo, label: "Importe" },
   ], []);
-
   const GRAFICA6_MODOS: { key: Grafica6Modo; label: string }[] = [
     { key: "cups", label: "CUPS" }, { key: "energia", label: "Energía" }, { key: "importe", label: "Importe" },
   ];
@@ -1259,10 +901,7 @@ export default function GraficosSection({ token }: Props) {
   const handleToggleExpandedAnio = useCallback((anio: number) => {
     setExpandedAnios((prev) => prev.includes(anio) ? prev.filter((y) => y !== anio) : [...prev, anio]);
   }, []);
-
-  const handleSelectAllExpandedAnios = useCallback(() => {
-    setExpandedAnios([]);
-  }, []);
+  const handleSelectAllExpandedAnios = useCallback(() => { setExpandedAnios([]); }, []);
 
   return (
     <section className="text-sm">
@@ -1271,75 +910,43 @@ export default function GraficosSection({ token }: Props) {
         {expandedGrafica !== null && expandedData && (
           <ExpandedChart
             title={`Gráfica ${expandedGrafica}. ${["Evolución de energía facturada / Adquisición","Evolución de pérdidas","Evolución de energías publicadas / E PF","Evolución de autoconsumo / energía generada","Evolución PS por tipo","Evolución PS por tarifa"][expandedGrafica - 1]}`}
-            subtitle={expandedData.subtitle}
-            series={expandedData.series}
-            hiddenSeries={hiddenSeries}
-            onToggleSerie={toggleSerie}
-            selector={expandedData.selector}
-            loading={isLoading}
-            error={mainError}
-            onClose={handleCloseExpanded}
-            accentColor={GRAFICA_ACCENT[expandedGrafica]}
-            badgeLabel={GRAFICA_BADGE[expandedGrafica]}
-            allAnios={filtersData?.anios ?? []}
-            expandedAnios={expandedAnios}
-            onToggleExpandedAnio={handleToggleExpandedAnio}
-            onSelectAllExpandedAnios={handleSelectAllExpandedAnios}
+            subtitle={expandedData.subtitle} series={expandedData.series} hiddenSeries={hiddenSeries}
+            onToggleSerie={toggleSerie} selector={expandedData.selector} loading={isLoading} error={mainError}
+            onClose={handleCloseExpanded} accentColor={GRAFICA_ACCENT[expandedGrafica]} badgeLabel={GRAFICA_BADGE[expandedGrafica]}
+            allAnios={filtersData?.anios ?? []} expandedAnios={expandedAnios}
+            onToggleExpandedAnio={handleToggleExpandedAnio} onSelectAllExpandedAnios={handleSelectAllExpandedAnios}
           />
         )}
 
         {expandedGrafica === null && (
           <>
-            <div
-              className="rounded-xl border"
-              style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", padding: "10px 14px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}
-            >
+            <div className="rounded-xl border" style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", padding: "10px 14px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Empresa</span>
                 {filtersLoading ? (
                   <div className="ui-select" style={{ minWidth: 160, color: "rgba(226,232,240,.4)" }}>Cargando...</div>
                 ) : (
-                  <FilterDropdown
-                    title="Empresa"
-                    options={empresaOptions}
-                    selectedValues={selectedEmpresas}
+                  <FilterDropdown title="Empresa" options={empresaOptions} selectedValues={selectedEmpresas}
                     onToggle={(v) => toggleSelection(v, setSelectedEmpresas)}
                     onSelectAll={() => selectAll(empresaOptions.map((e) => e.value), selectedEmpresas, setSelectedEmpresas)}
-                    allLabel="Todas"
-                  />
+                    allLabel="Todas" />
                 )}
               </div>
-
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Año</span>
                 <YearPillsFilter
                   allAnios={filtersData?.anios ?? [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]}
                   selectedAnios={selectedAnios}
                   onToggle={(v) => toggleSelection(v, setSelectedAnios)}
-                  onSelectAll={() => selectAll(filtersData?.anios ?? [], selectedAnios, setSelectedAnios)}
-                />
+                  onSelectAll={() => selectAll(filtersData?.anios ?? [], selectedAnios, setSelectedAnios)} />
               </div>
-
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Mes</span>
-                <MonthPillsFilter
-                  selectedMeses={selectedMeses}
+                <MonthPillsFilter selectedMeses={selectedMeses}
                   onToggle={(v) => toggleSelection(v, setSelectedMeses)}
-                  onSelectAll={() => selectAll(Array.from({ length: 12 }, (_, i) => i + 1), selectedMeses, setSelectedMeses)}
-                />
+                  onSelectAll={() => selectAll(Array.from({ length: 12 }, (_, i) => i + 1), selectedMeses, setSelectedMeses)} />
               </div>
-
               <div style={{ flex: 1 }} />
-
-              <button
-                type="button"
-                onClick={() => { void loadSeries(); void loadPsSeries(); }}
-                disabled={isLoading}
-                className="ui-btn ui-btn-primary"
-                style={{ height: 28, fontSize: 11 }}
-              >
-                {isLoading ? "Cargando..." : "Aplicar"}
-              </button>
             </div>
 
             <div style={{ fontSize: 10, color: "rgba(96,165,250,.7)", background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.2)", borderRadius: 8, padding: "6px 12px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -1357,42 +964,17 @@ export default function GraficosSection({ token }: Props) {
 
               <ChartCard badgeLabel="G4" accentColor={GRAFICA_ACCENT[4]} title="Autoconsumo / E generada" subtitle={grafica4Subtitle} series={grafica4Series} hiddenSeries={hiddenSeries} onToggleSerie={toggleSerie} selector={<TwoFlagsSelector flags={g4Flags} setFlags={setG4Flags} labelA="E autoconsumo" labelB="E generada" accentColor={GRAFICA_ACCENT[4]} />} loading={seriesLoading} error={seriesError} onExpand={() => handleExpand(4)} lastValueLabel={g4Info.label} lastValue={g4Info.value} trend={g4Info.trend} />
 
-              <ChartCard
-                badgeLabel="G5" accentColor={GRAFICA_ACCENT[5]}
-                title="PS por tipo" subtitle={grafica5Subtitle}
-                series={grafica5Series} hiddenSeries={hiddenSeries} onToggleSerie={toggleSerie}
-                selector={
-                  <TwoLevelSelector
-                    modos={GRAFICA5_MODOS} modoActivo={g5Modo} onModo={setG5Modo}
-                    items={GRAFICA5_TIPOS} activoItems={g5ActiveTipos}
-                    onToggleItem={(k) => { setG5ActiveTipos((prev) => { const n = new Set(prev); if (n.has(k)) { if (n.size > 1) n.delete(k); } else n.add(k); return n; }); }}
-                    accentColor={GRAFICA_ACCENT[5]}
-                  />
-                }
-                loading={psSeriesLoading} error={psSeriesError} onExpand={() => handleExpand(5)}
-                lastValueLabel={g5Info.label} lastValue={g5Info.value} trend={g5Info.trend}
-              />
+              <ChartCard badgeLabel="G5" accentColor={GRAFICA_ACCENT[5]} title="PS por tipo" subtitle={grafica5Subtitle} series={grafica5Series} hiddenSeries={hiddenSeries} onToggleSerie={toggleSerie}
+                selector={<TwoLevelSelector modos={GRAFICA5_MODOS} modoActivo={g5Modo} onModo={setG5Modo} items={GRAFICA5_TIPOS} activoItems={g5ActiveTipos} onToggleItem={(k) => { setG5ActiveTipos((prev) => { const n = new Set(prev); if (n.has(k)) { if (n.size > 1) n.delete(k); } else n.add(k); return n; }); }} accentColor={GRAFICA_ACCENT[5]} />}
+                loading={psSeriesLoading} error={psSeriesError} onExpand={() => handleExpand(5)} lastValueLabel={g5Info.label} lastValue={g5Info.value} trend={g5Info.trend} />
 
-              <ChartCard
-                badgeLabel="G6" accentColor={GRAFICA_ACCENT[6]}
-                title="PS por tarifa" subtitle={grafica6Subtitle}
-                series={grafica6Series} hiddenSeries={hiddenSeries} onToggleSerie={toggleSerie}
-                selector={
-                  <TwoLevelSelector
-                    modos={GRAFICA6_MODOS} modoActivo={g6Modo} onModo={setG6Modo}
-                    items={GRAFICA6_TARIFAS} activoItems={g6ActiveTarifas}
-                    onToggleItem={(k) => { setG6ActiveTarifas((prev) => { const n = new Set(prev); if (n.has(k)) { if (n.size > 1) n.delete(k); } else n.add(k); return n; }); }}
-                    accentColor={GRAFICA_ACCENT[6]}
-                  />
-                }
-                loading={psSeriesLoading} error={psSeriesError} onExpand={() => handleExpand(6)}
-                lastValueLabel={g6Info.label} lastValue={g6Info.value} trend={g6Info.trend}
-              />
+              <ChartCard badgeLabel="G6" accentColor={GRAFICA_ACCENT[6]} title="PS por tarifa" subtitle={grafica6Subtitle} series={grafica6Series} hiddenSeries={hiddenSeries} onToggleSerie={toggleSerie}
+                selector={<TwoLevelSelector modos={GRAFICA6_MODOS} modoActivo={g6Modo} onModo={setG6Modo} items={GRAFICA6_TARIFAS} activoItems={g6ActiveTarifas} onToggleItem={(k) => { setG6ActiveTarifas((prev) => { const n = new Set(prev); if (n.has(k)) { if (n.size > 1) n.delete(k); } else n.add(k); return n; }); }} accentColor={GRAFICA_ACCENT[6]} />}
+                loading={psSeriesLoading} error={psSeriesError} onExpand={() => handleExpand(6)} lastValueLabel={g6Info.label} lastValue={g6Info.value} trend={g6Info.trend} />
 
             </div>
           </>
         )}
-
       </div>
     </section>
   );
