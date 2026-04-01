@@ -170,10 +170,13 @@ export default function HomePage() {
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
 
   // ── Permisos ──────────────────────────────────────────────────────────────
-  const isViewer       = currentUser?.rol === "viewer";
-  const canManageUsers = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
-  const canSeeAjustes  = !!canManageUsers;
-  const isSuperuser    = !!currentUser?.is_superuser;
+  const isViewer         = currentUser?.rol === "viewer";
+  const canManageUsers   = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
+  const isSuperuser      = !!currentUser?.is_superuser;
+  // Configuración de tablas: todos excepto viewer (user también puede personalizar sus tablas)
+  const canSeeAjustes    = !!currentUser && !isViewer;
+  // Apariencia del panel: solo admin, owner y superuser
+  const canSeeApariencia = !!canManageUsers || isSuperuser;
 
   const resetUiColors = () => window.dispatchEvent(new CustomEvent("ui-theme-reset"));
   const toggleSidebar = () => setSidebarCollapsed((prev) => !prev);
@@ -319,6 +322,7 @@ export default function HomePage() {
                 <span>Carga de datos</span>
               </button>
             )}
+            {/* Configuración: visible para todos excepto viewer */}
             {canSeeAjustes && (
               <button onClick={() => setActiveTab("ajustes")}
                 className={["ui-nav-item", activeTab === "ajustes" ? "ui-nav-item--active" : ""].join(" ")}>
@@ -396,35 +400,37 @@ export default function HomePage() {
         {activeTab === "carga" && !isViewer && <CargaSection token={token} />}
 
         {activeTab === "ajustes" && canSeeAjustes && (
-          <section className="settings-page">
+          <section className="settings-page" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-            {/* ── APARIENCIA DEL PANEL ── */}
-            <div className="ui-collapsible-card">
-              <button type="button" className="ui-collapsible-card__trigger"
-                onClick={() => setShowApariencia((v) => !v)}>
-                <div>
-                  <div className="ui-collapsible-card__title">APARIENCIA DEL PANEL</div>
-                  <p className="ui-collapsible-card__subtitle">
-                    Cambia los colores del panel. Se aplica al momento en todas las secciones.
-                  </p>
-                </div>
-                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
-                  {showApariencia ? "Ocultar" : "Mostrar"}
-                </span>
-              </button>
-              {showApariencia && (
-                <div className="ui-collapsible-card__body">
-                  <div className="flex justify-end mb-3">
-                    <button type="button" onClick={resetUiColors} className="ui-btn ui-btn-outline ui-btn-xs">
-                      Restaurar colores
-                    </button>
+            {/* ── APARIENCIA DEL PANEL — solo admin/owner/superuser ── */}
+            {canSeeApariencia && (
+              <div className="ui-collapsible-card">
+                <button type="button" className="ui-collapsible-card__trigger"
+                  onClick={() => setShowApariencia((v) => !v)}>
+                  <div>
+                    <div className="ui-collapsible-card__title">APARIENCIA DEL PANEL</div>
+                    <p className="ui-collapsible-card__subtitle">
+                      Cambia los colores del panel. Se aplica al momento en todas las secciones.
+                    </p>
                   </div>
-                  <AppearanceSettingsSection token={token} />
-                </div>
-              )}
-            </div>
+                  <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+                    {showApariencia ? "Ocultar" : "Mostrar"}
+                  </span>
+                </button>
+                {showApariencia && (
+                  <div className="ui-collapsible-card__body">
+                    <div className="flex justify-end mb-3">
+                      <button type="button" onClick={resetUiColors} className="ui-btn ui-btn-outline ui-btn-xs">
+                        Restaurar colores
+                      </button>
+                    </div>
+                    <AppearanceSettingsSection token={token} />
+                  </div>
+                )}
+              </div>
+            )}
 
-            {/* ── CONFIGURACIÓN DE TABLAS ── */}
+            {/* ── CONFIGURACIÓN DE TABLAS — todos excepto viewer ── */}
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger"
                 onClick={() => setShowTablas((v) => !v)}>

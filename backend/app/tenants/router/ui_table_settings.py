@@ -48,13 +48,10 @@ def _as_any(obj: Any) -> Any:
 def _u_rol(u: User) -> str:
     return str(getattr(u, "rol"))
 
-def _u_is_superuser(u: User) -> bool:
-    return bool(cast(bool, getattr(u, "is_superuser")))
-
 def _can_manage_ui_settings(u: User) -> bool:
-    if _u_is_superuser(u):
-        return True
-    return _u_rol(u) in ("admin", "owner")
+    # Todos los usuarios autenticados pueden guardar su propia configuración de tablas,
+    # excepto viewer (rol de solo lectura sin personalización).
+    return _u_rol(u) != "viewer"
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -66,7 +63,7 @@ def get_ui_table_settings(
 ):
     """
     Devuelve la configuración de tablas del usuario actual.
-    Permitido para roles admin, owner y superuser.
+    Permitido para todos los roles excepto viewer.
     """
     if not _can_manage_ui_settings(current_user):
         raise HTTPException(
@@ -87,7 +84,7 @@ def set_ui_table_settings(
 ):
     """
     Guarda la configuración de tablas del usuario actual.
-    Permitido para roles admin, owner y superuser.
+    Permitido para todos los roles excepto viewer.
     """
     if not _can_manage_ui_settings(current_user):
         raise HTTPException(
@@ -111,7 +108,7 @@ def clear_ui_table_settings(
 ):
     """
     Resetea la configuración de tablas del usuario (pone NULL en BD).
-    Permitido para roles admin, owner y superuser.
+    Permitido para todos los roles excepto viewer.
     """
     if not _can_manage_ui_settings(current_user):
         raise HTTPException(
