@@ -716,7 +716,6 @@ export default function HomePage() {
           <section className="settings-page">
             <header className="settings-header">
               <div>
-                <h3 className="ui-page-title">Configuración</h3>
                 <p className="ui-card-subtitle">
                   Ajustes de la cuenta y apariencia del panel.
                 </p>
