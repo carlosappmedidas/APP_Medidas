@@ -378,6 +378,7 @@ export default function HomePage() {
             hiddenColumns={generalHiddenColumns}
             setHiddenColumns={setGeneralHiddenColumns}
             onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
+            appearance={appearance}
           />
         )}
         {activeTab === "tablas-ps" && (
@@ -388,6 +389,7 @@ export default function HomePage() {
             hiddenColumns={psHiddenColumns}
             setHiddenColumns={setPsHiddenColumns}
             onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
+            appearance={appearance}
           />
         )}
 

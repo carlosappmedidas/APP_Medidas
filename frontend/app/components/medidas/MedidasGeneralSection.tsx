@@ -9,7 +9,19 @@ import MedidasFiltersBar from "../ui/MedidasFiltersBar";
 import MedidasTableActions from "../ui/MedidasTableActions";
 import { useMedidasTable } from "./hooks/useMedidasTable";
 import { useDeleteByIngestion } from "../ingestion/hooks/useDeleteByIngestion";
+import type { TableAppearance } from "../settings/hooks/useTableSettings";
 
+// ── Colores de cabecera de grupo ──────────────────────────────────────────
+const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; borderBottom: string }> = {
+  "Identificación": { background: "rgba(30,58,95,0.4)",   color: "rgba(226,232,240,0.5)",  borderBottom: "1px solid rgba(30,58,95,0.6)" },
+  "General":        { background: "rgba(37,99,235,0.18)", color: "#60a5fa",                 borderBottom: "1px solid rgba(37,99,235,0.4)" },
+  "M2":             { background: "rgba(5,150,105,0.18)", color: "#34d399",                 borderBottom: "1px solid rgba(5,150,105,0.4)" },
+  "M7":             { background: "rgba(245,158,11,0.18)",color: "#fbbf24",                 borderBottom: "1px solid rgba(245,158,11,0.4)" },
+  "M11":            { background: "rgba(168,85,247,0.18)",color: "#c084fc",                 borderBottom: "1px solid rgba(168,85,247,0.4)" },
+  "ART15":          { background: "rgba(239,68,68,0.18)", color: "#f87171",                 borderBottom: "1px solid rgba(239,68,68,0.4)" },
+};
+
+// ── Tipos ──────────────────────────────────────────────────────────────────
 type MedidasProps = {
   token: string | null;
   scope?: "tenant" | "all";
@@ -17,11 +29,19 @@ type MedidasProps = {
   setColumnOrder?: (order: string[]) => void;
   hiddenColumns?: string[];
   setHiddenColumns?: (cols: string[]) => void;
-  /** Navega a Configuración → Configuración de tablas */
   onGoToSettings?: () => void;
+  appearance?: TableAppearance;
 };
 
-const formatNumberEs = (v: number | null | undefined, decimals: number = 2): string => {
+const DEFAULT_APPEARANCE: TableAppearance = {
+  stripedRows:     true,
+  columnGroups:    true,
+  pctBadges:       true,
+  periodSeparator: false,
+};
+
+// ── Helpers de formato ────────────────────────────────────────────────────
+const formatNumberEs = (v: number | null | undefined, decimals = 2): string => {
   if (v == null || Number.isNaN(v)) return "-";
   return new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: decimals,
@@ -34,77 +54,105 @@ const formatPercentEs = (v: number | null | undefined): string => {
   return `${formatNumberEs(v, 2)} %`;
 };
 
+// Renderiza un porcentaje con o sin badge de color
+function PctCell({ value, pctBadges }: { value: number | null | undefined; pctBadges: boolean }) {
+  const text = formatPercentEs(value);
+  if (!pctBadges || text === "-") return <>{text}</>;
+  const isNeg = typeof value === "number" && value < 0;
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "1px 6px",
+        borderRadius: 4,
+        fontSize: "inherit",
+        fontWeight: 500,
+        background: isNeg ? "rgba(239,68,68,0.18)" : "rgba(5,150,105,0.18)",
+        color:      isNeg ? "#f87171"               : "#34d399",
+      }}
+    >
+      {text}
+    </span>
+  );
+}
+
 export type ColumnDefGeneral = {
   id: string;
   label: string;
   align: "left" | "right";
   group: string;
-  render: (m: MedidaGeneral | any) => any;
+  render: (m: MedidaGeneral | any, ap: TableAppearance) => React.ReactNode;
 };
 
 const STICKY_COLUMN_IDS = ["empresa_id", "empresa_codigo", "punto_id", "anio", "mes"];
-
 const STICKY_WIDTHS: Record<string, number> = {
-  empresa_id: 64,
-  empresa_codigo: 110,
-  punto_id: 64,
-  anio: 52,
-  mes: 44,
+  empresa_id: 64, empresa_codigo: 110, punto_id: 64, anio: 52, mes: 44,
 };
 
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
-  { id: "empresa_id", label: "Empresa ID", align: "left", group: "Identificación", render: (m) => m.empresa_id },
-  { id: "empresa_codigo", label: "Código empresa", align: "left", group: "Identificación", render: (m) => (m as any).empresa_codigo ?? "-" },
-  { id: "punto_id", label: "Punto", align: "left", group: "Identificación", render: (m) => m.punto_id },
-  { id: "anio", label: "Año", align: "left", group: "Identificación", render: (m) => m.anio },
-  { id: "mes", label: "Mes", align: "left", group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
-  { id: "energia_bruta_facturada", label: "E bruta fact.", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_bruta_facturada) },
-  { id: "energia_autoconsumo_kwh", label: "E autoc.", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_autoconsumo_kwh) },
-  { id: "energia_neta_facturada_kwh", label: "E neta fact.", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_neta_facturada_kwh) },
-  { id: "energia_generada_kwh", label: "E generada", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_generada_kwh) },
-  { id: "energia_frontera_dd_kwh", label: "E front. DD", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_frontera_dd_kwh) },
-  { id: "energia_pf_final_kwh", label: "E PF final", align: "right", group: "General", render: (m) => formatNumberEs(m.energia_pf_final_kwh) },
-  { id: "perdidas_e_facturada_kwh", label: "Pérd. fact. kWh", align: "right", group: "General", render: (m) => formatNumberEs(m.perdidas_e_facturada_kwh) },
-  { id: "perdidas_e_facturada_pct", label: "Pérd. fact. %", align: "right", group: "General", render: (m) => formatPercentEs(m.perdidas_e_facturada_pct) },
-  { id: "energia_publicada_m2_kwh", label: "E publ M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_publicada_m2_kwh) },
-  { id: "energia_autoconsumo_m2_kwh", label: "E autoc M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_autoconsumo_m2_kwh) },
-  { id: "energia_pf_m2_kwh", label: "E PF M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_pf_m2_kwh) },
-  { id: "energia_frontera_dd_m2_kwh", label: "E front M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_frontera_dd_m2_kwh) },
-  { id: "energia_generada_m2_kwh", label: "E gen M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_generada_m2_kwh) },
-  { id: "energia_neta_facturada_m2_kwh", label: "E neta M2", align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_neta_facturada_m2_kwh) },
-  { id: "perdidas_e_facturada_m2_kwh", label: "Pérd. M2 kWh", align: "right", group: "M2", render: (m) => formatNumberEs(m.perdidas_e_facturada_m2_kwh) },
-  { id: "perdidas_e_facturada_m2_pct", label: "Pérd. M2 %", align: "right", group: "M2", render: (m) => formatPercentEs(m.perdidas_e_facturada_m2_pct) },
-  { id: "energia_publicada_m7_kwh", label: "E publ M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_publicada_m7_kwh) },
-  { id: "energia_autoconsumo_m7_kwh", label: "E autoc M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_autoconsumo_m7_kwh) },
-  { id: "energia_pf_m7_kwh", label: "E PF M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_pf_m7_kwh) },
-  { id: "energia_frontera_dd_m7_kwh", label: "E front M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_frontera_dd_m7_kwh) },
-  { id: "energia_generada_m7_kwh", label: "E gen M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_generada_m7_kwh) },
-  { id: "energia_neta_facturada_m7_kwh", label: "E neta M7", align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_neta_facturada_m7_kwh) },
-  { id: "perdidas_e_facturada_m7_kwh", label: "Pérd. M7 kWh", align: "right", group: "M7", render: (m) => formatNumberEs(m.perdidas_e_facturada_m7_kwh) },
-  { id: "perdidas_e_facturada_m7_pct", label: "Pérd. M7 %", align: "right", group: "M7", render: (m) => formatPercentEs(m.perdidas_e_facturada_m7_pct) },
-  { id: "energia_publicada_m11_kwh", label: "E publ M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_publicada_m11_kwh) },
-  { id: "energia_autoconsumo_m11_kwh", label: "E autoc M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_autoconsumo_m11_kwh) },
-  { id: "energia_pf_m11_kwh", label: "E PF M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_pf_m11_kwh) },
-  { id: "energia_frontera_dd_m11_kwh", label: "E front M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_frontera_dd_m11_kwh) },
-  { id: "energia_generada_m11_kwh", label: "E gen M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_generada_m11_kwh) },
-  { id: "energia_neta_facturada_m11_kwh", label: "E neta M11", align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_neta_facturada_m11_kwh) },
-  { id: "perdidas_e_facturada_m11_kwh", label: "Pérd. M11 kWh", align: "right", group: "M11", render: (m) => formatNumberEs(m.perdidas_e_facturada_m11_kwh) },
-  { id: "perdidas_e_facturada_m11_pct", label: "Pérd. M11 %", align: "right", group: "M11", render: (m) => formatPercentEs(m.perdidas_e_facturada_m11_pct) },
-  { id: "energia_publicada_art15_kwh", label: "E publ A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_publicada_art15_kwh) },
-  { id: "energia_autoconsumo_art15_kwh", label: "E autoc A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_autoconsumo_art15_kwh) },
-  { id: "energia_pf_art15_kwh", label: "E PF A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_pf_art15_kwh) },
-  { id: "energia_frontera_dd_art15_kwh", label: "E front A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_frontera_dd_art15_kwh) },
-  { id: "energia_generada_art15_kwh", label: "E gen A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_generada_art15_kwh) },
-  { id: "energia_neta_facturada_art15_kwh", label: "E neta A15", align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_neta_facturada_art15_kwh) },
-  { id: "perdidas_e_facturada_art15_kwh", label: "Pérd. A15 kWh", align: "right", group: "ART15", render: (m) => formatNumberEs(m.perdidas_e_facturada_art15_kwh) },
-  { id: "perdidas_e_facturada_art15_pct", label: "Pérd. A15 %", align: "right", group: "ART15", render: (m) => formatPercentEs(m.perdidas_e_facturada_art15_pct) },
+  { id: "empresa_id",      label: "Empresa ID",     align: "left",  group: "Identificación", render: (m) => m.empresa_id },
+  { id: "empresa_codigo",  label: "Código empresa", align: "left",  group: "Identificación", render: (m) => (m as any).empresa_codigo ?? "-" },
+  { id: "punto_id",        label: "Punto",          align: "left",  group: "Identificación", render: (m) => m.punto_id },
+  { id: "anio",            label: "Año",            align: "left",  group: "Identificación", render: (m) => m.anio },
+  { id: "mes",             label: "Mes",            align: "left",  group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
+  { id: "energia_bruta_facturada",         label: "E bruta fact.",  align: "right", group: "General", render: (m) => formatNumberEs(m.energia_bruta_facturada) },
+  { id: "energia_autoconsumo_kwh",         label: "E autoc.",       align: "right", group: "General", render: (m) => formatNumberEs(m.energia_autoconsumo_kwh) },
+  { id: "energia_neta_facturada_kwh",      label: "E neta fact.",   align: "right", group: "General", render: (m) => formatNumberEs(m.energia_neta_facturada_kwh) },
+  { id: "energia_generada_kwh",            label: "E generada",     align: "right", group: "General", render: (m) => formatNumberEs(m.energia_generada_kwh) },
+  { id: "energia_frontera_dd_kwh",         label: "E front. DD",    align: "right", group: "General", render: (m) => formatNumberEs(m.energia_frontera_dd_kwh) },
+  { id: "energia_pf_final_kwh",            label: "E PF final",     align: "right", group: "General", render: (m) => formatNumberEs(m.energia_pf_final_kwh) },
+  { id: "perdidas_e_facturada_kwh",        label: "Pérd. fact. kWh",align: "right", group: "General", render: (m) => formatNumberEs(m.perdidas_e_facturada_kwh) },
+  { id: "perdidas_e_facturada_pct",        label: "Pérd. fact. %",  align: "right", group: "General", render: (m, ap) => <PctCell value={m.perdidas_e_facturada_pct} pctBadges={ap.pctBadges} /> },
+  { id: "energia_publicada_m2_kwh",        label: "E publ M2",      align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_publicada_m2_kwh) },
+  { id: "energia_autoconsumo_m2_kwh",      label: "E autoc M2",     align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_autoconsumo_m2_kwh) },
+  { id: "energia_pf_m2_kwh",              label: "E PF M2",        align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_pf_m2_kwh) },
+  { id: "energia_frontera_dd_m2_kwh",      label: "E front M2",     align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_frontera_dd_m2_kwh) },
+  { id: "energia_generada_m2_kwh",         label: "E gen M2",       align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_generada_m2_kwh) },
+  { id: "energia_neta_facturada_m2_kwh",   label: "E neta M2",      align: "right", group: "M2", render: (m) => formatNumberEs(m.energia_neta_facturada_m2_kwh) },
+  { id: "perdidas_e_facturada_m2_kwh",     label: "Pérd. M2 kWh",   align: "right", group: "M2", render: (m) => formatNumberEs(m.perdidas_e_facturada_m2_kwh) },
+  { id: "perdidas_e_facturada_m2_pct",     label: "Pérd. M2 %",     align: "right", group: "M2", render: (m, ap) => <PctCell value={m.perdidas_e_facturada_m2_pct} pctBadges={ap.pctBadges} /> },
+  { id: "energia_publicada_m7_kwh",        label: "E publ M7",      align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_publicada_m7_kwh) },
+  { id: "energia_autoconsumo_m7_kwh",      label: "E autoc M7",     align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_autoconsumo_m7_kwh) },
+  { id: "energia_pf_m7_kwh",              label: "E PF M7",        align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_pf_m7_kwh) },
+  { id: "energia_frontera_dd_m7_kwh",      label: "E front M7",     align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_frontera_dd_m7_kwh) },
+  { id: "energia_generada_m7_kwh",         label: "E gen M7",       align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_generada_m7_kwh) },
+  { id: "energia_neta_facturada_m7_kwh",   label: "E neta M7",      align: "right", group: "M7", render: (m) => formatNumberEs(m.energia_neta_facturada_m7_kwh) },
+  { id: "perdidas_e_facturada_m7_kwh",     label: "Pérd. M7 kWh",   align: "right", group: "M7", render: (m) => formatNumberEs(m.perdidas_e_facturada_m7_kwh) },
+  { id: "perdidas_e_facturada_m7_pct",     label: "Pérd. M7 %",     align: "right", group: "M7", render: (m, ap) => <PctCell value={m.perdidas_e_facturada_m7_pct} pctBadges={ap.pctBadges} /> },
+  { id: "energia_publicada_m11_kwh",       label: "E publ M11",     align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_publicada_m11_kwh) },
+  { id: "energia_autoconsumo_m11_kwh",     label: "E autoc M11",    align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_autoconsumo_m11_kwh) },
+  { id: "energia_pf_m11_kwh",             label: "E PF M11",       align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_pf_m11_kwh) },
+  { id: "energia_frontera_dd_m11_kwh",     label: "E front M11",    align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_frontera_dd_m11_kwh) },
+  { id: "energia_generada_m11_kwh",        label: "E gen M11",      align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_generada_m11_kwh) },
+  { id: "energia_neta_facturada_m11_kwh",  label: "E neta M11",     align: "right", group: "M11", render: (m) => formatNumberEs(m.energia_neta_facturada_m11_kwh) },
+  { id: "perdidas_e_facturada_m11_kwh",    label: "Pérd. M11 kWh",  align: "right", group: "M11", render: (m) => formatNumberEs(m.perdidas_e_facturada_m11_kwh) },
+  { id: "perdidas_e_facturada_m11_pct",    label: "Pérd. M11 %",    align: "right", group: "M11", render: (m, ap) => <PctCell value={m.perdidas_e_facturada_m11_pct} pctBadges={ap.pctBadges} /> },
+  { id: "energia_publicada_art15_kwh",     label: "E publ A15",     align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_publicada_art15_kwh) },
+  { id: "energia_autoconsumo_art15_kwh",   label: "E autoc A15",    align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_autoconsumo_art15_kwh) },
+  { id: "energia_pf_art15_kwh",           label: "E PF A15",       align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_pf_art15_kwh) },
+  { id: "energia_frontera_dd_art15_kwh",   label: "E front A15",    align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_frontera_dd_art15_kwh) },
+  { id: "energia_generada_art15_kwh",      label: "E gen A15",      align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_generada_art15_kwh) },
+  { id: "energia_neta_facturada_art15_kwh",label: "E neta A15",     align: "right", group: "ART15", render: (m) => formatNumberEs(m.energia_neta_facturada_art15_kwh) },
+  { id: "perdidas_e_facturada_art15_kwh",  label: "Pérd. A15 kWh",  align: "right", group: "ART15", render: (m) => formatNumberEs(m.perdidas_e_facturada_art15_kwh) },
+  { id: "perdidas_e_facturada_art15_pct",  label: "Pérd. A15 %",    align: "right", group: "ART15", render: (m, ap) => <PctCell value={m.perdidas_e_facturada_art15_pct} pctBadges={ap.pctBadges} /> },
 ];
 
 export const COLUMNS_GENERAL_META = ALL_COLUMNS_GENERAL.map((c) => ({
-  id: c.id,
-  label: c.label,
-  group: c.group,
+  id: c.id, label: c.label, group: c.group,
 }));
+
+// ── Cabeceras de grupo ─────────────────────────────────────────────────────
+function buildGroupHeaders(cols: ColumnDefGeneral[]) {
+  const groups: { group: string; span: number }[] = [];
+  for (const col of cols) {
+    if (groups.length > 0 && groups[groups.length - 1].group === col.group) {
+      groups[groups.length - 1].span++;
+    } else {
+      groups.push({ group: col.group, span: 1 });
+    }
+  }
+  return groups;
+}
 
 export default function MedidasGeneralSection({
   token,
@@ -114,7 +162,9 @@ export default function MedidasGeneralSection({
   hiddenColumns,
   setHiddenColumns,
   onGoToSettings,
+  appearance,
 }: MedidasProps) {
+  const ap = appearance ?? DEFAULT_APPEARANCE;
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
 
@@ -157,11 +207,7 @@ export default function MedidasGeneralSection({
     deleteTipo: "GENERAL",
     previewMissingFiltersMessage: "Selecciona tenant, empresa, año y mes para habilitar la vista previa.",
     deleteErrorMessage: "No se pudo completar el borrado por ingestion de General. Revisa filtros, endpoint y permisos.",
-    onAfterDelete: async () => {
-      await loadFilters();
-      setPage(0);
-      await handleLoadData(0);
-    },
+    onAfterDelete: async () => { await loadFilters(); setPage(0); await handleLoadData(0); },
   });
 
   const systemTenantColumn: ColumnDefGeneral = useMemo(
@@ -187,7 +233,6 @@ export default function MedidasGeneralSection({
     () => opcionesAnio.map((anio) => ({ value: String(anio), label: String(anio) })),
     [opcionesAnio]
   );
-
   const mesOptions = useMemo(
     () => opcionesMes.map((mes) => ({ value: String(mes), label: mes.toString().padStart(2, "0") })),
     [opcionesMes]
@@ -201,10 +246,7 @@ export default function MedidasGeneralSection({
 
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefGeneral[] = [];
-    if (isSistema) {
-      const tcol = columnasPorId.get("tenant_id");
-      if (tcol) base.push(tcol);
-    }
+    if (isSistema) { const tcol = columnasPorId.get("tenant_id"); if (tcol) base.push(tcol); }
     for (const id of safeColumnOrder) {
       const col = columnasPorId.get(id);
       if (col && col.id !== "tenant_id") base.push(col);
@@ -219,13 +261,12 @@ export default function MedidasGeneralSection({
     const map: Record<string, number> = {};
     let acc = 0;
     for (const col of columnasOrdenadas) {
-      if (STICKY_COLUMN_IDS.includes(col.id)) {
-        map[col.id] = acc;
-        acc += STICKY_WIDTHS[col.id] ?? 80;
-      }
+      if (STICKY_COLUMN_IDS.includes(col.id)) { map[col.id] = acc; acc += STICKY_WIDTHS[col.id] ?? 80; }
     }
     return map;
   }, [columnasOrdenadas]);
+
+  const groupHeaders = useMemo(() => buildGroupHeaders(columnasOrdenadas), [columnasOrdenadas]);
 
   const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
@@ -247,25 +288,36 @@ export default function MedidasGeneralSection({
       />
       {canEditAdjustments && (
         onGoToSettings ? (
-          <button
-            type="button"
-            onClick={onGoToSettings}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-          >
+          <button type="button" onClick={onGoToSettings} className="ui-btn ui-btn-outline ui-btn-xs">
             Configurar columnas
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => setShowAdjust((v) => !v)}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-          >
+          <button type="button" onClick={() => setShowAdjust((v) => !v)} className="ui-btn ui-btn-outline ui-btn-xs">
             {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
           </button>
         )
       )}
     </div>
   );
+
+  // ── Separador de período ───────────────────────────────────────────────
+  // Construye lista de filas de datos intercalando separadores si periodSeparator está activo
+  const dataRows = useMemo(() => {
+    if (!ap.periodSeparator) return data.map((m) => ({ type: "data" as const, m }));
+    const rows: ({ type: "separator"; label: string } | { type: "data"; m: MedidaGeneral })[] = [];
+    const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    let lastKey = "";
+    for (const m of data as any[]) {
+      const key = `${m.anio}-${m.mes}`;
+      if (key !== lastKey) {
+        const label = `${m.anio} · ${MESES[(m.mes ?? 1) - 1] ?? m.mes}`;
+        rows.push({ type: "separator", label });
+        lastKey = key;
+      }
+      rows.push({ type: "data", m });
+    }
+    return rows;
+  }, [data, ap.periodSeparator]);
 
   return (
     <section className="ui-card text-sm">
@@ -296,28 +348,44 @@ export default function MedidasGeneralSection({
 
       {showAdjust && (
         <ColumnVisibilityOrderPanel
-          show={showAdjust}
-          onToggleShow={() => setShowAdjust((v) => !v)}
-          canEdit={canEditAdjustments}
-          order={orderForAdjustments}
-          hiddenColumns={safeHiddenColumns}
-          columnsMeta={
-            isSistema
-              ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_GENERAL_META]
-              : COLUMNS_GENERAL_META
-          }
-          onToggleVisible={toggleVisible}
-          onReset={resetOrder}
-          onHideAll={hideAllColumns}
-          onDragStart={handleDragStart}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
+          show={showAdjust} onToggleShow={() => setShowAdjust((v) => !v)}
+          canEdit={canEditAdjustments} order={orderForAdjustments} hiddenColumns={safeHiddenColumns}
+          columnsMeta={isSistema ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_GENERAL_META] : COLUMNS_GENERAL_META}
+          onToggleVisible={toggleVisible} onReset={resetOrder} onHideAll={hideAllColumns}
+          onDragStart={handleDragStart} onDrop={handleDrop} onDragOver={handleDragOver}
         />
       )}
 
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
+            {/* Fila de grupos de columnas */}
+            {ap.columnGroups && (
+              <tr>
+                {groupHeaders.map(({ group, span }, i) => {
+                  const style = GROUP_HEADER_STYLES[group] ?? GROUP_HEADER_STYLES["Identificación"];
+                  return (
+                    <th
+                      key={`grp-${i}`}
+                      colSpan={span}
+                      style={{
+                        padding: "3px 8px",
+                        fontSize: 9,
+                        fontWeight: 500,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                        ...style,
+                      }}
+                    >
+                      {group}
+                    </th>
+                  );
+                })}
+              </tr>
+            )}
+            {/* Fila de cabeceras de columna */}
             <tr>
               {columnasOrdenadas.map((col) => {
                 const isSticky = STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
@@ -355,14 +423,51 @@ export default function MedidasGeneralSection({
                 </td>
               </tr>
             )}
-            {!loading && data.map((m: any) => {
+            {!loading && dataRows.map((row, rowIdx) => {
+              // Separador de período
+              if (row.type === "separator") {
+                return (
+                  <tr key={`sep-${row.label}`}>
+                    <td
+                      colSpan={totalColumnas}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: 9,
+                        fontWeight: 500,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        color: "var(--text-muted)",
+                        background: "var(--card-bg)",
+                        borderTop: "1px solid var(--card-border)",
+                        borderBottom: "1px solid var(--card-border)",
+                      }}
+                    >
+                      {row.label}
+                    </td>
+                  </tr>
+                );
+              }
+
+              // Fila de datos
+              const m = row.m as any;
               const rowKey = `${m.empresa_id}-${m.punto_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`;
               const isSelected = selectedRowKey === rowKey;
+              // Bandas alternas: contar solo filas de datos, no separadores
+              const dataIdx = dataRows.slice(0, rowIdx + 1).filter((r) => r.type === "data").length - 1;
+              const isEven = dataIdx % 2 === 1;
+              const stripeBg = ap.stripedRows && isEven && !isSelected
+                ? "rgba(30,58,95,0.18)"
+                : undefined;
+
               return (
                 <tr
                   key={rowKey} className="ui-tr"
                   onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
-                  style={{ cursor: "pointer", background: isSelected ? "var(--nav-item-hover)" : undefined, outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined }}
+                  style={{
+                    cursor: "pointer",
+                    background: isSelected ? "var(--nav-item-hover)" : stripeBg,
+                    outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined,
+                  }}
                 >
                   {columnasOrdenadas.map((col) => {
                     const isSticky = STICKY_COLUMN_IDS.includes(col.id) && col.id in stickyLeftMap;
@@ -372,13 +477,13 @@ export default function MedidasGeneralSection({
                         className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
                         style={isSticky ? {
                           position: "sticky", left: stickyLeftMap[col.id], zIndex: 1,
-                          background: isSelected ? "var(--sticky-selected-bg)" : "var(--sticky-bg)",
+                          background: isSelected ? "var(--sticky-selected-bg)" : (stripeBg ?? "var(--sticky-bg)"),
                           boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                           minWidth: STICKY_WIDTHS[col.id] ?? 80, maxWidth: STICKY_WIDTHS[col.id] ?? 80,
                           width: STICKY_WIDTHS[col.id] ?? 80,
                         } : undefined}
                       >
-                        {col.render(m)}
+                        {col.render(m, ap)}
                       </td>
                     );
                   })}

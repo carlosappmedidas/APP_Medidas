@@ -9,7 +9,20 @@ import MedidasFiltersBar from "../ui/MedidasFiltersBar";
 import MedidasTableActions from "../ui/MedidasTableActions";
 import { useMedidasTable } from "./hooks/useMedidasTable";
 import { useDeleteByIngestion } from "../ingestion/hooks/useDeleteByIngestion";
+import type { TableAppearance } from "../settings/hooks/useTableSettings";
 
+// ── Colores de cabecera de grupo ──────────────────────────────────────────
+const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; borderBottom: string }> = {
+  "Identificación":   { background: "rgba(30,58,95,0.4)",   color: "rgba(226,232,240,0.5)",  borderBottom: "1px solid rgba(30,58,95,0.6)" },
+  "Energía PS":       { background: "rgba(37,99,235,0.18)", color: "#60a5fa",                 borderBottom: "1px solid rgba(37,99,235,0.4)" },
+  "CUPS PS":          { background: "rgba(30,58,95,0.35)",  color: "rgba(226,232,240,0.55)", borderBottom: "1px solid rgba(30,58,95,0.5)" },
+  "Importes PS":      { background: "rgba(5,150,105,0.18)", color: "#34d399",                 borderBottom: "1px solid rgba(5,150,105,0.4)" },
+  "Energía Tarifas":  { background: "rgba(245,158,11,0.18)",color: "#fbbf24",                 borderBottom: "1px solid rgba(245,158,11,0.4)" },
+  "CUPS Tarifas":     { background: "rgba(30,58,95,0.35)",  color: "rgba(226,232,240,0.55)", borderBottom: "1px solid rgba(30,58,95,0.5)" },
+  "Importes Tarifas": { background: "rgba(168,85,247,0.18)",color: "#c084fc",                 borderBottom: "1px solid rgba(168,85,247,0.4)" },
+};
+
+// ── Tipos ──────────────────────────────────────────────────────────────────
 type MedidasPsProps = {
   token: string | null;
   scope?: "tenant" | "all";
@@ -17,19 +30,18 @@ type MedidasPsProps = {
   setColumnOrder?: (order: string[]) => void;
   hiddenColumns?: string[];
   setHiddenColumns?: (cols: string[]) => void;
-  /** Navega a Configuración → Configuración de tablas */
   onGoToSettings?: () => void;
+  appearance?: TableAppearance;
 };
 
-export type ColumnDefPs = {
-  id: string;
-  label: string;
-  align: "left" | "right";
-  group: string;
-  render: (m: MedidaPS | any) => any;
+const DEFAULT_APPEARANCE: TableAppearance = {
+  stripedRows:     true,
+  columnGroups:    true,
+  pctBadges:       true,
+  periodSeparator: false,
 };
 
-const formatNumberEs = (v: number | null | undefined, decimals: number = 2): string => {
+const formatNumberEs = (v: number | null | undefined, decimals = 2): string => {
   if (v == null || Number.isNaN(v)) return "-";
   return new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: decimals,
@@ -37,59 +49,74 @@ const formatNumberEs = (v: number | null | undefined, decimals: number = 2): str
   }).format(v);
 };
 
+export type ColumnDefPs = {
+  id: string;
+  label: string;
+  align: "left" | "right";
+  group: string;
+  render: (m: MedidaPS | any, ap: TableAppearance) => React.ReactNode;
+};
+
 const STICKY_COLUMN_IDS_PS = ["empresa_id", "empresa_codigo", "anio", "mes"];
 const STICKY_WIDTHS_PS: Record<string, number> = {
-  empresa_id: 64,
-  empresa_codigo: 110,
-  anio: 52,
-  mes: 44,
+  empresa_id: 64, empresa_codigo: 110, anio: 52, mes: 44,
 };
 
 const ALL_COLUMNS_PS: ColumnDefPs[] = [
-  { id: "empresa_id", label: "Empresa ID", align: "left", group: "Identificación", render: (m) => m.empresa_id },
-  { id: "empresa_codigo", label: "Código empresa", align: "left", group: "Identificación", render: (m) => m.empresa_codigo ?? "-" },
-  { id: "anio", label: "Año", align: "left", group: "Identificación", render: (m) => m.anio },
-  { id: "mes", label: "Mes", align: "left", group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
-  { id: "energia_ps_tipo_1_kwh", label: "E PS T1", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_1_kwh) },
-  { id: "energia_ps_tipo_2_kwh", label: "E PS T2", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_2_kwh) },
-  { id: "energia_ps_tipo_3_kwh", label: "E PS T3", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_3_kwh) },
-  { id: "energia_ps_tipo_4_kwh", label: "E PS T4", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_4_kwh) },
-  { id: "energia_ps_tipo_5_kwh", label: "E PS T5", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_5_kwh) },
-  { id: "energia_ps_total_kwh", label: "E PS Total", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_total_kwh) },
-  { id: "cups_tipo_1", label: "CUPS T1", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_1 ?? "-" },
-  { id: "cups_tipo_2", label: "CUPS T2", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_2 ?? "-" },
-  { id: "cups_tipo_3", label: "CUPS T3", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_3 ?? "-" },
-  { id: "cups_tipo_4", label: "CUPS T4", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_4 ?? "-" },
-  { id: "cups_tipo_5", label: "CUPS T5", align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_5 ?? "-" },
-  { id: "cups_total", label: "CUPS Total", align: "right", group: "CUPS PS", render: (m) => m.cups_total ?? "-" },
-  { id: "importe_tipo_1_eur", label: "Imp. T1", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_1_eur) },
-  { id: "importe_tipo_2_eur", label: "Imp. T2", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_2_eur) },
-  { id: "importe_tipo_3_eur", label: "Imp. T3", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_3_eur) },
-  { id: "importe_tipo_4_eur", label: "Imp. T4", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_4_eur) },
-  { id: "importe_tipo_5_eur", label: "Imp. T5", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_5_eur) },
-  { id: "importe_total_eur", label: "Imp. Total", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_total_eur) },
-  { id: "energia_tarifa_20td_kwh", label: "E 2.0TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_20td_kwh) },
-  { id: "energia_tarifa_30td_kwh", label: "E 3.0TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30td_kwh) },
-  { id: "energia_tarifa_30tdve_kwh", label: "E 3.0TDVE", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30tdve_kwh) },
-  { id: "energia_tarifa_61td_kwh", label: "E 6.1TD", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_61td_kwh) },
-  { id: "energia_tarifa_total_kwh", label: "E Tar. Total", align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_total_kwh) },
-  { id: "cups_tarifa_20td", label: "CUPS 2.0TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_20td ?? "-" },
-  { id: "cups_tarifa_30td", label: "CUPS 3.0TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30td ?? "-" },
-  { id: "cups_tarifa_30tdve", label: "CUPS 3.0TDVE", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30tdve ?? "-" },
-  { id: "cups_tarifa_61td", label: "CUPS 6.1TD", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_61td ?? "-" },
-  { id: "cups_tarifa_total", label: "CUPS Tar. Total", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_total ?? "-" },
-  { id: "importe_tarifa_20td_eur", label: "Imp. 2.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_20td_eur) },
-  { id: "importe_tarifa_30td_eur", label: "Imp. 3.0TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30td_eur) },
-  { id: "importe_tarifa_30tdve_eur", label: "Imp. 3.0TDVE", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30tdve_eur) },
-  { id: "importe_tarifa_61td_eur", label: "Imp. 6.1TD", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_61td_eur) },
-  { id: "importe_tarifa_total_eur", label: "Imp. Tar. Total", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_total_eur) },
+  { id: "empresa_id",    label: "Empresa ID",    align: "left",  group: "Identificación", render: (m) => m.empresa_id },
+  { id: "empresa_codigo",label: "Código empresa",align: "left",  group: "Identificación", render: (m) => m.empresa_codigo ?? "-" },
+  { id: "anio",          label: "Año",           align: "left",  group: "Identificación", render: (m) => m.anio },
+  { id: "mes",           label: "Mes",           align: "left",  group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
+  { id: "energia_ps_tipo_1_kwh",   label: "E PS T1",    align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_1_kwh) },
+  { id: "energia_ps_tipo_2_kwh",   label: "E PS T2",    align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_2_kwh) },
+  { id: "energia_ps_tipo_3_kwh",   label: "E PS T3",    align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_3_kwh) },
+  { id: "energia_ps_tipo_4_kwh",   label: "E PS T4",    align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_4_kwh) },
+  { id: "energia_ps_tipo_5_kwh",   label: "E PS T5",    align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_tipo_5_kwh) },
+  { id: "energia_ps_total_kwh",    label: "E PS Total", align: "right", group: "Energía PS", render: (m) => formatNumberEs(m.energia_ps_total_kwh) },
+  { id: "cups_tipo_1",   label: "CUPS T1",    align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_1 ?? "-" },
+  { id: "cups_tipo_2",   label: "CUPS T2",    align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_2 ?? "-" },
+  { id: "cups_tipo_3",   label: "CUPS T3",    align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_3 ?? "-" },
+  { id: "cups_tipo_4",   label: "CUPS T4",    align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_4 ?? "-" },
+  { id: "cups_tipo_5",   label: "CUPS T5",    align: "right", group: "CUPS PS", render: (m) => m.cups_tipo_5 ?? "-" },
+  { id: "cups_total",    label: "CUPS Total", align: "right", group: "CUPS PS", render: (m) => m.cups_total ?? "-" },
+  { id: "importe_tipo_1_eur", label: "Imp. T1",    align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_1_eur) },
+  { id: "importe_tipo_2_eur", label: "Imp. T2",    align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_2_eur) },
+  { id: "importe_tipo_3_eur", label: "Imp. T3",    align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_3_eur) },
+  { id: "importe_tipo_4_eur", label: "Imp. T4",    align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_4_eur) },
+  { id: "importe_tipo_5_eur", label: "Imp. T5",    align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_tipo_5_eur) },
+  { id: "importe_total_eur",  label: "Imp. Total", align: "right", group: "Importes PS", render: (m) => formatNumberEs(m.importe_total_eur) },
+  { id: "energia_tarifa_20td_kwh",    label: "E 2.0TD",       align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_20td_kwh) },
+  { id: "energia_tarifa_30td_kwh",    label: "E 3.0TD",       align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30td_kwh) },
+  { id: "energia_tarifa_30tdve_kwh",  label: "E 3.0TDVE",     align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_30tdve_kwh) },
+  { id: "energia_tarifa_61td_kwh",    label: "E 6.1TD",       align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_61td_kwh) },
+  { id: "energia_tarifa_total_kwh",   label: "E Tar. Total",  align: "right", group: "Energía Tarifas", render: (m) => formatNumberEs(m.energia_tarifa_total_kwh) },
+  { id: "cups_tarifa_20td",    label: "CUPS 2.0TD",      align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_20td ?? "-" },
+  { id: "cups_tarifa_30td",    label: "CUPS 3.0TD",      align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30td ?? "-" },
+  { id: "cups_tarifa_30tdve",  label: "CUPS 3.0TDVE",    align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_30tdve ?? "-" },
+  { id: "cups_tarifa_61td",    label: "CUPS 6.1TD",      align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_61td ?? "-" },
+  { id: "cups_tarifa_total",   label: "CUPS Tar. Total", align: "right", group: "CUPS Tarifas", render: (m) => m.cups_tarifa_total ?? "-" },
+  { id: "importe_tarifa_20td_eur",   label: "Imp. 2.0TD",      align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_20td_eur) },
+  { id: "importe_tarifa_30td_eur",   label: "Imp. 3.0TD",      align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30td_eur) },
+  { id: "importe_tarifa_30tdve_eur", label: "Imp. 3.0TDVE",    align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_30tdve_eur) },
+  { id: "importe_tarifa_61td_eur",   label: "Imp. 6.1TD",      align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_61td_eur) },
+  { id: "importe_tarifa_total_eur",  label: "Imp. Tar. Total", align: "right", group: "Importes Tarifas", render: (m) => formatNumberEs(m.importe_tarifa_total_eur) },
 ];
 
 export const COLUMNS_PS_META = ALL_COLUMNS_PS.map((c) => ({
-  id: c.id,
-  label: c.label,
-  group: c.group,
+  id: c.id, label: c.label, group: c.group,
 }));
+
+function buildGroupHeaders(cols: ColumnDefPs[]) {
+  const groups: { group: string; span: number }[] = [];
+  for (const col of cols) {
+    if (groups.length > 0 && groups[groups.length - 1].group === col.group) {
+      groups[groups.length - 1].span++;
+    } else {
+      groups.push({ group: col.group, span: 1 });
+    }
+  }
+  return groups;
+}
 
 export default function MedidasPsSection({
   token,
@@ -99,7 +126,9 @@ export default function MedidasPsSection({
   hiddenColumns,
   setHiddenColumns,
   onGoToSettings,
+  appearance,
 }: MedidasPsProps) {
+  const ap = appearance ?? DEFAULT_APPEARANCE;
   const defaultOrder = useMemo(() => ALL_COLUMNS_PS.map((c) => c.id), []);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
 
@@ -146,11 +175,7 @@ export default function MedidasPsSection({
     deleteTipo: "PS",
     previewMissingFiltersMessage: "Selecciona al menos empresa, año y mes para habilitar la vista previa.",
     deleteErrorMessage: "No se pudo completar el borrado por ingestion de PS. Revisa filtros, endpoint y permisos.",
-    onAfterDelete: async () => {
-      await loadFilters();
-      setPage(0);
-      await handleLoadData(0);
-    },
+    onAfterDelete: async () => { await loadFilters(); setPage(0); await handleLoadData(0); },
   });
 
   const systemTenantColumn: ColumnDefPs = useMemo(
@@ -176,7 +201,6 @@ export default function MedidasPsSection({
     () => opcionesAnio.map((anio) => ({ value: String(anio), label: String(anio) })),
     [opcionesAnio]
   );
-
   const mesOptions = useMemo(
     () => opcionesMes.map((mes) => ({ value: String(mes), label: mes.toString().padStart(2, "0") })),
     [opcionesMes]
@@ -190,10 +214,7 @@ export default function MedidasPsSection({
 
   const columnasOrdenadas = useMemo(() => {
     const base: ColumnDefPs[] = [];
-    if (isSistema) {
-      const tcol = columnasPorId.get("tenant_id");
-      if (tcol) base.push(tcol);
-    }
+    if (isSistema) { const tcol = columnasPorId.get("tenant_id"); if (tcol) base.push(tcol); }
     for (const id of safeColumnOrder) {
       const col = columnasPorId.get(id);
       if (col && col.id !== "tenant_id") base.push(col);
@@ -208,13 +229,12 @@ export default function MedidasPsSection({
     const map: Record<string, number> = {};
     let acc = 0;
     for (const col of columnasOrdenadas) {
-      if (STICKY_COLUMN_IDS_PS.includes(col.id)) {
-        map[col.id] = acc;
-        acc += STICKY_WIDTHS_PS[col.id] ?? 80;
-      }
+      if (STICKY_COLUMN_IDS_PS.includes(col.id)) { map[col.id] = acc; acc += STICKY_WIDTHS_PS[col.id] ?? 80; }
     }
     return map;
   }, [columnasOrdenadas]);
+
+  const groupHeaders = useMemo(() => buildGroupHeaders(columnasOrdenadas), [columnasOrdenadas]);
 
   const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
@@ -236,25 +256,33 @@ export default function MedidasPsSection({
       />
       {canEditAdjustments && (
         onGoToSettings ? (
-          <button
-            type="button"
-            onClick={onGoToSettings}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-          >
+          <button type="button" onClick={onGoToSettings} className="ui-btn ui-btn-outline ui-btn-xs">
             Configurar columnas
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => setShowAdjust((v) => !v)}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-          >
+          <button type="button" onClick={() => setShowAdjust((v) => !v)} className="ui-btn ui-btn-outline ui-btn-xs">
             {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
           </button>
         )
       )}
     </div>
   );
+
+  const dataRows = useMemo(() => {
+    if (!ap.periodSeparator) return data.map((m) => ({ type: "data" as const, m }));
+    const rows: ({ type: "separator"; label: string } | { type: "data"; m: MedidaPS })[] = [];
+    const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    let lastKey = "";
+    for (const m of data as any[]) {
+      const key = `${m.anio}-${m.mes}`;
+      if (key !== lastKey) {
+        rows.push({ type: "separator", label: `${m.anio} · ${MESES[(m.mes ?? 1) - 1] ?? m.mes}` });
+        lastKey = key;
+      }
+      rows.push({ type: "data", m });
+    }
+    return rows;
+  }, [data, ap.periodSeparator]);
 
   return (
     <section className="ui-card text-sm">
@@ -287,28 +315,42 @@ export default function MedidasPsSection({
 
       {showAdjust && (
         <ColumnVisibilityOrderPanel
-          show={showAdjust}
-          onToggleShow={() => setShowAdjust((v) => !v)}
-          canEdit={canEditAdjustments}
-          order={orderForAdjustments}
-          hiddenColumns={safeHiddenColumns}
-          columnsMeta={
-            isSistema
-              ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_PS_META]
-              : COLUMNS_PS_META
-          }
-          onToggleVisible={toggleVisible}
-          onReset={resetOrder}
-          onHideAll={hideAllColumns}
-          onDragStart={handleDragStart}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
+          show={showAdjust} onToggleShow={() => setShowAdjust((v) => !v)}
+          canEdit={canEditAdjustments} order={orderForAdjustments} hiddenColumns={safeHiddenColumns}
+          columnsMeta={isSistema ? [{ id: "tenant_id", label: "Cliente", group: "Identificación" }, ...COLUMNS_PS_META] : COLUMNS_PS_META}
+          onToggleVisible={toggleVisible} onReset={resetOrder} onHideAll={hideAllColumns}
+          onDragStart={handleDragStart} onDrop={handleDrop} onDragOver={handleDragOver}
         />
       )}
 
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
+            {ap.columnGroups && (
+              <tr>
+                {groupHeaders.map(({ group, span }, i) => {
+                  const style = GROUP_HEADER_STYLES[group] ?? GROUP_HEADER_STYLES["Identificación"];
+                  return (
+                    <th
+                      key={`grp-${i}`}
+                      colSpan={span}
+                      style={{
+                        padding: "3px 8px",
+                        fontSize: 9,
+                        fontWeight: 500,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                        ...style,
+                      }}
+                    >
+                      {group}
+                    </th>
+                  );
+                })}
+              </tr>
+            )}
             <tr>
               {columnasOrdenadas.map((col) => {
                 const isSticky = STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
@@ -346,14 +388,48 @@ export default function MedidasPsSection({
                 </td>
               </tr>
             )}
-            {!loading && data.map((m: any) => {
+            {!loading && dataRows.map((row, rowIdx) => {
+              if (row.type === "separator") {
+                return (
+                  <tr key={`sep-${row.label}`}>
+                    <td
+                      colSpan={totalColumnas}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: 9,
+                        fontWeight: 500,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        color: "var(--text-muted)",
+                        background: "var(--card-bg)",
+                        borderTop: "1px solid var(--card-border)",
+                        borderBottom: "1px solid var(--card-border)",
+                      }}
+                    >
+                      {row.label}
+                    </td>
+                  </tr>
+                );
+              }
+
+              const m = row.m as any;
               const rowKey = `${m.empresa_id}-${m.anio}-${m.mes}-${m.tenant_id ?? "x"}`;
               const isSelected = selectedRowKey === rowKey;
+              const dataIdx = dataRows.slice(0, rowIdx + 1).filter((r) => r.type === "data").length - 1;
+              const isEven = dataIdx % 2 === 1;
+              const stripeBg = ap.stripedRows && isEven && !isSelected
+                ? "rgba(30,58,95,0.18)"
+                : undefined;
+
               return (
                 <tr
                   key={rowKey} className="ui-tr"
                   onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
-                  style={{ cursor: "pointer", background: isSelected ? "var(--nav-item-hover)" : undefined, outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined }}
+                  style={{
+                    cursor: "pointer",
+                    background: isSelected ? "var(--nav-item-hover)" : stripeBg,
+                    outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined,
+                  }}
                 >
                   {columnasOrdenadas.map((col) => {
                     const isSticky = STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
@@ -363,13 +439,13 @@ export default function MedidasPsSection({
                         className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
                         style={isSticky ? {
                           position: "sticky", left: stickyLeftMap[col.id], zIndex: 1,
-                          background: isSelected ? "var(--sticky-selected-bg)" : "var(--sticky-bg)",
+                          background: isSelected ? "var(--sticky-selected-bg)" : (stripeBg ?? "var(--sticky-bg)"),
                           boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                           minWidth: STICKY_WIDTHS_PS[col.id] ?? 80, maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
                           width: STICKY_WIDTHS_PS[col.id] ?? 80,
                         } : undefined}
                       >
-                        {col.render(m)}
+                        {col.render(m, ap)}
                       </td>
                     );
                   })}
