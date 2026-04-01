@@ -101,17 +101,13 @@ export default function AppearanceSettingsSection({ token = null }: Props) {
 
   return (
     <div className="appearance-root">
-      <div className="appearance-header">
-        <h3 className="ui-card-title">Apariencia del panel</h3>
-        <p className="ui-card-subtitle">
-          Cambia los colores del panel. Se aplica al momento en todas las secciones.
-        </p>
-        <p className="ui-help">
-          {token
-            ? "✅ Guardando en local y en tu usuario (servidor)."
-            : "ℹ️ Guardado solo en este navegador."}
-        </p>
-      </div>
+      {/* ← CAMBIO: eliminado el bloque appearance-header (título + subtítulo duplicados).
+          Solo conservamos el ui-help con el estado de guardado, que es info útil. */}
+      <p className="ui-help mb-2">
+        {token
+          ? "✅ Guardando en local y en tu usuario (servidor)."
+          : "ℹ️ Guardado solo en este navegador."}
+      </p>
 
       <div className="mt-1 flex flex-wrap gap-2 border-b border-[color:var(--card-border)] pb-2">
         <button

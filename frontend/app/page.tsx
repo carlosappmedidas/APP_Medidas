@@ -138,6 +138,7 @@ export default function HomePage() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [homeMenuOpen, setHomeMenuOpen] = useState(false);
+  const [showApariencia, setShowApariencia] = useState(false);
 
   useEffect(() => {
     try {
@@ -594,7 +595,6 @@ export default function HomePage() {
       </aside>
 
       <main className="ui-main">
-        {/* ← ÚNICO CAMBIO: título dinámico según pestaña activa */}
         <header className="mb-6 flex items-center justify-between gap-3">
           <h2 className="ui-page-title">{PAGE_TITLES[activeTab]}</h2>
 
@@ -714,30 +714,44 @@ export default function HomePage() {
 
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="settings-page">
-            <header className="settings-header">
-              <div>
-                <p className="ui-card-subtitle">
-                  Ajustes de la cuenta y apariencia del panel.
-                </p>
-              </div>
-
-              <div className="settings-header-right">
-                <span className="ui-badge ui-badge--neutral">
-                  {token ? "Guardando en local + servidor" : "Guardando solo en este navegador"}
+            {/* ← CAMBIO: tarjeta compacta idéntica a Carga de datos.
+                - ui-card-title sin text-base md:text-lg → mismo tamaño que "CARGA DE FICHEROS"
+                - Sin badge → la tarjeta cerrada mide igual que las de Carga
+                - "Restaurar colores" dentro del contenido desplegado */}
+            <div className="rounded-xl border text-sm" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+                onClick={() => setShowApariencia((v) => !v)}
+              >
+                <div>
+                  <div className="ui-card-title text-base md:text-lg">APARIENCIA DEL PANEL</div>
+                  <p className="ui-card-subtitle mt-1">
+                    Cambia los colores del panel. Se aplica al momento en todas las secciones.
+                  </p>
+                </div>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+                  {showApariencia ? "Ocultar" : "Mostrar"}
                 </span>
+              </button>
 
-                <button
-                  type="button"
-                  onClick={resetUiColors}
-                  className="ui-btn ui-btn-outline ui-btn-xs"
+              {showApariencia && (
+                <div
+                  className="border-t px-4 pb-4 pt-3"
+                  style={{ borderColor: "var(--card-border)" }}
                 >
-                  Restaurar colores
-                </button>
-              </div>
-            </header>
-
-            <div className="ui-card ui-card--border text-sm">
-              <AppearanceSettingsSection token={token} />
+                  <div className="flex justify-end mb-3">
+                    <button
+                      type="button"
+                      onClick={resetUiColors}
+                      className="ui-btn ui-btn-outline ui-btn-xs"
+                    >
+                      Restaurar colores
+                    </button>
+                  </div>
+                  <AppearanceSettingsSection token={token} />
+                </div>
+              )}
             </div>
           </section>
         )}
