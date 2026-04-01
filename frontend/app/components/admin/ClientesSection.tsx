@@ -14,7 +14,7 @@ type ClientesSectionProps = {
 
 const ClientesSection: React.FC<ClientesSectionProps> = ({ token, currentUser }) => {
   const isSuperuser = !!currentUser?.is_superuser;
-  const [open, setOpen] = useState<boolean>(true);
+  const [open, setOpen] = useState<boolean>(false);
   const canSee = !!token && isSuperuser;
 
   return (
