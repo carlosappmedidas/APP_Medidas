@@ -17,6 +17,8 @@ type MedidasProps = {
   setColumnOrder?: (order: string[]) => void;
   hiddenColumns?: string[];
   setHiddenColumns?: (cols: string[]) => void;
+  /** Navega a Configuración → Configuración de tablas */
+  onGoToSettings?: () => void;
 };
 
 const formatNumberEs = (v: number | null | undefined, decimals: number = 2): string => {
@@ -111,6 +113,7 @@ export default function MedidasGeneralSection({
   setColumnOrder,
   hiddenColumns,
   setHiddenColumns,
+  onGoToSettings,
 }: MedidasProps) {
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
@@ -227,7 +230,6 @@ export default function MedidasGeneralSection({
   const totalColumnas = columnasOrdenadas.length || 1;
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
-  // Refresh + ajustar columnas juntos en la misma zona derecha
   const adjustButton = (
     <div className="flex items-center gap-1">
       <MedidasTableActions
@@ -244,13 +246,23 @@ export default function MedidasGeneralSection({
         deleteTitleDisabled="Selecciona tenant, empresa, año y mes para borrar"
       />
       {canEditAdjustments && (
-        <button
-          type="button"
-          onClick={() => setShowAdjust((v) => !v)}
-          className="ui-btn ui-btn-outline ui-btn-xs"
-        >
-          {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
-        </button>
+        onGoToSettings ? (
+          <button
+            type="button"
+            onClick={onGoToSettings}
+            className="ui-btn ui-btn-outline ui-btn-xs"
+          >
+            Configurar columnas
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowAdjust((v) => !v)}
+            className="ui-btn ui-btn-outline ui-btn-xs"
+          >
+            {showAdjust ? "Ocultar columnas" : "Ajustar columnas"}
+          </button>
+        )
       )}
     </div>
   );

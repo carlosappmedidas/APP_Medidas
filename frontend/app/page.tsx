@@ -91,8 +91,8 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
 const DEFAULT_GENERAL_ORDER = ALL_COLUMNS_META.map((c) => c.id);
 const DEFAULT_PS_ORDER       = COLUMNS_PS_META.map((c) => c.id);
 
-const SIDEBAR_STORAGE_KEY    = "ui_sidebar_collapsed";
-const AUTH_TOKEN_STORAGE_KEY = "auth_token";
+const SIDEBAR_STORAGE_KEY      = "ui_sidebar_collapsed";
+const AUTH_TOKEN_STORAGE_KEY   = "auth_token";
 const MEDIDAS_OPEN_STORAGE_KEY = "ui_medidas_open";
 const TABLAS_OPEN_STORAGE_KEY  = "ui_tablas_open";
 
@@ -101,15 +101,15 @@ export default function HomePage() {
     if (typeof window === "undefined") return null;
     try { return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY); } catch { return null; }
   });
-  const [authReady,       setAuthReady]       = useState(false);
-  const [activeTab,       setActiveTab]       = useState<MainTab>("dashboard");
-  const [medidasOpen,     setMedidasOpen]     = useState(false);
-  const [tablasOpen,      setTablasOpen]      = useState(false);
-  const [currentUser,     setCurrentUser]     = useState<User | null>(null);
-  const [sidebarCollapsed,setSidebarCollapsed]= useState(false);
-  const [homeMenuOpen,    setHomeMenuOpen]    = useState(false);
-  const [showApariencia,  setShowApariencia]  = useState(false);
-  const [showTablas,      setShowTablas]      = useState(false);
+  const [authReady,        setAuthReady]        = useState(false);
+  const [activeTab,        setActiveTab]        = useState<MainTab>("dashboard");
+  const [medidasOpen,      setMedidasOpen]      = useState(false);
+  const [tablasOpen,       setTablasOpen]       = useState(false);
+  const [currentUser,      setCurrentUser]      = useState<User | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [homeMenuOpen,     setHomeMenuOpen]     = useState(false);
+  const [showApariencia,   setShowApariencia]   = useState(false);
+  const [showTablas,       setShowTablas]       = useState(false);
 
   // ── Hook centralizado de configuración de tablas ─────────────────────────
   const {
@@ -187,6 +187,11 @@ export default function HomePage() {
     if (!["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab)) {
       setActiveTab("medidas");
     }
+  };
+  // Navega a Configuración y abre directamente la tarjeta de tablas
+  const handleGoToTableSettings = () => {
+    setActiveTab("ajustes");
+    setShowTablas(true);
   };
 
   if (!authReady) {
@@ -356,14 +361,14 @@ export default function HomePage() {
           </div>
         </header>
 
-        {activeTab === "dashboard"     && <DashboardSection token={token} />}
-        {activeTab === "medidas"       && <MedidasSection token={token} currentUser={currentUser} />}
-        {activeTab === "objeciones"    && <ObjecionesSection token={token} currentUser={currentUser} />}
-        {activeTab === "calendario-ree"&& <CalendarioReeSection token={token} currentUser={currentUser} />}
-        {activeTab === "graficos"      && <GraficosSection token={token} currentUser={currentUser} />}
-        {activeTab === "alertas"       && <AlertsSection token={token} currentUser={currentUser} />}
-        {activeTab === "usuarios"      && canManageUsers && <UsersSection token={token} />}
-        {activeTab === "clientes"      && isSuperuser && <ClientesSection token={token} currentUser={currentUser} />}
+        {activeTab === "dashboard"      && <DashboardSection token={token} />}
+        {activeTab === "medidas"        && <MedidasSection token={token} currentUser={currentUser} />}
+        {activeTab === "objeciones"     && <ObjecionesSection token={token} currentUser={currentUser} />}
+        {activeTab === "calendario-ree" && <CalendarioReeSection token={token} currentUser={currentUser} />}
+        {activeTab === "graficos"       && <GraficosSection token={token} currentUser={currentUser} />}
+        {activeTab === "alertas"        && <AlertsSection token={token} currentUser={currentUser} />}
+        {activeTab === "usuarios"       && canManageUsers && <UsersSection token={token} />}
+        {activeTab === "clientes"       && isSuperuser && <ClientesSection token={token} currentUser={currentUser} />}
 
         {activeTab === "tablas-general" && (
           <MedidasGeneralSection
@@ -372,6 +377,7 @@ export default function HomePage() {
             setColumnOrder={setGeneralColumnOrder}
             hiddenColumns={generalHiddenColumns}
             setHiddenColumns={setGeneralHiddenColumns}
+            onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
           />
         )}
         {activeTab === "tablas-ps" && (
@@ -381,6 +387,7 @@ export default function HomePage() {
             setColumnOrder={setPsColumnOrder}
             hiddenColumns={psHiddenColumns}
             setHiddenColumns={setPsHiddenColumns}
+            onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
           />
         )}
 
