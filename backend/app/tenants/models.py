@@ -1,8 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, JSON
 from sqlalchemy.orm import relationship
-
 from app.core.models_base import Base, TimestampMixin
-
 
 user_empresas = Table(
     "user_empresas",
@@ -11,41 +9,29 @@ user_empresas = Table(
     Column("empresa_id", Integer, ForeignKey("empresas.id"), primary_key=True),
 )
 
-
 class Tenant(TimestampMixin, Base):
     __tablename__ = "tenants"
-
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(200), nullable=False, unique=True)
-    plan = Column(String(50), nullable=False, default="starter")
-
-    usuarios = relationship(
-        "User",
-        back_populates="tenant",
-        cascade="all, delete-orphan",
-    )
-    empresas = relationship(
-        "Empresa",
-        back_populates="tenant",
-        cascade="all, delete-orphan",
-    )
+    id      = Column(Integer, primary_key=True, index=True)
+    nombre  = Column(String(200), nullable=False, unique=True)
+    plan    = Column(String(50), nullable=False, default="starter")
+    usuarios = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
+    empresas = relationship("Empresa", back_populates="tenant", cascade="all, delete-orphan")
 
 
 class User(TimestampMixin, Base):
     __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
-
-    email = Column(String(255), nullable=False, unique=True, index=True)
+    id           = Column(Integer, primary_key=True, index=True)
+    tenant_id    = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    email        = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
-    rol = Column(String(50), nullable=False, default="owner")
-    is_active = Column(Boolean, nullable=False, default=True)
+    rol          = Column(String(50), nullable=False, default="owner")
+    is_active    = Column(Boolean, nullable=False, default=True)
     is_superuser = Column(Boolean, nullable=False, default=False)
-    ui_theme_overrides = Column(JSON, nullable=True)
+    # Configuración de UI — persiste en BD
+    ui_theme_overrides = Column(JSON, nullable=True)   # tema de color (ya existía)
+    ui_table_settings  = Column(JSON, nullable=True)   # ← NUEVO: config de tablas
 
     tenant = relationship("Tenant", back_populates="usuarios")
-
     empresas_permitidas = relationship(
         "Empresa",
         secondary=user_empresas,
