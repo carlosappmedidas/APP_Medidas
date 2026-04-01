@@ -268,37 +268,39 @@ export default function UsersSection({ token }: UsersSectionProps) {
   };
 
   return (
-    <section className="ui-card text-sm">
-      {/* HEADER DESPLEGABLE */}
-      <header
-        className="mb-3 flex cursor-pointer flex-col gap-2 md:flex-row md:items-center md:justify-between"
+    // ← CAMBIO: mismo patrón que Apariencia del panel y Carga de datos
+    // - rounded-xl border + background explícito (sin ui-card que añade padding: 32px)
+    // - header convertido a <button> con px-4 py-4, igual que las otras tarjetas
+    <section
+      className="rounded-xl border text-sm"
+      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+    >
+      {/* HEADER DESPLEGABLE — mismo patrón que Apariencia del panel */}
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
       >
         <div>
-          <h4 className="ui-card-title">Usuarios (Cliente)</h4>
-          <p className="ui-card-subtitle">
+          <div className="ui-card-title text-base md:text-lg">USUARIOS (CLIENTE)</div>
+          <p className="ui-card-subtitle mt-1">
             Gestiona usuarios del cliente y define el acceso por empresas.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-[11px] ui-muted">{isOpen ? "Ocultar" : "Mostrar"}</span>
-          <span
-            className={[
-              "inline-flex items-center justify-center text-[13px] ui-muted transition-transform",
-              isOpen ? "rotate-180" : "rotate-0",
-            ].join(" ")}
-            aria-hidden="true"
-          >
-            ▾
-          </span>
-        </div>
-      </header>
+        <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+          {isOpen ? "Ocultar" : "Mostrar"}
+        </span>
+      </button>
 
-      {error && isOpen && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
-
+      {/* Contenido desplegado — mismo patrón que Apariencia del panel */}
       {isOpen && (
-        <>
+        <div
+          className="border-t px-4 pb-4 pt-3"
+          style={{ borderColor: "var(--card-border)" }}
+        >
+          {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
+
           {!token && (
             <p className="mb-4 text-xs opacity-85">
               Inicia sesión para ver y gestionar usuarios.
@@ -638,7 +640,7 @@ export default function UsersSection({ token }: UsersSectionProps) {
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
     </section>
   );
