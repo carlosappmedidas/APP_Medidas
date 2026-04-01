@@ -137,6 +137,10 @@ export default function HomePage() {
       if (savedTab && savedTab in PAGE_TITLES) setActiveTab(savedTab as MainTab);
       const sidebarRaw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       if (sidebarRaw === "1") setSidebarCollapsed(true);
+      const medidasRaw = localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY);
+      if (medidasRaw === "1") setMedidasOpen(true);
+      const tablasRaw = localStorage.getItem(TABLAS_OPEN_STORAGE_KEY);
+      if (tablasRaw === "1") setTablasOpen(true);
     } catch { /* ignore */ }
     finally { setAuthReady(true); }
   }, []);
