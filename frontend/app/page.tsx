@@ -714,19 +714,16 @@ export default function HomePage() {
 
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="settings-page">
-            {/* ← CAMBIO: tarjeta compacta idéntica a Carga de datos.
-                - ui-card-title sin text-base md:text-lg → mismo tamaño que "CARGA DE FICHEROS"
-                - Sin badge → la tarjeta cerrada mide igual que las de Carga
-                - "Restaurar colores" dentro del contenido desplegado */}
-            <div className="rounded-xl border text-sm" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+            {/* ← CAMBIO Paso 3: inline styles → .ui-collapsible-card */}
+            <div className="ui-collapsible-card">
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+                className="ui-collapsible-card__trigger"
                 onClick={() => setShowApariencia((v) => !v)}
               >
                 <div>
-                  <div className="ui-card-title text-base md:text-lg">APARIENCIA DEL PANEL</div>
-                  <p className="ui-card-subtitle mt-1">
+                  <div className="ui-collapsible-card__title">APARIENCIA DEL PANEL</div>
+                  <p className="ui-collapsible-card__subtitle">
                     Cambia los colores del panel. Se aplica al momento en todas las secciones.
                   </p>
                 </div>
@@ -736,10 +733,7 @@ export default function HomePage() {
               </button>
 
               {showApariencia && (
-                <div
-                  className="border-t px-4 pb-4 pt-3"
-                  style={{ borderColor: "var(--card-border)" }}
-                >
+                <div className="ui-collapsible-card__body">
                   <div className="flex justify-end mb-3">
                     <button
                       type="button"

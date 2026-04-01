@@ -268,23 +268,18 @@ export default function UsersSection({ token }: UsersSectionProps) {
   };
 
   return (
-    // ← CAMBIO: mismo patrón que Apariencia del panel y Carga de datos
-    // - rounded-xl border + background explícito (sin ui-card que añade padding: 32px)
-    // - header convertido a <button> con px-4 py-4, igual que las otras tarjetas
-    <section
-      className="rounded-xl border text-sm"
-      style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
-    >
-      {/* HEADER DESPLEGABLE — mismo patrón que Apariencia del panel */}
+    // ← CAMBIO Paso 4: ui-collapsible-card — mismo patrón que Carga y Apariencia
+    <section className="ui-collapsible-card">
+      {/* HEADER DESPLEGABLE */}
       <button
         type="button"
-        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+        className="ui-collapsible-card__trigger"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
       >
         <div>
-          <div className="ui-card-title text-base md:text-lg">USUARIOS (CLIENTE)</div>
-          <p className="ui-card-subtitle mt-1">
+          <div className="ui-collapsible-card__title">USUARIOS (CLIENTE)</div>
+          <p className="ui-collapsible-card__subtitle">
             Gestiona usuarios del cliente y define el acceso por empresas.
           </p>
         </div>
@@ -293,12 +288,9 @@ export default function UsersSection({ token }: UsersSectionProps) {
         </span>
       </button>
 
-      {/* Contenido desplegado — mismo patrón que Apariencia del panel */}
+      {/* Contenido desplegado */}
       {isOpen && (
-        <div
-          className="border-t px-4 pb-4 pt-3"
-          style={{ borderColor: "var(--card-border)" }}
-        >
+        <div className="ui-collapsible-card__body">
           {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
           {!token && (

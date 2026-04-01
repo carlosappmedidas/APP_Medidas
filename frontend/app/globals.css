@@ -1,6 +1,11 @@
 /* app/globals.css */
 @import "tailwindcss";
 
+/* Estilos especÃ­ficos de secciÃ³n â€” extraÃ­dos para mantener este fichero limpio */
+@import "./styles/alerts.css";
+@import "./styles/settings.css";
+@import "./styles/appearance.css";
+
 /* =========================================================
    1) Base + Design tokens (tema)
    ========================================================= */
@@ -13,7 +18,7 @@
   --app-bg: #020617;
   --app-fg: #e5e7eb;
 
-  /* ✅ NUEVO: Main (contenido) */
+  /* Main (contenido) */
   --main-bg: rgba(0, 0, 0, 0); /* por defecto transparente (usa app-bg de fondo) */
 
   /* Card */
@@ -82,12 +87,12 @@
   --table-head-text: rgba(161, 161, 170, 0.95);
   --table-row-border: rgba(255, 255, 255, 0.05);
 
-  /* MEJORA B: Fondos opacos para columnas sticky — oscuro */
+  /* Sticky columns */
   --sticky-bg: #111827;
   --sticky-head-bg: #1a2236;
   --sticky-selected-bg: #1e2d45;
 
-  /* Badges (status) */
+  /* Badges */
   --badge-neutral-bg: rgba(255, 255, 255, 0.05);
   --badge-neutral-border: rgba(113, 113, 122, 0.4);
   --badge-neutral-text: rgba(228, 228, 231, 0.9);
@@ -131,24 +136,18 @@
   --ghost-hover: rgba(255, 255, 255, 0.08);
 }
 
-/* Tema claro */
+/* â”€â”€ Tema claro â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 :root[data-theme="light"] {
   --app-bg: #f8fafc;
   --app-fg: #0f172a;
-
-  /* ✅ NUEVO: main en claro (por defecto transparente también) */
   --main-bg: rgba(255, 255, 255, 0);
-
   --card-bg: #ffffff;
   --card-border: rgba(15, 23, 42, 0.1);
   --card-shadow: 0 10px 25px rgba(15, 23, 42, 0.1);
-
   --text: #0f172a;
   --text-muted: rgba(15, 23, 42, 0.65);
-
   --primary: #4f46e5;
   --primary-hover: #4338ca;
-
   --field-bg: rgba(255, 255, 255, 0.85);
   --field-bg-soft: rgba(255, 255, 255, 0.7);
   --field-border: rgba(15, 23, 42, 0.14);
@@ -156,42 +155,30 @@
   --field-border-focus: rgba(16, 185, 129, 0.9);
   --field-text: rgba(15, 23, 42, 0.95);
   --field-placeholder: rgba(100, 116, 139, 0.9);
-
   --btn-outline-border: rgba(15, 23, 42, 0.22);
   --btn-outline-hover: rgba(15, 23, 42, 0.06);
-
   --sidebar-bg: rgba(255, 255, 255, 0.6);
   --sidebar-border: rgba(15, 23, 42, 0.1);
   --nav-item-bg: rgba(15, 23, 42, 0.05);
   --nav-item-hover: rgba(15, 23, 42, 0.08);
   --nav-item-text: rgba(15, 23, 42, 0.9);
-
   --table-border: rgba(15, 23, 42, 0.1);
-  /* MEJORA claro: cabecera de tabla opaca y visible */
   --table-head-bg: #e8ecf0;
   --table-head-text: rgba(100, 116, 139, 0.95);
   --table-row-border: rgba(15, 23, 42, 0.08);
-
-  /* MEJORA claro: sticky columns — fondos opacos con contraste suficiente */
   --sticky-bg: #f8fafc;
   --sticky-head-bg: #e2e8f0;
   --sticky-selected-bg: #dbeafe;
-
   --badge-neutral-bg: rgba(15, 23, 42, 0.04);
   --badge-neutral-border: rgba(100, 116, 139, 0.35);
   --badge-neutral-text: rgba(15, 23, 42, 0.8);
-
   --popover-bg: #ffffff;
   --popover-border: rgba(15, 23, 42, 0.1);
-
   --ghost-border: rgba(15, 23, 42, 0.12);
   --ghost-bg: rgba(15, 23, 42, 0.04);
   --ghost-hover: rgba(15, 23, 42, 0.08);
 }
 
-/* ✅ Mantengo el bloque para no "desaparecer" nada, pero sin tocar el UI theme:
-   el tema final lo controla data-theme. Aquí solo se ajusta el base
-   background/foreground si el SO está en dark. */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -200,7 +187,7 @@
 }
 
 /* =========================================================
-   2.5) Accesibilidad / reducción de movimiento
+   2) Accesibilidad / reducciÃ³n de movimiento
    ========================================================= */
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -230,7 +217,7 @@ body {
 }
 
 /* =========================================================
-   5) UI helpers (cards/titles)
+   5) Cards
    ========================================================= */
 .ui-page {
   background: var(--app-bg);
@@ -269,7 +256,58 @@ body {
 }
 
 /* =========================================================
-   6) Forms & Buttons
+   6) Tarjeta desplegable estÃ¡ndar â€” ui-collapsible-card
+   PatrÃ³n unificado para Carga, Apariencia, Usuarios, Clientes, Alertas.
+   Sin padding en el wrapper â€” el trigger y el body lo controlan.
+   Resultado visual idÃ©ntico al patrÃ³n ya usado en CargaSection.
+   ========================================================= */
+
+/* Wrapper â€” mismo aspecto visual que antes sin ui-card */
+.ui-collapsible-card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  font-size: 0.875rem; /* text-sm */
+}
+
+/* BotÃ³n cabecera â€” full width, mismo padding que Carga/Apariencia/Usuarios */
+.ui-collapsible-card__trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  /* Sin background propio â€” hereda el del wrapper */
+}
+
+/* TÃ­tulo en mayÃºsculas â€” idÃ©ntico a "CARGA DE FICHEROS", "APARIENCIA DEL PANEL" */
+.ui-collapsible-card__title {
+  font-size: var(--title-card);   /* 14px */
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  /* Equivale a: ui-card-title text-base md:text-lg */
+}
+
+/* SubtÃ­tulo â€” idÃ©ntico al ui-card-subtitle existente + mt-1 */
+.ui-collapsible-card__subtitle {
+  margin-top: 4px;
+  font-size: var(--subtitle-card); /* 10px */
+  color: var(--text-muted);
+}
+
+/* Contenido desplegado â€” separador superior + padding lateral */
+.ui-collapsible-card__body {
+  border-top: 1px solid var(--card-border);
+  padding: 12px 16px 16px;
+}
+
+/* =========================================================
+   7) Forms & Buttons
    ========================================================= */
 .ui-label {
   display: block;
@@ -333,7 +371,6 @@ body {
   border-radius: 6px;
   border: 1px solid var(--btn-outline-border);
   background: transparent;
-  /* ✅ mejoras visuales sin cambiar lógica */
   cursor: pointer;
   accent-color: var(--field-border-focus);
 }
@@ -372,7 +409,6 @@ body {
   background: var(--btn-primary-bg);
   color: white;
 }
-
 .ui-btn-primary:hover {
   background: var(--btn-primary-hover);
 }
@@ -381,7 +417,6 @@ body {
   background: var(--btn-secondary-bg);
   color: white;
 }
-
 .ui-btn-secondary:hover {
   background: var(--btn-secondary-hover);
 }
@@ -391,7 +426,6 @@ body {
   background: transparent;
   color: var(--nav-item-text);
 }
-
 .ui-btn-outline:hover {
   background: var(--btn-outline-hover);
 }
@@ -401,7 +435,6 @@ body {
   background: transparent;
   color: var(--danger-text);
 }
-
 .ui-btn-danger:hover {
   background: var(--danger-bg);
 }
@@ -420,7 +453,7 @@ body {
 }
 
 /* =========================================================
-   7) File input
+   8) File input
    ========================================================= */
 .ui-file {
   display: block;
@@ -452,14 +485,13 @@ body {
 }
 
 /* =========================================================
-   8) Popover / dropdown panel
+   9) Popover / dropdown panel
    ========================================================= */
 .ui-popover {
   position: absolute;
   right: 0;
   z-index: 50;
   margin-top: 8px;
-  /* ✅ mantiene tu width, pero evita "cortes" en pantallas pequeñas */
   width: 224px;
   max-width: calc(100vw - 24px);
   border-radius: 12px;
@@ -467,7 +499,6 @@ body {
   background: var(--popover-bg);
   padding: 8px;
   box-shadow: var(--shadow-popover);
-  /* ✅ útil si en el futuro animas */
   transform-origin: top right;
 }
 
@@ -476,20 +507,19 @@ body {
 }
 
 /* =========================================================
-   9) Button: Ghost
+   10) Button: Ghost
    ========================================================= */
 .ui-btn-ghost {
   border: 1px solid var(--ghost-border);
   background: var(--ghost-bg);
   color: var(--nav-item-text);
 }
-
 .ui-btn-ghost:hover {
   background: var(--ghost-hover);
 }
 
 /* =========================================================
-   10) Layout / Sidebar / Nav
+   11) Layout / Sidebar / Nav
    ========================================================= */
 .ui-shell {
   display: flex;
@@ -500,17 +530,16 @@ body {
 }
 
 .ui-sidebar {
-  width: 16rem; /* w-64 */
+  width: 16rem;
   border-right: 1px solid var(--sidebar-border);
   background: var(--sidebar-bg);
-  padding: 32px 24px; /* px-6 py-8 */
+  padding: 32px 24px;
 }
 
 .ui-main {
   flex: 1;
   overflow-y: auto;
-  padding: 40px; /* px-10 py-10 */
-  /* ✅ NUEVO */
+  padding: 40px;
   background: var(--main-bg);
   min-width: 0;
 }
@@ -518,7 +547,7 @@ body {
 .ui-nav {
   display: flex;
   flex-direction: column;
-  gap: 12px; /* space-y-3 */
+  gap: 12px;
   font-size: 12px;
 }
 
@@ -543,11 +572,9 @@ body {
   color: var(--nav-item-text);
   transition: background 150ms ease, color 150ms ease;
 }
-
 .ui-nav-item:hover {
   background: var(--nav-item-hover);
 }
-
 .ui-nav-item--active {
   background: var(--nav-active-bg);
   color: var(--nav-active-text);
@@ -574,25 +601,22 @@ body {
   color: var(--nav-item-text);
   transition: background 150ms ease, color 150ms ease;
 }
-
 .ui-nav-subitem:hover {
   background: var(--nav-item-hover);
 }
-
 .ui-nav-subitem--active {
   background: var(--nav-sub-active-bg);
   color: var(--nav-active-text);
 }
 
 /* =========================================================
-   11) Tables
+   12) Tables
    ========================================================= */
 .ui-table-wrap {
   overflow-x: auto;
   border-radius: 12px;
   border: 1px solid var(--table-border);
   background: var(--surface-1);
-  /* ✅ mejora scroll y evita "saltos" al aparecer scrollbar */
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable both-edges;
 }
@@ -602,7 +626,6 @@ body {
   border-collapse: collapse;
 }
 
-/* MEJORA C: headers más legibles — sin mayúsculas forzadas, font-size 11px */
 .ui-thead {
   background: var(--table-head-bg);
   color: var(--table-head-text);
@@ -610,8 +633,6 @@ body {
   letter-spacing: 0.02em;
 }
 
-/* ✅ opcional (no cambia nada si no añades la clase en HTML):
-   añade "ui-table-wrap--sticky" al contenedor si quieres header sticky */
 .ui-table-wrap--sticky .ui-thead {
   position: sticky;
   top: 0;
@@ -622,7 +643,6 @@ body {
   border-top: 1px solid var(--table-row-border);
 }
 
-/* MEJORA D: más respiración vertical en las filas */
 .ui-td {
   padding: 10px 16px;
 }
@@ -642,7 +662,7 @@ body {
 }
 
 /* =========================================================
-   12) Badges
+   13) Badges
    ========================================================= */
 .ui-badge {
   display: inline-flex;
@@ -658,19 +678,16 @@ body {
   border-color: var(--badge-neutral-border);
   color: var(--badge-neutral-text);
 }
-
 .ui-badge--ok {
   background: var(--badge-ok-bg);
   border-color: var(--badge-ok-border);
   color: var(--badge-ok-text);
 }
-
 .ui-badge--warn {
   background: var(--badge-warn-bg);
   border-color: var(--badge-warn-border);
   color: var(--badge-warn-text);
 }
-
 .ui-badge--err {
   background: var(--badge-err-bg);
   border-color: var(--badge-err-border);
@@ -678,7 +695,7 @@ body {
 }
 
 /* =========================================================
-   13) Alerts
+   14) Alerts
    ========================================================= */
 .ui-alert {
   border-radius: 12px;
@@ -694,14 +711,13 @@ body {
 }
 
 /* =========================================================
-   14) Outline variants (info/warn)
+   15) Outline variants (info/warn)
    ========================================================= */
 .ui-btn-outline-info {
   border: 1px solid var(--info-border);
   background: transparent;
   color: var(--info-text);
 }
-
 .ui-btn-outline-info:hover {
   background: var(--info-bg);
 }
@@ -711,316 +727,12 @@ body {
   background: transparent;
   color: var(--warn-text);
 }
-
 .ui-btn-outline-warn:hover {
   background: var(--warn-bg);
 }
 
 /* =========================================================
-   15) Settings page (Configuración)
-   ========================================================= */
-.settings-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.settings-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.settings-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.settings-layout {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 24px;
-}
-
-.settings-sidebar {
-  border-right: 1px solid var(--sidebar-border);
-  padding-right: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settings-sidebar-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.settings-menu-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  border-radius: 9999px;
-  border: 1px solid transparent;
-  padding: 8px 12px;
-  font-size: 12px;
-  background: var(--nav-item-bg);
-  color: var(--nav-item-text);
-  text-align: left;
-  cursor: pointer;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease,
-    transform 120ms ease;
-}
-
-.settings-menu-item:hover {
-  background: var(--nav-item-hover);
-}
-
-.settings-menu-item--active {
-  background: var(--nav-active-bg);
-  color: var(--nav-active-text);
-  border-color: var(--nav-active-bg);
-}
-
-.settings-menu-item-pill {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.settings-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* Responsive: Configuración en 1 columna en pantallas pequeñas */
-@media (max-width: 768px) {
-  .ui-main {
-    padding: 24px;
-  }
-
-  .settings-layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-
-  .settings-sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--sidebar-border);
-    padding-right: 0;
-    padding-bottom: 12px;
-    margin-bottom: 8px;
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .settings-menu-item {
-    flex-direction: column;
-  }
-}
-
-/* =========================================================
-   16) Apariencia / temas (modos + chips)
-   ========================================================= */
-.appearance-root {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.appearance-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 4px;
-}
-
-/* Cada bloque (Modo de color, Temas rápidos, Mis temas, Ajustes detallados)
-   va dentro de un panel para que NO parezca texto suelto. */
-.appearance-section {
-  border-radius: 14px;
-  border: 1px solid var(--card-border);
-  background: var(--surface-2);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.appearance-section-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.appearance-section-title {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.appearance-section-subtitle {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-/* Grid de modos de color (Claro / Oscuro / Sistema) */
-.theme-mode-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.theme-mode-card {
-  border-radius: 14px;
-  border: 1px solid var(--card-border);
-  background: var(--surface-1);
-  padding: 10px 12px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: border-color 150ms ease, background 150ms ease, transform 120ms ease,
-    box-shadow 150ms ease;
-}
-
-.theme-mode-card:hover {
-  background: var(--surface-3);
-  border-color: var(--btn-outline-border);
-  transform: translateY(-1px);
-}
-
-.theme-mode-card--active {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.6);
-  background: linear-gradient(
-    135deg,
-    rgba(79, 70, 229, 0.18),
-    rgba(15, 23, 42, 0.95)
-  );
-}
-
-.theme-mode-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.theme-mode-card-title {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.theme-mode-card-badge {
-  font-size: 9px;
-  padding: 2px 6px;
-  border-radius: 9999px;
-  border: 1px solid rgba(148, 163, 184, 0.6);
-  color: var(--table-head-text);
-}
-
-/* Pequeña "mini UI" dentro de la tarjeta */
-.theme-mode-card-preview {
-  border-radius: 10px;
-  padding: 6px;
-  background: rgba(15, 23, 42, 0.85);
-  display: grid;
-  grid-template-rows: 8px 1fr;
-  gap: 4px;
-}
-
-.theme-mode-card-preview-bar {
-  border-radius: 9999px;
-  height: 6px;
-  background: rgba(148, 163, 184, 0.7);
-}
-
-.theme-mode-card-preview-body {
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.9);
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 4px;
-}
-
-.theme-mode-card-preview-main {
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-}
-
-.theme-mode-card-preview-side {
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px dashed rgba(148, 163, 184, 0.3);
-}
-
-/* Chips de temas rápidos */
-.theme-chips-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.theme-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 9999px;
-  border: 1px solid transparent;
-  padding: 4px 10px;
-  font-size: 11px;
-  background: var(--nav-item-bg);
-  color: var(--nav-item-text);
-  cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, transform 120ms ease,
-    box-shadow 150ms ease;
-}
-
-.theme-chip:hover {
-  background: var(--nav-item-hover);
-}
-
-.theme-chip--active {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.5);
-  background: radial-gradient(
-    circle at top left,
-    rgba(79, 70, 229, 0.25),
-    var(--nav-item-bg)
-  );
-}
-
-.theme-chip-dot {
-  height: 12px;
-  width: 12px;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, #4f46e5, #22c55e);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.7);
-}
-
-.theme-chip-name {
-  white-space: nowrap;
-}
-
-/* Responsive: 2 columnas -> 1 columna para modos de color */
-@media (max-width: 768px) {
-  .theme-mode-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* =========================================================
-   17) Login shell
+   16) Login shell
    ========================================================= */
 .ui-login-shell {
   min-height: 100vh;
@@ -1028,7 +740,11 @@ body {
   align-items: center;
   justify-content: center;
   padding: 32px 16px;
-  background: radial-gradient(circle at top, rgba(79, 70, 229, 0.12), transparent 35%),
+  background: radial-gradient(
+      circle at top,
+      rgba(79, 70, 229, 0.12),
+      transparent 35%
+    ),
     var(--app-bg);
 }
 
@@ -1039,99 +755,10 @@ body {
 }
 
 /* =========================================================
-   18) Alertas
+   17) Responsive global
    ========================================================= */
-.alerts-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.alerts-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.alerts-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.alerts-filters-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.alerts-filters-grid {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.alerts-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.alerts-table-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.alerts-detail-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.alerts-detail-grid {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-@media (max-width: 1200px) {
-  .alerts-filters-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .alerts-stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .alerts-detail-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 768px) {
-  .alerts-header,
-  .alerts-filters-header,
-  .alerts-table-header,
-  .alerts-detail-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .alerts-header-actions {
-    justify-content: flex-start;
-  }
-  .alerts-filters-grid,
-  .alerts-stats-grid,
-  .alerts-detail-grid {
-    grid-template-columns: minmax(0, 1fr);
+  .ui-main {
+    padding: 24px;
   }
 }

@@ -1,0 +1,194 @@
+/* =========================================================
+   Appearance â€” estilos del configurador de tema/apariencia
+   ExtraÃ­do de globals.css para mantener el fichero principal limpio.
+   ========================================================= */
+
+.appearance-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.appearance-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* Cada bloque (Modo de color, Temas rÃ¡pidos, Mis temas, Ajustes detallados)
+   va dentro de un panel para que NO parezca texto suelto. */
+.appearance-section {
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background: var(--surface-2);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.appearance-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.appearance-section-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.appearance-section-subtitle {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* â”€â”€ Grid de modos de color â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.theme-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.theme-mode-card {
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background: var(--surface-1);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 150ms ease, background 150ms ease,
+    transform 120ms ease, box-shadow 150ms ease;
+}
+
+.theme-mode-card:hover {
+  background: var(--surface-3);
+  border-color: var(--btn-outline-border);
+  transform: translateY(-1px);
+}
+
+.theme-mode-card--active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.6);
+  background: linear-gradient(
+    135deg,
+    rgba(79, 70, 229, 0.18),
+    rgba(15, 23, 42, 0.95)
+  );
+}
+
+.theme-mode-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.theme-mode-card-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.theme-mode-card-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  color: var(--table-head-text);
+}
+
+/* Mini UI dentro de la tarjeta de modo */
+.theme-mode-card-preview {
+  border-radius: 10px;
+  padding: 6px;
+  background: rgba(15, 23, 42, 0.85);
+  display: grid;
+  grid-template-rows: 8px 1fr;
+  gap: 4px;
+}
+
+.theme-mode-card-preview-bar {
+  border-radius: 9999px;
+  height: 6px;
+  background: rgba(148, 163, 184, 0.7);
+}
+
+.theme-mode-card-preview-body {
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.9);
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 4px;
+}
+
+.theme-mode-card-preview-main {
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.theme-mode-card-preview-side {
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+/* â”€â”€ Chips de temas rÃ¡pidos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.theme-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--nav-item-bg);
+  color: var(--nav-item-text);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease,
+    transform 120ms ease, box-shadow 150ms ease;
+}
+
+.theme-chip:hover {
+  background: var(--nav-item-hover);
+}
+
+.theme-chip--active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.5);
+  background: radial-gradient(
+    circle at top left,
+    rgba(79, 70, 229, 0.25),
+    var(--nav-item-bg)
+  );
+}
+
+.theme-chip-dot {
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #4f46e5, #22c55e);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.7);
+}
+
+.theme-chip-name {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .theme-mode-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

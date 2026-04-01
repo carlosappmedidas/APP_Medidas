@@ -10,6 +10,9 @@ type Props = {
   children: React.ReactNode;
 };
 
+// ← CAMBIO Paso 5b: patrón antiguo (ui-card + flecha ▾) → ui-collapsible-card estándar.
+// AdminTenantsSection, AdminEmpresasSection y AdminUsersSection se actualizan solos
+// sin tocar ninguno de esos ficheros.
 export default function AccordionCard({
   title,
   subtitle,
@@ -20,36 +23,30 @@ export default function AccordionCard({
   const contentId = useId();
 
   return (
-    <section className="ui-card text-sm">
+    <section className="ui-collapsible-card">
       <button
         type="button"
+        className="ui-collapsible-card__trigger"
         onClick={() => setOpen((prev) => !prev)}
-        className="mb-3 flex w-full cursor-pointer flex-col gap-2 text-left md:flex-row md:items-center md:justify-between"
         aria-expanded={open}
         aria-controls={contentId}
       >
         <div className="min-w-0">
-          <h4 className="ui-card-title">{title}</h4>
-          {subtitle ? <p className="ui-card-subtitle">{subtitle}</p> : null}
+          <div className="ui-collapsible-card__title">{title}</div>
+          {subtitle ? (
+            <p className="ui-collapsible-card__subtitle">{subtitle}</p>
+          ) : null}
         </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-[11px] ui-muted">{open ? "Ocultar" : "Mostrar"}</span>
-
-          {/* Flecha unificada (misma que en Ajustes / Sistema) */}
-          <span
-            className={[
-              "inline-flex items-center justify-center text-[13px] ui-muted transition-transform",
-              open ? "rotate-180" : "rotate-0",
-            ].join(" ")}
-            aria-hidden="true"
-          >
-            ▾
-          </span>
-        </div>
+        <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+          {open ? "Ocultar" : "Mostrar"}
+        </span>
       </button>
 
-      {open && <div id={contentId}>{children}</div>}
+      {open && (
+        <div id={contentId} className="ui-collapsible-card__body">
+          {children}
+        </div>
+      )}
     </section>
   );
 }
