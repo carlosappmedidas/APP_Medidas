@@ -3,7 +3,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -18,6 +17,12 @@ import {
 } from "recharts";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+
+// ← Pasos 7-10: componentes y hook extraídos a sus propios ficheros
+import YearPillsFilter   from "../ui/YearPillsFilter";
+import MonthPillsFilter  from "../ui/MonthPillsFilter";
+import FilterDropdown, { type MultiCheckOption } from "../ui/FilterDropdown";
+import useElementSize    from "../../hooks/useElementSize";
 
 type Props = { token: string | null; currentUser?: User | null };
 type GraficoEmpresaOption = { id: number; nombre: string };
@@ -45,9 +50,6 @@ type GraficosPsSeriesResponse = {
 type ChartRow = { period_key: string; period_label: string; [key: string]: string | number };
 type CustomTooltipEntry = { value?: number | string; name?: number | string; dataKey?: number | string; payload?: ChartRow };
 type CustomTooltipProps = { active?: boolean; payload?: readonly CustomTooltipEntry[]; label?: string; extraByLabel?: Record<string, string[]> };
-type MultiCheckOption = { value: number; label: string };
-type ElementSize = { width: number; height: number };
-type FilterDropdownProps = { title: string; options: MultiCheckOption[]; selectedValues: number[]; onToggle: (value: number) => void; onSelectAll: () => void; allLabel?: string };
 type ChartCardProps = {
   title: string; subtitle: string; series: GraficoSerie[]; hiddenSeries: Record<string, boolean>;
   onToggleSerie: (key: string) => void; selector?: React.ReactNode; loading?: boolean;
@@ -197,156 +199,6 @@ function CustomTooltip({ active, payload, label, extraByLabel }: CustomTooltipPr
   );
 }
 
-function useElementSize(): [React.MutableRefObject<HTMLDivElement | null>, ElementSize] {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 });
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const updateSize = () => {
-      const rect = element.getBoundingClientRect();
-      const nextWidth  = Math.floor(rect.width);
-      const nextHeight = Math.floor(rect.height);
-      setSize((prev) => prev.width === nextWidth && prev.height === nextHeight ? prev : { width: nextWidth, height: nextHeight });
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, size];
-}
-
-function FilterDropdown({ title, options, selectedValues, onToggle, onSelectAll, allLabel = "Todas" }: FilterDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-  const allSelected = selectedValues.length === 0 || selectedValues.length === options.length;
-  const summary = allSelected ? allLabel : `${selectedValues.length} sel.`;
-  return (
-    <div ref={wrapRef} style={{ position: "relative", display: "inline-block" }}>
-      <button type="button" onClick={() => setOpen((v) => !v)} className="ui-select"
-        style={{ minWidth: 160, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, cursor: "pointer" }}>
-        <span>{title}: {summary}</span>
-        <span style={{ fontSize: 10, color: "rgba(226,232,240,.5)" }}>▾</span>
-      </button>
-      {open && (
-        <div className="rounded-xl border" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50, background: "var(--card-bg)", borderColor: "var(--card-border)", padding: 8, minWidth: 160, boxShadow: "0 8px 24px rgba(0,0,0,.4)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--card-border)" }}>
-            <span style={{ fontSize: 10, color: "rgba(226,232,240,.5)" }}>{title}</span>
-            <button type="button" onClick={onSelectAll} className="ui-btn ui-btn-outline ui-btn-xs">{allLabel}</button>
-          </div>
-          {options.map((opt) => (
-            <div key={opt.value} onClick={() => onToggle(opt.value)}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 6, cursor: "pointer", fontSize: 11, color: "var(--text)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(30,58,95,.5)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-              <div style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0, background: selectedValues.includes(opt.value) ? "#2563eb" : "transparent", border: `1px solid ${selectedValues.includes(opt.value) ? "#2563eb" : "rgba(255,255,255,.2)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff" }}>
-                {selectedValues.includes(opt.value) ? "✓" : ""}
-              </div>
-              {opt.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function YearPillsFilter({ allAnios, selectedAnios, onToggle, onSelectAll }: { allAnios: number[]; selectedAnios: number[]; onToggle: (anio: number) => void; onSelectAll: () => void }) {
-  const [prevOpen, setPrevOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handle = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setPrevOpen(false); };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
-  const sorted      = [...allAnios].sort((a, b) => b - a);
-  const recent      = sorted.slice(0, 4);
-  const previous    = sorted.slice(4);
-  const allSelected = selectedAnios.length === 0 || selectedAnios.length === allAnios.length;
-  const prevActive  = previous.filter((y) => selectedAnios.includes(y));
-  const pillStyle = (active: boolean): React.CSSProperties => ({
-    fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer", whiteSpace: "nowrap",
-    border: active ? "1px solid #3b82f6" : "1px solid rgba(255,255,255,.14)",
-    background: active ? "#1d4ed8" : "rgba(0,0,0,.22)",
-    color: active ? "#fff" : "rgba(226,232,240,.45)", height: 28, display: "flex", alignItems: "center",
-  });
-  const allPillStyle: React.CSSProperties = {
-    fontSize: 11, padding: "4px 10px", borderRadius: 7, cursor: "pointer",
-    border: allSelected ? "1px solid #34d399" : "1px solid rgba(52,211,153,.28)",
-    background: allSelected ? "rgba(52,211,153,.2)" : "transparent",
-    color: allSelected ? "#34d399" : "rgba(52,211,153,.6)", height: 28, display: "flex", alignItems: "center",
-  };
-  return (
-    <div ref={wrapRef} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      <button type="button" onClick={onSelectAll} style={allPillStyle}>Todos</button>
-      <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
-      {recent.map((y) => (
-        <button key={y} type="button" onClick={() => onToggle(y)} style={pillStyle(selectedAnios.includes(y))}>{y}</button>
-      ))}
-      {previous.length > 0 && (
-        <>
-          <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
-          <div style={{ position: "relative" }}>
-            <button type="button" onClick={() => setPrevOpen((v) => !v)}
-              style={{ fontSize: 11, padding: "0 10px", borderRadius: 7, cursor: "pointer", height: 28, display: "flex", alignItems: "center", gap: 5, border: prevActive.length > 0 ? "1px solid rgba(37,99,235,.4)" : "1px solid rgba(255,255,255,.1)", background: prevActive.length > 0 ? "rgba(37,99,235,.15)" : "rgba(0,0,0,.18)", color: prevActive.length > 0 ? "#93c5fd" : "rgba(226,232,240,.38)" }}>
-              Anteriores
-              {prevActive.length > 0 && (<span style={{ fontSize: 9, background: "rgba(37,99,235,.5)", color: "#fff", borderRadius: 8, padding: "1px 5px" }}>{prevActive.length}</span>)}
-              {prevOpen ? " ▴" : " ▾"}
-            </button>
-            {prevOpen && (
-              <div className="rounded-xl border" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50, background: "var(--card-bg)", borderColor: "var(--card-border)", padding: 6, minWidth: 110, boxShadow: "0 8px 24px rgba(0,0,0,.5)" }}>
-                {previous.map((y) => (
-                  <div key={y} onClick={() => onToggle(y)}
-                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 6, cursor: "pointer", fontSize: 11, color: "var(--text)" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(30,58,95,.5)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                    <div style={{ width: 13, height: 13, borderRadius: 3, flexShrink: 0, background: selectedAnios.includes(y) ? "#2563eb" : "transparent", border: `1px solid ${selectedAnios.includes(y) ? "#2563eb" : "rgba(255,255,255,.2)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#fff" }}>
-                      {selectedAnios.includes(y) ? "✓" : ""}
-                    </div>
-                    {y}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function MonthPillsFilter({ selectedMeses, onToggle, onSelectAll }: { selectedMeses: number[]; onToggle: (mes: number) => void; onSelectAll: () => void }) {
-  const allSelected = selectedMeses.length === 0 || selectedMeses.length === 12;
-  const pillStyle = (active: boolean): React.CSSProperties => ({
-    fontSize: 10, padding: "0 6px", borderRadius: 6, cursor: "pointer",
-    border: active ? "1px solid rgba(37,99,235,.5)" : "1px solid rgba(255,255,255,.1)",
-    background: active ? "rgba(37,99,235,.28)" : "rgba(0,0,0,.18)",
-    color: active ? "#93c5fd" : "rgba(226,232,240,.38)", height: 26, display: "flex", alignItems: "center", minWidth: 30, justifyContent: "center",
-  });
-  const allStyle: React.CSSProperties = {
-    fontSize: 10, padding: "0 7px", borderRadius: 6, cursor: "pointer",
-    border: allSelected ? "1px solid #34d399" : "1px solid rgba(52,211,153,.22)",
-    background: allSelected ? "rgba(52,211,153,.14)" : "transparent",
-    color: allSelected ? "#34d399" : "rgba(52,211,153,.55)", height: 26, display: "flex", alignItems: "center",
-  };
-  return (
-    <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-      <button type="button" onClick={onSelectAll} style={allStyle}>Todos</button>
-      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-        <button key={m} type="button" onClick={() => onToggle(m)} style={pillStyle(selectedMeses.includes(m))}>{MESES_LABEL[m]}</button>
-      ))}
-    </div>
-  );
-}
-
 // ── ChartCard ─────────────────────────────────────────────────────────────────
 
 function ChartCard({
@@ -367,12 +219,11 @@ function ChartCard({
         background: "var(--card-bg)",
         borderColor: "var(--card-border)",
         position: "relative",
-        overflow: "visible",      // ← CAMBIO: era "hidden", "visible" permite que el tooltip no se corte
+        overflow: "visible",
         paddingBottom: CHART_BOTTOM_PADDING,
         minHeight: CARD_MIN_HEIGHT,
       }}
     >
-      {/* Header con KPI arriba a la derecha */}
       <div style={{ padding: "8px 11px 6px", borderBottom: "1px solid var(--card-border)" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 2 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -414,8 +265,6 @@ function ChartCard({
         )}
       </div>
 
-      {/* Recuadro del gráfico: posición absoluta fija desde abajo */}
-      {/* ← CAMBIO: overflow "visible" + position "relative" para que el tooltip no se corte */}
       <div
         ref={containerRef}
         style={{
@@ -430,8 +279,8 @@ function ChartCard({
           height: "100%",
           borderRadius: 7,
           background: "rgba(0,0,0,.18)",
-          overflow: "visible",       // ← CAMBIO: era "hidden", ahora "visible" para que el tooltip salga
-          position: "relative",      // ← CAMBIO: necesario para que z-index del tooltip funcione
+          overflow: "visible",
+          position: "relative",
         }}>
           {loading && (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(226,232,240,.35)" }}>Cargando...</div>
@@ -445,9 +294,7 @@ function ChartCard({
               <CartesianGrid strokeDasharray="3 3" opacity={0.12} />
               <XAxis dataKey="period_label" tick={{ fontSize: 8 }} tickFormatter={formatXAxisTick} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 8 }} tickFormatter={formatYAxis} tickLine={false} axisLine={false}
-                width={48}
-                domain={["auto", "auto"]} />
-              {/* ← CAMBIO: allowEscapeViewBox + wrapperStyle para que el tooltip salga fuera del SVG */}
+                width={48} domain={["auto", "auto"]} />
               <Tooltip
                 content={(props) => (
                   <CustomTooltip
