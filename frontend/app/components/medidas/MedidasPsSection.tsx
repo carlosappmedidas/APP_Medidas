@@ -13,7 +13,7 @@ import type { TableAppearance } from "../settings/hooks/useTableSettings";
 
 // ── Colores de cabecera de grupo ──────────────────────────────────────────
 const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; borderBottom: string }> = {
-  "Identificación":   { background: "rgba(30,58,95,0.4)",   color: "rgba(226,232,240,0.5)",  borderBottom: "1px solid rgba(30,58,95,0.6)" },
+  "Identificación":   { background: "rgba(30,58,95,0.4)",   color: "rgba(226,232,240,0.5)",  borderBottom: "none" },
   "Energía PS":       { background: "rgba(37,99,235,0.18)", color: "#60a5fa",                 borderBottom: "1px solid rgba(37,99,235,0.4)" },
   "CUPS PS":          { background: "rgba(30,58,95,0.35)",  color: "rgba(226,232,240,0.55)", borderBottom: "1px solid rgba(30,58,95,0.5)" },
   "Importes PS":      { background: "rgba(5,150,105,0.18)", color: "#34d399",                 borderBottom: "1px solid rgba(5,150,105,0.4)" },
@@ -21,6 +21,15 @@ const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; b
   "CUPS Tarifas":     { background: "rgba(30,58,95,0.35)",  color: "rgba(226,232,240,0.55)", borderBottom: "1px solid rgba(30,58,95,0.5)" },
   "Importes Tarifas": { background: "rgba(168,85,247,0.18)",color: "#c084fc",                 borderBottom: "1px solid rgba(168,85,247,0.4)" },
 };
+
+// ── Umbrales de pérdidas técnicas ─────────────────────────────────────────
+// Modificar aquí si cambia el criterio:
+//   negativo              → ámbar  (anómalo, no debería haber pérdidas negativas)
+//   0 % a NORMAL          → verde  (pérdidas técnicas aceptables)
+//   NORMAL % a ALTO       → ámbar  (pérdidas elevadas, vigilar)
+//   > ALTO %              → rojo   (pérdidas no normales, revisar)
+const PCT_UMBRAL_NORMAL = 8;
+const PCT_UMBRAL_ALTO   = 12;
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 type MedidasPsProps = {
@@ -49,6 +58,48 @@ const formatNumberEs = (v: number | null | undefined, decimals = 2): string => {
   }).format(v);
 };
 
+// ── Badge de porcentaje de pérdidas ───────────────────────────────────────
+// negativo          → ámbar  (anómalo)
+// 0 a NORMAL        → verde  (pérdidas técnicas aceptables)
+// NORMAL a ALTO     → ámbar  (vigilar)
+// > ALTO            → rojo   (revisar)
+function PctCell({ value, pctBadges }: { value: number | null | undefined; pctBadges: boolean }) {
+  const text = value == null || Number.isNaN(value)
+    ? "-"
+    : `${formatNumberEs(value, 2)} %`;
+
+  if (!pctBadges || text === "-") return <>{text}</>;
+
+  let bg: string;
+  let color: string;
+
+  if (typeof value !== "number") {
+    bg = "rgba(30,58,95,0.2)";    color = "var(--text-muted)";
+  } else if (value < 0) {
+    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";   // ámbar — negativo anómalo
+  } else if (value <= PCT_UMBRAL_NORMAL) {
+    bg = "rgba(5,150,105,0.18)";  color = "#34d399";   // verde — pérdidas normales
+  } else if (value <= PCT_UMBRAL_ALTO) {
+    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";   // ámbar — pérdidas elevadas
+  } else {
+    bg = "rgba(239,68,68,0.18)";  color = "#f87171";   // rojo — revisar
+  }
+
+  return (
+    <span style={{
+      display: "inline-block",
+      padding: "1px 6px",
+      borderRadius: 4,
+      fontSize: "inherit",
+      fontWeight: 500,
+      background: bg,
+      color,
+    }}>
+      {text}
+    </span>
+  );
+}
+
 export type ColumnDefPs = {
   id: string;
   label: string;
@@ -61,6 +112,9 @@ const STICKY_COLUMN_IDS_PS = ["empresa_id", "empresa_codigo", "anio", "mes"];
 const STICKY_WIDTHS_PS: Record<string, number> = {
   empresa_id: 64, empresa_codigo: 110, anio: 52, mes: 44,
 };
+
+// Fondo sólido equivalente a var(--sticky-bg) con banda alterna encima
+const STICKY_STRIPE_BG = "rgb(20,35,54)";
 
 const ALL_COLUMNS_PS: ColumnDefPs[] = [
   { id: "empresa_id",    label: "Empresa ID",    align: "left",  group: "Identificación", render: (m) => m.empresa_id },
@@ -331,20 +385,11 @@ export default function MedidasPsSection({
                 {groupHeaders.map(({ group, span }, i) => {
                   const style = GROUP_HEADER_STYLES[group] ?? GROUP_HEADER_STYLES["Identificación"];
                   return (
-                    <th
-                      key={`grp-${i}`}
-                      colSpan={span}
-                      style={{
-                        padding: "3px 8px",
-                        fontSize: 9,
-                        fontWeight: 500,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        textAlign: "center",
-                        whiteSpace: "nowrap",
-                        ...style,
-                      }}
-                    >
+                    <th key={`grp-${i}`} colSpan={span} style={{
+                      padding: "3px 8px", fontSize: 9, fontWeight: 500,
+                      textTransform: "uppercase", letterSpacing: "0.06em",
+                      textAlign: "center", whiteSpace: "nowrap", ...style,
+                    }}>
                       {group}
                     </th>
                   );
@@ -355,8 +400,7 @@ export default function MedidasPsSection({
               {columnasOrdenadas.map((col) => {
                 const isSticky = STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
                 return (
-                  <th
-                    key={col.id}
+                  <th key={col.id}
                     className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
                     style={isSticky ? {
                       position: "sticky", left: stickyLeftMap[col.id], zIndex: 3,
@@ -392,20 +436,12 @@ export default function MedidasPsSection({
               if (row.type === "separator") {
                 return (
                   <tr key={`sep-${row.label}`}>
-                    <td
-                      colSpan={totalColumnas}
-                      style={{
-                        padding: "4px 10px",
-                        fontSize: 9,
-                        fontWeight: 500,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        color: "var(--text-muted)",
-                        background: "var(--card-bg)",
-                        borderTop: "1px solid var(--card-border)",
-                        borderBottom: "1px solid var(--card-border)",
-                      }}
-                    >
+                    <td colSpan={totalColumnas} style={{
+                      padding: "4px 10px", fontSize: 9, fontWeight: 500,
+                      textTransform: "uppercase", letterSpacing: "0.05em",
+                      color: "var(--text-muted)", background: "var(--card-bg)",
+                      borderTop: "1px solid var(--card-border)", borderBottom: "1px solid var(--card-border)",
+                    }}>
                       {row.label}
                     </td>
                   </tr>
@@ -417,13 +453,11 @@ export default function MedidasPsSection({
               const isSelected = selectedRowKey === rowKey;
               const dataIdx = dataRows.slice(0, rowIdx + 1).filter((r) => r.type === "data").length - 1;
               const isEven = dataIdx % 2 === 1;
-              const stripeBg = ap.stripedRows && isEven && !isSelected
-                ? "rgba(30,58,95,0.18)"
-                : undefined;
+              const hasStripe = ap.stripedRows && isEven && !isSelected;
+              const stripeBg = hasStripe ? "rgba(30,58,95,0.18)" : undefined;
 
               return (
-                <tr
-                  key={rowKey} className="ui-tr"
+                <tr key={rowKey} className="ui-tr"
                   onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
                   style={{
                     cursor: "pointer",
@@ -433,13 +467,18 @@ export default function MedidasPsSection({
                 >
                   {columnasOrdenadas.map((col) => {
                     const isSticky = STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
+                    // Las celdas sticky necesitan fondo sólido para no transparentarse
+                    const stickyBg = isSelected
+                      ? "var(--sticky-selected-bg)"
+                      : hasStripe
+                        ? STICKY_STRIPE_BG
+                        : "var(--sticky-bg)";
                     return (
-                      <td
-                        key={col.id}
+                      <td key={col.id}
                         className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
                         style={isSticky ? {
                           position: "sticky", left: stickyLeftMap[col.id], zIndex: 1,
-                          background: isSelected ? "var(--sticky-selected-bg)" : (stripeBg ?? "var(--sticky-bg)"),
+                          background: stickyBg,
                           boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                           minWidth: STICKY_WIDTHS_PS[col.id] ?? 80, maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
                           width: STICKY_WIDTHS_PS[col.id] ?? 80,
