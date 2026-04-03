@@ -23,11 +23,6 @@ const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; b
 };
 
 // ── Umbrales de pérdidas técnicas ─────────────────────────────────────────
-// Modificar aquí si cambia el criterio:
-//   negativo              → ámbar  (anómalo, no debería haber pérdidas negativas)
-//   0 % a NORMAL          → verde  (pérdidas técnicas aceptables)
-//   NORMAL % a ALTO       → ámbar  (pérdidas elevadas, vigilar)
-//   > ALTO %              → rojo   (pérdidas no normales, revisar)
 const PCT_UMBRAL_NORMAL = 8;
 const PCT_UMBRAL_ALTO   = 12;
 
@@ -59,10 +54,6 @@ const formatNumberEs = (v: number | null | undefined, decimals = 2): string => {
 };
 
 // ── Badge de porcentaje de pérdidas ───────────────────────────────────────
-// negativo          → ámbar  (anómalo)
-// 0 a NORMAL        → verde  (pérdidas técnicas aceptables)
-// NORMAL a ALTO     → ámbar  (vigilar)
-// > ALTO            → rojo   (revisar)
 function PctCell({ value, pctBadges }: { value: number | null | undefined; pctBadges: boolean }) {
   const text = value == null || Number.isNaN(value)
     ? "-"
@@ -76,24 +67,19 @@ function PctCell({ value, pctBadges }: { value: number | null | undefined; pctBa
   if (typeof value !== "number") {
     bg = "rgba(30,58,95,0.2)";    color = "var(--text-muted)";
   } else if (value < 0) {
-    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";   // ámbar — negativo anómalo
+    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";
   } else if (value <= PCT_UMBRAL_NORMAL) {
-    bg = "rgba(5,150,105,0.18)";  color = "#34d399";   // verde — pérdidas normales
+    bg = "rgba(5,150,105,0.18)";  color = "#34d399";
   } else if (value <= PCT_UMBRAL_ALTO) {
-    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";   // ámbar — pérdidas elevadas
+    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";
   } else {
-    bg = "rgba(239,68,68,0.18)";  color = "#f87171";   // rojo — revisar
+    bg = "rgba(239,68,68,0.18)";  color = "#f87171";
   }
 
   return (
     <span style={{
-      display: "inline-block",
-      padding: "1px 6px",
-      borderRadius: 4,
-      fontSize: "inherit",
-      fontWeight: 500,
-      background: bg,
-      color,
+      display: "inline-block", padding: "1px 6px", borderRadius: 4,
+      fontSize: "inherit", fontWeight: 500, background: bg, color,
     }}>
       {text}
     </span>
@@ -113,8 +99,8 @@ const STICKY_WIDTHS_PS: Record<string, number> = {
   empresa_id: 64, empresa_codigo: 110, anio: 52, mes: 44,
 };
 
-// Fondo sólido equivalente a var(--sticky-bg) con banda alterna encima
-const STICKY_STRIPE_BG = "rgb(20,35,54)";
+// Fondo sólido para bandas alternas: rgba(30,58,95,0.18) sobre #1a2e45 (card-bg)
+const STRIPE_BG = "rgb(27,48,74)";
 
 const ALL_COLUMNS_PS: ColumnDefPs[] = [
   { id: "empresa_id",    label: "Empresa ID",    align: "left",  group: "Identificación", render: (m) => m.empresa_id },
@@ -454,35 +440,34 @@ export default function MedidasPsSection({
               const dataIdx = dataRows.slice(0, rowIdx + 1).filter((r) => r.type === "data").length - 1;
               const isEven = dataIdx % 2 === 1;
               const hasStripe = ap.stripedRows && isEven && !isSelected;
-              const stripeBg = hasStripe ? "rgba(30,58,95,0.18)" : undefined;
+
+              // Fondo uniforme para toda la fila — mismo color en sticky y no-sticky
+              const cellBg = isSelected
+                ? "var(--nav-item-hover)"
+                : hasStripe
+                  ? STRIPE_BG
+                  : "var(--card-bg)";
 
               return (
                 <tr key={rowKey} className="ui-tr"
                   onClick={() => setSelectedRowKey(isSelected ? null : rowKey)}
                   style={{
                     cursor: "pointer",
-                    background: isSelected ? "var(--nav-item-hover)" : stripeBg,
                     outline: isSelected ? "1px solid var(--btn-secondary-bg)" : undefined,
                   }}
                 >
                   {columnasOrdenadas.map((col) => {
                     const isSticky = STICKY_COLUMN_IDS_PS.includes(col.id) && col.id in stickyLeftMap;
-                    // Las celdas sticky necesitan fondo sólido para no transparentarse
-                    const stickyBg = isSelected
-                      ? "var(--sticky-selected-bg)"
-                      : hasStripe
-                        ? STICKY_STRIPE_BG
-                        : "var(--sticky-bg)";
                     return (
                       <td key={col.id}
                         className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
                         style={isSticky ? {
                           position: "sticky", left: stickyLeftMap[col.id], zIndex: 1,
-                          background: stickyBg,
+                          background: cellBg,
                           boxShadow: "2px 0 4px rgba(0,0,0,0.3)",
                           minWidth: STICKY_WIDTHS_PS[col.id] ?? 80, maxWidth: STICKY_WIDTHS_PS[col.id] ?? 80,
                           width: STICKY_WIDTHS_PS[col.id] ?? 80,
-                        } : undefined}
+                        } : { background: cellBg }}
                       >
                         {col.render(m, ap)}
                       </td>
