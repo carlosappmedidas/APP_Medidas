@@ -411,7 +411,7 @@ export default function HomePage() {
           </section>
         )}
 
-        {activeTab === "usuarios"  && canManageUsers && <UsersSection token={token} />}
+        {activeTab === "usuarios"  && (canManageUsers || isSuperuser) && <UsersSection token={token} />}
         {activeTab === "clientes"  && isSuperuser    && <ClientesSection token={token} currentUser={currentUser} />}
 
         {activeTab === "tablas-general" && (

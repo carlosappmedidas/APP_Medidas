@@ -112,6 +112,7 @@ class AlertRecalculatePayload(BaseModel):
 class AlertRecalculateAllPayload(BaseModel):
     anio: int
     mes: int
+    tenant_id: Optional[int] = None  # solo superusuario
 
 
 class AlertRecalculateResponse(BaseModel):

@@ -323,7 +323,13 @@ def recalculate_all(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sin permisos para recalcular alertas",
         )
-    tenant = _tenant_id(current_user)
+    # El superusuario puede recalcular cualquier tenant pasando tenant_id en el payload.
+    # Si no lo pasa, usa el suyo propio. Los demás roles siempre usan el suyo.
+    if _is_superuser(current_user) and payload.tenant_id:
+        tenant = payload.tenant_id
+    else:
+        tenant = _tenant_id(current_user)
+
     empresas_procesadas, total_triggered = recalculate_alerts_all_empresas(
         db, tenant_id=tenant, anio=payload.anio, mes=payload.mes,
     )
