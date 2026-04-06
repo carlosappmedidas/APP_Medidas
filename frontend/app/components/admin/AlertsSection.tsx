@@ -58,37 +58,29 @@ const CATEGORY_LABELS: Record<Category, string> = {
   absoluta:      "Valor absoluto",
   anio_anterior: "Año anterior",
 };
-
 const CATEGORY_SUBLABELS: Record<Category, string> = {
   mes_anterior:  "Variación respecto al mes anterior",
   absoluta:      "Valor directamente fuera de rango",
   anio_anterior: "Variación respecto al mismo mes del año anterior",
 };
-
 const CATEGORY_COLORS: Record<Category, { bg: string; color: string; border: string }> = {
   mes_anterior:  { bg: "rgba(37,99,235,0.12)",  color: "#60a5fa", border: "rgba(37,99,235,0.3)" },
   absoluta:      { bg: "rgba(245,158,11,0.12)", color: "#fbbf24", border: "rgba(245,158,11,0.3)" },
   anio_anterior: { bg: "rgba(5,150,105,0.12)",  color: "#34d399", border: "rgba(5,150,105,0.3)" },
 };
-
 const SEVERITY_COLORS: Record<Severity, { bg: string; color: string }> = {
   info:     { bg: "rgba(30,58,95,0.3)",   color: "var(--text-muted)" },
   warning:  { bg: "rgba(245,158,11,0.2)", color: "#fbbf24" },
   critical: { bg: "rgba(239,68,68,0.18)", color: "#f87171" },
 };
-
 const LIFECYCLE_COLORS: Record<LifecycleStatus, { bg: string; color: string }> = {
   nueva:       { bg: "rgba(239,68,68,0.18)",  color: "#f87171" },
   en_revision: { bg: "rgba(37,99,235,0.18)",  color: "#60a5fa" },
   resuelta:    { bg: "rgba(5,150,105,0.18)",  color: "#34d399" },
 };
-
 const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
-  nueva:       "Nueva",
-  en_revision: "En revisión",
-  resuelta:    "Resuelta",
+  nueva: "Nueva", en_revision: "En revisión", resuelta: "Resuelta",
 };
-
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -98,49 +90,27 @@ function fmt(v: number | null, unit?: string): string {
   const s = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
   return unit ? `${s} ${unit}` : s;
 }
-
 function fmtDatetime(v: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
   return isNaN(d.getTime()) ? v : d.toLocaleString("es-ES");
 }
-
 function Badge({ bg, color, children }: { bg: string; color: string; children: React.ReactNode }) {
-  return (
-    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 500, background: bg, color }}>
-      {children}
-    </span>
-  );
+  return <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 500, background: bg, color }}>{children}</span>;
 }
 
 // ── Estilos ────────────────────────────────────────────────────────────────
 
-const cardStyle: React.CSSProperties = {
-  background: "var(--card-bg)", border: "0.5px solid var(--card-border)", borderRadius: 12, marginBottom: 10,
-};
-const thStyle: React.CSSProperties = {
-  padding: "7px 10px", fontSize: 11, fontWeight: 500, color: "var(--text-muted)",
-  borderBottom: "0.5px solid var(--card-border)", whiteSpace: "nowrap", textAlign: "left",
-};
-const tdStyle: React.CSSProperties = {
-  padding: "8px 10px", fontSize: 12, color: "var(--text)",
-  borderBottom: "0.5px solid var(--card-border)", verticalAlign: "middle",
-};
-const btnStyle: React.CSSProperties = {
-  fontSize: 11, padding: "5px 10px", border: "0.5px solid var(--card-border)",
-  borderRadius: 6, background: "var(--card-bg)", color: "var(--text)", cursor: "pointer", whiteSpace: "nowrap",
-};
-const inputStyle: React.CSSProperties = {
-  fontSize: 12, padding: "5px 8px", border: "0.5px solid var(--card-border)",
-  borderRadius: 6, background: "var(--card-bg)", color: "var(--text)",
-};
+const cardStyle: React.CSSProperties = { background: "var(--card-bg)", border: "0.5px solid var(--card-border)", borderRadius: 12, marginBottom: 10 };
+const thStyle: React.CSSProperties = { padding: "7px 10px", fontSize: 11, fontWeight: 500, color: "var(--text-muted)", borderBottom: "0.5px solid var(--card-border)", whiteSpace: "nowrap", textAlign: "left" };
+const tdStyle: React.CSSProperties = { padding: "8px 10px", fontSize: 12, color: "var(--text)", borderBottom: "0.5px solid var(--card-border)", verticalAlign: "middle" };
+const btnStyle: React.CSSProperties = { fontSize: 11, padding: "5px 10px", border: "0.5px solid var(--card-border)", borderRadius: 6, background: "var(--card-bg)", color: "var(--text)", cursor: "pointer", whiteSpace: "nowrap" };
+const inputStyle: React.CSSProperties = { fontSize: 12, padding: "5px 8px", border: "0.5px solid var(--card-border)", borderRadius: 6, background: "var(--card-bg)", color: "var(--text)" };
 
 // ── Componente principal ───────────────────────────────────────────────────
 
 export default function AlertsSection({ token, currentUser }: Props) {
-  const canManage = !!currentUser && (
-    currentUser.is_superuser || currentUser.rol === "admin" || currentUser.rol === "owner"
-  );
+  const canManage = !!currentUser && (currentUser.is_superuser || currentUser.rol === "admin" || currentUser.rol === "owner");
 
   // ── Filtros ────────────────────────────────────────────────────────────
   const [filtroEmpresa,   setFiltroEmpresa]   = useState("all");
@@ -160,10 +130,8 @@ export default function AlertsSection({ token, currentUser }: Props) {
   const [infoMsg,          setInfoMsg]          = useState<string | null>(null);
 
   // ── Recálculo ──────────────────────────────────────────────────────────
-  const [recalculating,        setRecalculating]        = useState(false);
-  const [recalculatingTenant,  setRecalculatingTenant]  = useState(false);
-  const [recalculatingHistory, setRecalculatingHistory] = useState(false);
-  const [historyProgress,      setHistoryProgress]      = useState<string | null>(null);
+  const [recalculating,   setRecalculating]   = useState(false);
+  const [recalcProgress,  setRecalcProgress]  = useState<string | null>(null);
 
   // ── Categorías colapsables ─────────────────────────────────────────────
   const [openCats, setOpenCats] = useState<Record<Category, boolean>>({
@@ -191,8 +159,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
           .map((e: any) => ({ id: Number(e.id), nombre: String(e.nombre ?? `Empresa ${e.id}`) }))
           .sort((a: EmpresaItem, b: EmpresaItem) => a.nombre.localeCompare(b.nombre))
       );
-    } catch { /* silencioso */ }
-    finally { setLoadingEmpresas(false); }
+    } catch { /* silencioso */ } finally { setLoadingEmpresas(false); }
   }, [token]);
 
   const loadPeriodos = useCallback(async () => {
@@ -236,26 +203,26 @@ export default function AlertsSection({ token, currentUser }: Props) {
       const res = await fetch(`${API_BASE_URL}/alerts/results/${alertId}/comments`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       setComments(await res.json());
-    } catch { setComments([]); }
-    finally { setLoadingComments(false); }
+    } catch { setComments([]); } finally { setLoadingComments(false); }
   }, [token]);
 
   const handleSelectAlert = (alert: AlertRow) => {
-    if (selectedAlert?.id === alert.id) { setSelectedAlert(null); setComments([]); }
+    if (selectedAlert?.id === alert.id) { setSelectedAlert(null); setComments([]); setNewComment(""); }
     else { setSelectedAlert(alert); loadComments(alert.id); }
   };
 
-  // ── Cambiar lifecycle ──────────────────────────────────────────────────
+  // ── Cambiar lifecycle — comentario opcional ────────────────────────────
   const handleChangeLifecycle = async (newStatus: LifecycleStatus) => {
-    if (!token || !selectedAlert || !newComment.trim()) {
-      setError("El comentario es obligatorio para cambiar el estado."); return;
-    }
+    if (!token || !selectedAlert) return;
     setChangingStatus(true); setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/alerts/results/${selectedAlert.id}/lifecycle`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
-        body: JSON.stringify({ lifecycle_status: newStatus, comment: newComment.trim() }),
+        body: JSON.stringify({
+          lifecycle_status: newStatus,
+          comment: newComment.trim() || `Estado cambiado a ${LIFECYCLE_LABELS[newStatus]}`,
+        }),
       });
       if (!res.ok) throw new Error();
       const updated: AlertRow = await res.json();
@@ -268,7 +235,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
     finally { setChangingStatus(false); }
   };
 
-  // ── Añadir comentario libre ────────────────────────────────────────────
+  // ── Comentario libre ───────────────────────────────────────────────────
   const handleSendComment = async () => {
     if (!token || !selectedAlert || !newComment.trim()) return;
     setSendingComment(true); setError(null);
@@ -285,95 +252,75 @@ export default function AlertsSection({ token, currentUser }: Props) {
     finally { setSendingComment(false); }
   };
 
-  // ── Helper: llamar recalculate-all para un periodo ────────────────────
-  const recalculateAllForPeriod = async (anio: number, mes: number): Promise<number> => {
+  // ── Helpers recálculo ──────────────────────────────────────────────────
+  const recalcAllPeriod = async (anio: number, mes: number): Promise<number> => {
     try {
       const res = await fetch(`${API_BASE_URL}/alerts/recalculate-all`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
         body: JSON.stringify({ anio, mes }),
       });
-      if (!res.ok) return 0;
-      const json = await res.json();
-      return json.total_triggered ?? 0;
+      return res.ok ? ((await res.json()).total_triggered ?? 0) : 0;
     } catch { return 0; }
   };
 
-  // ── Recalcular empresa+mes específico ─────────────────────────────────
-  const handleRecalculate = async () => {
-    if (!token || !canManage) return;
-    if (filtroEmpresa === "all" || filtroAnio === "all" || filtroMes === "all") {
-      setError("Selecciona empresa, año y mes para recalcular."); return;
-    }
-    setRecalculating(true); setError(null); setInfoMsg(null);
+  const recalcEmpresaPeriod = async (empresaId: number, anio: number, mes: number): Promise<number> => {
     try {
       const res = await fetch(`${API_BASE_URL}/alerts/recalculate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
-        body: JSON.stringify({ empresa_id: Number(filtroEmpresa), anio: Number(filtroAnio), mes: Number(filtroMes) }),
+        body: JSON.stringify({ empresa_id: empresaId, anio, mes }),
       });
-      if (!res.ok) throw new Error();
-      const json = await res.json();
-      setInfoMsg(`Recalculadas ${json.triggered ?? 0} alertas nuevas.`);
-      await loadAlerts();
-    } catch { setError("No se pudo recalcular."); }
-    finally { setRecalculating(false); }
+      return res.ok ? ((await res.json()).triggered ?? 0) : 0;
+    } catch { return 0; }
   };
 
-  // ── Recalcular tenant — mes concreto O año completo ───────────────────
-  const handleRecalculateTenant = async () => {
+  // ── Texto informativo del botón ────────────────────────────────────────
+  // Describe exactamente qué va a recalcular según los filtros activos
+  const recalcularInfo = useMemo(() => {
+    const emp = filtroEmpresa !== "all"
+      ? (empresas.find((e) => String(e.id) === filtroEmpresa)?.nombre ?? "la empresa seleccionada")
+      : "todas las empresas";
+    const anioLabel = filtroAnio !== "all" ? filtroAnio : null;
+    const mesLabel  = filtroMes  !== "all" ? MESES[Number(filtroMes) - 1] : null;
+
+    if (anioLabel && mesLabel) return `${emp} · ${mesLabel} ${anioLabel}`;
+    if (anioLabel)             return `${emp} · ${anioLabel} completo`;
+    return `${emp} · histórico completo (${aniosDisponibles.length} años)`;
+  }, [filtroEmpresa, filtroAnio, filtroMes, empresas, aniosDisponibles]);
+
+  // ── Botón Recalcular — único adaptativo ───────────────────────────────
+  const handleRecalcular = async () => {
     if (!token || !canManage) return;
-    if (filtroAnio === "all") {
-      setError("Selecciona al menos un año para recalcular."); return;
-    }
-    setRecalculatingTenant(true); setError(null); setInfoMsg(null);
+    setRecalculating(true); setError(null); setInfoMsg(null); setRecalcProgress(null);
 
-    const anio = Number(filtroAnio);
+    const empresaId = filtroEmpresa !== "all" ? Number(filtroEmpresa) : null;
+    const anio      = filtroAnio    !== "all" ? Number(filtroAnio)    : null;
+    const mes       = filtroMes     !== "all" ? Number(filtroMes)     : null;
 
-    // Si hay mes seleccionado → solo ese mes. Si no → todos los meses del año
-    const mesesARecalcular = filtroMes !== "all"
-      ? [Number(filtroMes)]
-      : mesesDisponibles;
+    const anios = anio ? [anio] : aniosDisponibles;
+    const meses = mes  ? [mes]  : mesesDisponibles;
 
     let totalTriggered = 0;
-    let periodos = 0;
+    let totalPeriodos  = 0;
 
-    for (const mes of mesesARecalcular) {
-      const triggered = await recalculateAllForPeriod(anio, mes);
-      totalTriggered += triggered;
-      periodos++;
-    }
-
-    const label = filtroMes !== "all"
-      ? `${MESES[Number(filtroMes) - 1]} ${anio}`
-      : `todo el año ${anio} (${periodos} meses)`;
-
-    setInfoMsg(`Recalculadas ${totalTriggered} alertas para ${label}.`);
-    await loadAlerts();
-    setRecalculatingTenant(false);
-  };
-
-  // ── Recalcular histórico completo ──────────────────────────────────────
-  const handleRecalculateHistory = async () => {
-    if (!token || !canManage || aniosDisponibles.length === 0) {
-      setError("No hay periodos disponibles para recalcular."); return;
-    }
-    setRecalculatingHistory(true); setError(null); setInfoMsg(null); setHistoryProgress(null);
-    let totalTriggered = 0;
-    let totalPeriodos = 0;
-    try {
-      for (const anio of aniosDisponibles) {
-        for (const mes of mesesDisponibles) {
-          setHistoryProgress(`Recalculando ${MESES[mes - 1]} ${anio}...`);
-          const triggered = await recalculateAllForPeriod(anio, mes);
-          totalTriggered += triggered;
-          totalPeriodos++;
+    for (const a of anios) {
+      for (const m of meses) {
+        // Mostrar progreso solo cuando hay muchos periodos
+        if (!anio || !mes) setRecalcProgress(`Recalculando ${MESES[m - 1]} ${a}...`);
+        if (empresaId) {
+          totalTriggered += await recalcEmpresaPeriod(empresaId, a, m);
+        } else {
+          totalTriggered += await recalcAllPeriod(a, m);
         }
+        totalPeriodos++;
       }
-      setInfoMsg(`Histórico recalculado: ${totalTriggered} alertas en ${totalPeriodos} periodos.`);
-      await loadAlerts();
-    } catch { setError("Error recalculando el histórico."); }
-    finally { setRecalculatingHistory(false); setHistoryProgress(null); }
+    }
+
+    setRecalcProgress(null);
+    setInfoMsg(`Recalculadas ${totalTriggered} alertas nuevas · ${recalcularInfo}.`);
+    await loadAlerts();
+    setRecalculating(false);
   };
 
   // ── Stats ──────────────────────────────────────────────────────────────
@@ -446,9 +393,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
                       </button>
                     </td>
                   </tr>
-                  {isSelected && (
-                    <tr><td colSpan={isAbs ? 8 : 9} style={{ padding: 0 }}>{renderDetail(a)}</td></tr>
-                  )}
+                  {isSelected && <tr><td colSpan={isAbs ? 8 : 9} style={{ padding: 0 }}>{renderDetail(a)}</td></tr>}
                 </React.Fragment>
               );
             })}
@@ -461,6 +406,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
   // ── Detalle ────────────────────────────────────────────────────────────
   const renderDetail = (a: AlertRow) => (
     <div style={{ margin: "0 12px 12px", padding: 16, background: "var(--field-bg-soft)", border: "0.5px solid var(--card-border)", borderRadius: 8 }}>
+      {/* Métricas */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
         {[
           { label: "Valor actual", value: fmt(a.current_value, a.diff_unit === "%" ? "%" : undefined) },
@@ -475,11 +421,15 @@ export default function AlertsSection({ token, currentUser }: Props) {
           </div>
         ))}
       </div>
+
+      {/* Mensaje */}
       {a.message && (
         <div style={{ background: "var(--card-bg)", border: "0.5px solid var(--card-border)", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
           {a.message}
         </div>
       )}
+
+      {/* Cambio de estado */}
       {canManage && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>Cambiar estado</div>
@@ -490,16 +440,15 @@ export default function AlertsSection({ token, currentUser }: Props) {
               return (
                 <button key={s} disabled={isActive || changingStatus} onClick={() => handleChangeLifecycle(s)}
                   style={{ ...btnStyle, background: isActive ? c.bg : undefined, color: isActive ? c.color : undefined, borderColor: isActive ? c.color : undefined }}>
-                  {LIFECYCLE_LABELS[s]}
+                  {changingStatus ? "..." : LIFECYCLE_LABELS[s]}
                 </button>
               );
             })}
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
-            El comentario de abajo se adjuntará al cambio de estado.
-          </div>
         </div>
       )}
+
+      {/* Historial de comentarios */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, fontWeight: 500 }}>Historial de comentarios</div>
         {loadingComments ? (
@@ -526,29 +475,29 @@ export default function AlertsSection({ token, currentUser }: Props) {
           </div>
         )}
       </div>
+
+      {/* Input comentario */}
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
         <textarea style={{ ...inputStyle, flex: 1, resize: "vertical", minHeight: 60, fontFamily: "inherit" }}
-          placeholder="Escribe un comentario..." value={newComment}
-          onChange={(e) => setNewComment(e.target.value)} disabled={sendingComment || changingStatus} />
+          placeholder="Añadir comentario (opcional)..."
+          value={newComment} onChange={(e) => setNewComment(e.target.value)}
+          disabled={sendingComment || changingStatus} />
         <button style={{ ...btnStyle, alignSelf: "flex-end" }}
           disabled={!newComment.trim() || sendingComment || changingStatus} onClick={handleSendComment}>
-          {sendingComment ? "Enviando..." : "Comentar"}
+          {sendingComment ? "..." : "Comentar"}
         </button>
       </div>
     </div>
   );
 
-  // ── Cabecera categoría colapsable ─────────────────────────────────────
+  // ── Cabecera categoría ─────────────────────────────────────────────────
   const renderCategoryHeader = (cat: Category, count: number) => {
     const c = CATEGORY_COLORS[cat];
     const isOpen = openCats[cat];
     return (
       <button type="button" onClick={() => setOpenCats((prev) => ({ ...prev, [cat]: !prev[cat] }))}
-        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
-          background: "none", border: "none", borderBottom: isOpen ? "0.5px solid var(--card-border)" : "none",
-          cursor: "pointer", textAlign: "left" }}>
-        <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 500,
-          background: c.bg, color: c.color, border: `0.5px solid ${c.border}`, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: "none", border: "none", borderBottom: isOpen ? "0.5px solid var(--card-border)" : "none", cursor: "pointer", textAlign: "left" }}>
+        <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 500, background: c.bg, color: c.color, border: `0.5px solid ${c.border}`, textTransform: "uppercase", letterSpacing: "0.05em" }}>
           {CATEGORY_LABELS[cat]}
         </span>
         <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{CATEGORY_SUBLABELS[cat]}</span>
@@ -562,12 +511,12 @@ export default function AlertsSection({ token, currentUser }: Props) {
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 
-      {error    && <div className="ui-alert ui-alert--danger">{error}</div>}
-      {infoMsg  && <div style={{ padding: "8px 12px", background: "rgba(5,150,105,0.1)", border: "0.5px solid rgba(5,150,105,0.3)", borderRadius: 8, fontSize: 12, color: "#34d399" }}>{infoMsg}</div>}
-      {historyProgress && <div style={{ padding: "8px 12px", background: "rgba(37,99,235,0.1)", border: "0.5px solid rgba(37,99,235,0.3)", borderRadius: 8, fontSize: 12, color: "#60a5fa" }}>{historyProgress}</div>}
+      {error   && <div className="ui-alert ui-alert--danger">{error}</div>}
+      {infoMsg && <div style={{ padding: "8px 12px", background: "rgba(5,150,105,0.1)", border: "0.5px solid rgba(5,150,105,0.3)", borderRadius: 8, fontSize: 12, color: "#34d399" }}>{infoMsg}</div>}
+      {recalcProgress && <div style={{ padding: "8px 12px", background: "rgba(37,99,235,0.1)", border: "0.5px solid rgba(37,99,235,0.3)", borderRadius: 8, fontSize: 12, color: "#60a5fa" }}>{recalcProgress}</div>}
 
-      {/* ── Header ── */}
       <div style={cardStyle}>
+        {/* Header */}
         <div style={{ padding: "14px 16px", borderBottom: "0.5px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Alertas · Medidas General</div>
@@ -576,36 +525,18 @@ export default function AlertsSection({ token, currentUser }: Props) {
             </div>
           </div>
           {canManage && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {/* Recalcular empresa+mes: requiere empresa+año+mes */}
-              <button style={btnStyle} disabled={recalculating} onClick={handleRecalculate}
-                title="Requiere empresa, año y mes seleccionados">
-                {recalculating ? "Recalculando..." : "Recalcular empresa+mes"}
-              </button>
-              {/* Recalcular tenant: requiere año (mes opcional — si no hay mes recalcula el año completo) */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
               <button
                 style={{ ...btnStyle, background: "rgba(37,99,235,0.15)", color: "#60a5fa", borderColor: "rgba(37,99,235,0.3)" }}
-                disabled={recalculatingTenant}
-                onClick={handleRecalculateTenant}
-                title={filtroMes !== "all" ? `Recalcula todas las empresas para ${MESES[Number(filtroMes)-1]} ${filtroAnio}` : `Recalcula todas las empresas para todos los meses de ${filtroAnio}`}
+                disabled={recalculating}
+                onClick={handleRecalcular}
               >
-                {recalculatingTenant
-                  ? "Recalculando..."
-                  : filtroMes !== "all"
-                    ? `Recalcular tenant (${MESES[Number(filtroMes)-1]})`
-                    : filtroAnio !== "all"
-                      ? `Recalcular tenant (${filtroAnio} completo)`
-                      : "Recalcular tenant"}
+                {recalculating ? "Recalculando..." : "Recalcular"}
               </button>
-              {/* Recalcular histórico completo */}
-              <button
-                style={{ ...btnStyle, background: "rgba(168,85,247,0.15)", color: "#c084fc", borderColor: "rgba(168,85,247,0.3)" }}
-                disabled={recalculatingHistory}
-                onClick={handleRecalculateHistory}
-                title="Recalcula todos los periodos disponibles para todas las empresas"
-              >
-                {recalculatingHistory ? "Recalculando histórico..." : "Recalcular histórico completo"}
-              </button>
+              {/* Texto informativo — describe qué va a hacer el botón */}
+              <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right", maxWidth: 260 }}>
+                {recalcularInfo}
+              </div>
             </div>
           )}
         </div>
@@ -650,7 +581,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
         </div>
       </div>
 
-      {/* ── Tablas por categoría ── */}
+      {/* Tablas por categoría */}
       {loading ? (
         <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Cargando alertas...</div>
       ) : (
@@ -661,7 +592,6 @@ export default function AlertsSection({ token, currentUser }: Props) {
           </div>
         ))
       )}
-
     </section>
   );
 }
