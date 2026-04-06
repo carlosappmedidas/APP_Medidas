@@ -1,6 +1,5 @@
 # app/ingestion/services.py
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-
 from __future__ import annotations
 
 import json
@@ -99,11 +98,9 @@ BALD_COLUMNS = [
 # Helpers internos (warnings / cleanup)
 # ---------------------------------------------------------------------------
 
-
 def _safe_unlink(storage_key: str | None) -> None:
     if not storage_key:
         return
-
     try:
         path = Path(storage_key)
         if path.exists() and path.is_file():
@@ -117,7 +114,6 @@ def _extract_ingestion_warnings(obj: Any) -> list[Any]:
         warnings = getattr(obj, "_ingestion_warnings", None)
     except Exception:
         warnings = None
-
     if isinstance(warnings, list):
         return warnings
     return []
@@ -129,12 +125,10 @@ def _try_attach_ingestion_warnings(fichero: IngestionFile, warnings: Any) -> Non
     """
     if not warnings:
         return
-
     try:
         setattr(fichero, "_ingestion_warnings", warnings)
     except Exception:
         pass
-
     try:
         setattr(fichero, "warnings_json", json.dumps(warnings, ensure_ascii=False))
     except Exception:
@@ -143,14 +137,13 @@ def _try_attach_ingestion_warnings(fichero: IngestionFile, warnings: Any) -> Non
 
 def _try_copy_warnings_from_result(fichero: IngestionFile, result: Any) -> None:
     """
-    Si el procesador de medidas adjunta warnings en el resultado
-    (p.ej. procesar_m1 / procesar_ps), los copiamos al IngestionFile.
+    Si el procesador de medidas adjunta warnings en el resultado (p.ej. procesar_m1 / procesar_ps),
+    los copiamos al IngestionFile.
     """
     try:
         warnings = getattr(result, "_ingestion_warnings", None)
     except Exception:
         warnings = None
-
     if warnings:
         _try_attach_ingestion_warnings(fichero, warnings)
 
@@ -171,16 +164,13 @@ def _mark_ingestion_ok(
     result_obj: Any | None,
 ) -> IngestionFile:
     ing = cast(Any, ingestion)
-
     warnings_list = _extract_ingestion_warnings(result_obj)
     if warnings_list:
         ing.warnings_json = json.dumps(warnings_list, ensure_ascii=False)
-
     ing.status = IngestionFile.STATUS_OK
     ing.rows_ok = int(ing.rows_ok or 0) + 1
     ing.rows_error = int(ing.rows_error or 0)
     ing.error_message = None
-
     db.commit()
     db.refresh(ingestion)
     return ingestion
@@ -194,7 +184,6 @@ def _mark_ingestion_error(
     exc: Exception,
 ) -> IngestionFile:
     db.rollback()
-
     ingestion = (
         db.query(IngestionFile)
         .filter(
@@ -203,16 +192,13 @@ def _mark_ingestion_error(
         )
         .first()
     )
-
     if ingestion is None:
         raise exc
-
     ing = cast(Any, ingestion)
     ing.status = IngestionFile.STATUS_ERROR
     ing.rows_error = int(ing.rows_error or 0) + 1
     ing.error_message = str(exc)
     ing.processed_at = datetime.utcnow()
-
     db.commit()
     db.refresh(ingestion)
     return ingestion
@@ -234,12 +220,9 @@ def _finalize_ingestion_processing(
             )
             .first()
         )
-
         if ingestion is None:
             return
-
         ing = cast(Any, ingestion)
-
         if ing.status in (
             IngestionFile.STATUS_OK,
             IngestionFile.STATUS_ERROR,
@@ -247,17 +230,58 @@ def _finalize_ingestion_processing(
             ing.processed_at = datetime.utcnow()
             db.commit()
             db.refresh(ingestion)
-
         try:
             settings = get_settings()
             delete_after_ok = bool(getattr(settings, "INGESTION_DELETE_AFTER_OK", True))
         except Exception:
             delete_after_ok = True
-
         if delete_after_ok and cast(str, ing.status) == IngestionFile.STATUS_OK:
             _safe_unlink(storage_key_for_cleanup)
     except Exception:
         return
+
+
+def _try_recalculate_alerts(
+    *,
+    db: Session,
+    ingestion: IngestionFile,
+) -> None:
+    """
+    Lanza el recálculo de alertas tras procesar un fichero BALD o M1.
+    Solo actúa sobre tipos que producen MedidaGeneral.
+    Nunca propaga excepciones — un fallo aquí no debe romper la ingestion.
+    """
+    try:
+        ing = cast(Any, ingestion)
+        tipo = (ing.tipo or "").upper()
+        if tipo not in ("BALD", "M1"):
+            return
+        tenant_id = int(ing.tenant_id)
+        empresa_id = int(ing.empresa_id)
+        # Obtener el periodo más reciente de MedidaGeneral para esta empresa
+        from app.measures.models import MedidaGeneral
+        row = (
+            db.query(MedidaGeneral.anio, MedidaGeneral.mes)
+            .filter(
+                MedidaGeneral.tenant_id == tenant_id,
+                MedidaGeneral.empresa_id == empresa_id,
+            )
+            .order_by(MedidaGeneral.anio.desc(), MedidaGeneral.mes.desc())
+            .first()
+        )
+        if row is None:
+            return
+        anio, mes = int(row.anio), int(row.mes)
+        from app.alerts.services import recalculate_alerts_for_period
+        recalculate_alerts_for_period(
+            db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            anio=anio,
+            mes=mes,
+        )
+    except Exception:
+        pass  # Nunca bloquea la ingestion
 
 
 def _dispatch_ingestion_processing_by_tipo(
@@ -266,7 +290,6 @@ def _dispatch_ingestion_processing_by_tipo(
     ingestion: IngestionFile,
 ) -> Any | None:
     ing = cast(Any, ingestion)
-
     tipo = (ing.tipo or "").upper()
     tenant_id = cast(int, ing.tenant_id)
     empresa_id = cast(int, ing.empresa_id)
@@ -280,7 +303,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "M1":
         return procesar_fichero_m1_desde_csv(
             db=db,
@@ -289,7 +311,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "M1_AUTOCONSUMO":
         return procesar_fichero_m1_autoconsumo_desde_csv(
             db=db,
@@ -298,7 +319,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "ACUMCIL":
         return procesar_fichero_acumcil_generacion(
             db=db,
@@ -307,7 +327,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "ACUM_H2_GRD":
         return procesar_fichero_acum_h2_grd_generacion(
             db=db,
@@ -316,7 +335,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "ACUM_H2_GEN":
         return procesar_fichero_acum_h2_gen_generacion(
             db=db,
@@ -325,7 +343,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "ACUM_H2_RDD_P2":
         return procesar_fichero_acum_h2_rdd_p2_frontera_dd(
             db=db,
@@ -334,7 +351,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "ACUM_H2_RDD_P1":
         procesar_fichero_acum_h2_rdd_p1_frontera_dd(
             db=db,
@@ -350,7 +366,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     if tipo == "PS":
         return procesar_fichero_ps(
             db=db,
@@ -359,7 +374,6 @@ def _dispatch_ingestion_processing_by_tipo(
             fichero=ingestion,
             file_path=storage_key,
         )
-
     raise ValueError(f"Tipo de fichero no soportado para procesado: {tipo}")
 
 
@@ -370,22 +384,18 @@ def process_ingestion_file(
     tenant_id: int,
 ) -> IngestionFile:
     ing = cast(Any, ingestion)
-
     if ing.status not in (IngestionFile.STATUS_PENDING, IngestionFile.STATUS_ERROR):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No se puede procesar un fichero en estado {ing.status}",
         )
-
     if not ing.storage_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El fichero no tiene storage_key; no se puede procesar",
         )
-
     ingestion = _mark_ingestion_processing(db, ingestion)
     storage_key_for_cleanup = cast(str, getattr(ingestion, "storage_key", None) or "")
-
     try:
         result_obj = _dispatch_ingestion_processing_by_tipo(
             db=db,
@@ -395,6 +405,12 @@ def process_ingestion_file(
             db,
             ingestion,
             result_obj=result_obj,
+        )
+        # Recalcular alertas automáticamente para BALD y M1
+        # Se hace tras el commit de _mark_ingestion_ok — nunca bloquea la ingestion
+        _try_recalculate_alerts(
+            db=db,
+            ingestion=ingestion,
         )
     except Exception as exc:
         ingestion = _mark_ingestion_error(
@@ -410,7 +426,6 @@ def process_ingestion_file(
             tenant_id=tenant_id,
             storage_key_for_cleanup=storage_key_for_cleanup,
         )
-
     refreshed = (
         db.query(IngestionFile)
         .filter(
@@ -424,7 +439,6 @@ def process_ingestion_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Fichero de ingestion no encontrado tras el procesado",
         )
-
     return refreshed
 
 
@@ -432,13 +446,11 @@ def process_ingestion_file(
 # M1 (facturación y autoconsumo)
 # ---------------------------------------------------------------------------
 
-
 def _leer_fichero_m1_desde_excel_o_csv(
     file_path: str,
 ) -> list[dict[str, Any]]:
     path = Path(file_path)
     suffix = path.suffix.lower()
-
     if suffix in {".xls", ".xlsx", ".xlsm"}:
         try:
             df = pd.read_excel(path, sheet_name="cabeceras")
@@ -451,7 +463,6 @@ def _leer_fichero_m1_desde_excel_o_csv(
             dtype=str,
             engine="python",
         )
-
     return cast(list[dict[str, Any]], df.to_dict(orient="records"))
 
 
@@ -470,7 +481,6 @@ def procesar_fichero_m1(
         fichero=fichero,
         filas_raw=filas_raw,
     )
-
     _try_copy_warnings_from_result(fichero, res)
     return res
 
@@ -490,7 +500,6 @@ def procesar_fichero_m1_autoconsumo(
         fichero=fichero,
         filas_raw=filas_raw,
     )
-
     _try_copy_warnings_from_result(fichero, res)
     return res
 
@@ -504,7 +513,6 @@ def procesar_fichero_m1_desde_csv(
     file_path: str,
 ):
     filas_local = _leer_fichero_m1_desde_excel_o_csv(file_path=file_path)
-
     res = procesar_m1(
         db=db,
         tenant_id=tenant_id,
@@ -512,7 +520,6 @@ def procesar_fichero_m1_desde_csv(
         fichero=fichero,
         filas_raw=filas_local,
     )
-
     _try_copy_warnings_from_result(fichero, res)
     return res
 
@@ -526,7 +533,6 @@ def procesar_fichero_m1_autoconsumo_desde_csv(
     file_path: str,
 ):
     filas_local = _leer_fichero_m1_desde_excel_o_csv(file_path=file_path)
-
     res = procesar_m1_autoconsumo(
         db=db,
         tenant_id=tenant_id,
@@ -534,7 +540,6 @@ def procesar_fichero_m1_autoconsumo_desde_csv(
         fichero=fichero,
         filas_raw=filas_local,
     )
-
     _try_copy_warnings_from_result(fichero, res)
     return res
 
@@ -543,13 +548,11 @@ def procesar_fichero_m1_autoconsumo_desde_csv(
 # PS_* (plantilla energía facturada / tarifa / póliza)
 # ---------------------------------------------------------------------------
 
-
 def _leer_fichero_ps_desde_excel_o_csv(
     file_path: str,
 ) -> list[dict[str, Any]]:
     path = Path(file_path)
     suffix = path.suffix.lower()
-
     if suffix in {".xls", ".xlsx", ".xlsm"}:
         df = pd.read_excel(path)
     else:
@@ -559,7 +562,6 @@ def _leer_fichero_ps_desde_excel_o_csv(
             dtype=str,
             engine="python",
         )
-
     rename_map = {
         "Energía facturada": "Energia_facturada",
         "Energia facturada": "Energia_facturada",
@@ -578,14 +580,12 @@ def _leer_fichero_ps_desde_excel_o_csv(
         "Total": "Total",
     }
     df = df.rename(columns=rename_map)
-
     if "Poliza" not in df.columns:
         for col in list(df.columns):
             col_norm = str(col).strip().lower()
             if "póliza" in col_norm or "poliza" in col_norm:
                 df = df.rename(columns={col: "Poliza"})
                 break
-
     return cast(list[dict[str, Any]], df.to_dict(orient="records"))
 
 
@@ -598,7 +598,6 @@ def procesar_fichero_ps(
     file_path: str,
 ):
     filas_local = _leer_fichero_ps_desde_excel_o_csv(file_path=file_path)
-
     res = procesar_ps(
         db=db,
         tenant_id=tenant_id,
@@ -606,7 +605,6 @@ def procesar_fichero_ps(
         fichero=fichero,
         filas_raw=filas_local,
     )
-
     _try_copy_warnings_from_result(fichero, res)
     return res
 
@@ -615,13 +613,11 @@ def procesar_fichero_ps(
 # Lectura de ficheros sin cabeceras (ACUM, BALD, ...)
 # ---------------------------------------------------------------------------
 
-
 def _leer_fichero_csv_sin_cabeceras(
     file_path: str,
     columnas: list[str],
 ) -> list[dict[str, Any]]:
     path = Path(file_path)
-
     df = pd.read_csv(
         path,
         sep=";",
@@ -630,14 +626,12 @@ def _leer_fichero_csv_sin_cabeceras(
         dtype=str,
         engine="python",
     )
-
     return cast(list[dict[str, Any]], df.to_dict(orient="records"))
 
 
 # ---------------------------------------------------------------------------
 # ACUMCIL H2 (generación)
 # ---------------------------------------------------------------------------
-
 
 def procesar_fichero_acumcil_generacion(
     *,
@@ -653,14 +647,12 @@ def procesar_fichero_acumcil_generacion(
             raise ValueError(
                 "Debes pasar o bien filas_raw o bien file_path para procesar ACUMCIL"
             )
-
         filas_local = _leer_fichero_csv_sin_cabeceras(
             file_path=file_path,
             columnas=ACUMCIL_H2_COLUMNS,
         )
     else:
         filas_local = list(filas_raw)
-
     return procesar_acumcil_generacion_core(
         db=db,
         tenant_id=tenant_id,
@@ -673,7 +665,6 @@ def procesar_fichero_acumcil_generacion(
 # ---------------------------------------------------------------------------
 # ACUM H2 GRD (generación)
 # ---------------------------------------------------------------------------
-
 
 def procesar_fichero_acum_h2_grd_generacion(
     *,
@@ -689,14 +680,12 @@ def procesar_fichero_acum_h2_grd_generacion(
             raise ValueError(
                 "Debes pasar o bien filas_raw o bien file_path para procesar ACUM H2 GRD"
             )
-
         filas_local = _leer_fichero_csv_sin_cabeceras(
             file_path=file_path,
             columnas=ACUM_H2_GRD_COLUMNS,
         )
     else:
         filas_local = list(filas_raw)
-
     return procesar_acum_h2_grd_generacion_core(
         db=db,
         tenant_id=tenant_id,
@@ -709,7 +698,6 @@ def procesar_fichero_acum_h2_grd_generacion(
 # ---------------------------------------------------------------------------
 # ACUM H2 GEN (generación)
 # ---------------------------------------------------------------------------
-
 
 def procesar_fichero_acum_h2_gen_generacion(
     *,
@@ -725,14 +713,12 @@ def procesar_fichero_acum_h2_gen_generacion(
             raise ValueError(
                 "Debes pasar o bien filas_raw o bien file_path para procesar ACUM H2 GEN"
             )
-
         filas_local = _leer_fichero_csv_sin_cabeceras(
             file_path=file_path,
             columnas=ACUM_H2_GEN_COLUMNS,
         )
     else:
         filas_local = list(filas_raw)
-
     return procesar_acum_h2_gen_generacion_core(
         db=db,
         tenant_id=tenant_id,
@@ -745,7 +731,6 @@ def procesar_fichero_acum_h2_gen_generacion(
 # ---------------------------------------------------------------------------
 # ACUM H2 RDD (energia_frontera_dd_kwh)
 # ---------------------------------------------------------------------------
-
 
 def procesar_fichero_acum_h2_rdd_p2_frontera_dd(
     *,
@@ -761,14 +746,12 @@ def procesar_fichero_acum_h2_rdd_p2_frontera_dd(
             raise ValueError(
                 "Debes pasar o bien filas_raw o bien file_path para procesar ACUM H2 RDD P2"
             )
-
         filas_local = _leer_fichero_csv_sin_cabeceras(
             file_path=file_path,
             columnas=ACUM_H2_RDD_COLUMNS,
         )
     else:
         filas_local = list(filas_raw)
-
     return procesar_acum_h2_rdd_frontera_dd_core(
         db=db,
         tenant_id=tenant_id,
@@ -793,14 +776,12 @@ def procesar_fichero_acum_h2_rdd_p1_frontera_dd(
             raise ValueError(
                 "Debes pasar o bien filas_raw o bien file_path para procesar ACUM H2 RDD P1"
             )
-
         filas_local = _leer_fichero_csv_sin_cabeceras(
             file_path=file_path,
             columnas=ACUM_H2_RDD_COLUMNS,
         )
     else:
         filas_local = list(filas_raw)
-
     return procesar_acum_h2_rdd_frontera_dd_core(
         db=db,
         tenant_id=tenant_id,
@@ -814,7 +795,6 @@ def procesar_fichero_acum_h2_rdd_p1_frontera_dd(
 # ---------------------------------------------------------------------------
 # ACUM H2 RDD (energia_pf_kwh)
 # ---------------------------------------------------------------------------
-
 
 def procesar_fichero_acum_h2_rdd_pf_kwh(
     *,
@@ -830,14 +810,12 @@ def procesar_fichero_acum_h2_rdd_pf_kwh(
             raise ValueError(
                 "Debes pasar o bien filas_raw o bien file_path para procesar ACUM H2 RDD (PF)"
             )
-
         filas_local = _leer_fichero_csv_sin_cabeceras(
             file_path=file_path,
             columnas=ACUM_H2_RDD_COLUMNS,
         )
     else:
         filas_local = list(filas_raw)
-
     return procesar_acum_h2_rdd_pf_kwh_core(
         db=db,
         tenant_id=tenant_id,
@@ -851,24 +829,18 @@ def procesar_fichero_acum_h2_rdd_pf_kwh(
 # BALD (M2 / M7 / M11 / ART15)
 # ---------------------------------------------------------------------------
 
-
 def _clasificar_bald_periodo(fichero: IngestionFile) -> str:
     nombre = str(getattr(fichero, "filename", ""))
     match = re.search(r"BALD_\d+_(\d{6})_(\d{8})", nombre)
     if not match:
         raise ValueError(f"No se reconoce el patrón BALD en el nombre: {nombre}")
-
     periodo_str = match.group(1)
     pub_str = match.group(2)
-
     anio_periodo = int(periodo_str[:4])
     mes_periodo = int(periodo_str[4:6])
-
     anio_pub = int(pub_str[:4])
     mes_pub = int(pub_str[4:6])
-
     diff_meses = (anio_pub - anio_periodo) * 12 + (mes_pub - mes_periodo)
-
     if diff_meses < 7:
         return "M2"
     if 7 <= diff_meses < 10:
@@ -892,20 +864,16 @@ def procesar_fichero_bald(
             raise ValueError(
                 "Debes pasar o bien filas_raw o bien file_path para procesar BALD"
             )
-
         filas_local = _leer_fichero_csv_sin_cabeceras(
             file_path=file_path,
             columnas=BALD_COLUMNS,
         )
     else:
         filas_local = list(filas_raw)
-
     if not filas_local:
         raise ValueError("El fichero BALD no contiene filas de datos")
-
     fila = filas_local[0]
     periodo_bald = _clasificar_bald_periodo(fichero)
-
     return procesar_bald_medidas_general(
         db=db,
         tenant_id=tenant_id,
