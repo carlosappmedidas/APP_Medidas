@@ -21,7 +21,7 @@ from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router 
 from app.tenants.routes import router as auth_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
-from app.alerts.models import AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
+from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
 from app.calendario_ree.models import ReeCalendarFile  # noqa: F401
 from app.measures.models import MedidaGeneral, MedidaMicro, MedidaPS  # noqa: F401
 from app.measures.m1_models import M1PeriodContribution  # noqa: F401

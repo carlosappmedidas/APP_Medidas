@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import LoginSection from "./components/auth/Login-section";
 import DashboardSection from "./components/dashboard/DashboardSection";
 import AlertsSection from "./components/admin/AlertsSection";
+import AlertConfigSection from "./components/admin/AlertConfigSection";
 import MedidasSection from "./components/medidas/MedidasSection";
 import ObjecionesSection from "./components/medidas/ObjecionesSection";
 import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
@@ -20,9 +21,19 @@ import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
 type MainTab =
-  | "dashboard" | "medidas" | "objeciones" | "calendario-ree" | "graficos"
-  | "alertas" | "usuarios" | "clientes" | "tablas-general" | "tablas-ps"
-  | "carga" | "ajustes" | "sistema";
+  | "dashboard"
+  | "medidas"
+  | "objeciones"
+  | "calendario-ree"
+  | "graficos"
+  | "alertas"
+  | "usuarios"
+  | "clientes"
+  | "tablas-general"
+  | "tablas-ps"
+  | "carga"
+  | "ajustes"
+  | "sistema";
 
 const PAGE_TITLES: Record<MainTab, string> = {
   "dashboard":      "Dashboard",
@@ -41,120 +52,111 @@ const PAGE_TITLES: Record<MainTab, string> = {
 };
 
 const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
-  { id: "empresa_id",                      label: "Empresa ID",                   group: "Identificación" },
-  { id: "empresa_codigo",                  label: "Código empresa",               group: "Identificación" },
-  { id: "punto_id",                        label: "Punto",                        group: "Identificación" },
-  { id: "anio",                            label: "Año",                          group: "Identificación" },
-  { id: "mes",                             label: "Mes",                          group: "Identificación" },
-  { id: "energia_bruta_facturada",         label: "E bruta facturada",            group: "General" },
-  { id: "energia_autoconsumo_kwh",         label: "E autoconsumo",                group: "General" },
-  { id: "energia_neta_facturada_kwh",      label: "E neta facturada",             group: "General" },
-  { id: "energia_generada_kwh",            label: "E generada",                   group: "General" },
-  { id: "energia_frontera_dd_kwh",         label: "E frontera DD",                group: "General" },
-  { id: "energia_pf_final_kwh",            label: "E PF final",                   group: "General" },
-  { id: "perdidas_e_facturada_kwh",        label: "Pérdidas E facturada (kWh)",   group: "General" },
-  { id: "perdidas_e_facturada_pct",        label: "Pérdidas E facturada (%)",     group: "General" },
-  { id: "energia_publicada_m2_kwh",        label: "E publ M2",                    group: "M2" },
-  { id: "energia_autoconsumo_m2_kwh",      label: "E autoc M2",                   group: "M2" },
-  { id: "energia_pf_m2_kwh",              label: "E PF M2",                      group: "M2" },
-  { id: "energia_frontera_dd_m2_kwh",      label: "E front DD M2",               group: "M2" },
-  { id: "energia_generada_m2_kwh",         label: "E gen M2",                     group: "M2" },
-  { id: "energia_neta_facturada_m2_kwh",   label: "E neta M2",                    group: "M2" },
-  { id: "perdidas_e_facturada_m2_kwh",     label: "Pérdidas M2 (kWh)",            group: "M2" },
-  { id: "perdidas_e_facturada_m2_pct",     label: "Pérdidas M2 (%)",              group: "M2" },
-  { id: "energia_publicada_m7_kwh",        label: "E publ M7",                    group: "M7" },
-  { id: "energia_autoconsumo_m7_kwh",      label: "E autoc M7",                   group: "M7" },
-  { id: "energia_pf_m7_kwh",              label: "E PF M7",                      group: "M7" },
-  { id: "energia_frontera_dd_m7_kwh",      label: "E front DD M7",               group: "M7" },
-  { id: "energia_generada_m7_kwh",         label: "E gen M7",                     group: "M7" },
-  { id: "energia_neta_facturada_m7_kwh",   label: "E neta M7",                    group: "M7" },
-  { id: "perdidas_e_facturada_m7_kwh",     label: "Pérdidas M7 (kWh)",            group: "M7" },
-  { id: "perdidas_e_facturada_m7_pct",     label: "Pérdidas M7 (%)",              group: "M7" },
-  { id: "energia_publicada_m11_kwh",       label: "E publ M11",                   group: "M11" },
-  { id: "energia_autoconsumo_m11_kwh",     label: "E autoc M11",                  group: "M11" },
-  { id: "energia_pf_m11_kwh",             label: "E PF M11",                     group: "M11" },
-  { id: "energia_frontera_dd_m11_kwh",     label: "E front DD M11",              group: "M11" },
-  { id: "energia_generada_m11_kwh",        label: "E gen M11",                    group: "M11" },
-  { id: "energia_neta_facturada_m11_kwh",  label: "E neta M11",                   group: "M11" },
-  { id: "perdidas_e_facturada_m11_kwh",    label: "Pérdidas M11 (kWh)",           group: "M11" },
-  { id: "perdidas_e_facturada_m11_pct",    label: "Pérdidas M11 (%)",             group: "M11" },
-  { id: "energia_publicada_art15_kwh",     label: "E publ ART15",                 group: "ART15" },
-  { id: "energia_autoconsumo_art15_kwh",   label: "E autoc ART15",               group: "ART15" },
-  { id: "energia_pf_art15_kwh",           label: "E PF ART15",                   group: "ART15" },
-  { id: "energia_frontera_dd_art15_kwh",   label: "E front DD ART15",            group: "ART15" },
-  { id: "energia_generada_art15_kwh",      label: "E gen ART15",                  group: "ART15" },
-  { id: "energia_neta_facturada_art15_kwh",label: "E neta ART15",                 group: "ART15" },
-  { id: "perdidas_e_facturada_art15_kwh",  label: "Pérdidas ART15 (kWh)",         group: "ART15" },
-  { id: "perdidas_e_facturada_art15_pct",  label: "Pérdidas ART15 (%)",           group: "ART15" },
+  { id: "empresa_id",      label: "Empresa ID",                   group: "Identificación" },
+  { id: "empresa_codigo",  label: "Código empresa",               group: "Identificación" },
+  { id: "punto_id",        label: "Punto",                        group: "Identificación" },
+  { id: "anio",            label: "Año",                          group: "Identificación" },
+  { id: "mes",             label: "Mes",                          group: "Identificación" },
+  { id: "energia_bruta_facturada",         label: "E bruta facturada",          group: "General" },
+  { id: "energia_autoconsumo_kwh",         label: "E autoconsumo",              group: "General" },
+  { id: "energia_neta_facturada_kwh",      label: "E neta facturada",           group: "General" },
+  { id: "energia_generada_kwh",            label: "E generada",                 group: "General" },
+  { id: "energia_frontera_dd_kwh",         label: "E frontera DD",              group: "General" },
+  { id: "energia_pf_final_kwh",            label: "E PF final",                 group: "General" },
+  { id: "perdidas_e_facturada_kwh",        label: "Pérdidas E facturada (kWh)", group: "General" },
+  { id: "perdidas_e_facturada_pct",        label: "Pérdidas E facturada (%)",   group: "General" },
+  { id: "energia_publicada_m2_kwh",        label: "E publ M2",                  group: "M2" },
+  { id: "energia_autoconsumo_m2_kwh",      label: "E autoc M2",                 group: "M2" },
+  { id: "energia_pf_m2_kwh",              label: "E PF M2",                    group: "M2" },
+  { id: "energia_frontera_dd_m2_kwh",      label: "E front DD M2",              group: "M2" },
+  { id: "energia_generada_m2_kwh",         label: "E gen M2",                   group: "M2" },
+  { id: "energia_neta_facturada_m2_kwh",   label: "E neta M2",                  group: "M2" },
+  { id: "perdidas_e_facturada_m2_kwh",     label: "Pérdidas M2 (kWh)",          group: "M2" },
+  { id: "perdidas_e_facturada_m2_pct",     label: "Pérdidas M2 (%)",            group: "M2" },
+  { id: "energia_publicada_m7_kwh",        label: "E publ M7",                  group: "M7" },
+  { id: "energia_autoconsumo_m7_kwh",      label: "E autoc M7",                 group: "M7" },
+  { id: "energia_pf_m7_kwh",              label: "E PF M7",                    group: "M7" },
+  { id: "energia_frontera_dd_m7_kwh",      label: "E front DD M7",              group: "M7" },
+  { id: "energia_generada_m7_kwh",         label: "E gen M7",                   group: "M7" },
+  { id: "energia_neta_facturada_m7_kwh",   label: "E neta M7",                  group: "M7" },
+  { id: "perdidas_e_facturada_m7_kwh",     label: "Pérdidas M7 (kWh)",          group: "M7" },
+  { id: "perdidas_e_facturada_m7_pct",     label: "Pérdidas M7 (%)",            group: "M7" },
+  { id: "energia_publicada_m11_kwh",       label: "E publ M11",                 group: "M11" },
+  { id: "energia_autoconsumo_m11_kwh",     label: "E autoc M11",                group: "M11" },
+  { id: "energia_pf_m11_kwh",             label: "E PF M11",                   group: "M11" },
+  { id: "energia_frontera_dd_m11_kwh",     label: "E front DD M11",             group: "M11" },
+  { id: "energia_generada_m11_kwh",        label: "E gen M11",                  group: "M11" },
+  { id: "energia_neta_facturada_m11_kwh",  label: "E neta M11",                 group: "M11" },
+  { id: "perdidas_e_facturada_m11_kwh",    label: "Pérdidas M11 (kWh)",         group: "M11" },
+  { id: "perdidas_e_facturada_m11_pct",    label: "Pérdidas M11 (%)",           group: "M11" },
+  { id: "energia_publicada_art15_kwh",     label: "E publ ART15",               group: "ART15" },
+  { id: "energia_autoconsumo_art15_kwh",   label: "E autoc ART15",              group: "ART15" },
+  { id: "energia_pf_art15_kwh",           label: "E PF ART15",                 group: "ART15" },
+  { id: "energia_frontera_dd_art15_kwh",   label: "E front DD ART15",           group: "ART15" },
+  { id: "energia_generada_art15_kwh",      label: "E gen ART15",                group: "ART15" },
+  { id: "energia_neta_facturada_art15_kwh",label: "E neta ART15",               group: "ART15" },
+  { id: "perdidas_e_facturada_art15_kwh",  label: "Pérdidas ART15 (kWh)",       group: "ART15" },
+  { id: "perdidas_e_facturada_art15_pct",  label: "Pérdidas ART15 (%)",         group: "ART15" },
 ];
 
 const DEFAULT_GENERAL_ORDER = ALL_COLUMNS_META.map((c) => c.id);
-const DEFAULT_PS_ORDER       = COLUMNS_PS_META.map((c) => c.id);
+const DEFAULT_PS_ORDER = COLUMNS_PS_META.map((c) => c.id);
 
-const SIDEBAR_STORAGE_KEY      = "ui_sidebar_collapsed";
-const AUTH_TOKEN_STORAGE_KEY   = "auth_token";
-const MEDIDAS_OPEN_STORAGE_KEY = "ui_medidas_open";
-const TABLAS_OPEN_STORAGE_KEY  = "ui_tablas_open";
+const SIDEBAR_STORAGE_KEY       = "ui_sidebar_collapsed";
+const AUTH_TOKEN_STORAGE_KEY    = "auth_token";
+const MEDIDAS_OPEN_STORAGE_KEY  = "ui_medidas_open";
+const TABLAS_OPEN_STORAGE_KEY   = "ui_tablas_open";
 
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     try { return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY); } catch { return null; }
   });
-  const [authReady,        setAuthReady]        = useState(false);
-  const [activeTab,        setActiveTab]        = useState<MainTab>("dashboard");
-  const [medidasOpen,      setMedidasOpen]      = useState(false);
-  const [tablasOpen,       setTablasOpen]       = useState(false);
-  const [currentUser,      setCurrentUser]      = useState<User | null>(null);
+  const [authReady, setAuthReady]             = useState(false);
+  const [activeTab, setActiveTab]             = useState<MainTab>("dashboard");
+  const [medidasOpen, setMedidasOpen]         = useState(false);
+  const [tablasOpen, setTablasOpen]           = useState(false);
+  const [currentUser, setCurrentUser]         = useState<User | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [homeMenuOpen,     setHomeMenuOpen]     = useState(false);
-  const [showApariencia,   setShowApariencia]   = useState(false);
-  const [showTablas,       setShowTablas]       = useState(false);
+  const [homeMenuOpen, setHomeMenuOpen]       = useState(false);
+  const [showApariencia, setShowApariencia]   = useState(false);
+  const [showTablas, setShowTablas]           = useState(false);
+  const [showAlertConfig, setShowAlertConfig] = useState(false);
 
-  // ── Hook centralizado de configuración de tablas ─────────────────────────
+  // ── Hook centralizado de configuración de tablas ───────────────────────
   const {
-    appearance,
-    setAppearance,
-    generalColumnOrder,
-    generalHiddenColumns,
-    setGeneralColumnOrder,
-    setGeneralHiddenColumns,
-    psColumnOrder,
-    psHiddenColumns,
-    setPsColumnOrder,
-    setPsHiddenColumns,
+    appearance, setAppearance,
+    generalColumnOrder, generalHiddenColumns, setGeneralColumnOrder, setGeneralHiddenColumns,
+    psColumnOrder, psHiddenColumns, setPsColumnOrder, setPsHiddenColumns,
     resetAll: resetTableSettings,
   } = useTableSettings({
     token,
     defaultGeneralOrder: DEFAULT_GENERAL_ORDER,
-    defaultPsOrder:      DEFAULT_PS_ORDER,
+    defaultPsOrder: DEFAULT_PS_ORDER,
   });
 
-  // ── Carga inicial desde localStorage ─────────────────────────────────────
+  // ── Carga inicial desde localStorage ──────────────────────────────────
   useEffect(() => {
     try {
       const savedTab = localStorage.getItem("ui_active_tab");
       if (savedTab && savedTab in PAGE_TITLES) setActiveTab(savedTab as MainTab);
-      const sidebarRaw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-      if (sidebarRaw === "1") setSidebarCollapsed(true);
-      const medidasRaw = localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY);
-      if (medidasRaw === "1") setMedidasOpen(true);
-      const tablasRaw = localStorage.getItem(TABLAS_OPEN_STORAGE_KEY);
-      if (tablasRaw === "1") setTablasOpen(true);
+      if (localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1") setSidebarCollapsed(true);
+      if (localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1") setMedidasOpen(true);
+      if (localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1") setTablasOpen(true);
     } catch { /* ignore */ }
     finally { setAuthReady(true); }
   }, []);
 
-  // ── Persistir estado de navegación ───────────────────────────────────────
+  // ── Persistir estado de navegación ────────────────────────────────────
   useEffect(() => { try { localStorage.setItem("ui_active_tab", activeTab); } catch { /* */ } }, [activeTab]);
   useEffect(() => { try { localStorage.setItem(MEDIDAS_OPEN_STORAGE_KEY, medidasOpen ? "1" : "0"); } catch { /* */ } }, [medidasOpen]);
   useEffect(() => { try { localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0"); } catch { /* */ } }, [tablasOpen]);
   useEffect(() => { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0"); } catch { /* */ } }, [sidebarCollapsed]);
 
-  // ── Cargar usuario ────────────────────────────────────────────────────────
+  // ── Cargar usuario ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) { setCurrentUser(null); return; }
-    const loadMe = async () => {
+    const load = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/auth/me`, { headers: getAuthHeaders(token) });
         if (!res.ok) {
@@ -164,39 +166,39 @@ export default function HomePage() {
         setCurrentUser((await res.json()) as User);
       } catch { setCurrentUser(null); }
     };
-    loadMe();
+    load();
   }, [token]);
 
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
 
-  // ── Permisos ──────────────────────────────────────────────────────────────
-  const isViewer         = currentUser?.rol === "viewer";
-  const canManageUsers   = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
-  const isSuperuser      = !!currentUser?.is_superuser;
-  // Configuración de tablas: todos excepto viewer (user también puede personalizar sus tablas)
+  // ── Permisos ───────────────────────────────────────────────────────────
+  const isViewer      = currentUser?.rol === "viewer";
+  const canManageUsers = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
+  const isSuperuser   = !!currentUser?.is_superuser;
   const canSeeAjustes    = !!currentUser && !isViewer;
-  // Apariencia del panel: solo admin, owner y superuser
   const canSeeApariencia = !!canManageUsers || isSuperuser;
+  const canManageAlerts  = !!currentUser && (isSuperuser || currentUser.rol === "admin" || currentUser.rol === "owner");
 
   const resetUiColors = () => window.dispatchEvent(new CustomEvent("ui-theme-reset"));
   const toggleSidebar = () => setSidebarCollapsed((prev) => !prev);
-  const handleLogout  = () => {
+
+  const handleLogout = () => {
     try { localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY); } catch { /* */ }
     setToken(null); setCurrentUser(null); setHomeMenuOpen(false);
   };
+
   const handleGoHome = () => { setActiveTab("dashboard"); setHomeMenuOpen(false); };
+
   const handleMedidasClick = () => {
     setMedidasOpen((prev) => !prev);
     if (!["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab)) {
       setActiveTab("medidas");
     }
   };
-  // Navega a Configuración y abre directamente la tarjeta de tablas
-  const handleGoToTableSettings = () => {
-    setActiveTab("ajustes");
-    setShowTablas(true);
-  };
 
+  const handleGoToTableSettings = () => { setActiveTab("ajustes"); setShowTablas(true); };
+
+  // ── Loading / Login ────────────────────────────────────────────────────
   if (!authReady) {
     return (
       <div className="ui-login-shell">
@@ -255,18 +257,16 @@ export default function HomePage() {
 
             <div>
               <button onClick={handleMedidasClick}
-                className={["ui-nav-item",
-                  ["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab)
-                    ? "ui-nav-item--active" : ""].join(" ")}>
+                className={["ui-nav-item", ["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Medidas</span>
                 <span className="text-[10px] ui-muted">{medidasOpen ? "▾" : "▸"}</span>
               </button>
               {medidasOpen && (
                 <div className="ui-nav-sub">
                   <>
-                    <button type="button" onClick={() => setTablasOpen((v) => !v)}
-                      className={["ui-nav-subitem",
-                        ["tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
+                    <button type="button"
+                      onClick={() => setTablasOpen((v) => !v)}
+                      className={["ui-nav-subitem", ["tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
                       <span>Tablas</span>
                       <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
                     </button>
@@ -310,25 +310,28 @@ export default function HomePage() {
                 <span>Usuarios</span>
               </button>
             )}
+
             {isSuperuser && (
               <button onClick={() => setActiveTab("clientes")}
                 className={["ui-nav-item", activeTab === "clientes" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Clientes</span>
               </button>
             )}
+
             {!isViewer && (
               <button onClick={() => setActiveTab("carga")}
                 className={["ui-nav-item", activeTab === "carga" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Carga de datos</span>
               </button>
             )}
-            {/* Configuración: visible para todos excepto viewer */}
+
             {canSeeAjustes && (
               <button onClick={() => setActiveTab("ajustes")}
                 className={["ui-nav-item", activeTab === "ajustes" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Configuración</span>
               </button>
             )}
+
             {isSuperuser && (
               <button onClick={() => setActiveTab("sistema")}
                 className={["ui-nav-item", activeTab === "sistema" ? "ui-nav-item--active" : ""].join(" ")}>
@@ -377,21 +380,18 @@ export default function HomePage() {
         {activeTab === "tablas-general" && (
           <MedidasGeneralSection
             token={token}
-            columnOrder={generalColumnOrder}
-            setColumnOrder={setGeneralColumnOrder}
-            hiddenColumns={generalHiddenColumns}
-            setHiddenColumns={setGeneralHiddenColumns}
+            columnOrder={generalColumnOrder} setColumnOrder={setGeneralColumnOrder}
+            hiddenColumns={generalHiddenColumns} setHiddenColumns={setGeneralHiddenColumns}
             onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
             appearance={appearance}
           />
         )}
+
         {activeTab === "tablas-ps" && (
           <MedidasPsSection
             token={token}
-            columnOrder={psColumnOrder}
-            setColumnOrder={setPsColumnOrder}
-            hiddenColumns={psHiddenColumns}
-            setHiddenColumns={setPsHiddenColumns}
+            columnOrder={psColumnOrder} setColumnOrder={setPsColumnOrder}
+            hiddenColumns={psHiddenColumns} setHiddenColumns={setPsHiddenColumns}
             onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
             appearance={appearance}
           />
@@ -447,20 +447,36 @@ export default function HomePage() {
               {showTablas && (
                 <div className="ui-collapsible-card__body">
                   <TableSettingsSection
-                    appearance={appearance}
-                    onSetAppearance={setAppearance}
-                    generalColumnOrder={generalColumnOrder}
-                    generalHiddenColumns={generalHiddenColumns}
+                    appearance={appearance} onSetAppearance={setAppearance}
+                    generalColumnOrder={generalColumnOrder} generalHiddenColumns={generalHiddenColumns}
                     generalMeta={ALL_COLUMNS_META}
-                    onSetGeneralOrder={setGeneralColumnOrder}
-                    onSetGeneralHidden={setGeneralHiddenColumns}
-                    psColumnOrder={psColumnOrder}
-                    psHiddenColumns={psHiddenColumns}
+                    onSetGeneralOrder={setGeneralColumnOrder} onSetGeneralHidden={setGeneralHiddenColumns}
+                    psColumnOrder={psColumnOrder} psHiddenColumns={psHiddenColumns}
                     psMeta={COLUMNS_PS_META}
-                    onSetPsOrder={setPsColumnOrder}
-                    onSetPsHidden={setPsHiddenColumns}
+                    onSetPsOrder={setPsColumnOrder} onSetPsHidden={setPsHiddenColumns}
                     onResetAll={resetTableSettings}
                   />
+                </div>
+              )}
+            </div>
+
+            {/* ── CONFIGURACIÓN DE ALERTAS — todos excepto viewer ── */}
+            <div className="ui-collapsible-card">
+              <button type="button" className="ui-collapsible-card__trigger"
+                onClick={() => setShowAlertConfig((v) => !v)}>
+                <div>
+                  <div className="ui-collapsible-card__title">CONFIGURACIÓN DE ALERTAS</div>
+                  <p className="ui-collapsible-card__subtitle">
+                    Umbrales y severidad de alertas por empresa. Solo admin y owner pueden modificar.
+                  </p>
+                </div>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+                  {showAlertConfig ? "Ocultar" : "Mostrar"}
+                </span>
+              </button>
+              {showAlertConfig && (
+                <div className="ui-collapsible-card__body">
+                  <AlertConfigSection token={token} canManage={canManageAlerts} />
                 </div>
               )}
             </div>
