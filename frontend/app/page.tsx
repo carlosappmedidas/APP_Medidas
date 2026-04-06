@@ -57,85 +57,86 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
   { id: "punto_id",        label: "Punto",                        group: "Identificación" },
   { id: "anio",            label: "Año",                          group: "Identificación" },
   { id: "mes",             label: "Mes",                          group: "Identificación" },
-  { id: "energia_bruta_facturada",         label: "E bruta facturada",          group: "General" },
-  { id: "energia_autoconsumo_kwh",         label: "E autoconsumo",              group: "General" },
-  { id: "energia_neta_facturada_kwh",      label: "E neta facturada",           group: "General" },
-  { id: "energia_generada_kwh",            label: "E generada",                 group: "General" },
-  { id: "energia_frontera_dd_kwh",         label: "E frontera DD",              group: "General" },
-  { id: "energia_pf_final_kwh",            label: "E PF final",                 group: "General" },
-  { id: "perdidas_e_facturada_kwh",        label: "Pérdidas E facturada (kWh)", group: "General" },
-  { id: "perdidas_e_facturada_pct",        label: "Pérdidas E facturada (%)",   group: "General" },
-  { id: "energia_publicada_m2_kwh",        label: "E publ M2",                  group: "M2" },
-  { id: "energia_autoconsumo_m2_kwh",      label: "E autoc M2",                 group: "M2" },
-  { id: "energia_pf_m2_kwh",              label: "E PF M2",                    group: "M2" },
-  { id: "energia_frontera_dd_m2_kwh",      label: "E front DD M2",              group: "M2" },
-  { id: "energia_generada_m2_kwh",         label: "E gen M2",                   group: "M2" },
-  { id: "energia_neta_facturada_m2_kwh",   label: "E neta M2",                  group: "M2" },
-  { id: "perdidas_e_facturada_m2_kwh",     label: "Pérdidas M2 (kWh)",          group: "M2" },
-  { id: "perdidas_e_facturada_m2_pct",     label: "Pérdidas M2 (%)",            group: "M2" },
-  { id: "energia_publicada_m7_kwh",        label: "E publ M7",                  group: "M7" },
-  { id: "energia_autoconsumo_m7_kwh",      label: "E autoc M7",                 group: "M7" },
-  { id: "energia_pf_m7_kwh",              label: "E PF M7",                    group: "M7" },
-  { id: "energia_frontera_dd_m7_kwh",      label: "E front DD M7",              group: "M7" },
-  { id: "energia_generada_m7_kwh",         label: "E gen M7",                   group: "M7" },
-  { id: "energia_neta_facturada_m7_kwh",   label: "E neta M7",                  group: "M7" },
-  { id: "perdidas_e_facturada_m7_kwh",     label: "Pérdidas M7 (kWh)",          group: "M7" },
-  { id: "perdidas_e_facturada_m7_pct",     label: "Pérdidas M7 (%)",            group: "M7" },
-  { id: "energia_publicada_m11_kwh",       label: "E publ M11",                 group: "M11" },
-  { id: "energia_autoconsumo_m11_kwh",     label: "E autoc M11",                group: "M11" },
-  { id: "energia_pf_m11_kwh",             label: "E PF M11",                   group: "M11" },
-  { id: "energia_frontera_dd_m11_kwh",     label: "E front DD M11",             group: "M11" },
-  { id: "energia_generada_m11_kwh",        label: "E gen M11",                  group: "M11" },
-  { id: "energia_neta_facturada_m11_kwh",  label: "E neta M11",                 group: "M11" },
-  { id: "perdidas_e_facturada_m11_kwh",    label: "Pérdidas M11 (kWh)",         group: "M11" },
-  { id: "perdidas_e_facturada_m11_pct",    label: "Pérdidas M11 (%)",           group: "M11" },
-  { id: "energia_publicada_art15_kwh",     label: "E publ ART15",               group: "ART15" },
-  { id: "energia_autoconsumo_art15_kwh",   label: "E autoc ART15",              group: "ART15" },
-  { id: "energia_pf_art15_kwh",           label: "E PF ART15",                 group: "ART15" },
-  { id: "energia_frontera_dd_art15_kwh",   label: "E front DD ART15",           group: "ART15" },
-  { id: "energia_generada_art15_kwh",      label: "E gen ART15",                group: "ART15" },
-  { id: "energia_neta_facturada_art15_kwh",label: "E neta ART15",               group: "ART15" },
-  { id: "perdidas_e_facturada_art15_kwh",  label: "Pérdidas ART15 (kWh)",       group: "ART15" },
-  { id: "perdidas_e_facturada_art15_pct",  label: "Pérdidas ART15 (%)",         group: "ART15" },
+  { id: "energia_bruta_facturada",          label: "E bruta facturada",          group: "General" },
+  { id: "energia_autoconsumo_kwh",          label: "E autoconsumo",              group: "General" },
+  { id: "energia_neta_facturada_kwh",       label: "E neta facturada",           group: "General" },
+  { id: "energia_generada_kwh",             label: "E generada",                 group: "General" },
+  { id: "energia_frontera_dd_kwh",          label: "E frontera DD",              group: "General" },
+  { id: "energia_pf_final_kwh",             label: "E PF final",                 group: "General" },
+  { id: "perdidas_e_facturada_kwh",         label: "Pérdidas E facturada (kWh)", group: "General" },
+  { id: "perdidas_e_facturada_pct",         label: "Pérdidas E facturada (%)",   group: "General" },
+  { id: "energia_publicada_m2_kwh",         label: "E publ M2",                  group: "M2" },
+  { id: "energia_autoconsumo_m2_kwh",       label: "E autoc M2",                 group: "M2" },
+  { id: "energia_pf_m2_kwh",               label: "E PF M2",                    group: "M2" },
+  { id: "energia_frontera_dd_m2_kwh",       label: "E front DD M2",              group: "M2" },
+  { id: "energia_generada_m2_kwh",          label: "E gen M2",                   group: "M2" },
+  { id: "energia_neta_facturada_m2_kwh",    label: "E neta M2",                  group: "M2" },
+  { id: "perdidas_e_facturada_m2_kwh",      label: "Pérdidas M2 (kWh)",          group: "M2" },
+  { id: "perdidas_e_facturada_m2_pct",      label: "Pérdidas M2 (%)",            group: "M2" },
+  { id: "energia_publicada_m7_kwh",         label: "E publ M7",                  group: "M7" },
+  { id: "energia_autoconsumo_m7_kwh",       label: "E autoc M7",                 group: "M7" },
+  { id: "energia_pf_m7_kwh",               label: "E PF M7",                    group: "M7" },
+  { id: "energia_frontera_dd_m7_kwh",       label: "E front DD M7",              group: "M7" },
+  { id: "energia_generada_m7_kwh",          label: "E gen M7",                   group: "M7" },
+  { id: "energia_neta_facturada_m7_kwh",    label: "E neta M7",                  group: "M7" },
+  { id: "perdidas_e_facturada_m7_kwh",      label: "Pérdidas M7 (kWh)",          group: "M7" },
+  { id: "perdidas_e_facturada_m7_pct",      label: "Pérdidas M7 (%)",            group: "M7" },
+  { id: "energia_publicada_m11_kwh",        label: "E publ M11",                 group: "M11" },
+  { id: "energia_autoconsumo_m11_kwh",      label: "E autoc M11",                group: "M11" },
+  { id: "energia_pf_m11_kwh",              label: "E PF M11",                   group: "M11" },
+  { id: "energia_frontera_dd_m11_kwh",      label: "E front DD M11",             group: "M11" },
+  { id: "energia_generada_m11_kwh",         label: "E gen M11",                  group: "M11" },
+  { id: "energia_neta_facturada_m11_kwh",   label: "E neta M11",                 group: "M11" },
+  { id: "perdidas_e_facturada_m11_kwh",     label: "Pérdidas M11 (kWh)",         group: "M11" },
+  { id: "perdidas_e_facturada_m11_pct",     label: "Pérdidas M11 (%)",           group: "M11" },
+  { id: "energia_publicada_art15_kwh",      label: "E publ ART15",               group: "ART15" },
+  { id: "energia_autoconsumo_art15_kwh",    label: "E autoc ART15",              group: "ART15" },
+  { id: "energia_pf_art15_kwh",            label: "E PF ART15",                 group: "ART15" },
+  { id: "energia_frontera_dd_art15_kwh",    label: "E front DD ART15",           group: "ART15" },
+  { id: "energia_generada_art15_kwh",       label: "E gen ART15",                group: "ART15" },
+  { id: "energia_neta_facturada_art15_kwh", label: "E neta ART15",              group: "ART15" },
+  { id: "perdidas_e_facturada_art15_kwh",   label: "Pérdidas ART15 (kWh)",       group: "ART15" },
+  { id: "perdidas_e_facturada_art15_pct",   label: "Pérdidas ART15 (%)",         group: "ART15" },
 ];
 
 const DEFAULT_GENERAL_ORDER = ALL_COLUMNS_META.map((c) => c.id);
 const DEFAULT_PS_ORDER = COLUMNS_PS_META.map((c) => c.id);
 
-const SIDEBAR_STORAGE_KEY       = "ui_sidebar_collapsed";
-const AUTH_TOKEN_STORAGE_KEY    = "auth_token";
-const MEDIDAS_OPEN_STORAGE_KEY  = "ui_medidas_open";
-const TABLAS_OPEN_STORAGE_KEY   = "ui_tablas_open";
+const SIDEBAR_STORAGE_KEY      = "ui_sidebar_collapsed";
+const AUTH_TOKEN_STORAGE_KEY   = "auth_token";
+const MEDIDAS_OPEN_STORAGE_KEY = "ui_medidas_open";
+const TABLAS_OPEN_STORAGE_KEY  = "ui_tablas_open";
 
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     try { return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY); } catch { return null; }
   });
-  const [authReady, setAuthReady]             = useState(false);
-  const [activeTab, setActiveTab]             = useState<MainTab>("dashboard");
-  const [medidasOpen, setMedidasOpen]         = useState(false);
-  const [tablasOpen, setTablasOpen]           = useState(false);
-  const [currentUser, setCurrentUser]         = useState<User | null>(null);
+  const [authReady, setAuthReady]               = useState(false);
+  const [activeTab, setActiveTab]               = useState<MainTab>("dashboard");
+  const [medidasOpen, setMedidasOpen]           = useState(false);
+  const [tablasOpen, setTablasOpen]             = useState(false);
+  const [currentUser, setCurrentUser]           = useState<User | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [homeMenuOpen, setHomeMenuOpen]       = useState(false);
-  const [showApariencia, setShowApariencia]   = useState(false);
-  const [showTablas, setShowTablas]           = useState(false);
-  const [showAlertConfig, setShowAlertConfig] = useState(false);
+  const [homeMenuOpen, setHomeMenuOpen]         = useState(false);
 
-  // ── Hook centralizado de configuración de tablas ───────────────────────
+  // ── Collapsibles de ajustes ────────────────────────────────────────────
+  const [showApariencia,   setShowApariencia]   = useState(false);
+  const [showTablas,       setShowTablas]       = useState(false);
+  const [showAlertConfig,  setShowAlertConfig]  = useState(false);
+
+  // ── Collapsibles de alertas ────────────────────────────────────────────
+  const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
+
+  // ── Hook configuración de tablas ───────────────────────────────────────
   const {
     appearance, setAppearance,
     generalColumnOrder, generalHiddenColumns, setGeneralColumnOrder, setGeneralHiddenColumns,
     psColumnOrder, psHiddenColumns, setPsColumnOrder, setPsHiddenColumns,
     resetAll: resetTableSettings,
-  } = useTableSettings({
-    token,
-    defaultGeneralOrder: DEFAULT_GENERAL_ORDER,
-    defaultPsOrder: DEFAULT_PS_ORDER,
-  });
+  } = useTableSettings({ token, defaultGeneralOrder: DEFAULT_GENERAL_ORDER, defaultPsOrder: DEFAULT_PS_ORDER });
 
-  // ── Carga inicial desde localStorage ──────────────────────────────────
+  // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => {
     try {
       const savedTab = localStorage.getItem("ui_active_tab");
@@ -147,7 +148,7 @@ export default function HomePage() {
     finally { setAuthReady(true); }
   }, []);
 
-  // ── Persistir estado de navegación ────────────────────────────────────
+  // ── Persistencia ───────────────────────────────────────────────────────
   useEffect(() => { try { localStorage.setItem("ui_active_tab", activeTab); } catch { /* */ } }, [activeTab]);
   useEffect(() => { try { localStorage.setItem(MEDIDAS_OPEN_STORAGE_KEY, medidasOpen ? "1" : "0"); } catch { /* */ } }, [medidasOpen]);
   useEffect(() => { try { localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0"); } catch { /* */ } }, [tablasOpen]);
@@ -169,12 +170,18 @@ export default function HomePage() {
     load();
   }, [token]);
 
+  // Cerrar menú usuario al cambiar tab
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
 
+  // Al cambiar a alertas, resetear los collapsibles para que empiecen cerrados
+  useEffect(() => {
+    if (activeTab === "alertas") setShowAlertasGeneral(false);
+  }, [activeTab]);
+
   // ── Permisos ───────────────────────────────────────────────────────────
-  const isViewer      = currentUser?.rol === "viewer";
-  const canManageUsers = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
-  const isSuperuser   = !!currentUser?.is_superuser;
+  const isViewer         = currentUser?.rol === "viewer";
+  const canManageUsers   = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
+  const isSuperuser      = !!currentUser?.is_superuser;
   const canSeeAjustes    = !!currentUser && !isViewer;
   const canSeeApariencia = !!canManageUsers || isSuperuser;
   const canManageAlerts  = !!currentUser && (isSuperuser || currentUser.rol === "admin" || currentUser.rol === "owner");
@@ -186,16 +193,13 @@ export default function HomePage() {
     try { localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY); } catch { /* */ }
     setToken(null); setCurrentUser(null); setHomeMenuOpen(false);
   };
-
   const handleGoHome = () => { setActiveTab("dashboard"); setHomeMenuOpen(false); };
-
   const handleMedidasClick = () => {
     setMedidasOpen((prev) => !prev);
     if (!["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab)) {
       setActiveTab("medidas");
     }
   };
-
   const handleGoToTableSettings = () => { setActiveTab("ajustes"); setShowTablas(true); };
 
   // ── Loading / Login ────────────────────────────────────────────────────
@@ -264,8 +268,7 @@ export default function HomePage() {
               {medidasOpen && (
                 <div className="ui-nav-sub">
                   <>
-                    <button type="button"
-                      onClick={() => setTablasOpen((v) => !v)}
+                    <button type="button" onClick={() => setTablasOpen((v) => !v)}
                       className={["ui-nav-subitem", ["tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
                       <span>Tablas</span>
                       <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
@@ -373,9 +376,39 @@ export default function HomePage() {
         {activeTab === "objeciones"     && <ObjecionesSection token={token} currentUser={currentUser} />}
         {activeTab === "calendario-ree" && <CalendarioReeSection token={token} currentUser={currentUser} />}
         {activeTab === "graficos"       && <GraficosSection token={token} currentUser={currentUser} />}
-        {activeTab === "alertas"        && <AlertsSection token={token} currentUser={currentUser} />}
-        {activeTab === "usuarios"       && canManageUsers && <UsersSection token={token} />}
-        {activeTab === "clientes"       && isSuperuser && <ClientesSection token={token} currentUser={currentUser} />}
+
+        {/* ── ALERTAS — collapsibles cerrados por defecto ── */}
+        {activeTab === "alertas" && (
+          <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+            {/* Medidas General */}
+            <div className="ui-collapsible-card">
+              <button type="button" className="ui-collapsible-card__trigger"
+                onClick={() => setShowAlertasGeneral((v) => !v)}>
+                <div>
+                  <div className="ui-collapsible-card__title">ALERTAS · MEDIDAS GENERAL</div>
+                  <p className="ui-collapsible-card__subtitle">
+                    Desviaciones en energía y pérdidas por empresa y periodo · M1, M2, M7, M11, ART15
+                  </p>
+                </div>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+                  {showAlertasGeneral ? "Ocultar" : "Mostrar"}
+                </span>
+              </button>
+              {showAlertasGeneral && (
+                <div className="ui-collapsible-card__body">
+                  <AlertsSection token={token} currentUser={currentUser} />
+                </div>
+              )}
+            </div>
+
+            {/* Aquí irán en el futuro: Alertas PS, Alertas H2, etc. */}
+
+          </section>
+        )}
+
+        {activeTab === "usuarios"  && canManageUsers && <UsersSection token={token} />}
+        {activeTab === "clientes"  && isSuperuser    && <ClientesSection token={token} currentUser={currentUser} />}
 
         {activeTab === "tablas-general" && (
           <MedidasGeneralSection
@@ -386,7 +419,6 @@ export default function HomePage() {
             appearance={appearance}
           />
         )}
-
         {activeTab === "tablas-ps" && (
           <MedidasPsSection
             token={token}
@@ -402,7 +434,7 @@ export default function HomePage() {
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="settings-page" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-            {/* ── APARIENCIA DEL PANEL — solo admin/owner/superuser ── */}
+            {/* Apariencia */}
             {canSeeApariencia && (
               <div className="ui-collapsible-card">
                 <button type="button" className="ui-collapsible-card__trigger"
@@ -430,7 +462,7 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* ── CONFIGURACIÓN DE TABLAS — todos excepto viewer ── */}
+            {/* Tablas */}
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger"
                 onClick={() => setShowTablas((v) => !v)}>
@@ -460,7 +492,7 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* ── CONFIGURACIÓN DE ALERTAS — todos excepto viewer ── */}
+            {/* Alertas */}
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger"
                 onClick={() => setShowAlertConfig((v) => !v)}>

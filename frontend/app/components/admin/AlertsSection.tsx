@@ -135,7 +135,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
 
   // ── Categorías colapsables ─────────────────────────────────────────────
   const [openCats, setOpenCats] = useState<Record<Category, boolean>>({
-    mes_anterior: true, absoluta: true, anio_anterior: true,
+    mes_anterior: false, absoluta: false, anio_anterior: false,
   });
 
   // ── Detalle ────────────────────────────────────────────────────────────
