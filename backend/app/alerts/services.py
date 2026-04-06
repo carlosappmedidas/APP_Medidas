@@ -410,7 +410,7 @@ def recalculate_alerts_all_empresas(
         List[Empresa],
         db.query(Empresa).filter(
             Empresa.tenant_id == tenant_id,
-            Empresa.activa.is_(True),
+            Empresa.activo.is_(True),
         ).all(),
     )
     total_triggered = 0
