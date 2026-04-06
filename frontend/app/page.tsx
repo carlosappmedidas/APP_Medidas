@@ -120,12 +120,12 @@ export default function HomePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [homeMenuOpen, setHomeMenuOpen]         = useState(false);
 
-  // ── Collapsibles de ajustes ────────────────────────────────────────────
+  // ── Collapsibles ajustes ───────────────────────────────────────────────
   const [showApariencia,   setShowApariencia]   = useState(false);
   const [showTablas,       setShowTablas]       = useState(false);
   const [showAlertConfig,  setShowAlertConfig]  = useState(false);
 
-  // ── Collapsibles de alertas ────────────────────────────────────────────
+  // ── Collapsibles alertas ───────────────────────────────────────────────
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
 
   // ── Hook configuración de tablas ───────────────────────────────────────
@@ -170,10 +170,9 @@ export default function HomePage() {
     load();
   }, [token]);
 
-  // Cerrar menú usuario al cambiar tab
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
 
-  // Al cambiar a alertas, resetear los collapsibles para que empiecen cerrados
+  // Al cambiar a alertas, los collapsibles internos empiezan cerrados
   useEffect(() => {
     if (activeTab === "alertas") setShowAlertasGeneral(false);
   }, [activeTab]);
@@ -201,6 +200,12 @@ export default function HomePage() {
     }
   };
   const handleGoToTableSettings = () => { setActiveTab("ajustes"); setShowTablas(true); };
+
+  // Navegar a Configuración → abrir bloque de Configuración de Alertas
+  const handleGoToAlertConfig = () => {
+    setActiveTab("ajustes");
+    setShowAlertConfig(true);
+  };
 
   // ── Loading / Login ────────────────────────────────────────────────────
   if (!authReady) {
@@ -377,11 +382,9 @@ export default function HomePage() {
         {activeTab === "calendario-ree" && <CalendarioReeSection token={token} currentUser={currentUser} />}
         {activeTab === "graficos"       && <GraficosSection token={token} currentUser={currentUser} />}
 
-        {/* ── ALERTAS — collapsibles cerrados por defecto ── */}
+        {/* ── ALERTAS ── */}
         {activeTab === "alertas" && (
           <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-            {/* Medidas General */}
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger"
                 onClick={() => setShowAlertasGeneral((v) => !v)}>
@@ -397,13 +400,14 @@ export default function HomePage() {
               </button>
               {showAlertasGeneral && (
                 <div className="ui-collapsible-card__body">
-                  <AlertsSection token={token} currentUser={currentUser} />
+                  <AlertsSection
+                    token={token}
+                    currentUser={currentUser}
+                    onGoToAlertConfig={canManageAlerts ? handleGoToAlertConfig : undefined}
+                  />
                 </div>
               )}
             </div>
-
-            {/* Aquí irán en el futuro: Alertas PS, Alertas H2, etc. */}
-
           </section>
         )}
 
@@ -434,7 +438,6 @@ export default function HomePage() {
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="settings-page" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-            {/* Apariencia */}
             {canSeeApariencia && (
               <div className="ui-collapsible-card">
                 <button type="button" className="ui-collapsible-card__trigger"
@@ -462,7 +465,6 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Tablas */}
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger"
                 onClick={() => setShowTablas((v) => !v)}>
@@ -492,14 +494,13 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Alertas */}
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger"
                 onClick={() => setShowAlertConfig((v) => !v)}>
                 <div>
                   <div className="ui-collapsible-card__title">CONFIGURACIÓN DE ALERTAS</div>
                   <p className="ui-collapsible-card__subtitle">
-                    Umbrales y severidad de alertas por empresa. Solo admin y owner pueden modificar.
+                    Umbrales y severidad de alertas por empresa y tipo de medida.
                   </p>
                 </div>
                 <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">

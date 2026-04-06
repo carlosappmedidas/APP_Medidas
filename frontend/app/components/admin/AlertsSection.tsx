@@ -8,6 +8,7 @@ import type { User } from "../../types";
 type Props = {
   token: string | null;
   currentUser?: User | null;
+  onGoToAlertConfig?: () => void;
 };
 
 type LifecycleStatus = "nueva" | "en_revision" | "resuelta";
@@ -109,7 +110,7 @@ const inputStyle: React.CSSProperties = { fontSize: 12, padding: "5px 8px", bord
 
 // ── Componente principal ───────────────────────────────────────────────────
 
-export default function AlertsSection({ token, currentUser }: Props) {
+export default function AlertsSection({ token, currentUser, onGoToAlertConfig }: Props) {
   const canManage = !!currentUser && (currentUser.is_superuser || currentUser.rol === "admin" || currentUser.rol === "owner");
 
   // ── Filtros ────────────────────────────────────────────────────────────
@@ -130,8 +131,8 @@ export default function AlertsSection({ token, currentUser }: Props) {
   const [infoMsg,          setInfoMsg]          = useState<string | null>(null);
 
   // ── Recálculo ──────────────────────────────────────────────────────────
-  const [recalculating,   setRecalculating]   = useState(false);
-  const [recalcProgress,  setRecalcProgress]  = useState<string | null>(null);
+  const [recalculating,  setRecalculating]  = useState(false);
+  const [recalcProgress, setRecalcProgress] = useState<string | null>(null);
 
   // ── Categorías colapsables ─────────────────────────────────────────────
   const [openCats, setOpenCats] = useState<Record<Category, boolean>>({
@@ -154,11 +155,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
       const res = await fetch(`${API_BASE_URL}/empresas/?solo_activas=false`, { headers: getAuthHeaders(token) });
       if (!res.ok) return;
       const json = await res.json();
-      setEmpresas(
-        (Array.isArray(json) ? json : [])
-          .map((e: any) => ({ id: Number(e.id), nombre: String(e.nombre ?? `Empresa ${e.id}`) }))
-          .sort((a: EmpresaItem, b: EmpresaItem) => a.nombre.localeCompare(b.nombre))
-      );
+      setEmpresas((Array.isArray(json) ? json : []).map((e: any) => ({ id: Number(e.id), nombre: String(e.nombre ?? `Empresa ${e.id}`) })).sort((a: EmpresaItem, b: EmpresaItem) => a.nombre.localeCompare(b.nombre)));
     } catch { /* silencioso */ } finally { setLoadingEmpresas(false); }
   }, [token]);
 
@@ -211,7 +208,7 @@ export default function AlertsSection({ token, currentUser }: Props) {
     else { setSelectedAlert(alert); loadComments(alert.id); }
   };
 
-  // ── Cambiar lifecycle — comentario opcional ────────────────────────────
+  // ── Lifecycle — comentario opcional ───────────────────────────────────
   const handleChangeLifecycle = async (newStatus: LifecycleStatus) => {
     if (!token || !selectedAlert) return;
     setChangingStatus(true); setError(null);
@@ -276,14 +273,12 @@ export default function AlertsSection({ token, currentUser }: Props) {
   };
 
   // ── Texto informativo del botón ────────────────────────────────────────
-  // Describe exactamente qué va a recalcular según los filtros activos
   const recalcularInfo = useMemo(() => {
     const emp = filtroEmpresa !== "all"
       ? (empresas.find((e) => String(e.id) === filtroEmpresa)?.nombre ?? "la empresa seleccionada")
       : "todas las empresas";
     const anioLabel = filtroAnio !== "all" ? filtroAnio : null;
     const mesLabel  = filtroMes  !== "all" ? MESES[Number(filtroMes) - 1] : null;
-
     if (anioLabel && mesLabel) return `${emp} · ${mesLabel} ${anioLabel}`;
     if (anioLabel)             return `${emp} · ${anioLabel} completo`;
     return `${emp} · histórico completo (${aniosDisponibles.length} años)`;
@@ -302,18 +297,15 @@ export default function AlertsSection({ token, currentUser }: Props) {
     const meses = mes  ? [mes]  : mesesDisponibles;
 
     let totalTriggered = 0;
-    let totalPeriodos  = 0;
 
     for (const a of anios) {
       for (const m of meses) {
-        // Mostrar progreso solo cuando hay muchos periodos
         if (!anio || !mes) setRecalcProgress(`Recalculando ${MESES[m - 1]} ${a}...`);
         if (empresaId) {
           totalTriggered += await recalcEmpresaPeriod(empresaId, a, m);
         } else {
           totalTriggered += await recalcAllPeriod(a, m);
         }
-        totalPeriodos++;
       }
     }
 
@@ -358,16 +350,13 @@ export default function AlertsSection({ token, currentUser }: Props) {
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={isAbs ? 8 : 9} style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)" }}>
-                No hay alertas en esta categoría.
-              </td></tr>
+              <tr><td colSpan={isAbs ? 8 : 9} style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)" }}>No hay alertas en esta categoría.</td></tr>
             )}
             {rows.map((a) => {
               const isSelected = selectedAlert?.id === a.id;
               return (
                 <React.Fragment key={a.id}>
-                  <tr style={{ background: isSelected ? "rgba(37,99,235,0.08)" : undefined, cursor: "pointer" }}
-                    onClick={() => handleSelectAlert(a)}>
+                  <tr style={{ background: isSelected ? "rgba(37,99,235,0.08)" : undefined, cursor: "pointer" }} onClick={() => handleSelectAlert(a)}>
                     <td style={tdStyle}><span style={{ fontWeight: 500 }}>{a.empresa_nombre}</span></td>
                     <td style={tdStyle}>{MESES[(a.mes ?? 1) - 1]} {a.anio}</td>
                     <td style={{ ...tdStyle, maxWidth: 220 }}>
@@ -376,21 +365,11 @@ export default function AlertsSection({ token, currentUser }: Props) {
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(a.current_value, a.diff_unit === "%" ? "%" : undefined)}</td>
                     {!isAbs && <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(a.previous_value, a.diff_unit === "%" ? "%" : undefined)}</td>}
+                    <td style={{ ...tdStyle, textAlign: "right" }}>{isAbs ? fmt(a.threshold_value, a.diff_unit) : fmt(a.diff_value, a.diff_unit)}</td>
+                    <td style={tdStyle}><Badge {...SEVERITY_COLORS[a.severity]}>{a.severity === "critical" ? "Crítica" : a.severity === "warning" ? "Warning" : "Info"}</Badge></td>
+                    <td style={tdStyle}><Badge {...LIFECYCLE_COLORS[a.lifecycle_status]}>{LIFECYCLE_LABELS[a.lifecycle_status]}</Badge></td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
-                      {isAbs ? fmt(a.threshold_value, a.diff_unit) : fmt(a.diff_value, a.diff_unit)}
-                    </td>
-                    <td style={tdStyle}>
-                      <Badge {...SEVERITY_COLORS[a.severity]}>
-                        {a.severity === "critical" ? "Crítica" : a.severity === "warning" ? "Warning" : "Info"}
-                      </Badge>
-                    </td>
-                    <td style={tdStyle}>
-                      <Badge {...LIFECYCLE_COLORS[a.lifecycle_status]}>{LIFECYCLE_LABELS[a.lifecycle_status]}</Badge>
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <button style={btnStyle} onClick={(e) => { e.stopPropagation(); handleSelectAlert(a); }}>
-                        {isSelected ? "Cerrar" : "Ver"}
-                      </button>
+                      <button style={btnStyle} onClick={(e) => { e.stopPropagation(); handleSelectAlert(a); }}>{isSelected ? "Cerrar" : "Ver"}</button>
                     </td>
                   </tr>
                   {isSelected && <tr><td colSpan={isAbs ? 8 : 9} style={{ padding: 0 }}>{renderDetail(a)}</td></tr>}
@@ -406,7 +385,6 @@ export default function AlertsSection({ token, currentUser }: Props) {
   // ── Detalle ────────────────────────────────────────────────────────────
   const renderDetail = (a: AlertRow) => (
     <div style={{ margin: "0 12px 12px", padding: 16, background: "var(--field-bg-soft)", border: "0.5px solid var(--card-border)", borderRadius: 8 }}>
-      {/* Métricas */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
         {[
           { label: "Valor actual", value: fmt(a.current_value, a.diff_unit === "%" ? "%" : undefined) },
@@ -421,15 +399,11 @@ export default function AlertsSection({ token, currentUser }: Props) {
           </div>
         ))}
       </div>
-
-      {/* Mensaje */}
       {a.message && (
         <div style={{ background: "var(--card-bg)", border: "0.5px solid var(--card-border)", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
           {a.message}
         </div>
       )}
-
-      {/* Cambio de estado */}
       {canManage && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>Cambiar estado</div>
@@ -447,8 +421,6 @@ export default function AlertsSection({ token, currentUser }: Props) {
           </div>
         </div>
       )}
-
-      {/* Historial de comentarios */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, fontWeight: 500 }}>Historial de comentarios</div>
         {loadingComments ? (
@@ -475,8 +447,6 @@ export default function AlertsSection({ token, currentUser }: Props) {
           </div>
         )}
       </div>
-
-      {/* Input comentario */}
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
         <textarea style={{ ...inputStyle, flex: 1, resize: "vertical", minHeight: 60, fontFamily: "inherit" }}
           placeholder="Añadir comentario (opcional)..."
@@ -520,19 +490,28 @@ export default function AlertsSection({ token, currentUser }: Props) {
         <div style={{ padding: "14px 16px", borderBottom: "0.5px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Alertas · Medidas General</div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-              Seguimiento de desviaciones en energía y pérdidas por empresa y periodo
-            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Seguimiento de desviaciones en energía y pérdidas por empresa y periodo</div>
           </div>
           {canManage && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-              <button
-                style={{ ...btnStyle, background: "rgba(37,99,235,0.15)", color: "#60a5fa", borderColor: "rgba(37,99,235,0.3)" }}
-                disabled={recalculating}
-                onClick={handleRecalcular}
-              >
-                {recalculating ? "Recalculando..." : "Recalcular"}
-              </button>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  style={{ ...btnStyle, background: "rgba(37,99,235,0.15)", color: "#60a5fa", borderColor: "rgba(37,99,235,0.3)" }}
+                  disabled={recalculating}
+                  onClick={handleRecalcular}
+                >
+                  {recalculating ? "Recalculando..." : "Recalcular"}
+                </button>
+                {onGoToAlertConfig && (
+                  <button
+                    style={{ ...btnStyle, padding: "5px 8px", fontSize: 14 }}
+                    onClick={onGoToAlertConfig}
+                    title="Configurar alertas de Medidas General"
+                  >
+                    ⚙️
+                  </button>
+                )}
+              </div>
               {/* Texto informativo — describe qué va a hacer el botón */}
               <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right", maxWidth: 260 }}>
                 {recalcularInfo}

@@ -307,8 +307,8 @@ export default function MedidasGeneralSection({
       />
       {canEditAdjustments && (
         onGoToSettings ? (
-          <button type="button" onClick={onGoToSettings} className="ui-btn ui-btn-outline ui-btn-xs">
-            Configurar columnas
+          <button type="button" onClick={onGoToSettings} className="ui-btn ui-btn-outline ui-btn-xs" title="Configurar columnas" style={{ padding: "3px 7px", fontSize: 14 }}>
+            ⚙️
           </button>
         ) : (
           <button type="button" onClick={() => setShowAdjust((v) => !v)} className="ui-btn ui-btn-outline ui-btn-xs">
