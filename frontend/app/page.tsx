@@ -10,6 +10,7 @@ import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
 import GraficosSection from "./components/medidas/GraficosSection";
 import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
 import CargaSection from "./components/ingestion/CargaSection";
+import ComunicacionesSection from "./components/comunicaciones/ComunicacionesSection";
 import UsersSection from "./components/admin/UsersSection";
 import SistemaSection from "./components/settings/SistemaSection";
 import ClientesSection from "./components/admin/ClientesSection";
@@ -32,23 +33,25 @@ type MainTab =
   | "tablas-general"
   | "tablas-ps"
   | "carga"
+  | "comunicaciones"
   | "ajustes"
   | "sistema";
 
 const PAGE_TITLES: Record<MainTab, string> = {
-  "dashboard":      "Dashboard",
-  "medidas":        "Medidas",
-  "tablas-general": "Medidas (General)",
-  "tablas-ps":      "Medidas (PS)",
-  "objeciones":     "Objeciones",
-  "calendario-ree": "Calendario REE",
-  "graficos":       "Gráficos",
-  "alertas":        "Alertas",
-  "usuarios":       "Usuarios",
-  "clientes":       "Clientes",
-  "carga":          "Carga de datos",
-  "ajustes":        "Configuración",
-  "sistema":        "Sistema",
+  "dashboard":        "Dashboard",
+  "medidas":          "Medidas",
+  "tablas-general":   "Medidas (General)",
+  "tablas-ps":        "Medidas (PS)",
+  "objeciones":       "Objeciones",
+  "calendario-ree":   "Calendario REE",
+  "graficos":         "Gráficos",
+  "alertas":          "Alertas",
+  "usuarios":         "Usuarios",
+  "clientes":         "Clientes",
+  "carga":            "Carga de datos",
+  "comunicaciones":   "Comunicaciones FTP",
+  "ajustes":          "Configuración",
+  "sistema":          "Sistema",
 };
 
 const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
@@ -338,6 +341,14 @@ export default function HomePage() {
               </button>
             )}
 
+            {/* Comunicaciones — oculto para viewer */}
+            {!isViewer && (
+              <button onClick={() => setActiveTab("comunicaciones")}
+                className={["ui-nav-item", activeTab === "comunicaciones" ? "ui-nav-item--active" : ""].join(" ")}>
+                <span>Comunicaciones</span>
+              </button>
+            )}
+
             {canSeeAjustes && (
               <button onClick={() => setActiveTab("ajustes")}
                 className={["ui-nav-item", activeTab === "ajustes" ? "ui-nav-item--active" : ""].join(" ")}>
@@ -420,7 +431,7 @@ export default function HomePage() {
         )}
 
         {activeTab === "usuarios"  && (canManageUsers || isSuperuser) && <UsersSection token={token} />}
-        {activeTab === "clientes"  && isSuperuser    && <ClientesSection token={token} currentUser={currentUser} />}
+        {activeTab === "clientes"  && isSuperuser && <ClientesSection token={token} currentUser={currentUser} />}
 
         {activeTab === "tablas-general" && (
           <MedidasGeneralSection
@@ -442,6 +453,11 @@ export default function HomePage() {
         )}
 
         {activeTab === "carga" && !isViewer && <CargaSection token={token} />}
+
+        {/* Comunicaciones — oculto para viewer */}
+        {activeTab === "comunicaciones" && !isViewer && (
+          <ComunicacionesSection token={token} currentUser={currentUser} />
+        )}
 
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="settings-page" style={{ display: "flex", flexDirection: "column", gap: 12 }}>

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.alerts.routes import router as alerts_router
 from app.calendario_ree.routes import router as calendario_ree_router
+from app.comunicaciones.routes import router as comunicaciones_router
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.dashboard.routes import router as dashboard_router
@@ -25,6 +26,7 @@ from app.tenants.routes import router as auth_router
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
 from app.calendario_ree.models import ReeCalendarFile  # noqa: F401
+from app.comunicaciones.models import FtpConfig, FtpSyncLog  # noqa: F401
 from app.measures.models import MedidaGeneral, MedidaMicro, MedidaPS  # noqa: F401
 from app.measures.m1_models import M1PeriodContribution  # noqa: F401
 from app.measures.general_contrib_models import GeneralPeriodContribution  # noqa: F401
@@ -49,13 +51,11 @@ _default_origins = [
     "http://127.0.0.1:3000",
     "http://100.106.206.66:3000",
 ]
-
 origins = (
     [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
     if settings.CORS_ORIGINS.strip()
     else _default_origins
 )
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -81,3 +81,4 @@ app.include_router(calendario_ree_router)
 app.include_router(medidas_graficos_router)
 app.include_router(medidas_graficos_ps_router)
 app.include_router(objeciones_router)
+app.include_router(comunicaciones_router)
