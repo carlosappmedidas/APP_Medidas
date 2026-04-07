@@ -291,10 +291,15 @@ export default function HomePage() {
                       </div>
                     )}
                   </>
-                  <button type="button" onClick={() => setActiveTab("objeciones")}
-                    className={["ui-nav-subitem", activeTab === "objeciones" ? "ui-nav-subitem--active" : ""].join(" ")}>
-                    <span>Objeciones</span>
-                  </button>
+
+                  {/* Objeciones — oculto para viewer */}
+                  {!isViewer && (
+                    <button type="button" onClick={() => setActiveTab("objeciones")}
+                      className={["ui-nav-subitem", activeTab === "objeciones" ? "ui-nav-subitem--active" : ""].join(" ")}>
+                      <span>Objeciones</span>
+                    </button>
+                  )}
+
                   <button type="button" onClick={() => setActiveTab("calendario-ree")}
                     className={["ui-nav-subitem", activeTab === "calendario-ree" ? "ui-nav-subitem--active" : ""].join(" ")}>
                     <span>Calendario REE</span>
@@ -378,7 +383,10 @@ export default function HomePage() {
 
         {activeTab === "dashboard"      && <DashboardSection token={token} />}
         {activeTab === "medidas"        && <MedidasSection token={token} currentUser={currentUser} />}
-        {activeTab === "objeciones"     && <ObjecionesSection token={token} currentUser={currentUser} />}
+
+        {/* Objeciones — oculto para viewer */}
+        {activeTab === "objeciones" && !isViewer && <ObjecionesSection token={token} currentUser={currentUser} />}
+
         {activeTab === "calendario-ree" && <CalendarioReeSection token={token} currentUser={currentUser} />}
         {activeTab === "graficos"       && <GraficosSection token={token} currentUser={currentUser} />}
 
