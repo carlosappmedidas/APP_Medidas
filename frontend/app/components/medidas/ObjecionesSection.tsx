@@ -10,7 +10,6 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
 type ObjecionTipo = "AOBAGRECL" | "OBJEINCL" | "AOBCUPS" | "AOBCIL";
 
-// Mapa tipo → ruta de API
 const TIPO_RUTA: Record<ObjecionTipo, string> = {
   AOBAGRECL: "agrecl",
   OBJEINCL:  "incl",
@@ -32,6 +31,8 @@ interface TabConfig {
   camposLectura: { id: string; label: string }[];
 }
 
+type EmpresaOption = { id: number; nombre: string; codigo_ree: string | null };
+
 // ─── Configuración de tabs ────────────────────────────────────────────────────
 
 const TABS: TabConfig[] = [
@@ -41,42 +42,42 @@ const TABS: TabConfig[] = [
     importLabel: "Importar AOBAGRECL",
     generateLabel: "Generar REOBAGRECL",
     columns: [
-      { id: "_acciones",       label: "",                     align: "left"  },
-      { id: "id_objecion",     label: "ID objeción",          align: "left"  },
-      { id: "distribuidor",    label: "Distribuidor",         align: "left"  },
-      { id: "comercializador", label: "Comercializador",      align: "left"  },
-      { id: "nivel_tension",   label: "Nivel tensión",        align: "left"  },
-      { id: "tarifa_acceso",   label: "Tarifa de acceso",     align: "left"  },
-      { id: "disc_horaria",    label: "Disc. horaria",        align: "left"  },
-      { id: "tipo_punto",      label: "Tipo punto",           align: "left"  },
-      { id: "provincia",       label: "Provincia",            align: "left"  },
-      { id: "tipo_demanda",    label: "Tipo demanda",         align: "left"  },
-      { id: "periodo",         label: "Periodo",              align: "left"  },
-      { id: "motivo",          label: "Motivo objeción",      align: "left"  },
-      { id: "magnitud",        label: "Magnitud",             align: "left"  },
-      { id: "e_publicada",     label: "E. publicada (kWh)",   align: "right" },
-      { id: "e_propuesta",     label: "E. propuesta (kWh)",   align: "right" },
-      { id: "comentario_emisor", label: "Comentario emisor",  align: "left"  },
-      { id: "autoobjecion",    label: "Autoobjeción",         align: "left"  },
-      { id: "aceptacion",      label: "Aceptada",             align: "left"  },
+      { id: "_acciones",        label: "",                       align: "left"  },
+      { id: "id_objecion",      label: "ID objeción",            align: "left"  },
+      { id: "distribuidor",     label: "Distribuidor",           align: "left"  },
+      { id: "comercializador",  label: "Comercializador",        align: "left"  },
+      { id: "nivel_tension",    label: "Nivel tensión",          align: "left"  },
+      { id: "tarifa_acceso",    label: "Tarifa de acceso",       align: "left"  },
+      { id: "disc_horaria",     label: "Disc. horaria",          align: "left"  },
+      { id: "tipo_punto",       label: "Tipo punto",             align: "left"  },
+      { id: "provincia",        label: "Provincia",              align: "left"  },
+      { id: "tipo_demanda",     label: "Tipo demanda",           align: "left"  },
+      { id: "periodo",          label: "Periodo",                align: "left"  },
+      { id: "motivo",           label: "Motivo objeción",        align: "left"  },
+      { id: "magnitud",         label: "Magnitud",               align: "left"  },
+      { id: "e_publicada",      label: "E. publicada (kWh)",     align: "right" },
+      { id: "e_propuesta",      label: "E. propuesta (kWh)",     align: "right" },
+      { id: "comentario_emisor",label: "Comentario emisor",      align: "left"  },
+      { id: "autoobjecion",     label: "Autoobjeción",           align: "left"  },
+      { id: "aceptacion",       label: "Aceptada",               align: "left"  },
     ],
     camposLectura: [
-      { id: "id_objecion",     label: "ID objeción"              },
-      { id: "distribuidor",    label: "Distribuidor"             },
-      { id: "comercializador", label: "Comercializador"          },
-      { id: "nivel_tension",   label: "Nivel de tensión"         },
-      { id: "tarifa_acceso",   label: "Tarifa de acceso"         },
-      { id: "disc_horaria",    label: "Discriminación horaria"   },
-      { id: "tipo_punto",      label: "Tipo de punto"            },
-      { id: "provincia",       label: "Provincia"                },
-      { id: "tipo_demanda",    label: "Tipo de demanda"          },
-      { id: "periodo",         label: "Periodo"                  },
-      { id: "motivo",          label: "Motivo de objeción"       },
-      { id: "magnitud",        label: "Magnitud"                 },
-      { id: "e_publicada",     label: "E. activa publicada (kWh)"  },
-      { id: "e_propuesta",     label: "E. activa propuesta (kWh)"  },
-      { id: "comentario_emisor", label: "Comentario del emisor"  },
-      { id: "autoobjecion",    label: "Objeción a autoobjeción"  },
+      { id: "id_objecion",      label: "ID objeción"               },
+      { id: "distribuidor",     label: "Distribuidor"              },
+      { id: "comercializador",  label: "Comercializador"           },
+      { id: "nivel_tension",    label: "Nivel de tensión"          },
+      { id: "tarifa_acceso",    label: "Tarifa de acceso"          },
+      { id: "disc_horaria",     label: "Discriminación horaria"    },
+      { id: "tipo_punto",       label: "Tipo de punto"             },
+      { id: "provincia",        label: "Provincia"                 },
+      { id: "tipo_demanda",     label: "Tipo de demanda"           },
+      { id: "periodo",          label: "Periodo"                   },
+      { id: "motivo",           label: "Motivo de objeción"        },
+      { id: "magnitud",         label: "Magnitud"                  },
+      { id: "e_publicada",      label: "E. activa publicada (kWh)" },
+      { id: "e_propuesta",      label: "E. activa propuesta (kWh)"},
+      { id: "comentario_emisor",label: "Comentario del emisor"     },
+      { id: "autoobjecion",     label: "Objeción a autoobjeción"   },
     ],
   },
   {
@@ -85,28 +86,28 @@ const TABS: TabConfig[] = [
     importLabel: "Importar OBJEINCL",
     generateLabel: "Generar REOBJEINCL",
     columns: [
-      { id: "_acciones",    label: "",                          align: "left"  },
-      { id: "cups",         label: "CUPS",                      align: "left"  },
-      { id: "periodo",      label: "Periodo",                   align: "left"  },
-      { id: "motivo",       label: "Motivo",                    align: "left"  },
-      { id: "ae_publicada", label: "AE publicada (kWh)",        align: "right" },
-      { id: "ae_propuesta", label: "AE propuesta (kWh)",        align: "right" },
-      { id: "as_publicada", label: "AS publicada (kWh)",        align: "right" },
-      { id: "as_propuesta", label: "AS propuesta (kWh)",        align: "right" },
-      { id: "comentario_emisor", label: "Comentario",           align: "left"  },
-      { id: "autoobjecion", label: "Autoobjeción",              align: "left"  },
-      { id: "aceptacion",   label: "Aceptada",                  align: "left"  },
+      { id: "_acciones",        label: "",                          align: "left"  },
+      { id: "cups",             label: "CUPS",                      align: "left"  },
+      { id: "periodo",          label: "Periodo",                   align: "left"  },
+      { id: "motivo",           label: "Motivo",                    align: "left"  },
+      { id: "ae_publicada",     label: "AE publicada (kWh)",        align: "right" },
+      { id: "ae_propuesta",     label: "AE propuesta (kWh)",        align: "right" },
+      { id: "as_publicada",     label: "AS publicada (kWh)",        align: "right" },
+      { id: "as_propuesta",     label: "AS propuesta (kWh)",        align: "right" },
+      { id: "comentario_emisor",label: "Comentario",                align: "left"  },
+      { id: "autoobjecion",     label: "Autoobjeción",              align: "left"  },
+      { id: "aceptacion",       label: "Aceptada",                  align: "left"  },
     ],
     camposLectura: [
-      { id: "cups",         label: "CUPS"                       },
-      { id: "periodo",      label: "Periodo de la objeción"     },
-      { id: "motivo",       label: "Motivo"                     },
-      { id: "ae_publicada", label: "AE publicada (kWh)"         },
-      { id: "ae_propuesta", label: "AE propuesta (kWh)"         },
-      { id: "as_publicada", label: "AS publicada (kWh)"         },
-      { id: "as_propuesta", label: "AS propuesta (kWh)"         },
-      { id: "comentario_emisor", label: "Comentario"            },
-      { id: "autoobjecion", label: "Objeción a autoobjeción"    },
+      { id: "cups",             label: "CUPS"                       },
+      { id: "periodo",          label: "Periodo de la objeción"     },
+      { id: "motivo",           label: "Motivo"                     },
+      { id: "ae_publicada",     label: "AE publicada (kWh)"         },
+      { id: "ae_propuesta",     label: "AE propuesta (kWh)"         },
+      { id: "as_publicada",     label: "AS publicada (kWh)"         },
+      { id: "as_propuesta",     label: "AS propuesta (kWh)"         },
+      { id: "comentario_emisor",label: "Comentario"                 },
+      { id: "autoobjecion",     label: "Objeción a autoobjeción"    },
     ],
   },
   {
@@ -115,30 +116,30 @@ const TABS: TabConfig[] = [
     importLabel: "Importar AOBCUPS",
     generateLabel: "Generar REOBCUPS",
     columns: [
-      { id: "_acciones",          label: "",                         align: "left"  },
-      { id: "id_objecion",        label: "ID objeción",              align: "left"  },
-      { id: "cups",               label: "CUPS",                     align: "left"  },
-      { id: "periodo",            label: "Periodo",                  align: "left"  },
-      { id: "motivo",             label: "Motivo",                   align: "left"  },
-      { id: "e_publicada",        label: "E. publicada (kWh)",       align: "right" },
-      { id: "e_propuesta",        label: "E. propuesta (kWh)",       align: "right" },
-      { id: "comentario_emisor",  label: "Comentario emisor",        align: "left"  },
-      { id: "autoobjecion",       label: "Autoobjeción (S/N)",       align: "left"  },
-      { id: "aceptacion",         label: "Aceptada",                 align: "left"  },
-      { id: "motivo_no_aceptacion", label: "Motivo no acept.",       align: "left"  },
-      { id: "comentario_respuesta", label: "Comentario respuesta",   align: "left"  },
-      { id: "magnitud",           label: "Magnitud",                 align: "left"  },
+      { id: "_acciones",           label: "",                          align: "left"  },
+      { id: "id_objecion",         label: "ID objeción",               align: "left"  },
+      { id: "cups",                label: "CUPS",                      align: "left"  },
+      { id: "periodo",             label: "Periodo",                   align: "left"  },
+      { id: "motivo",              label: "Motivo",                    align: "left"  },
+      { id: "e_publicada",         label: "E. publicada (kWh)",        align: "right" },
+      { id: "e_propuesta",         label: "E. propuesta (kWh)",        align: "right" },
+      { id: "comentario_emisor",   label: "Comentario emisor",         align: "left"  },
+      { id: "autoobjecion",        label: "Autoobjeción (S/N)",        align: "left"  },
+      { id: "aceptacion",          label: "Aceptada",                  align: "left"  },
+      { id: "motivo_no_aceptacion",label: "Motivo no acept.",          align: "left"  },
+      { id: "comentario_respuesta",label: "Comentario respuesta",      align: "left"  },
+      { id: "magnitud",            label: "Magnitud",                  align: "left"  },
     ],
     camposLectura: [
-      { id: "id_objecion",       label: "ID objeción"                },
-      { id: "cups",              label: "CUPS"                       },
-      { id: "periodo",           label: "Periodo de cierre objetado" },
-      { id: "motivo",            label: "Motivo de objeción"         },
-      { id: "e_publicada",       label: "E. activa publicada (kWh)"  },
-      { id: "e_propuesta",       label: "E. activa propuesta (kWh)"  },
-      { id: "comentario_emisor", label: "Comentario del emisor"      },
-      { id: "autoobjecion",      label: "Objeción a autoobjeción (S/N)" },
-      { id: "magnitud",          label: "Magnitud"                   },
+      { id: "id_objecion",       label: "ID objeción"                    },
+      { id: "cups",              label: "CUPS"                           },
+      { id: "periodo",           label: "Periodo de cierre objetado"     },
+      { id: "motivo",            label: "Motivo de objeción"             },
+      { id: "e_publicada",       label: "E. activa publicada (kWh)"      },
+      { id: "e_propuesta",       label: "E. activa propuesta (kWh)"      },
+      { id: "comentario_emisor", label: "Comentario del emisor"          },
+      { id: "autoobjecion",      label: "Objeción a autoobjeción (S/N)"  },
+      { id: "magnitud",          label: "Magnitud"                       },
     ],
   },
   {
@@ -158,23 +159,23 @@ const TABS: TabConfig[] = [
       { id: "eq2_propuesta",label: "E. react. Q2 prop. (kVArh)",  align: "right" },
       { id: "eq3_publicada",label: "E. react. Q3 pub. (kVArh)",   align: "right" },
       { id: "eq3_propuesta",label: "E. react. Q3 prop. (kVArh)",  align: "right" },
-      { id: "comentario_emisor", label: "Comentario emisor",       align: "left"  },
+      { id: "comentario_emisor",label: "Comentario emisor",        align: "left"  },
       { id: "autoobjecion", label: "Autoobjeción",                 align: "left"  },
       { id: "aceptacion",   label: "Aceptada",                     align: "left"  },
     ],
     camposLectura: [
-      { id: "id_objecion",   label: "ID objeción"                   },
-      { id: "cil",           label: "CIL"                           },
-      { id: "periodo",       label: "Periodo de cierre objetado"    },
-      { id: "motivo",        label: "Motivo de objeción"            },
-      { id: "eas_publicada", label: "E. activa saliente pub. (kWh)" },
-      { id: "eas_propuesta", label: "E. activa saliente prop. (kWh)"},
-      { id: "eq2_publicada", label: "E. reactiva Q2 pub. (kVArh)"  },
-      { id: "eq2_propuesta", label: "E. reactiva Q2 prop. (kVArh)" },
-      { id: "eq3_publicada", label: "E. reactiva Q3 pub. (kVArh)"  },
-      { id: "eq3_propuesta", label: "E. reactiva Q3 prop. (kVArh)" },
-      { id: "comentario_emisor", label: "Comentario del emisor"     },
-      { id: "autoobjecion",  label: "Objeción a autoobjeción"       },
+      { id: "id_objecion",   label: "ID objeción"                    },
+      { id: "cil",           label: "CIL"                            },
+      { id: "periodo",       label: "Periodo de cierre objetado"     },
+      { id: "motivo",        label: "Motivo de objeción"             },
+      { id: "eas_publicada", label: "E. activa saliente pub. (kWh)"  },
+      { id: "eas_propuesta", label: "E. activa saliente prop. (kWh)" },
+      { id: "eq2_publicada", label: "E. reactiva Q2 pub. (kVArh)"   },
+      { id: "eq2_propuesta", label: "E. reactiva Q2 prop. (kVArh)"  },
+      { id: "eq3_publicada", label: "E. reactiva Q3 pub. (kVArh)"   },
+      { id: "eq3_propuesta", label: "E. reactiva Q3 prop. (kVArh)"  },
+      { id: "comentario_emisor",label: "Comentario del emisor"       },
+      { id: "autoobjecion",  label: "Objeción a autoobjeción"        },
     ],
   },
 ];
@@ -222,6 +223,10 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const [generating, setGenerating] = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
+  // Selector de empresa
+  const [empresas, setEmpresas]         = useState<EmpresaOption[]>([]);
+  const [empresaId, setEmpresaId]       = useState<number | null>(null);
+
   // Modal
   const [modalOpen, setModalOpen]   = useState(false);
   const [filaIdx, setFilaIdx]       = useState<number | null>(null);
@@ -234,7 +239,27 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const rows     = filas[activeTab];
   const totalRows = rows.length;
 
-  const empresaId = currentUser?.empresa_ids_permitidas?.[0] ?? null;
+  // ── Cargar lista de empresas disponibles ─────────────────────────────────
+
+  useEffect(() => {
+    if (!token) return;
+    const fetchEmpresas = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) });
+        if (!res.ok) return;
+        const data: EmpresaOption[] = await res.json();
+        setEmpresas(data);
+        // Pre-seleccionar: si el usuario tiene empresas permitidas, la primera; si no, la primera de todas
+        const permitidas = currentUser?.empresa_ids_permitidas ?? [];
+        if (permitidas.length > 0) {
+          setEmpresaId(permitidas[0]);
+        } else if (data.length > 0) {
+          setEmpresaId(data[0].id);
+        }
+      } catch { /* silencioso */ }
+    };
+    void fetchEmpresas();
+  }, [token, currentUser]);
 
   // ── Cargar datos de la API ────────────────────────────────────────────────
 
@@ -263,9 +288,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
   // ── Importar fichero ──────────────────────────────────────────────────────
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -321,11 +344,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   // ── Modal ─────────────────────────────────────────────────────────────────
 
   const filaSeleccionada = filaIdx !== null ? rows[filaIdx] : null;
-
-  const modalConfig: ObjecionDetalleConfig = {
-    tipo: activeTab,
-    camposLectura: tab.camposLectura,
-  };
+  const modalConfig: ObjecionDetalleConfig = { tipo: activeTab, camposLectura: tab.camposLectura };
 
   const handleOpenModal  = (idx: number) => { setFilaIdx(idx); setModalOpen(true); };
   const handleCloseModal = () => { setModalOpen(false); setFilaIdx(null); };
@@ -378,9 +397,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
       />
 
       {/* ── Error ── */}
-      {error && (
-        <div className="ui-alert ui-alert--danger mb-3">{error}</div>
-      )}
+      {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
       {/* ── Barra de tabs ── */}
       <div
@@ -390,7 +407,6 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
           borderRadius: "6px 6px 0 0",
           paddingLeft: "8px",
           gap: "2px",
-          marginBottom: 0,
         }}
       >
         {TABS.map((t) => {
@@ -418,16 +434,14 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
             >
               {t.label}
               {count > 0 && (
-                <span
-                  style={{
-                    fontSize: "10px",
-                    background: isActive ? "#60a5fa" : "rgba(255,255,255,0.15)",
-                    color: "white",
-                    borderRadius: "10px",
-                    padding: "1px 6px",
-                    fontWeight: 600,
-                  }}
-                >
+                <span style={{
+                  fontSize: "10px",
+                  background: isActive ? "#60a5fa" : "rgba(255,255,255,0.15)",
+                  color: "white",
+                  borderRadius: "10px",
+                  padding: "1px 6px",
+                  fontWeight: 600,
+                }}>
                   {count}
                 </span>
               )}
@@ -447,6 +461,23 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         }}
       >
         <div className="flex items-center gap-2">
+
+          {/* Selector de empresa */}
+          {empresas.length > 1 && (
+            <select
+              className="ui-select"
+              value={empresaId ?? ""}
+              onChange={(e) => setEmpresaId(Number(e.target.value))}
+              style={{ fontSize: "11px", padding: "4px 8px", minWidth: 140, height: 28 }}
+            >
+              {empresas.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}
+                </option>
+              ))}
+            </select>
+          )}
+
           <button
             type="button"
             onClick={handleImportClick}
@@ -481,10 +512,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
       {/* ── Tabla ── */}
       <div className="ui-table-wrap">
-        <table
-          className="ui-table text-[11px]"
-          style={{ borderCollapse: "separate", borderSpacing: 0 }}
-        >
+        <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
             <tr>
               {tab.columns.map((col) => (
@@ -563,7 +591,6 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         fila={filaSeleccionada}
         saving={saving}
       />
-
     </section>
   );
 }
