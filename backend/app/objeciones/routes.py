@@ -79,6 +79,11 @@ def _assert_empresa_access(*, user: User, empresa: Empresa) -> None:
 def _effective_tenant(user: User) -> int:
     return _tenant_id(user)
 
+def _validar_nombre(nombre: str, tipo_ruta: str) -> None:
+    error = services.validar_nombre_fichero(nombre, tipo_ruta)
+    if error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # AOBAGRECL
@@ -91,6 +96,7 @@ async def import_agrecl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _validar_nombre(file.filename or "", "agrecl")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
@@ -170,15 +176,36 @@ def bulk_delete_agrecl(
 @router.post("/agrecl/generate")
 def generate_agrecl(
     empresa_id: int = Query(...),
-    nombre_fichero: Optional[str] = Query(None),
+    nombre_fichero: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Genera ZIP con un .bz2 por cada ID de objeción con respuesta (S o N)."""
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobagrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
-    base = nombre_fichero.replace("AOBAGRECL", "REOBAGRECL") if nombre_fichero else "REOBAGRECL_todos"
-    filename = f"{base}.bz2"
+    content, filename = services.generate_reobagrecl_zip(
+        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
+    )
+    return Response(content=content, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+@router.post("/agrecl/generate-one")
+def generate_agrecl_one(
+    empresa_id: int = Query(...),
+    objecion_id: int = Query(...),
+    nombre_fichero: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Genera un .bz2 para una sola objeción."""
+    empresa = _get_empresa_or_404(db, empresa_id)
+    _assert_empresa_access(user=current_user, empresa=empresa)
+    try:
+        content, filename = services.generate_reobagrecl_one(
+            db, tenant_id=_effective_tenant(current_user), objecion_id=objecion_id, nombre_fichero=nombre_fichero,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
@@ -193,6 +220,7 @@ async def import_incl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _validar_nombre(file.filename or "", "incl")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
@@ -272,15 +300,15 @@ def bulk_delete_incl(
 @router.post("/incl/generate")
 def generate_incl(
     empresa_id: int = Query(...),
-    nombre_fichero: Optional[str] = Query(None),
+    nombre_fichero: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobjeincl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
-    base = nombre_fichero.replace("OBJEINCL", "REOBJEINCL") if nombre_fichero else "REOBJEINCL_todos"
-    filename = f"{base}.bz2"
+    content, filename = services.generate_reobjeincl(
+        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
+    )
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
@@ -295,6 +323,7 @@ async def import_cups(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _validar_nombre(file.filename or "", "cups")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
@@ -374,15 +403,15 @@ def bulk_delete_cups(
 @router.post("/cups/generate")
 def generate_cups(
     empresa_id: int = Query(...),
-    nombre_fichero: Optional[str] = Query(None),
+    nombre_fichero: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobcups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
-    base = nombre_fichero.replace("AOBCUPS", "REOBCUPS") if nombre_fichero else "REOBCUPS_todos"
-    filename = f"{base}.bz2"
+    content, filename = services.generate_reobcups(
+        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
+    )
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
@@ -397,6 +426,7 @@ async def import_cil(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _validar_nombre(file.filename or "", "cil")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
@@ -476,13 +506,13 @@ def bulk_delete_cil(
 @router.post("/cil/generate")
 def generate_cil(
     empresa_id: int = Query(...),
-    nombre_fichero: Optional[str] = Query(None),
+    nombre_fichero: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobcil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
-    base = nombre_fichero.replace("AOBCIL", "REOBCIL") if nombre_fichero else "REOBCIL_todos"
-    filename = f"{base}.bz2"
+    content, filename = services.generate_reobcil(
+        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
+    )
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})

@@ -17,6 +17,22 @@ const TIPO_RUTA: Record<ObjecionTipo, string> = {
   AOBCIL:    "cil",
 };
 
+// AGRECL genera ZIP con .bz2 por ID; el resto genera .bz2 directo
+const TIPO_GENERA_ZIP: Record<ObjecionTipo, boolean> = {
+  AOBAGRECL: true,
+  OBJEINCL:  false,
+  AOBCUPS:   false,
+  AOBCIL:    false,
+};
+
+// AGRECL tiene botón individual por fila
+const TIPO_GENERA_ONE: Record<ObjecionTipo, boolean> = {
+  AOBAGRECL: true,
+  OBJEINCL:  false,
+  AOBCUPS:   false,
+  AOBCIL:    false,
+};
+
 interface FicheroStats {
   nombre_fichero: string;
   created_at: string | null;
@@ -204,6 +220,17 @@ function fmtDate(iso: string | null): string {
   } catch { return iso; }
 }
 
+async function downloadBlob(res: Response, fallbackName: string) {
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename=(.+)/);
+  const filename = match ? match[1] : fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── Iconos ───────────────────────────────────────────────────────────────────
 
 const IconFolder = () => (
@@ -246,26 +273,24 @@ const IconChevron = () => (
 
 export default function ObjecionesSection({ token, currentUser }: ObjecionesSectionProps) {
   const [activeTab, setActiveTab]           = useState<ObjecionTipo>("AOBAGRECL");
-  const [ficheiroActivo, setFicheroActivo]  = useState<string | null>(null); // null = nivel 1
+  const [ficheiroActivo, setFicheroActivo]  = useState<string | null>(null);
 
-  // Nivel 1 — lista de ficheros
   const [ficheros, setFicheros]             = useState<FicheroStats[]>([]);
   const [loadingFicheros, setLoadingFicheros] = useState(false);
 
-  // Nivel 2 — objeciones del fichero
   const [filas, setFilas]                   = useState<ObjecionRow[]>([]);
   const [loadingFilas, setLoadingFilas]     = useState(false);
   const [selectedIds, setSelectedIds]       = useState<Set<number>>(new Set());
 
   const [importing, setImporting]           = useState(false);
   const [generating, setGenerating]         = useState(false);
+  const [generatingOne, setGeneratingOne]   = useState<number | null>(null); // id de fila generando
   const [deleting, setDeleting]             = useState(false);
   const [error, setError]                   = useState<string | null>(null);
 
   const [empresas, setEmpresas]             = useState<EmpresaOption[]>([]);
   const [empresaId, setEmpresaId]           = useState<number | null>(null);
 
-  // Modal
   const [modalOpen, setModalOpen]           = useState(false);
   const [filaIdx, setFilaIdx]               = useState<number | null>(null);
   const [saving, setSaving]                 = useState(false);
@@ -274,16 +299,11 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const tab    = TABS.find((t) => t.id === activeTab)!;
   const ruta   = TIPO_RUTA[activeTab];
 
-  // Limpiar al cambiar tab
   useEffect(() => {
-    setFicheroActivo(null);
-    setFicheros([]);
-    setFilas([]);
-    setSelectedIds(new Set());
-    setError(null);
+    setFicheroActivo(null); setFicheros([]); setFilas([]);
+    setSelectedIds(new Set()); setError(null);
   }, [activeTab]);
 
-  // Limpiar selección al cambiar fichero
   useEffect(() => { setSelectedIds(new Set()); }, [ficheiroActivo]);
 
   // ── Cargar empresas ───────────────────────────────────────────────────────
@@ -304,12 +324,11 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     void fetch_();
   }, [token, currentUser]);
 
-  // ── Cargar lista de ficheros (nivel 1) ────────────────────────────────────
+  // ── Cargar ficheros ───────────────────────────────────────────────────────
 
   const cargarFicheros = useCallback(async () => {
     if (!token || !empresaId) return;
-    setLoadingFicheros(true);
-    setError(null);
+    setLoadingFicheros(true); setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/ficheros?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -325,12 +344,11 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     if (ficheiroActivo === null) cargarFicheros();
   }, [ficheiroActivo, cargarFicheros]);
 
-  // ── Cargar objeciones de un fichero (nivel 2) ─────────────────────────────
+  // ── Cargar filas de un fichero ────────────────────────────────────────────
 
   const cargarFilas = useCallback(async (nombre: string) => {
     if (!token || !empresaId) return;
-    setLoadingFilas(true);
-    setError(null);
+    setLoadingFilas(true); setError(null);
     try {
       const params = new URLSearchParams({ empresa_id: String(empresaId), nombre_fichero: nombre });
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}?${params}`, { headers: getAuthHeaders(token) });
@@ -347,22 +365,24 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     if (ficheiroActivo !== null) cargarFilas(ficheiroActivo);
   }, [ficheiroActivo, cargarFilas]);
 
-  // ── Importar fichero ──────────────────────────────────────────────────────
+  // ── Importar ──────────────────────────────────────────────────────────────
 
   const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !token || !empresaId) return;
-    setImporting(true);
-    setError(null);
+    setImporting(true); setError(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/import?empresa_id=${empresaId}`, {
         method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
       });
-      if (!res.ok) throw new Error(`Error ${res.status} al importar`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+      }
       await cargarFicheros();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error importando fichero");
@@ -372,27 +392,18 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     }
   };
 
-  // ── Generar fichero de respuesta ──────────────────────────────────────────
+  // ── Generar fichero (nivel 1 — por fichero completo) ──────────────────────
 
-  const handleGenerate = async (nombreFichero?: string) => {
+  const handleGenerate = async (nombreFichero: string) => {
     if (!token || !empresaId) return;
-    setGenerating(true);
-    setError(null);
+    setGenerating(true); setError(null);
     try {
-      const params = new URLSearchParams({ empresa_id: String(empresaId) });
-      if (nombreFichero) params.set("nombre_fichero", nombreFichero);
-      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/generate?${params}`, {
-        method: "POST", headers: getAuthHeaders(token),
-      });
-      if (!res.ok) throw new Error(`Error ${res.status} al generar`);
-      const blob = await res.blob();
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const match = disposition.match(/filename=(.+)/);
-      const filename = match ? match[1] : `REOB${activeTab}.bz2`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
+      const params = new URLSearchParams({ empresa_id: String(empresaId), nombre_fichero: nombreFichero });
+      const endpoint = `${API_BASE_URL}/objeciones/${ruta}/generate?${params}`;
+      const res = await fetch(endpoint, { method: "POST", headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const ext = TIPO_GENERA_ZIP[activeTab] ? ".zip" : ".bz2";
+      await downloadBlob(res, `REOB${activeTab}${ext}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error generando fichero");
     } finally {
@@ -400,12 +411,35 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     }
   };
 
+  // ── Generar individual (nivel 2 — por fila, solo AGRECL) ─────────────────
+
+  const handleGenerateOne = async (row: ObjecionRow, nombreFichero: string) => {
+    if (!token || !empresaId) return;
+    const rowId = Number(row.id);
+    setGeneratingOne(rowId); setError(null);
+    try {
+      const params = new URLSearchParams({
+        empresa_id: String(empresaId),
+        objecion_id: String(rowId),
+        nombre_fichero: nombreFichero,
+      });
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/generate-one?${params}`, {
+        method: "POST", headers: getAuthHeaders(token),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      await downloadBlob(res, `REOBAGRECL_${rowId}.bz2`);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error generando fichero individual");
+    } finally {
+      setGeneratingOne(null);
+    }
+  };
+
   // ── Borrar fichero completo ───────────────────────────────────────────────
 
   const handleDeleteFichero = async (nombreFichero: string) => {
     if (!token) return;
-    setDeleting(true);
-    setError(null);
+    setDeleting(true); setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/ficheros/${encodeURIComponent(nombreFichero)}`, {
         method: "DELETE", headers: getAuthHeaders(token),
@@ -419,7 +453,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     }
   };
 
-  // ── Borrado individual de fila ────────────────────────────────────────────
+  // ── Borrado individual ────────────────────────────────────────────────────
 
   const handleDeleteOne = async (id: number) => {
     if (!token) return;
@@ -431,7 +465,6 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setFilas((prev) => prev.filter((r) => Number(r.id) !== id));
       setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
-      // Actualizar stats del fichero activo
       if (ficheiroActivo) await cargarFicheros();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error borrando");
@@ -544,9 +577,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
       <section className="ui-card text-sm">
         <input ref={fileInputRef} type="file" accept=".0,.csv,.txt" style={{ display: "none" }} onChange={handleFileChange} />
         {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
-
         {tabBar}
-
         <div className="flex items-center justify-between gap-2 mb-3" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none" }}>
           <div className="flex items-center gap-2">
             {empresaSelector}
@@ -559,7 +590,6 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
             {loadingFicheros ? "Cargando..." : `${ficheros.length} fichero${ficheros.length !== 1 ? "s" : ""}`}
           </span>
         </div>
-
         <div className="ui-table-wrap">
           <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
             <thead className="ui-thead">
@@ -584,9 +614,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
               ) : (
                 ficheros.map((f) => (
                   <tr key={f.nombre_fichero} className="ui-tr" style={{ cursor: "pointer" }} onClick={() => setFicheroActivo(f.nombre_fichero)}>
-                    <td className="ui-td" style={{ width: 28, color: "var(--text-muted)", textAlign: "center" }}>
-                      <IconChevron />
-                    </td>
+                    <td className="ui-td" style={{ width: 28, color: "var(--text-muted)", textAlign: "center" }}><IconChevron /></td>
                     <td className="ui-td" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "10px" }}>{f.nombre_fichero}</td>
                     <td className="ui-td ui-muted">{fmtDate(f.created_at)}</td>
                     <td className="ui-td" style={{ textAlign: "center", fontWeight: 500 }}>{f.total}</td>
@@ -595,9 +623,16 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                     <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.rechazadas} variant="err" /></td>
                     <td className="ui-td" onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button type="button" onClick={() => handleGenerate(f.nombre_fichero)} disabled={generating} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerate(f.nombre_fichero)}
+                          disabled={generating || (f.aceptadas + f.rechazadas) === 0}
+                          className="ui-btn ui-btn-outline ui-btn-xs"
+                          style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}
+                          title={TIPO_GENERA_ZIP[activeTab] ? "Genera ZIP con un .bz2 por ID (solo con respuesta)" : "Genera fichero REOB"}
+                        >
                           <IconDownload />
-                          Generar REOB
+                          {TIPO_GENERA_ZIP[activeTab] ? "Generar ZIP" : "Generar REOB"}
                         </button>
                         <button type="button" onClick={() => handleDeleteFichero(f.nombre_fichero)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "4px 7px", display: "flex", alignItems: "center" }}>
                           <IconTrash />
@@ -614,34 +649,40 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     );
   }
 
-  // ── NIVEL 2: objeciones del fichero ──────────────────────────────────────
+  // ── NIVEL 2: objeciones del fichero ───────────────────────────────────────
+
+  const generaOne = TIPO_GENERA_ONE[activeTab];
 
   return (
     <section className="ui-card text-sm">
       <input ref={fileInputRef} type="file" accept=".0,.csv,.txt" style={{ display: "none" }} onChange={handleFileChange} />
       {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
-
       {tabBar}
 
       {/* Breadcrumb */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none", borderBottom: "none" }}>
-        <button type="button" onClick={() => setFicheroActivo(null)} className="ui-btn ui-btn-outline ui-btn-xs">
-          ← Volver
-        </button>
-        <span className="ui-muted" style={{ fontSize: 11 }}>
-          {activeTab} ›
-        </span>
-        <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10, color: "var(--text)" }}>
-          {ficheiroActivo}
-        </span>
+        <button type="button" onClick={() => setFicheroActivo(null)} className="ui-btn ui-btn-outline ui-btn-xs">← Volver</button>
+        <span className="ui-muted" style={{ fontSize: 11 }}>{activeTab} ›</span>
+        <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10, color: "var(--text)" }}>{ficheiroActivo}</span>
       </div>
 
       {/* Toolbar nivel 2 */}
       <div className="flex items-center justify-between gap-2 mb-3" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "0.5px solid var(--card-border)" }}>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => handleGenerate(ficheiroActivo)} disabled={generating || filas.length === 0} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <button
+            type="button"
+            onClick={() => handleGenerate(ficheiroActivo!)}
+            disabled={generating || filas.length === 0}
+            className="ui-btn ui-btn-outline ui-btn-xs"
+            style={{ display: "flex", alignItems: "center", gap: 5 }}
+            title={TIPO_GENERA_ZIP[activeTab] ? "Genera ZIP con un .bz2 por ID (solo con respuesta S o N)" : "Genera fichero REOB"}
+          >
             <IconDownload />
-            {generating ? "Generando..." : `Generar REOB${activeTab.replace("AOB", "").replace("OBJE", "OBJE")}`}
+            {generating
+              ? "Generando..."
+              : TIPO_GENERA_ZIP[activeTab]
+              ? "Generar ZIP (por ID)"
+              : `Generar REOB`}
           </button>
           {selectedIds.size > 0 && (
             <button type="button" onClick={handleBulkDelete} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -655,7 +696,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         </span>
       </div>
 
-      {/* Tabla de objeciones */}
+      {/* Tabla */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
@@ -679,6 +720,8 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
               filas.map((row, ri) => {
                 const rowId = Number(row.id);
                 const isSel = selectedIds.has(rowId);
+                const isGeneratingThis = generatingOne === rowId;
+                const tieneRespuesta = row.aceptacion === "S" || row.aceptacion === "N";
                 return (
                   <tr key={ri} className="ui-tr" style={{ background: isSel ? "var(--nav-item-hover)" : undefined }}>
                     <td className="ui-td" style={{ width: 36, padding: "6px 10px", textAlign: "center" }}>
@@ -686,10 +729,27 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                     </td>
                     {tab.columns.map((col) => {
                       if (col.id === "_acciones") return (
-                        <td key="_acciones" className="ui-td" style={{ width: 64, padding: "6px 8px" }}>
+                        <td key="_acciones" className="ui-td" style={{ width: generaOne ? 88 : 64, padding: "6px 8px" }}>
                           <div style={{ display: "flex", gap: 4 }}>
-                            <button type="button" onClick={() => { setFilaIdx(ri); setModalOpen(true); }} className="ui-btn ui-btn-ghost ui-btn-xs" title="Editar" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}><IconEdit /></button>
-                            <button type="button" onClick={() => handleDeleteOne(rowId)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" title="Borrar" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}><IconTrash /></button>
+                            <button type="button" onClick={() => { setFilaIdx(ri); setModalOpen(true); }} className="ui-btn ui-btn-ghost ui-btn-xs" title="Editar respuesta" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
+                              <IconEdit />
+                            </button>
+                            {/* Botón generar individual — solo AGRECL y solo si tiene respuesta */}
+                            {generaOne && (
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateOne(row, ficheiroActivo!)}
+                                disabled={isGeneratingThis || !tieneRespuesta}
+                                className="ui-btn ui-btn-outline ui-btn-xs"
+                                title={tieneRespuesta ? "Generar REOB de esta objeción" : "Debe tener respuesta (S o N)"}
+                                style={{ padding: "4px 6px", display: "flex", alignItems: "center", opacity: tieneRespuesta ? 1 : 0.4 }}
+                              >
+                                {isGeneratingThis ? "…" : <IconDownload />}
+                              </button>
+                            )}
+                            <button type="button" onClick={() => handleDeleteOne(rowId)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" title="Borrar" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
+                              <IconTrash />
+                            </button>
                           </div>
                         </td>
                       );
