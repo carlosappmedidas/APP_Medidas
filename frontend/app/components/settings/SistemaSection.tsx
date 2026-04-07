@@ -8,10 +8,57 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
 type Props = { token: string | null };
 
-type TenantItem   = { id: number; nombre: string };
-type EmpresaItem  = { id: number; nombre: string; tenant_id: number };
+type TenantItem  = { id: number; nombre: string };
+type EmpresaItem = { id: number; nombre: string; tenant_id: number };
+
+type LifecycleStatus = "nueva" | "en_revision" | "resuelta";
+type Severity        = "info" | "warning" | "critical";
+type Category        = "mes_anterior" | "absoluta" | "anio_anterior";
+
+type AlertRow = {
+  id: number;
+  empresa_id: number;
+  empresa_nombre: string;
+  tenant_id: number;
+  alert_code: string;
+  alerta: string;
+  category: Category;
+  anio: number;
+  mes: number;
+  severity: Severity;
+  current_value: number | null;
+  previous_value: number | null;
+  diff_value: number | null;
+  diff_unit: string;
+  threshold_value: number;
+  lifecycle_status: LifecycleStatus;
+  message: string | null;
+};
 
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+const CATEGORY_COLORS: Record<Category, { bg: string; color: string; border: string }> = {
+  mes_anterior:  { bg: "rgba(37,99,235,0.12)",  color: "#60a5fa", border: "rgba(37,99,235,0.3)" },
+  absoluta:      { bg: "rgba(245,158,11,0.12)", color: "#fbbf24", border: "rgba(245,158,11,0.3)" },
+  anio_anterior: { bg: "rgba(5,150,105,0.12)",  color: "#34d399", border: "rgba(5,150,105,0.3)" },
+};
+const SEVERITY_COLORS: Record<Severity, { bg: string; color: string }> = {
+  info:     { bg: "rgba(30,58,95,0.3)",   color: "var(--text-muted)" },
+  warning:  { bg: "rgba(245,158,11,0.2)", color: "#fbbf24" },
+  critical: { bg: "rgba(239,68,68,0.18)", color: "#f87171" },
+};
+const LIFECYCLE_COLORS: Record<LifecycleStatus, { bg: string; color: string }> = {
+  nueva:       { bg: "rgba(239,68,68,0.18)",  color: "#f87171" },
+  en_revision: { bg: "rgba(37,99,235,0.18)",  color: "#60a5fa" },
+  resuelta:    { bg: "rgba(5,150,105,0.18)",  color: "#34d399" },
+};
+const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
+  nueva: "Nueva", en_revision: "En revisión", resuelta: "Resuelta",
+};
+
+function Badge({ bg, color, children }: { bg: string; color: string; children: React.ReactNode }) {
+  return <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 999, fontSize: 10, fontWeight: 500, background: bg, color }}>{children}</span>;
+}
 
 const btnStyle: React.CSSProperties = {
   fontSize: 11, padding: "5px 12px",
@@ -25,6 +72,15 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 6, background: "var(--card-bg)",
   color: "var(--text)", width: "100%",
 };
+const thStyle: React.CSSProperties = {
+  padding: "7px 10px", fontSize: 11, fontWeight: 500,
+  color: "var(--text-muted)", borderBottom: "0.5px solid var(--card-border)",
+  whiteSpace: "nowrap", textAlign: "left",
+};
+const tdStyle: React.CSSProperties = {
+  padding: "8px 10px", fontSize: 12, color: "var(--text)",
+  borderBottom: "0.5px solid var(--card-border)", verticalAlign: "middle",
+};
 
 // ── Panel de gestión de alertas ───────────────────────────────────────────
 
@@ -37,11 +93,12 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
   const [mes,       setMes]       = useState("all");
   const [lifecycle, setLifecycle] = useState("all");
 
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState<string | null>(null);
-  const [ok,        setOk]        = useState<string | null>(null);
+  const [alerts,        setAlerts]        = useState<AlertRow[]>([]);
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
 
-  // Confirmación explícita antes de ejecutar operaciones destructivas
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+  const [ok,      setOk]      = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "reset" | "delete">(null);
 
   // ── Cargar tenants ─────────────────────────────────────────────────
@@ -57,12 +114,9 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
   const loadEmpresas = useCallback(async (tid: string) => {
     if (!token || tid === "none") { setEmpresas([]); return; }
     try {
-      const res = await fetch(`${API_BASE_URL}/empresas/?solo_activas=false`, {
-        headers: getAuthHeaders(token),
-      });
+      const res = await fetch(`${API_BASE_URL}/empresas/?solo_activas=false`, { headers: getAuthHeaders(token) });
       if (!res.ok) { setEmpresas([]); return; }
       const json = await res.json();
-      // Filtrar por tenant
       setEmpresas(
         (Array.isArray(json) ? json : [])
           .filter((e: any) => String(e.tenant_id) === tid)
@@ -77,7 +131,27 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
     loadEmpresas(tenantId);
   }, [tenantId, loadEmpresas]);
 
-  // ── Construir payload base ─────────────────────────────────────────
+  // ── Cargar alertas según filtros activos ───────────────────────────
+  const loadAlerts = useCallback(async () => {
+    if (!token || tenantId === "none") { setAlerts([]); return; }
+    setLoadingAlerts(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("tenant_id", tenantId);
+      if (empresaId !== "all") params.set("empresa_id", empresaId);
+      if (anio      !== "all") params.set("anio",        anio);
+      if (mes       !== "all") params.set("mes",          mes);
+      if (lifecycle !== "all") params.set("lifecycle_status", lifecycle);
+      const res = await fetch(`${API_BASE_URL}/alerts/results?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      setAlerts(await res.json());
+    } catch { setAlerts([]); }
+    finally { setLoadingAlerts(false); }
+  }, [token, tenantId, empresaId, anio, mes, lifecycle]);
+
+  useEffect(() => { loadAlerts(); }, [loadAlerts]);
+
+  // ── Payload y descripción ──────────────────────────────────────────
   const buildPayload = () => ({
     tenant_id:        Number(tenantId),
     empresa_id:       empresaId !== "all" ? Number(empresaId) : undefined,
@@ -86,17 +160,16 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
     lifecycle_status: lifecycle !== "all" ? lifecycle          : undefined,
   });
 
-  // ── Descripción de la operación ────────────────────────────────────
   const scopeLabel = () => {
     const t = tenants.find((t) => String(t.id) === tenantId)?.nombre ?? `Tenant ${tenantId}`;
-    const e = empresaId !== "all"
-      ? empresas.find((e) => String(e.id) === empresaId)?.nombre ?? `Empresa ${empresaId}`
-      : "todas las empresas";
+    const e = empresaId !== "all" ? empresas.find((e) => String(e.id) === empresaId)?.nombre ?? `Empresa ${empresaId}` : "todas las empresas";
     const a = anio !== "all" ? anio : "todos los años";
     const m = mes  !== "all" ? MESES[Number(mes) - 1] : "todos los meses";
     const l = lifecycle !== "all" ? `estado "${lifecycle}"` : "todos los estados";
     return `${t} · ${e} · ${a} · ${m} · ${l}`;
   };
+
+  const aniosOpciones = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
 
   // ── Ejecutar reset ─────────────────────────────────────────────────
   const handleReset = async () => {
@@ -111,6 +184,7 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const json = await res.json();
       setOk(`✓ Reiniciadas ${json.alertas_reiniciadas} alertas a "nueva" · ${scopeLabel()}`);
+      await loadAlerts();
     } catch (e: any) { setError(e.message ?? "Error al reiniciar."); }
     finally { setLoading(false); }
   };
@@ -128,11 +202,19 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const json = await res.json();
       setOk(`✓ Borradas ${json.alertas_borradas} alertas · ${scopeLabel()}`);
+      await loadAlerts();
     } catch (e: any) { setError(e.message ?? "Error al borrar."); }
     finally { setLoading(false); }
   };
 
-  const aniosOpciones = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
+  // ── Stats del listado ──────────────────────────────────────────────
+  const stats = {
+    total:       alerts.length,
+    nuevas:      alerts.filter((a) => a.lifecycle_status === "nueva").length,
+    en_revision: alerts.filter((a) => a.lifecycle_status === "en_revision").length,
+    resueltas:   alerts.filter((a) => a.lifecycle_status === "resuelta").length,
+    criticas:    alerts.filter((a) => a.severity === "critical").length,
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -152,15 +234,13 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
 
       {/* Filtros */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 8 }}>
-        {/* Tenant */}
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Tenant *</div>
-          <select style={inputStyle} value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+          <select style={inputStyle} value={tenantId} onChange={(e) => { setTenantId(e.target.value); setOk(null); setError(null); }}>
             <option value="none">Selecciona tenant</option>
             {tenants.map((t) => <option key={t.id} value={String(t.id)}>{t.nombre}</option>)}
           </select>
         </div>
-        {/* Empresa */}
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Empresa</div>
           <select style={inputStyle} value={empresaId} onChange={(e) => setEmpresaId(e.target.value)} disabled={tenantId === "none"}>
@@ -168,7 +248,6 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
             {empresas.map((e) => <option key={e.id} value={String(e.id)}>{e.nombre}</option>)}
           </select>
         </div>
-        {/* Año */}
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Año</div>
           <select style={inputStyle} value={anio} onChange={(e) => setAnio(e.target.value)}>
@@ -176,7 +255,6 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
             {aniosOpciones.map((a) => <option key={a} value={String(a)}>{a}</option>)}
           </select>
         </div>
-        {/* Mes */}
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Mes</div>
           <select style={inputStyle} value={mes} onChange={(e) => setMes(e.target.value)}>
@@ -184,7 +262,6 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
             {MESES.map((m, i) => <option key={i} value={String(i + 1)}>{m}</option>)}
           </select>
         </div>
-        {/* Estado */}
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Estado</div>
           <select style={inputStyle} value={lifecycle} onChange={(e) => setLifecycle(e.target.value)}>
@@ -196,32 +273,30 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
         </div>
       </div>
 
-      {/* Scope actual */}
+      {/* Scope + botones */}
       {tenantId !== "none" && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 10px", background: "var(--field-bg-soft)", borderRadius: 6 }}>
-          Alcance: <strong style={{ color: "var(--text)" }}>{scopeLabel()}</strong>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", flex: 1, padding: "6px 10px", background: "var(--field-bg-soft)", borderRadius: 6 }}>
+            Alcance: <strong style={{ color: "var(--text)" }}>{scopeLabel()}</strong>
+          </div>
+          <button
+            style={{ ...btnStyle, background: "rgba(37,99,235,0.15)", color: "#60a5fa", borderColor: "rgba(37,99,235,0.3)" }}
+            disabled={loading}
+            onClick={() => setConfirm("reset")}
+          >
+            Reiniciar a "nueva"
+          </button>
+          <button
+            style={{ ...btnStyle, background: "rgba(239,68,68,0.15)", color: "#f87171", borderColor: "rgba(239,68,68,0.3)" }}
+            disabled={loading}
+            onClick={() => setConfirm("delete")}
+          >
+            Borrar alertas
+          </button>
         </div>
       )}
 
-      {/* Botones de acción */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          style={{ ...btnStyle, background: "rgba(37,99,235,0.15)", color: "#60a5fa", borderColor: "rgba(37,99,235,0.3)" }}
-          disabled={tenantId === "none" || loading}
-          onClick={() => setConfirm("reset")}
-        >
-          Reiniciar alertas a "nueva"
-        </button>
-        <button
-          style={{ ...btnStyle, background: "rgba(239,68,68,0.15)", color: "#f87171", borderColor: "rgba(239,68,68,0.3)" }}
-          disabled={tenantId === "none" || loading}
-          onClick={() => setConfirm("delete")}
-        >
-          Borrar alertas
-        </button>
-      </div>
-
-      {/* Panel de confirmación */}
+      {/* Confirmación */}
       {confirm && (
         <div style={{
           padding: "14px 16px",
@@ -234,8 +309,8 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
             {confirm === "delete"
-              ? `Se borrarán físicamente las alertas (y sus comentarios) que coincidan con: ${scopeLabel()}. Esta operación no se puede deshacer.`
-              : `Se reiniciarán a "nueva" las alertas (borrando su historial de comentarios) que coincidan con: ${scopeLabel()}.`}
+              ? `Se borrarán físicamente ${stats.total} alertas (y sus comentarios). Esta operación no se puede deshacer.`
+              : `Se reiniciarán ${stats.total} alertas a "nueva" borrando su historial de comentarios.`}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -245,12 +320,89 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
             >
               {loading ? "Ejecutando..." : confirm === "delete" ? "Sí, borrar" : "Sí, reiniciar"}
             </button>
-            <button style={btnStyle} onClick={() => setConfirm(null)} disabled={loading}>
-              Cancelar
-            </button>
+            <button style={btnStyle} onClick={() => setConfirm(null)} disabled={loading}>Cancelar</button>
           </div>
         </div>
       )}
+
+      {/* ── Listado de alertas ── */}
+      {tenantId !== "none" && (
+        <div style={{ border: "0.5px solid var(--card-border)", borderRadius: 10, overflow: "hidden", background: "var(--card-bg)" }}>
+          {/* Stats mini */}
+          <div style={{ padding: "10px 14px", borderBottom: "0.5px solid var(--card-border)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {[
+              { label: "Total",       value: stats.total,       color: "var(--text)" },
+              { label: "Nuevas",      value: stats.nuevas,      color: "#f87171" },
+              { label: "En revisión", value: stats.en_revision, color: "#60a5fa" },
+              { label: "Resueltas",   value: stats.resueltas,   color: "#34d399" },
+              { label: "Críticas",    value: stats.criticas,    color: "#f87171" },
+            ].map((s) => (
+              <div key={s.label} style={{ background: "var(--field-bg-soft)", borderRadius: 7, padding: "5px 10px", textAlign: "center", minWidth: 54 }}>
+                <div style={{ fontSize: 16, fontWeight: 500, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.label}</div>
+              </div>
+            ))}
+            {loadingAlerts && <div style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8 }}>Cargando...</div>}
+          </div>
+
+          {/* Tabla */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Empresa</th>
+                  <th style={thStyle}>Periodo</th>
+                  <th style={thStyle}>Regla</th>
+                  <th style={thStyle}>Categoría</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Valor actual</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Diferencia</th>
+                  <th style={thStyle}>Severidad</th>
+                  <th style={thStyle}>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!loadingAlerts && alerts.length === 0 && (
+                  <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)", padding: 20 }}>
+                    {tenantId === "none" ? "Selecciona un tenant para ver las alertas." : "No hay alertas con los filtros actuales."}
+                  </td></tr>
+                )}
+                {alerts.map((a) => {
+                  const cat = CATEGORY_COLORS[a.category] ?? CATEGORY_COLORS["mes_anterior"];
+                  const sev = SEVERITY_COLORS[a.severity] ?? SEVERITY_COLORS["info"];
+                  const lc  = LIFECYCLE_COLORS[a.lifecycle_status] ?? LIFECYCLE_COLORS["nueva"];
+                  const isAbs = a.category === "absoluta";
+                  return (
+                    <tr key={a.id} style={{ cursor: "default" }}>
+                      <td style={tdStyle}><span style={{ fontWeight: 500 }}>{a.empresa_nombre}</span></td>
+                      <td style={tdStyle}>{MESES[(a.mes ?? 1) - 1]} {a.anio}</td>
+                      <td style={{ ...tdStyle, maxWidth: 200 }}>
+                        <div style={{ fontWeight: 500 }}>{a.alerta}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>{a.alert_code}</div>
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10, fontWeight: 500, background: cat.bg, color: cat.color, border: `0.5px solid ${cat.border}`, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          {a.category === "mes_anterior" ? "mes ant." : a.category === "absoluta" ? "absoluta" : "año ant."}
+                        </span>
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {a.current_value != null ? `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(a.current_value)} ${a.diff_unit === "%" ? "%" : ""}` : "—"}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {isAbs
+                          ? `umbral ${a.threshold_value} ${a.diff_unit}`
+                          : a.diff_value != null ? `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(a.diff_value)} ${a.diff_unit}` : "—"}
+                      </td>
+                      <td style={tdStyle}><Badge {...sev}>{a.severity === "critical" ? "Crítica" : a.severity === "warning" ? "Warning" : "Info"}</Badge></td>
+                      <td style={tdStyle}><Badge {...lc}>{LIFECYCLE_LABELS[a.lifecycle_status]}</Badge></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -263,7 +415,7 @@ export default function SistemaSection({ token }: Props) {
 
       <AccordionCard
         title="Gestión de alertas · Sistema"
-        subtitle="Reiniciar o borrar alertas por tenant, empresa y periodo. Solo superusuario."
+        subtitle="Ver, reiniciar o borrar alertas por tenant, empresa y periodo. Solo superusuario."
         defaultOpen={false}
       >
         <AlertsAdminPanel token={token} />
