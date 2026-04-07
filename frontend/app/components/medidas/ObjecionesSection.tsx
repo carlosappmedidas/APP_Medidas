@@ -270,7 +270,7 @@ const IconChevron = () => (
   </svg>
 );
 
-// ─── Estilos de panel (estilo Configuración) ──────────────────────────────────
+// ─── Estilos panel (estilo Configuración) ─────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
   background: "var(--card-bg)",
@@ -280,33 +280,21 @@ const panelStyle: React.CSSProperties = {
   marginBottom: "10px",
 };
 const panelHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "14px 20px",
-  cursor: "pointer",
-  userSelect: "none",
+  display: "flex", alignItems: "center", justifyContent: "space-between",
+  padding: "14px 20px", cursor: "pointer", userSelect: "none",
 };
 const panelTitleStyle: React.CSSProperties = {
-  fontSize: "11px",
-  fontWeight: 600,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--text)",
+  fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em",
+  textTransform: "uppercase", color: "var(--text)",
 };
 const panelDescStyle: React.CSSProperties = {
-  fontSize: "11px",
-  color: "var(--text-muted)",
-  marginTop: 3,
+  fontSize: "11px", color: "var(--text-muted)", marginTop: 3,
 };
 
 // ─── Sub-componente Dashboard ─────────────────────────────────────────────────
 
 function DashboardPanel({
-  dash,
-  loading,
-  empresaFiltroId,
-  empresas,
+  dash, loading, empresaFiltroId, empresas,
 }: {
   dash: DashData | null;
   loading: boolean;
@@ -317,13 +305,8 @@ function DashboardPanel({
   const pend  = dash?.pendientes ?? 0;
   const ok    = dash?.aceptadas ?? 0;
   const err   = dash?.rechazadas ?? 0;
-
-  const pct = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
-
-  const empresaActiva = empresaFiltroId
-    ? empresas.find((e) => e.id === empresaFiltroId)
-    : null;
-
+  const pct   = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
+  const empresaActiva = empresaFiltroId ? empresas.find((e) => e.id === empresaFiltroId) : null;
   const maxTipo = Math.max(1, ...(dash?.por_tipo ?? []).map((t) => t.total));
 
   return (
@@ -332,7 +315,6 @@ function DashboardPanel({
         <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "12px 0" }}>Cargando resumen...</div>
       ) : (
         <>
-          {/* KPIs */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8, marginBottom: 14 }}>
             {[
               { label: "Total objeciones", val: total, sub: `${dash?.por_tipo.length ?? 0} tipos · ${dash?.por_empresa.length ?? 0} empresa${(dash?.por_empresa.length ?? 0) !== 1 ? "s" : ""}`, color: "var(--text)", bar: null },
@@ -353,10 +335,7 @@ function DashboardPanel({
             ))}
           </div>
 
-          {/* Por tipo + por empresa */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 10 }}>
-
-            {/* Por tipo */}
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
               <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Por tipo de objeción</div>
               {(dash?.por_tipo ?? []).length === 0 ? (
@@ -376,7 +355,6 @@ function DashboardPanel({
               )}
             </div>
 
-            {/* Por empresa */}
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
               <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Por empresa</div>
               {(dash?.por_empresa ?? []).length === 0 ? (
@@ -418,44 +396,36 @@ function DashboardPanel({
 
 export default function ObjecionesSection({ token, currentUser }: ObjecionesSectionProps) {
 
-  // ── Estados UI paneles ────────────────────────────────────────────────────
   const [dashOpen, setDashOpen]   = useState(true);
   const [gestOpen, setGestOpen]   = useState(false);
 
-  // ── Dashboard ─────────────────────────────────────────────────────────────
   const [dash, setDash]           = useState<DashData | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
 
-  // ── Empresa filtro global (afecta dashboard + tabla) ─────────────────────
-  const [empresas, setEmpresas]       = useState<EmpresaOption[]>([]);
-  const [empresaFiltroId, setEmpresaFiltroId] = useState<number | null>(null); // null = Todas
+  const [empresas, setEmpresas]           = useState<EmpresaOption[]>([]);
+  const [empresaFiltroId, setEmpresaFiltroId] = useState<number | null>(null);
 
-  // ── Gestión ───────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab]     = useState<ObjecionTipo>("AOBAGRECL");
+  const [activeTab, setActiveTab]         = useState<ObjecionTipo>("AOBAGRECL");
   const [ficheiroActivo, setFicheroActivo] = useState<string | null>(null);
-  const [ficheros, setFicheros]       = useState<FicheroStats[]>([]);
+  const [ficheros, setFicheros]           = useState<FicheroStats[]>([]);
   const [loadingFicheros, setLoadingFicheros] = useState(false);
-  const [filas, setFilas]             = useState<ObjecionRow[]>([]);
-  const [loadingFilas, setLoadingFilas] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [importing, setImporting]     = useState(false);
-  const [generating, setGenerating]   = useState(false);
+  const [filas, setFilas]                 = useState<ObjecionRow[]>([]);
+  const [loadingFilas, setLoadingFilas]   = useState(false);
+  const [selectedIds, setSelectedIds]     = useState<Set<number>>(new Set());
+  const [importing, setImporting]         = useState(false);
+  const [generating, setGenerating]       = useState(false);
   const [generatingOne, setGeneratingOne] = useState<number | null>(null);
-  const [deleting, setDeleting]       = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const [modalOpen, setModalOpen]     = useState(false);
-  const [filaIdx, setFilaIdx]         = useState<number | null>(null);
-  const [saving, setSaving]           = useState(false);
+  const [deleting, setDeleting]           = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [modalOpen, setModalOpen]         = useState(false);
+  const [filaIdx, setFilaIdx]             = useState<number | null>(null);
+  const [saving, setSaving]               = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const tab  = TABS.find((t) => t.id === activeTab)!;
-  const ruta = TIPO_RUTA[activeTab];
-
-  // empresaId efectivo para la gestión: si filtro = null, usa primera empresa disponible
-  // pero permitimos importar solo cuando hay empresa seleccionada (no "Todas")
+  const fileInputRef  = useRef<HTMLInputElement>(null);
+  const tab           = TABS.find((t) => t.id === activeTab)!;
+  const ruta          = TIPO_RUTA[activeTab];
   const empresaIdGestion = empresaFiltroId;
 
-  // ── Limpiar al cambiar tab ────────────────────────────────────────────────
   useEffect(() => {
     setFicheroActivo(null); setFicheros([]); setFilas([]);
     setSelectedIds(new Set()); setError(null);
@@ -464,6 +434,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   useEffect(() => { setSelectedIds(new Set()); }, [ficheiroActivo]);
 
   // ── Cargar empresas ───────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!token) return;
     const fetch_ = async () => {
@@ -472,13 +443,13 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         if (!res.ok) return;
         const data: EmpresaOption[] = await res.json();
         setEmpresas(data);
-        // Por defecto: "Todas" (null) — no preseleccionamos empresa
       } catch { /* silencioso */ }
     };
     void fetch_();
   }, [token, currentUser]);
 
   // ── Cargar dashboard ──────────────────────────────────────────────────────
+
   const cargarDash = useCallback(async () => {
     if (!token) return;
     setDashLoading(true);
@@ -495,6 +466,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   useEffect(() => { cargarDash(); }, [cargarDash]);
 
   // ── Cargar ficheros ───────────────────────────────────────────────────────
+
   const cargarFicheros = useCallback(async () => {
     if (!token || !empresaIdGestion) return;
     setLoadingFicheros(true); setError(null);
@@ -512,6 +484,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   }, [ficheiroActivo, cargarFicheros]);
 
   // ── Cargar filas ──────────────────────────────────────────────────────────
+
   const cargarFilas = useCallback(async (nombre: string) => {
     if (!token || !empresaIdGestion) return;
     setLoadingFilas(true); setError(null);
@@ -530,6 +503,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   }, [ficheiroActivo, cargarFilas]);
 
   // ── Importar ──────────────────────────────────────────────────────────────
+
   const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -557,6 +531,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   };
 
   // ── Generar ───────────────────────────────────────────────────────────────
+
   const handleGenerate = async (nombreFichero: string) => {
     if (!token || !empresaIdGestion) return;
     setGenerating(true); setError(null);
@@ -575,7 +550,11 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     const rowId = Number(row.id);
     setGeneratingOne(rowId); setError(null);
     try {
-      const params = new URLSearchParams({ empresa_id: String(empresaIdGestion), objecion_id: String(rowId), nombre_fichero: nombreFichero });
+      const params = new URLSearchParams({
+        empresa_id: String(empresaIdGestion),
+        objecion_id: String(rowId),
+        nombre_fichero: nombreFichero,
+      });
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/generate-one?${params}`, { method: "POST", headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       await downloadBlob(res, `REOBAGRECL_${rowId}.bz2`);
@@ -584,12 +563,17 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     } finally { setGeneratingOne(null); }
   };
 
-  // ── Borrar fichero ────────────────────────────────────────────────────────
+  // ── Borrar fichero completo ───────────────────────────────────────────────
+
   const handleDeleteFichero = async (nombreFichero: string) => {
-    if (!token) return;
+    if (!token || !empresaIdGestion) return;
     setDeleting(true); setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/ficheros/${encodeURIComponent(nombreFichero)}`, { method: "DELETE", headers: getAuthHeaders(token) });
+      // empresa_id como query param — el backend verifica acceso
+      const res = await fetch(
+        `${API_BASE_URL}/objeciones/${ruta}/ficheros/${encodeURIComponent(nombreFichero)}?empresa_id=${empresaIdGestion}`,
+        { method: "DELETE", headers: getAuthHeaders(token) },
+      );
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setFicheros((prev) => prev.filter((f) => f.nombre_fichero !== nombreFichero));
       await cargarDash();
@@ -599,11 +583,16 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   };
 
   // ── Borrado individual ────────────────────────────────────────────────────
+
   const handleDeleteOne = async (id: number) => {
-    if (!token) return;
+    if (!token || !empresaIdGestion) return;
     setDeleting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/${id}`, { method: "DELETE", headers: getAuthHeaders(token) });
+      // empresa_id como query param — el backend verifica que la fila pertenece a esta empresa
+      const res = await fetch(
+        `${API_BASE_URL}/objeciones/${ruta}/${id}?empresa_id=${empresaIdGestion}`,
+        { method: "DELETE", headers: getAuthHeaders(token) },
+      );
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setFilas((prev) => prev.filter((r) => Number(r.id) !== id));
       setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
@@ -615,14 +604,16 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   };
 
   // ── Borrado en bloque ─────────────────────────────────────────────────────
+
   const handleBulkDelete = async () => {
-    if (!token || selectedIds.size === 0) return;
+    if (!token || selectedIds.size === 0 || !empresaIdGestion) return;
     setDeleting(true);
     try {
+      // empresa_id en el body — el backend verifica que todos los IDs pertenecen a esta empresa
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/bulk-delete`, {
         method: "POST",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+        body: JSON.stringify({ ids: Array.from(selectedIds), empresa_id: empresaIdGestion }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setFilas((prev) => prev.filter((r) => !selectedIds.has(Number(r.id))));
@@ -635,6 +626,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   };
 
   // ── Selección ─────────────────────────────────────────────────────────────
+
   const toggleSelect = (id: number) => setSelectedIds((prev) => {
     const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
   });
@@ -646,19 +638,24 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const someSelected = selectedIds.size > 0 && selectedIds.size < filas.length;
 
   // ── Modal ─────────────────────────────────────────────────────────────────
+
   const filaSeleccionada = filaIdx !== null ? filas[filaIdx] : null;
   const modalConfig: ObjecionDetalleConfig = { tipo: activeTab, camposLectura: tab.camposLectura };
 
   const handleSave = async (respuesta: { aceptacion: string; motivo_no_aceptacion: string; comentario_respuesta: string }) => {
-    if (filaIdx === null || !token) return;
+    if (filaIdx === null || !token || !empresaIdGestion) return;
     setSaving(true);
     const fila = filas[filaIdx];
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/${fila.id}`, {
-        method: "PATCH",
-        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify(respuesta),
-      });
+      // empresa_id como query param — el backend verifica que la objeción pertenece a esta empresa
+      const res = await fetch(
+        `${API_BASE_URL}/objeciones/${ruta}/${fila.id}?empresa_id=${empresaIdGestion}`,
+        {
+          method: "PATCH",
+          headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+          body: JSON.stringify(respuesta),
+        },
+      );
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const actualizada: ObjecionRow = await res.json();
       setFilas((prev) => { const c = [...prev]; c[filaIdx] = actualizada; return c; });
@@ -670,12 +667,14 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     } finally { setSaving(false); }
   };
 
-  // ── Descripción del dashboard para el header colapsado ───────────────────
+  // ── Descripción dashboard ─────────────────────────────────────────────────
+
   const dashDesc = empresaFiltroId
     ? `${empresas.find((e) => e.id === empresaFiltroId)?.nombre ?? "Empresa"} · ${dash?.total ?? 0} objeciones · ${dash?.pendientes ?? 0} pendientes`
     : `Todas las empresas · ${dash?.total ?? 0} objeciones · ${dash?.pendientes ?? 0} pendientes`;
 
-  // ── Tabs bar ──────────────────────────────────────────────────────────────
+  // ── Tabs con contadores del dashboard ────────────────────────────────────
+
   const tabCounts: Record<ObjecionTipo, number> = { AOBAGRECL: 0, OBJEINCL: 0, AOBCUPS: 0, AOBCIL: 0 };
   if (dash) {
     for (const t of dash.por_tipo) {
@@ -728,22 +727,13 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
             <div style={panelTitleStyle}>Resumen de objeciones</div>
             <div style={panelDescStyle}>{dashDesc}</div>
           </div>
-          <button
-            type="button"
-            className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={(e) => { e.stopPropagation(); setDashOpen((v) => !v); }}
-          >
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+            onClick={(e) => { e.stopPropagation(); setDashOpen((v) => !v); }}>
             {dashOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
-
         {dashOpen && (
-          <DashboardPanel
-            dash={dash}
-            loading={dashLoading}
-            empresaFiltroId={empresaFiltroId}
-            empresas={empresas}
-          />
+          <DashboardPanel dash={dash} loading={dashLoading} empresaFiltroId={empresaFiltroId} empresas={empresas} />
         )}
       </div>
 
@@ -754,11 +744,8 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
             <div style={panelTitleStyle}>Gestión de ficheros y respuestas</div>
             <div style={panelDescStyle}>Importar, revisar y generar ficheros REOB por tipo</div>
           </div>
-          <button
-            type="button"
-            className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={(e) => { e.stopPropagation(); setGestOpen((v) => !v); }}
-          >
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+            onClick={(e) => { e.stopPropagation(); setGestOpen((v) => !v); }}>
             {gestOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
@@ -766,7 +753,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         {gestOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "14px 20px" }}>
 
-            {/* Selector de empresa — afecta dashboard + tabla */}
+            {/* Selector empresa */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Empresa:</span>
               <select
@@ -775,9 +762,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                 onChange={(e) => {
                   const val = e.target.value;
                   setEmpresaFiltroId(val === "" ? null : Number(val));
-                  setFicheroActivo(null);
-                  setFicheros([]);
-                  setFilas([]);
+                  setFicheroActivo(null); setFicheros([]); setFilas([]);
                 }}
                 style={{ fontSize: "11px", padding: "4px 8px", minWidth: 160, height: 28 }}
               >
@@ -790,21 +775,15 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
               </select>
             </div>
 
-            {/* Vista nivel 1: lista de ficheros */}
+            {/* ── NIVEL 1: lista de ficheros ── */}
             {ficheiroActivo === null && (
               <>
                 {tabBar}
-
                 <div className="flex items-center justify-between gap-2" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none", marginBottom: 1 }}>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleImportClick}
-                      disabled={importing || !empresaIdGestion}
-                      className="ui-btn ui-btn-outline ui-btn-xs"
-                      style={{ display: "flex", alignItems: "center", gap: 5 }}
-                      title={!empresaIdGestion ? "Selecciona una empresa para importar" : ""}
-                    >
+                    <button type="button" onClick={handleImportClick} disabled={importing || !empresaIdGestion}
+                      className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}
+                      title={!empresaIdGestion ? "Selecciona una empresa para importar" : ""}>
                       <IconFolder />
                       {importing ? "Importando..." : tab.importLabel}
                     </button>
@@ -833,11 +812,9 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                     </thead>
                     <tbody>
                       {!empresaIdGestion ? (
-                        <tr className="ui-tr">
-                          <td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
-                            Selecciona una empresa para ver sus ficheros
-                          </td>
-                        </tr>
+                        <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                          Selecciona una empresa para ver sus ficheros
+                        </td></tr>
                       ) : loadingFicheros ? (
                         <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                       ) : ficheros.length === 0 ? (
@@ -856,23 +833,16 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                             <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.rechazadas} variant="err" /></td>
                             <td className="ui-td" onClick={(e) => e.stopPropagation()}>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleGenerate(f.nombre_fichero)}
+                                <button type="button" onClick={() => handleGenerate(f.nombre_fichero)}
                                   disabled={generating || (f.aceptadas + f.rechazadas) === 0}
                                   className="ui-btn ui-btn-outline ui-btn-xs"
-                                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}
-                                >
+                                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
                                   <IconDownload />
                                   {TIPO_GENERA_ZIP[activeTab] ? "Generar ZIP" : "Generar REOB"}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteFichero(f.nombre_fichero)}
-                                  disabled={deleting}
-                                  className="ui-btn ui-btn-danger ui-btn-xs"
-                                  style={{ padding: "4px 7px", display: "flex", alignItems: "center" }}
-                                >
+                                <button type="button" onClick={() => handleDeleteFichero(f.nombre_fichero)}
+                                  disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs"
+                                  style={{ padding: "4px 7px", display: "flex", alignItems: "center" }}>
                                   <IconTrash />
                                 </button>
                               </div>
@@ -886,7 +856,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
               </>
             )}
 
-            {/* Vista nivel 2: objeciones del fichero */}
+            {/* ── NIVEL 2: objeciones del fichero ── */}
             {ficheiroActivo !== null && (
               <>
                 {tabBar}
@@ -901,18 +871,17 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                 {/* Toolbar nivel 2 */}
                 <div className="flex items-center justify-between gap-2" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "0.5px solid var(--card-border)", marginBottom: 1 }}>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleGenerate(ficheiroActivo)}
+                    <button type="button" onClick={() => handleGenerate(ficheiroActivo)}
                       disabled={generating || filas.length === 0}
                       className="ui-btn ui-btn-outline ui-btn-xs"
-                      style={{ display: "flex", alignItems: "center", gap: 5 }}
-                    >
+                      style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <IconDownload />
                       {generating ? "Generando..." : TIPO_GENERA_ZIP[activeTab] ? "Generar ZIP (por ID)" : "Generar REOB"}
                     </button>
                     {selectedIds.size > 0 && (
-                      <button type="button" onClick={handleBulkDelete} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <button type="button" onClick={handleBulkDelete} disabled={deleting}
+                        className="ui-btn ui-btn-danger ui-btn-xs"
+                        style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <IconTrash />
                         {deleting ? "Borrando..." : `Borrar ${selectedIds.size} seleccionada${selectedIds.size !== 1 ? "s" : ""}`}
                       </button>
@@ -929,7 +898,10 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                     <thead className="ui-thead">
                       <tr>
                         <th className="ui-th" style={{ width: 36, padding: "8px 10px", textAlign: "center" }}>
-                          <input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={toggleSelectAll} style={{ cursor: "pointer", accentColor: "#1a2332" }} />
+                          <input type="checkbox" checked={allSelected}
+                            ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                            onChange={toggleSelectAll}
+                            style={{ cursor: "pointer", accentColor: "#1a2332" }} />
                         </th>
                         {tab.columns.map((col) => (
                           <th key={col.id} className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")} style={{ whiteSpace: "nowrap" }}>
@@ -953,19 +925,32 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                           return (
                             <tr key={ri} className="ui-tr" style={{ background: isSel ? "var(--nav-item-hover)" : undefined }}>
                               <td className="ui-td" style={{ width: 36, padding: "6px 10px", textAlign: "center" }}>
-                                <input type="checkbox" checked={isSel} onChange={() => toggleSelect(rowId)} style={{ cursor: "pointer", accentColor: "#1a2332" }} />
+                                <input type="checkbox" checked={isSel} onChange={() => toggleSelect(rowId)}
+                                  style={{ cursor: "pointer", accentColor: "#1a2332" }} />
                               </td>
                               {tab.columns.map((col) => {
                                 if (col.id === "_acciones") return (
                                   <td key="_acciones" className="ui-td" style={{ width: generaOne ? 88 : 64, padding: "6px 8px" }}>
                                     <div style={{ display: "flex", gap: 4 }}>
-                                      <button type="button" onClick={() => { setFilaIdx(ri); setModalOpen(true); }} className="ui-btn ui-btn-ghost ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}><IconEdit /></button>
+                                      <button type="button" onClick={() => { setFilaIdx(ri); setModalOpen(true); }}
+                                        className="ui-btn ui-btn-ghost ui-btn-xs"
+                                        style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
+                                        <IconEdit />
+                                      </button>
                                       {generaOne && (
-                                        <button type="button" onClick={() => handleGenerateOne(row, ficheiroActivo)} disabled={isGeneratingThis || !tieneRespuesta} className="ui-btn ui-btn-outline ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center", opacity: tieneRespuesta ? 1 : 0.4 }}>
+                                        <button type="button"
+                                          onClick={() => handleGenerateOne(row, ficheiroActivo)}
+                                          disabled={isGeneratingThis || !tieneRespuesta}
+                                          className="ui-btn ui-btn-outline ui-btn-xs"
+                                          style={{ padding: "4px 6px", display: "flex", alignItems: "center", opacity: tieneRespuesta ? 1 : 0.4 }}>
                                           {isGeneratingThis ? "…" : <IconDownload />}
                                         </button>
                                       )}
-                                      <button type="button" onClick={() => handleDeleteOne(rowId)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}><IconTrash /></button>
+                                      <button type="button" onClick={() => handleDeleteOne(rowId)}
+                                        disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs"
+                                        style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
+                                        <IconTrash />
+                                      </button>
                                     </div>
                                   </td>
                                 );

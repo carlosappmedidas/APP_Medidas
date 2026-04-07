@@ -57,7 +57,7 @@ def _csv_to_bz2(rows_data: List[List]) -> bytes:
 
 def _parse_nombre_agrecl(nombre: str) -> Tuple[str, str, str]:
     """AOBAGRECL_DDDD_AAAAMM_FFFFFFFF.0 → (dddd, aaaamm, fecha)"""
-    base   = nombre.replace(".0", "").replace(".bz2", "")
+    base = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
     aaaamm = partes[2] if len(partes) > 2 else "000000"
@@ -67,7 +67,7 @@ def _parse_nombre_agrecl(nombre: str) -> Tuple[str, str, str]:
 
 def _parse_nombre_incl(nombre: str) -> Tuple[str, str, str, str]:
     """OBJEINCL_CCCC_DDDD_AAAAMM_FFFFFFFF.0 → (cccc, dddd, aaaamm, fecha)"""
-    base   = nombre.replace(".0", "").replace(".bz2", "")
+    base = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
     cccc   = partes[1] if len(partes) > 1 else "0000"
     dddd   = partes[2] if len(partes) > 2 else "0000"
@@ -78,7 +78,7 @@ def _parse_nombre_incl(nombre: str) -> Tuple[str, str, str, str]:
 
 def _parse_nombre_cups(nombre: str) -> Tuple[str, str, str, str]:
     """AOBCUPS_DDDD_CCCC_AAAAMM_FFFFFFFF.0 → (dddd, cccc, aaaamm, fecha)"""
-    base   = nombre.replace(".0", "").replace(".bz2", "")
+    base = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
     cccc   = partes[2] if len(partes) > 2 else "0000"
@@ -89,7 +89,7 @@ def _parse_nombre_cups(nombre: str) -> Tuple[str, str, str, str]:
 
 def _parse_nombre_cil(nombre: str) -> Tuple[str, str, str, str]:
     """AOBCIL_DDDD_CCCC_AAAAMM_FFFFFFFF.0 → (dddd, cccc, aaaamm, fecha)"""
-    base   = nombre.replace(".0", "").replace(".bz2", "")
+    base = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
     cccc   = partes[2] if len(partes) > 2 else "0000"
@@ -115,11 +115,6 @@ PREFIJOS_VALIDOS: Dict[str, str] = {
     "cil":    "AOBCIL",
 }
 
-# Posición del código de distribuidor (DDDD) en el nombre del fichero
-# AOBAGRECL_DDDD_... → pos 1
-# OBJEINCL_CCCC_DDDD_... → pos 2  (el distribuidor es el segundo código)
-# AOBCUPS_DDDD_... → pos 1
-# AOBCIL_DDDD_... → pos 1
 _DDDD_POSICION: Dict[str, int] = {
     "agrecl": 1,
     "incl":   2,
@@ -140,22 +135,18 @@ def validar_nombre_fichero(
     Devuelve mensaje de error o None si todo es correcto.
     """
     prefijo = PREFIJOS_VALIDOS.get(tipo_ruta, "")
-
-    # Quitar extensión para trabajar con el nombre base
     nombre_base = nombre
     for ext in (".0.bz2", ".bz2", ".0"):
         if nombre_base.endswith(ext):
             nombre_base = nombre_base[: -len(ext)]
             break
 
-    # 1. Validar prefijo
     if not nombre_base.upper().startswith(prefijo):
         return (
             f"El fichero '{nombre}' no corresponde a este tipo. "
             f"Se esperaba un fichero que empiece por '{prefijo}_'."
         )
 
-    # 2. Validar código de distribuidor contra codigo_ree de la empresa
     if codigo_ree and codigo_ree.strip():
         partes = nombre_base.split("_")
         pos = _DDDD_POSICION.get(tipo_ruta, 1)
@@ -244,7 +235,14 @@ def import_agrecl(db: Session, *, tenant_id: int, empresa_id: int, nombre_ficher
     return nuevos
 
 
-def list_agrecl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None, id_objecion: Optional[str] = None) -> List[ObjecionAGRECL]:
+def list_agrecl(
+    db: Session, *,
+    tenant_id: int,
+    empresa_id: Optional[int] = None,
+    periodo: Optional[str] = None,
+    nombre_fichero: Optional[str] = None,
+    id_objecion: Optional[str] = None,
+) -> List[ObjecionAGRECL]:
     q = db.query(ObjecionAGRECL).filter(ObjecionAGRECL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionAGRECL.empresa_id == empresa_id)
@@ -261,8 +259,16 @@ def ficheros_agrecl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = 
     return _stats_ficheros(db, ObjecionAGRECL, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
-def update_agrecl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionAGRECL:
-    obj = db.query(ObjecionAGRECL).filter(ObjecionAGRECL.id == id, ObjecionAGRECL.tenant_id == tenant_id).first()
+def update_agrecl_respuesta(
+    db: Session, *, id: int, tenant_id: int, empresa_id: int,
+    aceptacion: str, motivo_no_aceptacion: Optional[str],
+    comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0,
+) -> ObjecionAGRECL:
+    obj = db.query(ObjecionAGRECL).filter(
+        ObjecionAGRECL.id == id,
+        ObjecionAGRECL.tenant_id == tenant_id,
+        ObjecionAGRECL.empresa_id == empresa_id,
+    ).first()
     if obj is None:
         raise ValueError(f"ObjecionAGRECL id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -275,18 +281,23 @@ def update_agrecl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion:
     return obj
 
 
-def delete_agrecl(db: Session, *, ids: List[int], tenant_id: int) -> int:
+def delete_agrecl(db: Session, *, ids: List[int], tenant_id: int, empresa_id: int) -> int:
+    """Borra objeciones por IDs — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionAGRECL).filter(
-        ObjecionAGRECL.id.in_(ids), ObjecionAGRECL.tenant_id == tenant_id,
+        ObjecionAGRECL.id.in_(ids),
+        ObjecionAGRECL.tenant_id == tenant_id,
+        ObjecionAGRECL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def delete_agrecl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+def delete_agrecl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionAGRECL).filter(
         ObjecionAGRECL.nombre_fichero == nombre_fichero,
         ObjecionAGRECL.tenant_id == tenant_id,
+        ObjecionAGRECL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
@@ -330,12 +341,13 @@ def generate_reobagrecl_zip(db: Session, *, tenant_id: int, empresa_id: int, nom
     return zip_buffer.getvalue(), nombre_zip
 
 
-def generate_reobagrecl_one(db: Session, *, tenant_id: int, objecion_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
-    """Un .bz2 para una sola objeción."""
+def generate_reobagrecl_one(db: Session, *, tenant_id: int, empresa_id: int, objecion_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
+    """Un .bz2 para una sola objeción — verifica tenant_id Y empresa_id."""
     dddd, aaaamm, fecha = _parse_nombre_agrecl(nombre_fichero)
     obj = db.query(ObjecionAGRECL).filter(
         ObjecionAGRECL.id == objecion_id,
         ObjecionAGRECL.tenant_id == tenant_id,
+        ObjecionAGRECL.empresa_id == empresa_id,
     ).first()
     if obj is None:
         raise ValueError(f"ObjecionAGRECL id={objecion_id} no encontrada")
@@ -374,7 +386,13 @@ def import_incl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero:
     return nuevos
 
 
-def list_incl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None) -> List[ObjecionINCL]:
+def list_incl(
+    db: Session, *,
+    tenant_id: int,
+    empresa_id: Optional[int] = None,
+    periodo: Optional[str] = None,
+    nombre_fichero: Optional[str] = None,
+) -> List[ObjecionINCL]:
     q = db.query(ObjecionINCL).filter(ObjecionINCL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionINCL.empresa_id == empresa_id)
@@ -389,8 +407,16 @@ def ficheros_incl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = No
     return _stats_ficheros(db, ObjecionINCL, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
-def update_incl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionINCL:
-    obj = db.query(ObjecionINCL).filter(ObjecionINCL.id == id, ObjecionINCL.tenant_id == tenant_id).first()
+def update_incl_respuesta(
+    db: Session, *, id: int, tenant_id: int, empresa_id: int,
+    aceptacion: str, motivo_no_aceptacion: Optional[str],
+    comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0,
+) -> ObjecionINCL:
+    obj = db.query(ObjecionINCL).filter(
+        ObjecionINCL.id == id,
+        ObjecionINCL.tenant_id == tenant_id,
+        ObjecionINCL.empresa_id == empresa_id,
+    ).first()
     if obj is None:
         raise ValueError(f"ObjecionINCL id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -403,18 +429,23 @@ def update_incl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: s
     return obj
 
 
-def delete_incl(db: Session, *, ids: List[int], tenant_id: int) -> int:
+def delete_incl(db: Session, *, ids: List[int], tenant_id: int, empresa_id: int) -> int:
+    """Borra objeciones por IDs — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionINCL).filter(
-        ObjecionINCL.id.in_(ids), ObjecionINCL.tenant_id == tenant_id,
+        ObjecionINCL.id.in_(ids),
+        ObjecionINCL.tenant_id == tenant_id,
+        ObjecionINCL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def delete_incl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+def delete_incl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionINCL).filter(
         ObjecionINCL.nombre_fichero == nombre_fichero,
         ObjecionINCL.tenant_id == tenant_id,
+        ObjecionINCL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
@@ -474,7 +505,13 @@ def import_cups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero:
     return nuevos
 
 
-def list_cups(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None) -> List[ObjecionCUPS]:
+def list_cups(
+    db: Session, *,
+    tenant_id: int,
+    empresa_id: Optional[int] = None,
+    periodo: Optional[str] = None,
+    nombre_fichero: Optional[str] = None,
+) -> List[ObjecionCUPS]:
     q = db.query(ObjecionCUPS).filter(ObjecionCUPS.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionCUPS.empresa_id == empresa_id)
@@ -489,8 +526,16 @@ def ficheros_cups(db: Session, *, tenant_id: int, empresa_id: Optional[int] = No
     return _stats_ficheros(db, ObjecionCUPS, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
-def update_cups_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionCUPS:
-    obj = db.query(ObjecionCUPS).filter(ObjecionCUPS.id == id, ObjecionCUPS.tenant_id == tenant_id).first()
+def update_cups_respuesta(
+    db: Session, *, id: int, tenant_id: int, empresa_id: int,
+    aceptacion: str, motivo_no_aceptacion: Optional[str],
+    comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0,
+) -> ObjecionCUPS:
+    obj = db.query(ObjecionCUPS).filter(
+        ObjecionCUPS.id == id,
+        ObjecionCUPS.tenant_id == tenant_id,
+        ObjecionCUPS.empresa_id == empresa_id,
+    ).first()
     if obj is None:
         raise ValueError(f"ObjecionCUPS id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -503,18 +548,23 @@ def update_cups_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: s
     return obj
 
 
-def delete_cups(db: Session, *, ids: List[int], tenant_id: int) -> int:
+def delete_cups(db: Session, *, ids: List[int], tenant_id: int, empresa_id: int) -> int:
+    """Borra objeciones por IDs — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionCUPS).filter(
-        ObjecionCUPS.id.in_(ids), ObjecionCUPS.tenant_id == tenant_id,
+        ObjecionCUPS.id.in_(ids),
+        ObjecionCUPS.tenant_id == tenant_id,
+        ObjecionCUPS.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def delete_cups_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+def delete_cups_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionCUPS).filter(
         ObjecionCUPS.nombre_fichero == nombre_fichero,
         ObjecionCUPS.tenant_id == tenant_id,
+        ObjecionCUPS.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
@@ -566,7 +616,13 @@ def import_cil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: 
     return nuevos
 
 
-def list_cil(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None) -> List[ObjecionCIL]:
+def list_cil(
+    db: Session, *,
+    tenant_id: int,
+    empresa_id: Optional[int] = None,
+    periodo: Optional[str] = None,
+    nombre_fichero: Optional[str] = None,
+) -> List[ObjecionCIL]:
     q = db.query(ObjecionCIL).filter(ObjecionCIL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionCIL.empresa_id == empresa_id)
@@ -581,8 +637,16 @@ def ficheros_cil(db: Session, *, tenant_id: int, empresa_id: Optional[int] = Non
     return _stats_ficheros(db, ObjecionCIL, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
-def update_cil_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionCIL:
-    obj = db.query(ObjecionCIL).filter(ObjecionCIL.id == id, ObjecionCIL.tenant_id == tenant_id).first()
+def update_cil_respuesta(
+    db: Session, *, id: int, tenant_id: int, empresa_id: int,
+    aceptacion: str, motivo_no_aceptacion: Optional[str],
+    comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0,
+) -> ObjecionCIL:
+    obj = db.query(ObjecionCIL).filter(
+        ObjecionCIL.id == id,
+        ObjecionCIL.tenant_id == tenant_id,
+        ObjecionCIL.empresa_id == empresa_id,
+    ).first()
     if obj is None:
         raise ValueError(f"ObjecionCIL id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -595,18 +659,23 @@ def update_cil_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: st
     return obj
 
 
-def delete_cil(db: Session, *, ids: List[int], tenant_id: int) -> int:
+def delete_cil(db: Session, *, ids: List[int], tenant_id: int, empresa_id: int) -> int:
+    """Borra objeciones por IDs — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionCIL).filter(
-        ObjecionCIL.id.in_(ids), ObjecionCIL.tenant_id == tenant_id,
+        ObjecionCIL.id.in_(ids),
+        ObjecionCIL.tenant_id == tenant_id,
+        ObjecionCIL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def delete_cil_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+def delete_cil_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
     deleted = db.query(ObjecionCIL).filter(
         ObjecionCIL.nombre_fichero == nombre_fichero,
         ObjecionCIL.tenant_id == tenant_id,
+        ObjecionCIL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted

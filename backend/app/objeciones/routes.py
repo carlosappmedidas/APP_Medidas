@@ -33,6 +33,7 @@ router = APIRouter(prefix="/objeciones", tags=["objeciones"])
 
 class BulkDeletePayload(BaseModel):
     ids: List[int]
+    empresa_id: int
 
 class DeleteResponse(BaseModel):
     deleted: int
@@ -104,11 +105,16 @@ def _effective_tenant(user: User) -> int:
     return _tenant_id(user)
 
 def _validar_nombre(nombre: str, tipo_ruta: str, empresa: Empresa) -> None:
-    """Valida prefijo del fichero y que el código REE coincide con la empresa."""
     codigo_ree = str(getattr(empresa, "codigo_ree") or "").strip() or None
     error = services.validar_nombre_fichero(nombre, tipo_ruta, codigo_ree)
     if error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
+def _get_empresa_id_verificado(db: Session, empresa_id: int, user: User) -> int:
+    """Obtiene y verifica acceso a empresa. Devuelve empresa_id."""
+    empresa = _get_empresa_or_404(db, empresa_id)
+    _assert_empresa_access(user=user, empresa=empresa)
+    return empresa_id
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -121,11 +127,12 @@ def get_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Resumen global de objeciones: totales por tipo y por empresa.
-    Si se pasa empresa_id, filtra solo esa empresa.
-    """
     from app.objeciones.models import ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, ObjecionCIL
+
+    # Si se filtra por empresa, verificar acceso
+    if empresa_id:
+        empresa = _get_empresa_or_404(db, empresa_id)
+        _assert_empresa_access(user=current_user, empresa=empresa)
 
     tenant_id = _effective_tenant(current_user)
 
@@ -150,14 +157,13 @@ def get_dashboard(
         for r in rows:
             t_total += 1
             ac = getattr(r, "aceptacion") or ""
-            if ac == "S": 
-                  t_ok   += 1
-            elif ac == "N": 
-                t_err  += 1
-            else:          
-                 t_pend += 1
+            if ac == "S":
+                t_ok += 1
+            elif ac == "N":
+                t_err += 1
+            else:
+                t_pend += 1
 
-            # acumular por empresa
             eid = int(getattr(r, "empresa_id"))
             if eid not in por_empresa_dict:
                 emp = db.query(Empresa).filter(Empresa.id == eid).first()
@@ -169,12 +175,12 @@ def get_dashboard(
                 }
             d = por_empresa_dict[eid]
             d["total"] += 1
-            if ac == "S":  
-                 d["aceptadas"]  += 1
-            elif ac == "N": 
+            if ac == "S":
+                d["aceptadas"] += 1
+            elif ac == "N":
                 d["rechazadas"] += 1
-            else:          
-                 d["pendientes"] += 1
+            else:
+                d["pendientes"] += 1
 
         if t_total > 0:
             por_tipo.append(DashTipo(
@@ -233,10 +239,12 @@ def get_ficheros_agrecl(
 @router.delete("/agrecl/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
 def delete_fichero_agrecl(
     nombre_fichero: str,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_agrecl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_agrecl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -258,11 +266,13 @@ def get_agrecl(
 def patch_agrecl(
     id: int,
     payload: RespuestaUpdate,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
     try:
-        return services.update_agrecl_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
+        return services.update_agrecl_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), empresa_id=eid, aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -270,10 +280,12 @@ def patch_agrecl(
 @router.delete("/agrecl/{id}", response_model=DeleteResponse)
 def delete_agrecl_one(
     id: int,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_agrecl(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_agrecl(db, ids=[id], tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -283,7 +295,8 @@ def bulk_delete_agrecl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_agrecl(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, payload.empresa_id, current_user)
+    deleted = services.delete_agrecl(db, ids=payload.ids, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -296,9 +309,7 @@ def generate_agrecl(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content, filename = services.generate_reobagrecl_zip(
-        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
-    )
+    content, filename = services.generate_reobagrecl_zip(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     return Response(content=content, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
@@ -310,12 +321,9 @@ def generate_agrecl_one(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    empresa = _get_empresa_or_404(db, empresa_id)
-    _assert_empresa_access(user=current_user, empresa=empresa)
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
     try:
-        content, filename = services.generate_reobagrecl_one(
-            db, tenant_id=_effective_tenant(current_user), objecion_id=objecion_id, nombre_fichero=nombre_fichero,
-        )
+        content, filename = services.generate_reobagrecl_one(db, tenant_id=_effective_tenant(current_user), empresa_id=eid, objecion_id=objecion_id, nombre_fichero=nombre_fichero)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
@@ -355,10 +363,12 @@ def get_ficheros_incl(
 @router.delete("/incl/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
 def delete_fichero_incl(
     nombre_fichero: str,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_incl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_incl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -380,11 +390,13 @@ def get_incl(
 def patch_incl(
     id: int,
     payload: RespuestaUpdate,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
     try:
-        return services.update_incl_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
+        return services.update_incl_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), empresa_id=eid, aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -392,10 +404,12 @@ def patch_incl(
 @router.delete("/incl/{id}", response_model=DeleteResponse)
 def delete_incl_one(
     id: int,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_incl(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_incl(db, ids=[id], tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -405,7 +419,8 @@ def bulk_delete_incl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_incl(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, payload.empresa_id, current_user)
+    deleted = services.delete_incl(db, ids=payload.ids, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -418,9 +433,7 @@ def generate_incl(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content, filename = services.generate_reobjeincl(
-        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
-    )
+    content, filename = services.generate_reobjeincl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
@@ -458,10 +471,12 @@ def get_ficheros_cups(
 @router.delete("/cups/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
 def delete_fichero_cups(
     nombre_fichero: str,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_cups_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_cups_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -483,11 +498,13 @@ def get_cups(
 def patch_cups(
     id: int,
     payload: RespuestaUpdate,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
     try:
-        return services.update_cups_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
+        return services.update_cups_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), empresa_id=eid, aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -495,10 +512,12 @@ def patch_cups(
 @router.delete("/cups/{id}", response_model=DeleteResponse)
 def delete_cups_one(
     id: int,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_cups(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_cups(db, ids=[id], tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -508,7 +527,8 @@ def bulk_delete_cups(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_cups(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, payload.empresa_id, current_user)
+    deleted = services.delete_cups(db, ids=payload.ids, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -521,9 +541,7 @@ def generate_cups(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content, filename = services.generate_reobcups(
-        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
-    )
+    content, filename = services.generate_reobcups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
@@ -561,10 +579,12 @@ def get_ficheros_cil(
 @router.delete("/cil/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
 def delete_fichero_cil(
     nombre_fichero: str,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_cil_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_cil_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -586,11 +606,13 @@ def get_cil(
 def patch_cil(
     id: int,
     payload: RespuestaUpdate,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
     try:
-        return services.update_cil_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
+        return services.update_cil_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), empresa_id=eid, aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -598,10 +620,12 @@ def patch_cil(
 @router.delete("/cil/{id}", response_model=DeleteResponse)
 def delete_cil_one(
     id: int,
+    empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_cil(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    deleted = services.delete_cil(db, ids=[id], tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -611,7 +635,8 @@ def bulk_delete_cil(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = services.delete_cil(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    eid = _get_empresa_id_verificado(db, payload.empresa_id, current_user)
+    deleted = services.delete_cil(db, ids=payload.ids, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
 
@@ -624,7 +649,5 @@ def generate_cil(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content, filename = services.generate_reobcil(
-        db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero,
-    )
+    content, filename = services.generate_reobcil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
