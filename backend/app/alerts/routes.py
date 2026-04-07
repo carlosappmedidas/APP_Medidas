@@ -6,7 +6,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.alerts.models import AlertComment, AlertResult
 from app.alerts.schemas import (
+    AlertAdminDeletePayload,
+    AlertAdminDeleteResponse,
+    AlertAdminResetPayload,
+    AlertAdminResetResponse,
     AlertAvailablePeriodsRead,
     AlertCommentCreate,
     AlertCommentRead,
@@ -324,7 +329,6 @@ def recalculate_all(
             detail="Sin permisos para recalcular alertas",
         )
     # El superusuario puede recalcular cualquier tenant pasando tenant_id en el payload.
-    # Si no lo pasa, usa el suyo propio. Los demás roles siempre usan el suyo.
     if _is_superuser(current_user) and payload.tenant_id:
         tenant = payload.tenant_id
     else:
@@ -338,4 +342,105 @@ def recalculate_all(
         mes=payload.mes,
         empresas_procesadas=empresas_procesadas,
         total_triggered=total_triggered,
+    )
+
+
+# ── Admin: Reset y Borrado (solo superusuario) ────────────────────────────
+
+@router.post("/admin/reset", response_model=AlertAdminResetResponse)
+def admin_reset_alerts(
+    payload: AlertAdminResetPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reinicia alertas a estado "nueva" y borra sus comentarios.
+    Solo superusuario. Filtros opcionales: empresa, año, mes, lifecycle_status.
+    """
+    if not _is_superuser(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el superusuario puede usar esta operación.",
+        )
+
+    # Construir query de alertas a resetear
+    q = db.query(AlertResult).filter(AlertResult.tenant_id == payload.tenant_id)
+    if payload.empresa_id is not None:
+        q = q.filter(AlertResult.empresa_id == payload.empresa_id)
+    if payload.anio is not None:
+        q = q.filter(AlertResult.anio == payload.anio)
+    if payload.mes is not None:
+        q = q.filter(AlertResult.mes == payload.mes)
+    if payload.lifecycle_status is not None:
+        q = q.filter(AlertResult.lifecycle_status == payload.lifecycle_status)
+
+    alertas = q.all()
+    alert_ids = [int(getattr(a, "id")) for a in alertas]
+
+    if alert_ids:
+        # Borrar comentarios de estas alertas
+        db.query(AlertComment).filter(AlertComment.alert_id.in_(alert_ids)).delete(synchronize_session=False)
+        # Resetear lifecycle a "nueva" y limpiar resolución
+        for a in alertas:
+            aa = a  # type: ignore
+            aa.lifecycle_status = "nueva"
+            aa.resolved_by = None
+            aa.resolved_at = None
+
+    db.commit()
+
+    return AlertAdminResetResponse(
+        tenant_id=payload.tenant_id,
+        empresa_id=payload.empresa_id,
+        anio=payload.anio,
+        mes=payload.mes,
+        lifecycle_status=payload.lifecycle_status,
+        alertas_reiniciadas=len(alert_ids),
+    )
+
+
+@router.delete("/admin/delete", response_model=AlertAdminDeleteResponse)
+def admin_delete_alerts(
+    payload: AlertAdminDeletePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Borra físicamente alertas de BD. Los comentarios se borran en cascada.
+    Solo superusuario. Filtros opcionales: empresa, año, mes, lifecycle_status.
+    """
+    if not _is_superuser(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el superusuario puede usar esta operación.",
+        )
+
+    # Construir query
+    q = db.query(AlertResult).filter(AlertResult.tenant_id == payload.tenant_id)
+    if payload.empresa_id is not None:
+        q = q.filter(AlertResult.empresa_id == payload.empresa_id)
+    if payload.anio is not None:
+        q = q.filter(AlertResult.anio == payload.anio)
+    if payload.mes is not None:
+        q = q.filter(AlertResult.mes == payload.mes)
+    if payload.lifecycle_status is not None:
+        q = q.filter(AlertResult.lifecycle_status == payload.lifecycle_status)
+
+    # Primero borrar comentarios (por si el CASCADE no está activo en el ORM)
+    alert_ids = [int(getattr(a, "id")) for a in q.all()]
+    total = len(alert_ids)
+
+    if alert_ids:
+        db.query(AlertComment).filter(AlertComment.alert_id.in_(alert_ids)).delete(synchronize_session=False)
+        q.delete(synchronize_session=False)
+
+    db.commit()
+
+    return AlertAdminDeleteResponse(
+        tenant_id=payload.tenant_id,
+        empresa_id=payload.empresa_id,
+        anio=payload.anio,
+        mes=payload.mes,
+        lifecycle_status=payload.lifecycle_status,
+        alertas_borradas=total,
     )
