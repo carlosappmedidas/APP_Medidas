@@ -45,6 +45,30 @@ class FicheroStats(BaseModel):
     aceptadas: int
     rechazadas: int
 
+class DashTipo(BaseModel):
+    tipo: str
+    total: int
+    pendientes: int
+    aceptadas: int
+    rechazadas: int
+
+class DashEmpresa(BaseModel):
+    empresa_id: int
+    empresa_nombre: str
+    empresa_codigo_ree: Optional[str] = None
+    total: int
+    pendientes: int
+    aceptadas: int
+    rechazadas: int
+
+class DashResponse(BaseModel):
+    total: int
+    pendientes: int
+    aceptadas: int
+    rechazadas: int
+    por_tipo: List[DashTipo]
+    por_empresa: List[DashEmpresa]
+
 
 # ── Helpers de acceso ─────────────────────────────────────────────────────────
 
@@ -85,6 +109,94 @@ def _validar_nombre(nombre: str, tipo_ruta: str, empresa: Empresa) -> None:
     error = services.validar_nombre_fichero(nombre, tipo_ruta, codigo_ree)
     if error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD GLOBAL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/dashboard", response_model=DashResponse)
+def get_dashboard(
+    empresa_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Resumen global de objeciones: totales por tipo y por empresa.
+    Si se pasa empresa_id, filtra solo esa empresa.
+    """
+    from app.objeciones.models import ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, ObjecionCIL
+
+    tenant_id = _effective_tenant(current_user)
+
+    MODELOS = [
+        ("AOBAGRECL", ObjecionAGRECL),
+        ("OBJEINCL",  ObjecionINCL),
+        ("AOBCUPS",   ObjecionCUPS),
+        ("AOBCIL",    ObjecionCIL),
+    ]
+
+    total_global = pendientes_global = aceptadas_global = rechazadas_global = 0
+    por_tipo: List[DashTipo] = []
+    por_empresa_dict: dict = {}
+
+    for tipo_label, model in MODELOS:
+        q = db.query(model).filter(model.tenant_id == tenant_id)
+        if empresa_id:
+            q = q.filter(model.empresa_id == empresa_id)
+        rows = q.all()
+
+        t_total = t_pend = t_ok = t_err = 0
+        for r in rows:
+            t_total += 1
+            ac = getattr(r, "aceptacion") or ""
+            if ac == "S": 
+                  t_ok   += 1
+            elif ac == "N": 
+                t_err  += 1
+            else:          
+                 t_pend += 1
+
+            # acumular por empresa
+            eid = int(getattr(r, "empresa_id"))
+            if eid not in por_empresa_dict:
+                emp = db.query(Empresa).filter(Empresa.id == eid).first()
+                por_empresa_dict[eid] = {
+                    "empresa_id": eid,
+                    "empresa_nombre": getattr(emp, "nombre", "") if emp else f"Empresa {eid}",
+                    "empresa_codigo_ree": getattr(emp, "codigo_ree", None) if emp else None,
+                    "total": 0, "pendientes": 0, "aceptadas": 0, "rechazadas": 0,
+                }
+            d = por_empresa_dict[eid]
+            d["total"] += 1
+            if ac == "S":  
+                 d["aceptadas"]  += 1
+            elif ac == "N": 
+                d["rechazadas"] += 1
+            else:          
+                 d["pendientes"] += 1
+
+        if t_total > 0:
+            por_tipo.append(DashTipo(
+                tipo=tipo_label, total=t_total,
+                pendientes=t_pend, aceptadas=t_ok, rechazadas=t_err,
+            ))
+
+        total_global      += t_total
+        pendientes_global += t_pend
+        aceptadas_global  += t_ok
+        rechazadas_global += t_err
+
+    por_empresa = [DashEmpresa(**v) for v in por_empresa_dict.values()]
+
+    return DashResponse(
+        total=total_global,
+        pendientes=pendientes_global,
+        aceptadas=aceptadas_global,
+        rechazadas=rechazadas_global,
+        por_tipo=por_tipo,
+        por_empresa=por_empresa,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
