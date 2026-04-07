@@ -1,5 +1,6 @@
 # app/main.py
 # pyright: reportMissingImports=false
+
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -17,7 +18,8 @@ from app.empresas.routes import router as empresas_router
 from app.ingestion.routes import router as ingestion_router
 from app.measures.routes import router as medidas_router
 from app.medidas_graficos.routes import router as medidas_graficos_router
-from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router  # ← NUEVO
+from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router
+from app.objeciones.routes import router as objeciones_router
 from app.tenants.routes import router as auth_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
@@ -29,6 +31,7 @@ from app.measures.general_contrib_models import GeneralPeriodContribution  # noq
 from app.measures.bald_contrib_models import BaldPeriodContribution  # noqa: F401
 from app.measures.ps_models import PSPeriodContribution  # noqa: F401
 from app.measures.ps_detail_models import PSPeriodDetail  # noqa: F401
+from app.objeciones.models import ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, ObjecionCIL  # noqa: F401
 
 settings = get_settings()
 
@@ -46,6 +49,7 @@ _default_origins = [
     "http://127.0.0.1:3000",
     "http://100.106.206.66:3000",
 ]
+
 origins = (
     [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
     if settings.CORS_ORIGINS.strip()
@@ -75,4 +79,5 @@ app.include_router(alerts_router)
 app.include_router(dashboard_router)
 app.include_router(calendario_ree_router)
 app.include_router(medidas_graficos_router)
-app.include_router(medidas_graficos_ps_router)  # ← NUEVO
+app.include_router(medidas_graficos_ps_router)
+app.include_router(objeciones_router)
