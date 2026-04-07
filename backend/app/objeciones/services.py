@@ -33,15 +33,11 @@ def _str(value: str) -> Optional[str]:
 
 
 def _parse_rows(content: bytes) -> List[List[str]]:
-    """
-    Parsea el contenido de un fichero .0 (CSV con separador ';', sin cabeceras).
-    Devuelve lista de listas de strings, saltando líneas vacías.
-    """
+    """Parsea fichero .0 (CSV ';', sin cabeceras). Devuelve lista de listas."""
     text = content.decode("latin-1", errors="replace")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     result = []
     for row in reader:
-        # Saltar líneas completamente vacías
         if not any(c.strip() for c in row):
             continue
         result.append([c.strip() for c in row])
@@ -49,50 +45,66 @@ def _parse_rows(content: bytes) -> List[List[str]]:
 
 
 def _csv_to_bz2(rows_data: List[List]) -> bytes:
-    """CSV con separador ';', sin cabeceras, comprimido en bz2, encoding latin-1."""
+    """CSV ';' sin cabeceras, comprimido bz2, encoding latin-1."""
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";", lineterminator="\n")
     for row in rows_data:
         writer.writerow(row)
-    csv_bytes = output.getvalue().encode("latin-1", errors="replace")
-    return bz2.compress(csv_bytes)
+    return bz2.compress(output.getvalue().encode("latin-1", errors="replace"))
 
 
 def _col(row: List[str], idx: int) -> str:
-    """Devuelve la columna en la posición idx o '' si no existe."""
     return row[idx] if idx < len(row) else ""
 
 
+# ── Stats de ficheros ─────────────────────────────────────────────────────────
+
+def _stats_ficheros(db: Session, model, *, tenant_id: int, empresa_id: Optional[int]) -> List[dict]:
+    q = db.query(model).filter(model.tenant_id == tenant_id)
+    if empresa_id:
+        q = q.filter(model.empresa_id == empresa_id)
+    rows = q.order_by(model.created_at.desc()).all()
+
+    ficheros: dict = {}
+    for r in rows:
+        nombre = getattr(r, "nombre_fichero") or "desconocido"
+        if nombre not in ficheros:
+            ficheros[nombre] = {
+                "nombre_fichero": nombre,
+                "created_at": getattr(r, "created_at"),
+                "total": 0,
+                "pendientes": 0,
+                "aceptadas": 0,
+                "rechazadas": 0,
+            }
+        f = ficheros[nombre]
+        f["total"] += 1
+        aceptacion = getattr(r, "aceptacion") or ""
+        if aceptacion == "S":
+            f["aceptadas"] += 1
+        elif aceptacion == "N":
+            f["rechazadas"] += 1
+        else:
+            f["pendientes"] += 1
+        row_created = getattr(r, "created_at")
+        if row_created and (f["created_at"] is None or row_created > f["created_at"]):
+            f["created_at"] = row_created
+
+    return list(ficheros.values())
+
+
 # ── AOBAGRECL ─────────────────────────────────────────────────────────────────
-# Columnas por posición (sin cabeceras):
-# 0  ID_objecion
-# 1  Distribuidor
-# 2  Comercializador
-# 3  Nivel_tension
-# 4  Tarifa_acceso
-# 5  Discriminacion_horaria
-# 6  Tipo_punto_medida
-# 7  Provincia
-# 8  Tipo_demanda
-# 9  Periodo_cierre_objetado
-# 10 Motivo_objecion
-# 11 Magnitud
-# 12 Valor_energia_publicado_kWh
-# 13 Valor_energia_propuesto_kWh
-# 14 Comentario_emisor
-# 15 Objecion_autoobjecion
-# 16 Aceptacion          (vacío en la entrada)
-# 17 Motivo_no_aceptacion (vacío en la entrada)
-# 18 Comentario_respuesta (vacío en la entrada)
+# Posiciones: 0=ID 1=Distrib 2=Comer 3=NivTen 4=Tarifa 5=Disc 6=TipPunto
+#             7=Prov 8=TipDem 9=Periodo 10=Motivo 11=Magnitud
+#             12=E_pub 13=E_prop 14=Comentario 15=Autoobj
+#             16=Aceptacion 17=MotivoNoAcept 18=ComentResp
 
 def import_agrecl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_rows(content)
     nuevos = 0
     for row in rows:
         obj = ObjecionAGRECL(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             id_objecion=_str(_col(row, 0)),
             distribuidor=_str(_col(row, 1)),
             comercializador=_str(_col(row, 2)),
@@ -109,7 +121,6 @@ def import_agrecl(db: Session, *, tenant_id: int, empresa_id: int, nombre_ficher
             e_propuesta=_dec(_col(row, 13)),
             comentario_emisor=_str(_col(row, 14)),
             autoobjecion=_str(_col(row, 15)),
-            # campos de respuesta — pueden venir vacíos en la entrada
             aceptacion=_str(_col(row, 16)),
             motivo_no_aceptacion=_str(_col(row, 17)),
             comentario_respuesta=_str(_col(row, 18)),
@@ -120,13 +131,19 @@ def import_agrecl(db: Session, *, tenant_id: int, empresa_id: int, nombre_ficher
     return nuevos
 
 
-def list_agrecl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionAGRECL]:
+def list_agrecl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None) -> List[ObjecionAGRECL]:
     q = db.query(ObjecionAGRECL).filter(ObjecionAGRECL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionAGRECL.empresa_id == empresa_id)
     if periodo:
         q = q.filter(ObjecionAGRECL.periodo == periodo)
+    if nombre_fichero:
+        q = q.filter(ObjecionAGRECL.nombre_fichero == nombre_fichero)
     return q.order_by(ObjecionAGRECL.id.desc()).all()
+
+
+def ficheros_agrecl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None) -> List[dict]:
+    return _stats_ficheros(db, ObjecionAGRECL, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
 def update_agrecl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionAGRECL:
@@ -145,68 +162,71 @@ def update_agrecl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion:
 
 def delete_agrecl(db: Session, *, ids: List[int], tenant_id: int) -> int:
     deleted = db.query(ObjecionAGRECL).filter(
-        ObjecionAGRECL.id.in_(ids),
+        ObjecionAGRECL.id.in_(ids), ObjecionAGRECL.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def delete_agrecl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+    deleted = db.query(ObjecionAGRECL).filter(
+        ObjecionAGRECL.nombre_fichero == nombre_fichero,
         ObjecionAGRECL.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def generate_reobagrecl(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
-    """REOBAGRECL — sin cabeceras, sin ID de objeción, bz2."""
-    rows = list_agrecl(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
+def generate_reobagrecl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: Optional[str] = None) -> bytes:
+    """REOBAGRECL — sin cabeceras, sin ID, bz2."""
+    rows = list_agrecl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     data = [[
-        r.distribuidor or "",
-        r.comercializador or "",
-        r.nivel_tension or "",
-        r.tarifa_acceso or "",
-        r.disc_horaria or "",
-        r.tipo_punto or "",
-        r.provincia or "",
-        r.tipo_demanda or "",
-        r.periodo or "",
-        r.motivo or "",
-        r.magnitud or "",
+        r.distribuidor or "", r.comercializador or "", r.nivel_tension or "",
+        r.tarifa_acceso or "", r.disc_horaria or "", r.tipo_punto or "",
+        r.provincia or "", r.tipo_demanda or "", r.periodo or "",
+        r.motivo or "", r.magnitud or "",
         r.e_publicada if r.e_publicada is not None else "",
         r.e_propuesta if r.e_propuesta is not None else "",
-        r.comentario_emisor or "",
-        r.autoobjecion or "",
-        r.aceptacion or "",
-        r.motivo_no_aceptacion or "",
-        r.comentario_respuesta or "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
     ] for r in rows]
     return _csv_to_bz2(data)
 
 
 # ── OBJEINCL ──────────────────────────────────────────────────────────────────
-# Columnas por posición:
+# Posiciones reales del fichero (10 columnas):
 # 0  CUPS
-# 1  Periodo_inicio (o Periodo de la objeción)
-# 2  Motivo
-# 3  AE_publicada
-# 4  AE_propuesta
-# 5  AS_publicada
-# 6  AS_propuesta
-# 7  Comentario
-# 8  Autoobjecion
+# 1  Periodo_inicio    ← "20250601 01"
+# 2  Periodo_fin       ← "20250701 00"
+# 3  Motivo
+# 4  AE_publicada
+# 5  AE_propuesta
+# 6  AS_publicada
+# 7  AS_propuesta
+# 8  Comentario
+# 9  Autoobjecion
+# Los campos de respuesta (aceptacion, motivo_no_acept, coment_resp)
+# vienen vacíos en la entrada — se rellenan al gestionar.
 
 def import_incl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_rows(content)
     nuevos = 0
     for row in rows:
+        inicio = _col(row, 1)
+        fin    = _col(row, 2)
+        # Guardamos el intervalo completo como "INICIO - FIN"
+        periodo = f"{inicio} - {fin}" if inicio else None
         obj = ObjecionINCL(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             cups=_str(_col(row, 0)),
-            periodo=_str(_col(row, 1)),
-            motivo=_str(_col(row, 2)),
-            ae_publicada=_dec(_col(row, 3)),
-            ae_propuesta=_dec(_col(row, 4)),
-            as_publicada=_dec(_col(row, 5)),
-            as_propuesta=_dec(_col(row, 6)),
-            comentario_emisor=_str(_col(row, 7)),
-            autoobjecion=_str(_col(row, 8)),
+            periodo=periodo,
+            motivo=_str(_col(row, 3)),
+            ae_publicada=_dec(_col(row, 4)),
+            ae_propuesta=_dec(_col(row, 5)),
+            as_publicada=_dec(_col(row, 6)),
+            as_propuesta=_dec(_col(row, 7)),
+            comentario_emisor=_str(_col(row, 8)),
+            autoobjecion=_str(_col(row, 9)),
         )
         db.add(obj)
         nuevos += 1
@@ -214,13 +234,19 @@ def import_incl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero:
     return nuevos
 
 
-def list_incl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionINCL]:
+def list_incl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None) -> List[ObjecionINCL]:
     q = db.query(ObjecionINCL).filter(ObjecionINCL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionINCL.empresa_id == empresa_id)
     if periodo:
         q = q.filter(ObjecionINCL.periodo.ilike(f"%{periodo}%"))
+    if nombre_fichero:
+        q = q.filter(ObjecionINCL.nombre_fichero == nombre_fichero)
     return q.order_by(ObjecionINCL.id.desc()).all()
+
+
+def ficheros_incl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None) -> List[dict]:
+    return _stats_ficheros(db, ObjecionINCL, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
 def update_incl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionINCL:
@@ -239,56 +265,64 @@ def update_incl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: s
 
 def delete_incl(db: Session, *, ids: List[int], tenant_id: int) -> int:
     deleted = db.query(ObjecionINCL).filter(
-        ObjecionINCL.id.in_(ids),
+        ObjecionINCL.id.in_(ids), ObjecionINCL.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def delete_incl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+    deleted = db.query(ObjecionINCL).filter(
+        ObjecionINCL.nombre_fichero == nombre_fichero,
         ObjecionINCL.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def generate_reobjeincl(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
-    """REOBJEINCL — sin cabeceras, sin ID, bz2."""
-    rows = list_incl(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
-    data = [[
-        r.cups or "",
-        r.periodo or "",
-        r.motivo or "",
-        r.ae_publicada if r.ae_publicada is not None else "",
-        r.ae_propuesta if r.ae_propuesta is not None else "",
-        r.as_publicada if r.as_publicada is not None else "",
-        r.as_propuesta if r.as_propuesta is not None else "",
-        r.comentario_emisor or "",
-        r.autoobjecion or "",
-        r.aceptacion or "",
-        r.motivo_no_aceptacion or "",
-        r.comentario_respuesta or "",
-    ] for r in rows]
+def generate_reobjeincl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: Optional[str] = None) -> bytes:
+    """
+    REOBJEINCL — sin cabeceras, sin ID, bz2.
+    El campo periodo se divide de nuevo en inicio y fin al generar.
+    """
+    rows = list_incl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+    data = []
+    for r in rows:
+        # Separar "INICIO - FIN" de vuelta en dos columnas
+        periodo_str = r.periodo or ""
+        if " - " in periodo_str:
+            inicio, fin = periodo_str.split(" - ", 1)
+        else:
+            inicio, fin = periodo_str, ""
+        data.append([
+            r.cups or "",
+            inicio,
+            fin,
+            r.motivo or "",
+            r.ae_publicada if r.ae_publicada is not None else "",
+            r.ae_propuesta if r.ae_propuesta is not None else "",
+            r.as_publicada if r.as_publicada is not None else "",
+            r.as_propuesta if r.as_propuesta is not None else "",
+            r.comentario_emisor or "",
+            r.autoobjecion or "",
+            r.aceptacion or "",
+            r.motivo_no_aceptacion or "",
+            r.comentario_respuesta or "",
+        ])
     return _csv_to_bz2(data)
 
 
 # ── AOBCUPS ───────────────────────────────────────────────────────────────────
-# Columnas por posición:
-# 0  ID_objecion
-# 1  CUPS
-# 2  Periodo_cierre_objetado
-# 3  Motivo
-# 4  E_publicada
-# 5  E_propuesta
-# 6  Comentario_emisor
-# 7  Autoobjecion (S/N)
-# 8  Aceptacion (S/N)
-# 9  Motivo_no_aceptacion
-# 10 Comentario_respuesta
-# 11 Magnitud
+# Posiciones: 0=ID 1=CUPS 2=Periodo 3=Motivo 4=E_pub 5=E_prop
+#             6=Comentario 7=Autoobj 8=Aceptacion 9=MotivoNoAcept
+#             10=ComentResp 11=Magnitud
 
 def import_cups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_rows(content)
     nuevos = 0
     for row in rows:
         obj = ObjecionCUPS(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             id_objecion=_str(_col(row, 0)),
             cups=_str(_col(row, 1)),
             periodo=_str(_col(row, 2)),
@@ -308,13 +342,19 @@ def import_cups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero:
     return nuevos
 
 
-def list_cups(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionCUPS]:
+def list_cups(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None) -> List[ObjecionCUPS]:
     q = db.query(ObjecionCUPS).filter(ObjecionCUPS.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionCUPS.empresa_id == empresa_id)
     if periodo:
         q = q.filter(ObjecionCUPS.periodo == periodo)
+    if nombre_fichero:
+        q = q.filter(ObjecionCUPS.nombre_fichero == nombre_fichero)
     return q.order_by(ObjecionCUPS.id.desc()).all()
+
+
+def ficheros_cups(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None) -> List[dict]:
+    return _stats_ficheros(db, ObjecionCUPS, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
 def update_cups_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionCUPS:
@@ -333,55 +373,46 @@ def update_cups_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: s
 
 def delete_cups(db: Session, *, ids: List[int], tenant_id: int) -> int:
     deleted = db.query(ObjecionCUPS).filter(
-        ObjecionCUPS.id.in_(ids),
+        ObjecionCUPS.id.in_(ids), ObjecionCUPS.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def delete_cups_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+    deleted = db.query(ObjecionCUPS).filter(
+        ObjecionCUPS.nombre_fichero == nombre_fichero,
         ObjecionCUPS.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def generate_reobcups(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
+def generate_reobcups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: Optional[str] = None) -> bytes:
     """REOBCUPS — sin cabeceras, sin ID, bz2."""
-    rows = list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
+    rows = list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     data = [[
-        r.cups or "",
-        r.periodo or "",
-        r.motivo or "",
+        r.cups or "", r.periodo or "", r.motivo or "",
         r.e_publicada if r.e_publicada is not None else "",
         r.e_propuesta if r.e_propuesta is not None else "",
-        r.comentario_emisor or "",
-        r.autoobjecion or "",
-        r.aceptacion or "",
-        r.motivo_no_aceptacion or "",
-        r.comentario_respuesta or "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
         r.magnitud or "",
     ] for r in rows]
     return _csv_to_bz2(data)
 
 
 # ── AOBCIL ────────────────────────────────────────────────────────────────────
-# Columnas por posición:
-# 0  ID_objecion
-# 1  CIL
-# 2  Periodo
-# 3  Motivo
-# 4  EAS_publicada
-# 5  EAS_propuesta
-# 6  EQ2_publicada
-# 7  EQ2_propuesta
-# 8  EQ3_publicada
-# 9  EQ3_propuesta
-# 10 Comentario_emisor
-# 11 Autoobjecion
+# Posiciones: 0=ID 1=CIL 2=Periodo 3=Motivo 4=EAS_pub 5=EAS_prop
+#             6=EQ2_pub 7=EQ2_prop 8=EQ3_pub 9=EQ3_prop
+#             10=Comentario 11=Autoobj
 
 def import_cil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_rows(content)
     nuevos = 0
     for row in rows:
         obj = ObjecionCIL(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             id_objecion=_str(_col(row, 0)),
             cil=_str(_col(row, 1)),
             periodo=_str(_col(row, 2)),
@@ -401,13 +432,19 @@ def import_cil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: 
     return nuevos
 
 
-def list_cil(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionCIL]:
+def list_cil(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None, nombre_fichero: Optional[str] = None) -> List[ObjecionCIL]:
     q = db.query(ObjecionCIL).filter(ObjecionCIL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionCIL.empresa_id == empresa_id)
     if periodo:
         q = q.filter(ObjecionCIL.periodo == periodo)
+    if nombre_fichero:
+        q = q.filter(ObjecionCIL.nombre_fichero == nombre_fichero)
     return q.order_by(ObjecionCIL.id.desc()).all()
+
+
+def ficheros_cil(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None) -> List[dict]:
+    return _stats_ficheros(db, ObjecionCIL, tenant_id=tenant_id, empresa_id=empresa_id)
 
 
 def update_cil_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionCIL:
@@ -426,30 +463,33 @@ def update_cil_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: st
 
 def delete_cil(db: Session, *, ids: List[int], tenant_id: int) -> int:
     deleted = db.query(ObjecionCIL).filter(
-        ObjecionCIL.id.in_(ids),
+        ObjecionCIL.id.in_(ids), ObjecionCIL.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def delete_cil_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> int:
+    deleted = db.query(ObjecionCIL).filter(
+        ObjecionCIL.nombre_fichero == nombre_fichero,
         ObjecionCIL.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
     db.commit()
     return deleted
 
 
-def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
+def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: Optional[str] = None) -> bytes:
     """REOBCIL — sin cabeceras, sin ID, bz2."""
-    rows = list_cil(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
+    rows = list_cil(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     data = [[
-        r.cil or "",
-        r.periodo or "",
-        r.motivo or "",
+        r.cil or "", r.periodo or "", r.motivo or "",
         r.eas_publicada if r.eas_publicada is not None else "",
         r.eas_propuesta if r.eas_propuesta is not None else "",
         r.eq2_publicada if r.eq2_publicada is not None else "",
         r.eq2_propuesta if r.eq2_propuesta is not None else "",
         r.eq3_publicada if r.eq3_publicada is not None else "",
         r.eq3_propuesta if r.eq3_propuesta is not None else "",
-        r.comentario_emisor or "",
-        r.autoobjecion or "",
-        r.aceptacion or "",
-        r.motivo_no_aceptacion or "",
-        r.comentario_respuesta or "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
     ] for r in rows]
     return _csv_to_bz2(data)

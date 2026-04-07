@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
@@ -35,6 +36,14 @@ class BulkDeletePayload(BaseModel):
 
 class DeleteResponse(BaseModel):
     deleted: int
+
+class FicheroStats(BaseModel):
+    nombre_fichero: str
+    created_at: Optional[datetime] = None
+    total: int
+    pendientes: int
+    aceptadas: int
+    rechazadas: int
 
 
 # ── Helpers de acceso ─────────────────────────────────────────────────────────
@@ -71,7 +80,9 @@ def _effective_tenant(user: User) -> int:
     return _tenant_id(user)
 
 
-# ── AOBAGRECL ─────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# AOBAGRECL
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/agrecl/import", response_model=ImportResponse)
 async def import_agrecl(
@@ -87,17 +98,40 @@ async def import_agrecl(
     return ImportResponse(tipo="AOBAGRECL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
-@router.get("/agrecl", response_model=List[ObjecionAGRECLRead])
-def get_agrecl(
+@router.get("/agrecl/ficheros", response_model=List[FicheroStats])
+def get_ficheros_agrecl(
     empresa_id: Optional[int] = Query(None),
-    periodo: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_agrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    return services.ficheros_agrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id)
+
+
+@router.delete("/agrecl/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
+def delete_fichero_agrecl(
+    nombre_fichero: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_agrecl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.get("/agrecl", response_model=List[ObjecionAGRECLRead])
+def get_agrecl(
+    empresa_id: Optional[int] = Query(None),
+    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if empresa_id:
+        empresa = _get_empresa_or_404(db, empresa_id)
+        _assert_empresa_access(user=current_user, empresa=empresa)
+    return services.list_agrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo, nombre_fichero=nombre_fichero)
 
 
 @router.patch("/agrecl/{id}", response_model=ObjecionAGRECLRead)
@@ -136,18 +170,21 @@ def bulk_delete_agrecl(
 @router.post("/agrecl/generate")
 def generate_agrecl(
     empresa_id: int = Query(...),
-    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobagrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
-    filename = f"REOBAGRECL_{periodo or 'todos'}.bz2"
+    content = services.generate_reobagrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+    base = nombre_fichero.replace("AOBAGRECL", "REOBAGRECL") if nombre_fichero else "REOBAGRECL_todos"
+    filename = f"{base}.bz2"
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
-# ── OBJEINCL ──────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# OBJEINCL
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/incl/import", response_model=ImportResponse)
 async def import_incl(
@@ -163,17 +200,40 @@ async def import_incl(
     return ImportResponse(tipo="OBJEINCL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
-@router.get("/incl", response_model=List[ObjecionINCLRead])
-def get_incl(
+@router.get("/incl/ficheros", response_model=List[FicheroStats])
+def get_ficheros_incl(
     empresa_id: Optional[int] = Query(None),
-    periodo: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_incl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    return services.ficheros_incl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id)
+
+
+@router.delete("/incl/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
+def delete_fichero_incl(
+    nombre_fichero: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_incl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.get("/incl", response_model=List[ObjecionINCLRead])
+def get_incl(
+    empresa_id: Optional[int] = Query(None),
+    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if empresa_id:
+        empresa = _get_empresa_or_404(db, empresa_id)
+        _assert_empresa_access(user=current_user, empresa=empresa)
+    return services.list_incl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo, nombre_fichero=nombre_fichero)
 
 
 @router.patch("/incl/{id}", response_model=ObjecionINCLRead)
@@ -212,18 +272,21 @@ def bulk_delete_incl(
 @router.post("/incl/generate")
 def generate_incl(
     empresa_id: int = Query(...),
-    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobjeincl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
-    filename = f"REOBJEINCL_{periodo or 'todos'}.bz2"
+    content = services.generate_reobjeincl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+    base = nombre_fichero.replace("OBJEINCL", "REOBJEINCL") if nombre_fichero else "REOBJEINCL_todos"
+    filename = f"{base}.bz2"
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
-# ── AOBCUPS ───────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# AOBCUPS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/cups/import", response_model=ImportResponse)
 async def import_cups(
@@ -239,17 +302,40 @@ async def import_cups(
     return ImportResponse(tipo="AOBCUPS", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
-@router.get("/cups", response_model=List[ObjecionCUPSRead])
-def get_cups(
+@router.get("/cups/ficheros", response_model=List[FicheroStats])
+def get_ficheros_cups(
     empresa_id: Optional[int] = Query(None),
-    periodo: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_cups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    return services.ficheros_cups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id)
+
+
+@router.delete("/cups/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
+def delete_fichero_cups(
+    nombre_fichero: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_cups_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.get("/cups", response_model=List[ObjecionCUPSRead])
+def get_cups(
+    empresa_id: Optional[int] = Query(None),
+    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if empresa_id:
+        empresa = _get_empresa_or_404(db, empresa_id)
+        _assert_empresa_access(user=current_user, empresa=empresa)
+    return services.list_cups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo, nombre_fichero=nombre_fichero)
 
 
 @router.patch("/cups/{id}", response_model=ObjecionCUPSRead)
@@ -288,18 +374,21 @@ def bulk_delete_cups(
 @router.post("/cups/generate")
 def generate_cups(
     empresa_id: int = Query(...),
-    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobcups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
-    filename = f"REOBCUPS_{periodo or 'todos'}.bz2"
+    content = services.generate_reobcups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+    base = nombre_fichero.replace("AOBCUPS", "REOBCUPS") if nombre_fichero else "REOBCUPS_todos"
+    filename = f"{base}.bz2"
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
-# ── AOBCIL ────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# AOBCIL
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/cil/import", response_model=ImportResponse)
 async def import_cil(
@@ -315,17 +404,40 @@ async def import_cil(
     return ImportResponse(tipo="AOBCIL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
-@router.get("/cil", response_model=List[ObjecionCILRead])
-def get_cil(
+@router.get("/cil/ficheros", response_model=List[FicheroStats])
+def get_ficheros_cil(
     empresa_id: Optional[int] = Query(None),
-    periodo: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_cil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    return services.ficheros_cil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id)
+
+
+@router.delete("/cil/ficheros/{nombre_fichero:path}", response_model=DeleteResponse)
+def delete_fichero_cil(
+    nombre_fichero: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_cil_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.get("/cil", response_model=List[ObjecionCILRead])
+def get_cil(
+    empresa_id: Optional[int] = Query(None),
+    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if empresa_id:
+        empresa = _get_empresa_or_404(db, empresa_id)
+        _assert_empresa_access(user=current_user, empresa=empresa)
+    return services.list_cil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo, nombre_fichero=nombre_fichero)
 
 
 @router.patch("/cil/{id}", response_model=ObjecionCILRead)
@@ -364,12 +476,13 @@ def bulk_delete_cil(
 @router.post("/cil/generate")
 def generate_cil(
     empresa_id: int = Query(...),
-    periodo: Optional[str] = Query(None),
+    nombre_fichero: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobcil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
-    filename = f"REOBCIL_{periodo or 'todos'}.bz2"
+    content = services.generate_reobcil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+    base = nombre_fichero.replace("AOBCIL", "REOBCIL") if nombre_fichero else "REOBCIL_todos"
+    filename = f"{base}.bz2"
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})

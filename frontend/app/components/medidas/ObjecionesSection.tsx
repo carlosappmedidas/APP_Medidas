@@ -17,6 +17,15 @@ const TIPO_RUTA: Record<ObjecionTipo, string> = {
   AOBCIL:    "cil",
 };
 
+interface FicheroStats {
+  nombre_fichero: string;
+  created_at: string | null;
+  total: number;
+  pendientes: number;
+  aceptadas: number;
+  rechazadas: number;
+}
+
 interface ObjecionesSectionProps {
   token: string | null;
   currentUser: User | null;
@@ -26,7 +35,6 @@ interface TabConfig {
   id: ObjecionTipo;
   label: string;
   importLabel: string;
-  generateLabel: string;
   columns: { id: string; label: string; align: "left" | "right" }[];
   camposLectura: { id: string; label: string }[];
 }
@@ -40,7 +48,6 @@ const TABS: TabConfig[] = [
     id: "AOBAGRECL",
     label: "AOBAGRECL",
     importLabel: "Importar AOBAGRECL",
-    generateLabel: "Generar REOBAGRECL",
     columns: [
       { id: "_acciones",        label: "",                       align: "left"  },
       { id: "id_objecion",      label: "ID objeción",            align: "left"  },
@@ -84,7 +91,6 @@ const TABS: TabConfig[] = [
     id: "OBJEINCL",
     label: "OBJEINCL",
     importLabel: "Importar OBJEINCL",
-    generateLabel: "Generar REOBJEINCL",
     columns: [
       { id: "_acciones",        label: "",                          align: "left"  },
       { id: "cups",             label: "CUPS",                      align: "left"  },
@@ -114,7 +120,6 @@ const TABS: TabConfig[] = [
     id: "AOBCUPS",
     label: "AOBCUPS",
     importLabel: "Importar AOBCUPS",
-    generateLabel: "Generar REOBCUPS",
     columns: [
       { id: "_acciones",           label: "",                          align: "left"  },
       { id: "id_objecion",         label: "ID objeción",               align: "left"  },
@@ -146,7 +151,6 @@ const TABS: TabConfig[] = [
     id: "AOBCIL",
     label: "AOBCIL",
     importLabel: "Importar AOBCIL",
-    generateLabel: "Generar REOBCIL",
     columns: [
       { id: "_acciones",    label: "",                              align: "left"  },
       { id: "id_objecion",  label: "ID objeción",                  align: "left"  },
@@ -180,7 +184,7 @@ const TABS: TabConfig[] = [
   },
 ];
 
-// ─── Badge de aceptación ──────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function BadgeAceptacion({ valor }: { valor: string }) {
   if (!valor) return <span className="ui-badge ui-badge--neutral">Pendiente</span>;
@@ -188,7 +192,19 @@ function BadgeAceptacion({ valor }: { valor: string }) {
   return <span className="ui-badge ui-badge--err">Rechazada</span>;
 }
 
-// ─── Iconos SVG ───────────────────────────────────────────────────────────────
+function BadgeNum({ n, variant }: { n: number; variant: "neutral" | "ok" | "err" }) {
+  if (n === 0) return <span className="ui-muted" style={{ fontSize: 11 }}>—</span>;
+  return <span className={`ui-badge ui-badge--${variant}`}>{n}</span>;
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return iso; }
+}
+
+// ─── Iconos ───────────────────────────────────────────────────────────────────
 
 const IconFolder = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -220,47 +236,61 @@ const IconTrash = () => (
   </svg>
 );
 
+const IconChevron = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+);
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function ObjecionesSection({ token, currentUser }: ObjecionesSectionProps) {
-  const [activeTab, setActiveTab]   = useState<ObjecionTipo>("AOBAGRECL");
-  const [filas, setFilas]           = useState<Record<ObjecionTipo, ObjecionRow[]>>({
-    AOBAGRECL: [], OBJEINCL: [], AOBCUPS: [], AOBCIL: [],
-  });
-  const [loading, setLoading]       = useState(false);
-  const [importing, setImporting]   = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [deleting, setDeleting]     = useState(false);
-  const [error, setError]           = useState<string | null>(null);
+  const [activeTab, setActiveTab]           = useState<ObjecionTipo>("AOBAGRECL");
+  const [ficheiroActivo, setFicheroActivo]  = useState<string | null>(null); // null = nivel 1
 
-  // Selector de empresa
-  const [empresas, setEmpresas]   = useState<EmpresaOption[]>([]);
-  const [empresaId, setEmpresaId] = useState<number | null>(null);
+  // Nivel 1 — lista de ficheros
+  const [ficheros, setFicheros]             = useState<FicheroStats[]>([]);
+  const [loadingFicheros, setLoadingFicheros] = useState(false);
 
-  // Selección múltiple
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Nivel 2 — objeciones del fichero
+  const [filas, setFilas]                   = useState<ObjecionRow[]>([]);
+  const [loadingFilas, setLoadingFilas]     = useState(false);
+  const [selectedIds, setSelectedIds]       = useState<Set<number>>(new Set());
+
+  const [importing, setImporting]           = useState(false);
+  const [generating, setGenerating]         = useState(false);
+  const [deleting, setDeleting]             = useState(false);
+  const [error, setError]                   = useState<string | null>(null);
+
+  const [empresas, setEmpresas]             = useState<EmpresaOption[]>([]);
+  const [empresaId, setEmpresaId]           = useState<number | null>(null);
 
   // Modal
-  const [modalOpen, setModalOpen] = useState(false);
-  const [filaIdx, setFilaIdx]     = useState<number | null>(null);
-  const [saving, setSaving]       = useState(false);
+  const [modalOpen, setModalOpen]           = useState(false);
+  const [filaIdx, setFilaIdx]               = useState<number | null>(null);
+  const [saving, setSaving]                 = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const tab    = TABS.find((t) => t.id === activeTab)!;
+  const ruta   = TIPO_RUTA[activeTab];
 
-  const tab       = TABS.find((t) => t.id === activeTab)!;
-  const ruta      = TIPO_RUTA[activeTab];
-  const rows      = filas[activeTab];
-  const totalRows = rows.length;
-  const selectedCount = selectedIds.size;
+  // Limpiar al cambiar tab
+  useEffect(() => {
+    setFicheroActivo(null);
+    setFicheros([]);
+    setFilas([]);
+    setSelectedIds(new Set());
+    setError(null);
+  }, [activeTab]);
 
-  // Limpiar selección al cambiar tab
-  useEffect(() => { setSelectedIds(new Set()); }, [activeTab]);
+  // Limpiar selección al cambiar fichero
+  useEffect(() => { setSelectedIds(new Set()); }, [ficheiroActivo]);
 
   // ── Cargar empresas ───────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!token) return;
-    const fetchEmpresas = async () => {
+    const fetch_ = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) });
         if (!res.ok) return;
@@ -271,31 +301,53 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         else if (data.length > 0) setEmpresaId(data[0].id);
       } catch { /* silencioso */ }
     };
-    void fetchEmpresas();
+    void fetch_();
   }, [token, currentUser]);
 
-  // ── Cargar datos ──────────────────────────────────────────────────────────
+  // ── Cargar lista de ficheros (nivel 1) ────────────────────────────────────
 
-  const cargarDatos = useCallback(async () => {
+  const cargarFicheros = useCallback(async () => {
     if (!token || !empresaId) return;
-    setLoading(true);
+    setLoadingFicheros(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/ficheros?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      const data: ObjecionRow[] = await res.json();
-      setFilas((prev) => ({ ...prev, [activeTab]: data }));
-      setSelectedIds(new Set());
+      setFicheros(await res.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error cargando ficheros");
+    } finally {
+      setLoadingFicheros(false);
+    }
+  }, [token, empresaId, ruta]);
+
+  useEffect(() => {
+    if (ficheiroActivo === null) cargarFicheros();
+  }, [ficheiroActivo, cargarFicheros]);
+
+  // ── Cargar objeciones de un fichero (nivel 2) ─────────────────────────────
+
+  const cargarFilas = useCallback(async (nombre: string) => {
+    if (!token || !empresaId) return;
+    setLoadingFilas(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ empresa_id: String(empresaId), nombre_fichero: nombre });
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setFilas(await res.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error cargando objeciones");
     } finally {
-      setLoading(false);
+      setLoadingFilas(false);
     }
-  }, [token, empresaId, ruta, activeTab]);
+  }, [token, empresaId, ruta]);
 
-  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+  useEffect(() => {
+    if (ficheiroActivo !== null) cargarFilas(ficheiroActivo);
+  }, [ficheiroActivo, cargarFilas]);
 
-  // ── Importar ──────────────────────────────────────────────────────────────
+  // ── Importar fichero ──────────────────────────────────────────────────────
 
   const handleImportClick = () => fileInputRef.current?.click();
 
@@ -311,7 +363,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
       });
       if (!res.ok) throw new Error(`Error ${res.status} al importar`);
-      await cargarDatos();
+      await cargarFicheros();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error importando fichero");
     } finally {
@@ -320,17 +372,19 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     }
   };
 
-  // ── Generar ───────────────────────────────────────────────────────────────
+  // ── Generar fichero de respuesta ──────────────────────────────────────────
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (nombreFichero?: string) => {
     if (!token || !empresaId) return;
     setGenerating(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/generate?empresa_id=${empresaId}`, {
+      const params = new URLSearchParams({ empresa_id: String(empresaId) });
+      if (nombreFichero) params.set("nombre_fichero", nombreFichero);
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/generate?${params}`, {
         method: "POST", headers: getAuthHeaders(token),
       });
-      if (!res.ok) throw new Error(`Error ${res.status} al generar fichero`);
+      if (!res.ok) throw new Error(`Error ${res.status} al generar`);
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename=(.+)/);
@@ -346,21 +400,41 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     }
   };
 
-  // ── Borrado individual ────────────────────────────────────────────────────
+  // ── Borrar fichero completo ───────────────────────────────────────────────
 
-  const handleDeleteOne = async (id: number) => {
+  const handleDeleteFichero = async (nombreFichero: string) => {
     if (!token) return;
     setDeleting(true);
     setError(null);
     try {
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/ficheros/${encodeURIComponent(nombreFichero)}`, {
+        method: "DELETE", headers: getAuthHeaders(token),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setFicheros((prev) => prev.filter((f) => f.nombre_fichero !== nombreFichero));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error borrando fichero");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ── Borrado individual de fila ────────────────────────────────────────────
+
+  const handleDeleteOne = async (id: number) => {
+    if (!token) return;
+    setDeleting(true);
+    try {
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/${id}`, {
         method: "DELETE", headers: getAuthHeaders(token),
       });
-      if (!res.ok) throw new Error(`Error ${res.status} al borrar`);
-      setFilas((prev) => ({ ...prev, [activeTab]: prev[activeTab].filter((r) => Number(r.id) !== id) }));
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setFilas((prev) => prev.filter((r) => Number(r.id) !== id));
       setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+      // Actualizar stats del fichero activo
+      if (ficheiroActivo) await cargarFicheros();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error borrando objeción");
+      setError(e instanceof Error ? e.message : "Error borrando");
     } finally {
       setDeleting(false);
     }
@@ -371,18 +445,18 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const handleBulkDelete = async () => {
     if (!token || selectedIds.size === 0) return;
     setDeleting(true);
-    setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/bulk-delete`, {
         method: "POST",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
-      if (!res.ok) throw new Error(`Error ${res.status} al borrar`);
-      setFilas((prev) => ({ ...prev, [activeTab]: prev[activeTab].filter((r) => !selectedIds.has(Number(r.id))) }));
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setFilas((prev) => prev.filter((r) => !selectedIds.has(Number(r.id))));
       setSelectedIds(new Set());
+      if (ficheiroActivo) await cargarFicheros();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error borrando objeciones");
+      setError(e instanceof Error ? e.message : "Error borrando");
     } finally {
       setDeleting(false);
     }
@@ -390,54 +464,40 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
   // ── Selección ─────────────────────────────────────────────────────────────
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
-      return s;
-    });
-  };
+  const toggleSelect = (id: number) => setSelectedIds((prev) => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
+  });
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === rows.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(rows.map((r) => Number(r.id))));
-    }
+    if (selectedIds.size === filas.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filas.map((r) => Number(r.id))));
   };
 
-  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
-  const someSelected = selectedIds.size > 0 && selectedIds.size < rows.length;
+  const allSelected  = filas.length > 0 && selectedIds.size === filas.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < filas.length;
 
   // ── Modal ─────────────────────────────────────────────────────────────────
 
-  const filaSeleccionada = filaIdx !== null ? rows[filaIdx] : null;
+  const filaSeleccionada = filaIdx !== null ? filas[filaIdx] : null;
   const modalConfig: ObjecionDetalleConfig = { tipo: activeTab, camposLectura: tab.camposLectura };
-
-  const handleOpenModal  = (idx: number) => { setFilaIdx(idx); setModalOpen(true); };
-  const handleCloseModal = () => { setModalOpen(false); setFilaIdx(null); };
 
   const handleSave = async (respuesta: { aceptacion: string; motivo_no_aceptacion: string; comentario_respuesta: string }) => {
     if (filaIdx === null || !token) return;
     setSaving(true);
-    const fila = rows[filaIdx];
+    const fila = filas[filaIdx];
     try {
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/${fila.id}`, {
         method: "PATCH",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
         body: JSON.stringify(respuesta),
       });
-      if (!res.ok) throw new Error(`Error ${res.status} al guardar`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
       const actualizada: ObjecionRow = await res.json();
-      setFilas((prev) => {
-        const copia = [...prev[activeTab]];
-        copia[filaIdx] = actualizada;
-        return { ...prev, [activeTab]: copia };
-      });
-      setModalOpen(false);
-      setFilaIdx(null);
+      setFilas((prev) => { const c = [...prev]; c[filaIdx] = actualizada; return c; });
+      if (ficheiroActivo) await cargarFicheros();
+      setModalOpen(false); setFilaIdx(null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error guardando respuesta");
+      setError(e instanceof Error ? e.message : "Error guardando");
     } finally {
       setSaving(false);
     }
@@ -445,95 +505,163 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  return (
-    <section className="ui-card text-sm">
-
-      <input ref={fileInputRef} type="file" accept=".0,.csv,.txt" style={{ display: "none" }} onChange={handleFileChange} />
-
-      {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
-
-      {/* ── Barra de tabs ── */}
-      <div style={{ display: "flex", backgroundColor: "#1a2332", borderRadius: "6px 6px 0 0", paddingLeft: "8px", gap: "2px" }}>
-        {TABS.map((t) => {
-          const isActive = t.id === activeTab;
-          const count    = filas[t.id].length;
-          return (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-              padding: "9px 16px", fontSize: "11px", fontWeight: 500,
-              color: isActive ? "white" : "rgba(255,255,255,0.4)",
-              background: "transparent", border: "none",
-              borderBottom: isActive ? "2px solid #60a5fa" : "2px solid transparent",
-              cursor: "pointer", letterSpacing: "0.06em",
-              display: "flex", alignItems: "center", gap: "6px", transition: "color 0.15s",
-            }}>
-              {t.label}
-              {count > 0 && (
-                <span style={{ fontSize: "10px", background: isActive ? "#60a5fa" : "rgba(255,255,255,0.15)", color: "white", borderRadius: "10px", padding: "1px 6px", fontWeight: 600 }}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Toolbar ── */}
-      <div className="flex items-center justify-between gap-2 mb-3" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none" }}>
-        <div className="flex items-center gap-2">
-
-          {/* Selector empresa */}
-          {empresas.length > 1 && (
-            <select className="ui-select" value={empresaId ?? ""} onChange={(e) => setEmpresaId(Number(e.target.value))} style={{ fontSize: "11px", padding: "4px 8px", minWidth: 140, height: 28 }}>
-              {empresas.map((emp) => (
-                <option key={emp.id} value={emp.id}>{emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}</option>
-              ))}
-            </select>
-          )}
-
-          <button type="button" onClick={handleImportClick} disabled={importing || !empresaId} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <IconFolder />
-            {importing ? "Importando..." : tab.importLabel}
+  const tabBar = (
+    <div style={{ display: "flex", backgroundColor: "#1a2332", borderRadius: "6px 6px 0 0", paddingLeft: "8px", gap: "2px" }}>
+      {TABS.map((t) => {
+        const isActive = t.id === activeTab;
+        const count = ficheros.reduce((s, f) => s + f.total, 0);
+        return (
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+            padding: "9px 16px", fontSize: "11px", fontWeight: 500,
+            color: isActive ? "white" : "rgba(255,255,255,0.4)",
+            background: "transparent", border: "none",
+            borderBottom: isActive ? "2px solid #60a5fa" : "2px solid transparent",
+            cursor: "pointer", letterSpacing: "0.06em",
+            display: "flex", alignItems: "center", gap: "6px",
+          }}>
+            {t.label}
+            {isActive && count > 0 && (
+              <span style={{ fontSize: "10px", background: "#60a5fa", color: "white", borderRadius: "10px", padding: "1px 6px", fontWeight: 600 }}>
+                {count}
+              </span>
+            )}
           </button>
+        );
+      })}
+    </div>
+  );
 
-          <button type="button" onClick={handleGenerate} disabled={generating || totalRows === 0 || !empresaId} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <IconDownload />
-            {generating ? "Generando..." : tab.generateLabel}
-          </button>
+  const empresaSelector = empresas.length > 1 ? (
+    <select className="ui-select" value={empresaId ?? ""} onChange={(e) => setEmpresaId(Number(e.target.value))} style={{ fontSize: "11px", padding: "4px 8px", minWidth: 140, height: 28 }}>
+      {empresas.map((emp) => <option key={emp.id} value={emp.id}>{emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}</option>)}
+    </select>
+  ) : null;
 
-          {/* Botón borrar selección */}
-          {selectedCount > 0 && (
-            <button
-              type="button"
-              onClick={handleBulkDelete}
-              disabled={deleting}
-              className="ui-btn ui-btn-danger ui-btn-xs"
-              style={{ display: "flex", alignItems: "center", gap: 5 }}
-            >
-              <IconTrash />
-              {deleting ? "Borrando..." : `Borrar ${selectedCount} seleccionada${selectedCount !== 1 ? "s" : ""}`}
+  // ── NIVEL 1: lista de ficheros ────────────────────────────────────────────
+
+  if (ficheiroActivo === null) {
+    return (
+      <section className="ui-card text-sm">
+        <input ref={fileInputRef} type="file" accept=".0,.csv,.txt" style={{ display: "none" }} onChange={handleFileChange} />
+        {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
+
+        {tabBar}
+
+        <div className="flex items-center justify-between gap-2 mb-3" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none" }}>
+          <div className="flex items-center gap-2">
+            {empresaSelector}
+            <button type="button" onClick={handleImportClick} disabled={importing || !empresaId} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <IconFolder />
+              {importing ? "Importando..." : tab.importLabel}
             </button>
-          )}
+          </div>
+          <span className="ui-muted" style={{ fontSize: "11px" }}>
+            {loadingFicheros ? "Cargando..." : `${ficheros.length} fichero${ficheros.length !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
-        <span className="ui-muted" style={{ fontSize: "11px" }}>
-          {loading ? "Cargando..." : totalRows === 0 ? "Sin registros" : `${totalRows} registro${totalRows !== 1 ? "s" : ""}`}
+        <div className="ui-table-wrap">
+          <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+            <thead className="ui-thead">
+              <tr>
+                <th className="ui-th" style={{ width: 28 }}></th>
+                <th className="ui-th">Fichero</th>
+                <th className="ui-th">Cargado</th>
+                <th className="ui-th" style={{ textAlign: "center" }}>Total</th>
+                <th className="ui-th" style={{ textAlign: "center" }}>Pendientes</th>
+                <th className="ui-th" style={{ textAlign: "center" }}>Aceptadas</th>
+                <th className="ui-th" style={{ textAlign: "center" }}>Rechazadas</th>
+                <th className="ui-th">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadingFicheros ? (
+                <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>Cargando...</td></tr>
+              ) : ficheros.length === 0 ? (
+                <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>
+                  Sin ficheros importados · Usa &quot;{tab.importLabel}&quot; para cargar
+                </td></tr>
+              ) : (
+                ficheros.map((f) => (
+                  <tr key={f.nombre_fichero} className="ui-tr" style={{ cursor: "pointer" }} onClick={() => setFicheroActivo(f.nombre_fichero)}>
+                    <td className="ui-td" style={{ width: 28, color: "var(--text-muted)", textAlign: "center" }}>
+                      <IconChevron />
+                    </td>
+                    <td className="ui-td" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "10px" }}>{f.nombre_fichero}</td>
+                    <td className="ui-td ui-muted">{fmtDate(f.created_at)}</td>
+                    <td className="ui-td" style={{ textAlign: "center", fontWeight: 500 }}>{f.total}</td>
+                    <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.pendientes} variant="neutral" /></td>
+                    <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.aceptadas} variant="ok" /></td>
+                    <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.rechazadas} variant="err" /></td>
+                    <td className="ui-td" onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button type="button" onClick={() => handleGenerate(f.nombre_fichero)} disabled={generating} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                          <IconDownload />
+                          Generar REOB
+                        </button>
+                        <button type="button" onClick={() => handleDeleteFichero(f.nombre_fichero)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "4px 7px", display: "flex", alignItems: "center" }}>
+                          <IconTrash />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  // ── NIVEL 2: objeciones del fichero ──────────────────────────────────────
+
+  return (
+    <section className="ui-card text-sm">
+      <input ref={fileInputRef} type="file" accept=".0,.csv,.txt" style={{ display: "none" }} onChange={handleFileChange} />
+      {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
+
+      {tabBar}
+
+      {/* Breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none", borderBottom: "none" }}>
+        <button type="button" onClick={() => setFicheroActivo(null)} className="ui-btn ui-btn-outline ui-btn-xs">
+          ← Volver
+        </button>
+        <span className="ui-muted" style={{ fontSize: 11 }}>
+          {activeTab} ›
+        </span>
+        <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10, color: "var(--text)" }}>
+          {ficheiroActivo}
         </span>
       </div>
 
-      {/* ── Tabla ── */}
+      {/* Toolbar nivel 2 */}
+      <div className="flex items-center justify-between gap-2 mb-3" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "0.5px solid var(--card-border)" }}>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => handleGenerate(ficheiroActivo)} disabled={generating || filas.length === 0} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <IconDownload />
+            {generating ? "Generando..." : `Generar REOB${activeTab.replace("AOB", "").replace("OBJE", "OBJE")}`}
+          </button>
+          {selectedIds.size > 0 && (
+            <button type="button" onClick={handleBulkDelete} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <IconTrash />
+              {deleting ? "Borrando..." : `Borrar ${selectedIds.size} seleccionada${selectedIds.size !== 1 ? "s" : ""}`}
+            </button>
+          )}
+        </div>
+        <span className="ui-muted" style={{ fontSize: "11px" }}>
+          {loadingFilas ? "Cargando..." : `${filas.length} objeción${filas.length !== 1 ? "es" : ""}`}
+        </span>
+      </div>
+
+      {/* Tabla de objeciones */}
       <div className="ui-table-wrap">
         <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
             <tr>
-              {/* Checkbox seleccionar todo */}
               <th className="ui-th" style={{ width: 36, padding: "8px 10px", textAlign: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                  onChange={toggleSelectAll}
-                  style={{ cursor: "pointer", accentColor: "#1a2332" }}
-                />
+                <input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={toggleSelectAll} style={{ cursor: "pointer", accentColor: "#1a2332" }} />
               </th>
               {tab.columns.map((col) => (
                 <th key={col.id} className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")} style={{ whiteSpace: "nowrap" }}>
@@ -543,54 +671,33 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr className="ui-tr">
-                <td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>Cargando...</td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr className="ui-tr">
-                <td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>
-                  Sin objeciones cargadas · Usa &quot;{tab.importLabel}&quot; para cargar un fichero
-                </td>
-              </tr>
+            {loadingFilas ? (
+              <tr className="ui-tr"><td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>Cargando...</td></tr>
+            ) : filas.length === 0 ? (
+              <tr className="ui-tr"><td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>Sin objeciones en este fichero</td></tr>
             ) : (
-              rows.map((row, ri) => {
+              filas.map((row, ri) => {
                 const rowId = Number(row.id);
-                const isSelected = selectedIds.has(rowId);
+                const isSel = selectedIds.has(rowId);
                 return (
-                  <tr key={ri} className="ui-tr" style={{ background: isSelected ? "var(--nav-item-hover)" : undefined }}>
-                    {/* Checkbox fila */}
+                  <tr key={ri} className="ui-tr" style={{ background: isSel ? "var(--nav-item-hover)" : undefined }}>
                     <td className="ui-td" style={{ width: 36, padding: "6px 10px", textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(rowId)}
-                        style={{ cursor: "pointer", accentColor: "#1a2332" }}
-                      />
+                      <input type="checkbox" checked={isSel} onChange={() => toggleSelect(rowId)} style={{ cursor: "pointer", accentColor: "#1a2332" }} />
                     </td>
-
                     {tab.columns.map((col) => {
-                      if (col.id === "_acciones") {
-                        return (
-                          <td key="_acciones" className="ui-td" style={{ width: 64, padding: "6px 8px" }}>
-                            <div style={{ display: "flex", gap: 4 }}>
-                              <button type="button" onClick={() => handleOpenModal(ri)} className="ui-btn ui-btn-ghost ui-btn-xs" title="Editar respuesta" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
-                                <IconEdit />
-                              </button>
-                              <button type="button" onClick={() => handleDeleteOne(rowId)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" title="Borrar" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
-                                <IconTrash />
-                              </button>
-                            </div>
-                          </td>
-                        );
-                      }
-                      if (col.id === "aceptacion") {
-                        return (
-                          <td key={col.id} className="ui-td" style={{ whiteSpace: "nowrap" }}>
-                            <BadgeAceptacion valor={row.aceptacion ?? ""} />
-                          </td>
-                        );
-                      }
+                      if (col.id === "_acciones") return (
+                        <td key="_acciones" className="ui-td" style={{ width: 64, padding: "6px 8px" }}>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button type="button" onClick={() => { setFilaIdx(ri); setModalOpen(true); }} className="ui-btn ui-btn-ghost ui-btn-xs" title="Editar" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}><IconEdit /></button>
+                            <button type="button" onClick={() => handleDeleteOne(rowId)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" title="Borrar" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}><IconTrash /></button>
+                          </div>
+                        </td>
+                      );
+                      if (col.id === "aceptacion") return (
+                        <td key={col.id} className="ui-td" style={{ whiteSpace: "nowrap" }}>
+                          <BadgeAceptacion valor={row.aceptacion ?? ""} />
+                        </td>
+                      );
                       return (
                         <td key={col.id} className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")} style={{ whiteSpace: "nowrap" }}>
                           {row[col.id] || <span className="ui-muted">—</span>}
@@ -605,8 +712,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         </table>
       </div>
 
-      {/* ── Modal detalle ── */}
-      <ObjecionDetalleModal open={modalOpen} onClose={handleCloseModal} onSave={handleSave} config={modalConfig} fila={filaSeleccionada} saving={saving} />
+      <ObjecionDetalleModal open={modalOpen} onClose={() => { setModalOpen(false); setFilaIdx(null); }} onSave={handleSave} config={modalConfig} fila={filaSeleccionada} saving={saving} />
     </section>
   );
 }
