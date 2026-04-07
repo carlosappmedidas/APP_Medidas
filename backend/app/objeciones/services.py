@@ -56,14 +56,9 @@ def _csv_to_bz2(rows_data: List[List]) -> bytes:
 # ── Helpers de nombres de fichero ─────────────────────────────────────────────
 
 def _parse_nombre_agrecl(nombre: str) -> Tuple[str, str, str]:
-    """
-    AOBAGRECL_DDDD_AAAAMM_FFFFFFFF.0
-    Devuelve (dddd, aaaamm, fecha)
-    """
-    # Quitar extensión
-    base = nombre.replace(".0", "").replace(".bz2", "")
+    """AOBAGRECL_DDDD_AAAAMM_FFFFFFFF.0 → (dddd, aaaamm, fecha)"""
+    base   = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
-    # partes[0] = AOBAGRECL, [1] = DDDD, [2] = AAAAMM, [3] = FECHA
     dddd   = partes[1] if len(partes) > 1 else "0000"
     aaaamm = partes[2] if len(partes) > 2 else "000000"
     fecha  = partes[3] if len(partes) > 3 else "00000000"
@@ -71,10 +66,7 @@ def _parse_nombre_agrecl(nombre: str) -> Tuple[str, str, str]:
 
 
 def _parse_nombre_incl(nombre: str) -> Tuple[str, str, str, str]:
-    """
-    OBJEINCL_CCCC_DDDD_AAAAMM_FFFFFFFF.0
-    Devuelve (cccc, dddd, aaaamm, fecha)
-    """
+    """OBJEINCL_CCCC_DDDD_AAAAMM_FFFFFFFF.0 → (cccc, dddd, aaaamm, fecha)"""
     base   = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
     cccc   = partes[1] if len(partes) > 1 else "0000"
@@ -85,10 +77,7 @@ def _parse_nombre_incl(nombre: str) -> Tuple[str, str, str, str]:
 
 
 def _parse_nombre_cups(nombre: str) -> Tuple[str, str, str, str]:
-    """
-    AOBCUPS_DDDD_CCCC_AAAAMM_FFFFFFFF.0
-    Devuelve (dddd, cccc, aaaamm, fecha)
-    """
+    """AOBCUPS_DDDD_CCCC_AAAAMM_FFFFFFFF.0 → (dddd, cccc, aaaamm, fecha)"""
     base   = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
@@ -99,10 +88,7 @@ def _parse_nombre_cups(nombre: str) -> Tuple[str, str, str, str]:
 
 
 def _parse_nombre_cil(nombre: str) -> Tuple[str, str, str, str]:
-    """
-    AOBCIL_DDDD_CCCC_AAAAMM_FFFFFFFF.0
-    Devuelve (dddd, cccc, aaaamm, fecha)
-    """
+    """AOBCIL_DDDD_CCCC_AAAAMM_FFFFFFFF.0 → (dddd, cccc, aaaamm, fecha)"""
     base   = nombre.replace(".0", "").replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
@@ -113,10 +99,7 @@ def _parse_nombre_cil(nombre: str) -> Tuple[str, str, str, str]:
 
 
 def _cccc_from_id_objecion(id_objecion: Optional[str]) -> str:
-    """
-    Extrae el código de comercializador del ID de objeción.
-    AG_0921_0277_202506_C05E → 0921
-    """
+    """AG_0921_0277_202506_C05E → 0921"""
     if not id_objecion:
         return "0000"
     partes = id_objecion.split("_")
@@ -125,23 +108,65 @@ def _cccc_from_id_objecion(id_objecion: Optional[str]) -> str:
 
 # ── Validación de nombre de fichero ───────────────────────────────────────────
 
-PREFIJOS_VALIDOS = {
+PREFIJOS_VALIDOS: Dict[str, str] = {
     "agrecl": "AOBAGRECL",
     "incl":   "OBJEINCL",
     "cups":   "AOBCUPS",
     "cil":    "AOBCIL",
 }
 
+# Posición del código de distribuidor (DDDD) en el nombre del fichero
+# AOBAGRECL_DDDD_... → pos 1
+# OBJEINCL_CCCC_DDDD_... → pos 2  (el distribuidor es el segundo código)
+# AOBCUPS_DDDD_... → pos 1
+# AOBCIL_DDDD_... → pos 1
+_DDDD_POSICION: Dict[str, int] = {
+    "agrecl": 1,
+    "incl":   2,
+    "cups":   1,
+    "cil":    1,
+}
 
-def validar_nombre_fichero(nombre: str, tipo_ruta: str) -> Optional[str]:
+
+def validar_nombre_fichero(
+    nombre: str,
+    tipo_ruta: str,
+    codigo_ree: Optional[str] = None,
+) -> Optional[str]:
     """
-    Comprueba que el nombre del fichero empieza por el prefijo correcto.
-    Devuelve mensaje de error o None si es válido.
+    Valida que:
+    1. El nombre del fichero empieza por el prefijo correcto del tipo.
+    2. El código de distribuidor del nombre coincide con el codigo_ree de la empresa.
+    Devuelve mensaje de error o None si todo es correcto.
     """
     prefijo = PREFIJOS_VALIDOS.get(tipo_ruta, "")
-    nombre_sin_ext = nombre.split(".")[0] if "." in nombre else nombre
-    if not nombre_sin_ext.upper().startswith(prefijo):
-        return f"El fichero '{nombre}' no es de tipo {prefijo}. Se esperaba un fichero que empiece por '{prefijo}_'."
+
+    # Quitar extensión para trabajar con el nombre base
+    nombre_base = nombre
+    for ext in (".0.bz2", ".bz2", ".0"):
+        if nombre_base.endswith(ext):
+            nombre_base = nombre_base[: -len(ext)]
+            break
+
+    # 1. Validar prefijo
+    if not nombre_base.upper().startswith(prefijo):
+        return (
+            f"El fichero '{nombre}' no corresponde a este tipo. "
+            f"Se esperaba un fichero que empiece por '{prefijo}_'."
+        )
+
+    # 2. Validar código de distribuidor contra codigo_ree de la empresa
+    if codigo_ree and codigo_ree.strip():
+        partes = nombre_base.split("_")
+        pos = _DDDD_POSICION.get(tipo_ruta, 1)
+        dddd_fichero = partes[pos] if len(partes) > pos else ""
+        if dddd_fichero and dddd_fichero != codigo_ree.strip():
+            return (
+                f"El fichero '{nombre}' pertenece al distribuidor '{dddd_fichero}', "
+                f"pero la empresa seleccionada tiene código REE '{codigo_ree.strip()}'. "
+                f"Selecciona la empresa correcta o sube el fichero que corresponde."
+            )
+
     return None
 
 
@@ -268,49 +293,24 @@ def delete_agrecl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -
 
 
 def _agrecl_row_to_list(r: ObjecionAGRECL) -> List:
-    """Convierte una fila AGRECL al formato de salida REOBAGRECL (sin ID)."""
     return [
-        r.distribuidor or "",
-        r.comercializador or "",
-        r.nivel_tension or "",
-        r.tarifa_acceso or "",
-        r.disc_horaria or "",
-        r.tipo_punto or "",
-        r.provincia or "",
-        r.tipo_demanda or "",
-        r.periodo or "",
-        r.motivo or "",
-        r.magnitud or "",
+        r.distribuidor or "", r.comercializador or "", r.nivel_tension or "",
+        r.tarifa_acceso or "", r.disc_horaria or "", r.tipo_punto or "",
+        r.provincia or "", r.tipo_demanda or "", r.periodo or "",
+        r.motivo or "", r.magnitud or "",
         r.e_publicada if r.e_publicada is not None else "",
         r.e_propuesta if r.e_propuesta is not None else "",
-        r.comentario_emisor or "",
-        r.autoobjecion or "",
-        r.aceptacion or "",
-        r.motivo_no_aceptacion or "",
-        r.comentario_respuesta or "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
     ]
 
 
-def generate_reobagrecl_zip(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-) -> Tuple[bytes, str]:
-    """
-    Genera un ZIP con un .bz2 por cada ID de objeción del fichero
-    que tenga aceptacion S o N (no pendientes).
-    Nombre de cada bz2: REOBAGRECL_{DDDD}_{CCCC}_{9999}_{AAAAMM}_{FECHA}.0.bz2
-    Nombre del ZIP: REOBAGRECL_{DDDD}_{AAAAMM}_{FECHA}.zip
-    """
+def generate_reobagrecl_zip(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
+    """ZIP con un .bz2 por ID de objeción que tenga respuesta S o N."""
     dddd, aaaamm, fecha = _parse_nombre_agrecl(nombre_fichero)
-
     rows = list_agrecl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
-    # Solo las que tienen respuesta (S o N)
     rows_con_respuesta = [r for r in rows if r.aceptacion in ("S", "N")]
 
-    # Agrupar por id_objecion
     por_id: Dict[str, List[ObjecionAGRECL]] = {}
     for r in rows_con_respuesta:
         id_obj = r.id_objecion or "SIN_ID"
@@ -318,7 +318,6 @@ def generate_reobagrecl_zip(
             por_id[id_obj] = []
         por_id[id_obj].append(r)
 
-    # Construir ZIP
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for id_obj, filas in por_id.items():
@@ -331,16 +330,8 @@ def generate_reobagrecl_zip(
     return zip_buffer.getvalue(), nombre_zip
 
 
-def generate_reobagrecl_one(
-    db: Session,
-    *,
-    tenant_id: int,
-    objecion_id: int,
-    nombre_fichero: str,
-) -> Tuple[bytes, str]:
-    """
-    Genera un .bz2 para una sola objeción por su id de BD.
-    """
+def generate_reobagrecl_one(db: Session, *, tenant_id: int, objecion_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
+    """Un .bz2 para una sola objeción."""
     dddd, aaaamm, fecha = _parse_nombre_agrecl(nombre_fichero)
     obj = db.query(ObjecionAGRECL).filter(
         ObjecionAGRECL.id == objecion_id,
@@ -348,11 +339,9 @@ def generate_reobagrecl_one(
     ).first()
     if obj is None:
         raise ValueError(f"ObjecionAGRECL id={objecion_id} no encontrada")
-
     cccc = _cccc_from_id_objecion(obj.id_objecion)
     nombre_bz2 = f"REOBAGRECL_{dddd}_{cccc}_9999_{aaaamm}_{fecha}.0.bz2"
-    data = [_agrecl_row_to_list(obj)]
-    return _csv_to_bz2(data), nombre_bz2
+    return _csv_to_bz2([_agrecl_row_to_list(obj)]), nombre_bz2
 
 
 # ── OBJEINCL ──────────────────────────────────────────────────────────────────
@@ -431,17 +420,8 @@ def delete_incl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> 
     return deleted
 
 
-def generate_reobjeincl(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-) -> Tuple[bytes, str]:
-    """
-    REOBJEINCL — sin cabeceras, sin ID, bz2.
-    Nombre: REOBJEINCL_{DDDD}_{CCCC}_9999_{AAAAMM}_{FECHA}.0.bz2
-    """
+def generate_reobjeincl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
+    """REOBJEINCL — sin cabeceras, sin ID, bz2. Periodo se divide en inicio y fin."""
     cccc, dddd, aaaamm, fecha = _parse_nombre_incl(nombre_fichero)
     rows = list_incl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     data = []
@@ -540,13 +520,7 @@ def delete_cups_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> 
     return deleted
 
 
-def generate_reobcups(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-) -> Tuple[bytes, str]:
+def generate_reobcups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
     """REOBCUPS — sin cabeceras, sin ID, bz2."""
     dddd, cccc, aaaamm, fecha = _parse_nombre_cups(nombre_fichero)
     rows = list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
@@ -638,13 +612,7 @@ def delete_cil_fichero(db: Session, *, nombre_fichero: str, tenant_id: int) -> i
     return deleted
 
 
-def generate_reobcil(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-) -> Tuple[bytes, str]:
+def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
     """REOBCIL — sin cabeceras, sin ID, bz2."""
     dddd, cccc, aaaamm, fecha = _parse_nombre_cil(nombre_fichero)
     rows = list_cil(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)

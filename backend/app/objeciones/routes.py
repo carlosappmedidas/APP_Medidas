@@ -79,8 +79,10 @@ def _assert_empresa_access(*, user: User, empresa: Empresa) -> None:
 def _effective_tenant(user: User) -> int:
     return _tenant_id(user)
 
-def _validar_nombre(nombre: str, tipo_ruta: str) -> None:
-    error = services.validar_nombre_fichero(nombre, tipo_ruta)
+def _validar_nombre(nombre: str, tipo_ruta: str, empresa: Empresa) -> None:
+    """Valida prefijo del fichero y que el código REE coincide con la empresa."""
+    codigo_ree = str(getattr(empresa, "codigo_ree") or "").strip() or None
+    error = services.validar_nombre_fichero(nombre, tipo_ruta, codigo_ree)
     if error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
@@ -96,9 +98,9 @@ async def import_agrecl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _validar_nombre(file.filename or "", "agrecl")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
+    _validar_nombre(file.filename or "", "agrecl", empresa)
     content = await file.read()
     n = services.import_agrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="AOBAGRECL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
@@ -180,7 +182,6 @@ def generate_agrecl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Genera ZIP con un .bz2 por cada ID de objeción con respuesta (S o N)."""
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content, filename = services.generate_reobagrecl_zip(
@@ -197,7 +198,6 @@ def generate_agrecl_one(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Genera un .bz2 para una sola objeción."""
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     try:
@@ -220,9 +220,9 @@ async def import_incl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _validar_nombre(file.filename or "", "incl")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
+    _validar_nombre(file.filename or "", "incl", empresa)
     content = await file.read()
     n = services.import_incl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="OBJEINCL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
@@ -323,9 +323,9 @@ async def import_cups(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _validar_nombre(file.filename or "", "cups")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
+    _validar_nombre(file.filename or "", "cups", empresa)
     content = await file.read()
     n = services.import_cups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="AOBCUPS", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
@@ -426,9 +426,9 @@ async def import_cil(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _validar_nombre(file.filename or "", "cil")
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
+    _validar_nombre(file.filename or "", "cil", empresa)
     content = await file.read()
     n = services.import_cil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="AOBCIL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
