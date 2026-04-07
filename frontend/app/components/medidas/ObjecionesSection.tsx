@@ -211,6 +211,15 @@ const IconEdit = () => (
   </svg>
 );
 
+const IconTrash = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </svg>
+);
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function ObjecionesSection({ token, currentUser }: ObjecionesSectionProps) {
@@ -221,25 +230,33 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const [loading, setLoading]       = useState(false);
   const [importing, setImporting]   = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [deleting, setDeleting]     = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
   // Selector de empresa
-  const [empresas, setEmpresas]         = useState<EmpresaOption[]>([]);
-  const [empresaId, setEmpresaId]       = useState<number | null>(null);
+  const [empresas, setEmpresas]   = useState<EmpresaOption[]>([]);
+  const [empresaId, setEmpresaId] = useState<number | null>(null);
+
+  // Selección múltiple
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   // Modal
-  const [modalOpen, setModalOpen]   = useState(false);
-  const [filaIdx, setFilaIdx]       = useState<number | null>(null);
-  const [saving, setSaving]         = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [filaIdx, setFilaIdx]     = useState<number | null>(null);
+  const [saving, setSaving]       = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const tab      = TABS.find((t) => t.id === activeTab)!;
-  const ruta     = TIPO_RUTA[activeTab];
-  const rows     = filas[activeTab];
+  const tab       = TABS.find((t) => t.id === activeTab)!;
+  const ruta      = TIPO_RUTA[activeTab];
+  const rows      = filas[activeTab];
   const totalRows = rows.length;
+  const selectedCount = selectedIds.size;
 
-  // ── Cargar lista de empresas disponibles ─────────────────────────────────
+  // Limpiar selección al cambiar tab
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab]);
+
+  // ── Cargar empresas ───────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!token) return;
@@ -249,32 +266,26 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         if (!res.ok) return;
         const data: EmpresaOption[] = await res.json();
         setEmpresas(data);
-        // Pre-seleccionar: si el usuario tiene empresas permitidas, la primera; si no, la primera de todas
         const permitidas = currentUser?.empresa_ids_permitidas ?? [];
-        if (permitidas.length > 0) {
-          setEmpresaId(permitidas[0]);
-        } else if (data.length > 0) {
-          setEmpresaId(data[0].id);
-        }
+        if (permitidas.length > 0) setEmpresaId(permitidas[0]);
+        else if (data.length > 0) setEmpresaId(data[0].id);
       } catch { /* silencioso */ }
     };
     void fetchEmpresas();
   }, [token, currentUser]);
 
-  // ── Cargar datos de la API ────────────────────────────────────────────────
+  // ── Cargar datos ──────────────────────────────────────────────────────────
 
   const cargarDatos = useCallback(async () => {
     if (!token || !empresaId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/objeciones/${ruta}?empresa_id=${empresaId}`,
-        { headers: getAuthHeaders(token) },
-      );
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data: ObjecionRow[] = await res.json();
       setFilas((prev) => ({ ...prev, [activeTab]: data }));
+      setSelectedIds(new Set());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error cargando objeciones");
     } finally {
@@ -282,11 +293,9 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     }
   }, [token, empresaId, ruta, activeTab]);
 
-  useEffect(() => {
-    cargarDatos();
-  }, [cargarDatos]);
+  useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  // ── Importar fichero ──────────────────────────────────────────────────────
+  // ── Importar ──────────────────────────────────────────────────────────────
 
   const handleImportClick = () => fileInputRef.current?.click();
 
@@ -298,10 +307,9 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(
-        `${API_BASE_URL}/objeciones/${ruta}/import?empresa_id=${empresaId}`,
-        { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData },
-      );
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/import?empresa_id=${empresaId}`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
+      });
       if (!res.ok) throw new Error(`Error ${res.status} al importar`);
       await cargarDatos();
     } catch (e: unknown) {
@@ -312,27 +320,24 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     }
   };
 
-  // ── Generar fichero REOB* ─────────────────────────────────────────────────
+  // ── Generar ───────────────────────────────────────────────────────────────
 
   const handleGenerate = async () => {
     if (!token || !empresaId) return;
     setGenerating(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/objeciones/${ruta}/generate?empresa_id=${empresaId}`,
-        { method: "POST", headers: getAuthHeaders(token) },
-      );
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/generate?empresa_id=${empresaId}`, {
+        method: "POST", headers: getAuthHeaders(token),
+      });
       if (!res.ok) throw new Error(`Error ${res.status} al generar fichero`);
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename=(.+)/);
-      const filename = match ? match[1] : `REOB${activeTab}.0`;
+      const filename = match ? match[1] : `REOB${activeTab}.bz2`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
+      a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error generando fichero");
@@ -340,6 +345,69 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
       setGenerating(false);
     }
   };
+
+  // ── Borrado individual ────────────────────────────────────────────────────
+
+  const handleDeleteOne = async (id: number) => {
+    if (!token) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/${id}`, {
+        method: "DELETE", headers: getAuthHeaders(token),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status} al borrar`);
+      setFilas((prev) => ({ ...prev, [activeTab]: prev[activeTab].filter((r) => Number(r.id) !== id) }));
+      setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error borrando objeción");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ── Borrado en bloque ─────────────────────────────────────────────────────
+
+  const handleBulkDelete = async () => {
+    if (!token || selectedIds.size === 0) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/bulk-delete`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status} al borrar`);
+      setFilas((prev) => ({ ...prev, [activeTab]: prev[activeTab].filter((r) => !selectedIds.has(Number(r.id))) }));
+      setSelectedIds(new Set());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error borrando objeciones");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ── Selección ─────────────────────────────────────────────────────────────
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === rows.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(rows.map((r) => Number(r.id))));
+    }
+  };
+
+  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < rows.length;
 
   // ── Modal ─────────────────────────────────────────────────────────────────
 
@@ -349,23 +417,16 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const handleOpenModal  = (idx: number) => { setFilaIdx(idx); setModalOpen(true); };
   const handleCloseModal = () => { setModalOpen(false); setFilaIdx(null); };
 
-  const handleSave = async (respuesta: {
-    aceptacion: string;
-    motivo_no_aceptacion: string;
-    comentario_respuesta: string;
-  }) => {
+  const handleSave = async (respuesta: { aceptacion: string; motivo_no_aceptacion: string; comentario_respuesta: string }) => {
     if (filaIdx === null || !token) return;
     setSaving(true);
     const fila = rows[filaIdx];
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/objeciones/${ruta}/${fila.id}`,
-        {
-          method: "PATCH",
-          headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-          body: JSON.stringify(respuesta),
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/${fila.id}`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify(respuesta),
+      });
       if (!res.ok) throw new Error(`Error ${res.status} al guardar`);
       const actualizada: ObjecionRow = await res.json();
       setFilas((prev) => {
@@ -387,61 +448,27 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   return (
     <section className="ui-card text-sm">
 
-      {/* Input de fichero oculto */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".0,.csv,.txt"
-        style={{ display: "none" }}
-        onChange={handleFileChange}
-      />
+      <input ref={fileInputRef} type="file" accept=".0,.csv,.txt" style={{ display: "none" }} onChange={handleFileChange} />
 
-      {/* ── Error ── */}
       {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
       {/* ── Barra de tabs ── */}
-      <div
-        style={{
-          display: "flex",
-          backgroundColor: "#1a2332",
-          borderRadius: "6px 6px 0 0",
-          paddingLeft: "8px",
-          gap: "2px",
-        }}
-      >
+      <div style={{ display: "flex", backgroundColor: "#1a2332", borderRadius: "6px 6px 0 0", paddingLeft: "8px", gap: "2px" }}>
         {TABS.map((t) => {
           const isActive = t.id === activeTab;
           const count    = filas[t.id].length;
           return (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              style={{
-                padding: "9px 16px",
-                fontSize: "11px",
-                fontWeight: 500,
-                color: isActive ? "white" : "rgba(255,255,255,0.4)",
-                background: "transparent",
-                border: "none",
-                borderBottom: isActive ? "2px solid #60a5fa" : "2px solid transparent",
-                cursor: "pointer",
-                letterSpacing: "0.06em",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                transition: "color 0.15s",
-              }}
-            >
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              padding: "9px 16px", fontSize: "11px", fontWeight: 500,
+              color: isActive ? "white" : "rgba(255,255,255,0.4)",
+              background: "transparent", border: "none",
+              borderBottom: isActive ? "2px solid #60a5fa" : "2px solid transparent",
+              cursor: "pointer", letterSpacing: "0.06em",
+              display: "flex", alignItems: "center", gap: "6px", transition: "color 0.15s",
+            }}>
               {t.label}
               {count > 0 && (
-                <span style={{
-                  fontSize: "10px",
-                  background: isActive ? "#60a5fa" : "rgba(255,255,255,0.15)",
-                  color: "white",
-                  borderRadius: "10px",
-                  padding: "1px 6px",
-                  fontWeight: 600,
-                }}>
+                <span style={{ fontSize: "10px", background: isActive ? "#60a5fa" : "rgba(255,255,255,0.15)", color: "white", borderRadius: "10px", padding: "1px 6px", fontWeight: 600 }}>
                   {count}
                 </span>
               )}
@@ -451,62 +478,45 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
       </div>
 
       {/* ── Toolbar ── */}
-      <div
-        className="flex items-center justify-between gap-2 mb-3"
-        style={{
-          padding: "8px 10px",
-          background: "var(--field-bg-soft)",
-          border: "1px solid var(--card-border)",
-          borderTop: "none",
-        }}
-      >
+      <div className="flex items-center justify-between gap-2 mb-3" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none" }}>
         <div className="flex items-center gap-2">
 
-          {/* Selector de empresa */}
+          {/* Selector empresa */}
           {empresas.length > 1 && (
-            <select
-              className="ui-select"
-              value={empresaId ?? ""}
-              onChange={(e) => setEmpresaId(Number(e.target.value))}
-              style={{ fontSize: "11px", padding: "4px 8px", minWidth: 140, height: 28 }}
-            >
+            <select className="ui-select" value={empresaId ?? ""} onChange={(e) => setEmpresaId(Number(e.target.value))} style={{ fontSize: "11px", padding: "4px 8px", minWidth: 140, height: 28 }}>
               {empresas.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}
-                </option>
+                <option key={emp.id} value={emp.id}>{emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}</option>
               ))}
             </select>
           )}
 
-          <button
-            type="button"
-            onClick={handleImportClick}
-            disabled={importing || !empresaId}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-            style={{ display: "flex", alignItems: "center", gap: 5 }}
-          >
+          <button type="button" onClick={handleImportClick} disabled={importing || !empresaId} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <IconFolder />
             {importing ? "Importando..." : tab.importLabel}
           </button>
 
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={generating || totalRows === 0 || !empresaId}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-            style={{ display: "flex", alignItems: "center", gap: 5 }}
-          >
+          <button type="button" onClick={handleGenerate} disabled={generating || totalRows === 0 || !empresaId} className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <IconDownload />
             {generating ? "Generando..." : tab.generateLabel}
           </button>
+
+          {/* Botón borrar selección */}
+          {selectedCount > 0 && (
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              disabled={deleting}
+              className="ui-btn ui-btn-danger ui-btn-xs"
+              style={{ display: "flex", alignItems: "center", gap: 5 }}
+            >
+              <IconTrash />
+              {deleting ? "Borrando..." : `Borrar ${selectedCount} seleccionada${selectedCount !== 1 ? "s" : ""}`}
+            </button>
+          )}
         </div>
 
         <span className="ui-muted" style={{ fontSize: "11px" }}>
-          {loading
-            ? "Cargando..."
-            : totalRows === 0
-            ? "Sin registros"
-            : `${totalRows} registro${totalRows !== 1 ? "s" : ""}`}
+          {loading ? "Cargando..." : totalRows === 0 ? "Sin registros" : `${totalRows} registro${totalRows !== 1 ? "s" : ""}`}
         </span>
       </div>
 
@@ -515,12 +525,18 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
           <thead className="ui-thead">
             <tr>
+              {/* Checkbox seleccionar todo */}
+              <th className="ui-th" style={{ width: 36, padding: "8px 10px", textAlign: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                  onChange={toggleSelectAll}
+                  style={{ cursor: "pointer", accentColor: "#1a2332" }}
+                />
+              </th>
               {tab.columns.map((col) => (
-                <th
-                  key={col.id}
-                  className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")}
-                  style={{ whiteSpace: "nowrap" }}
-                >
+                <th key={col.id} className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")} style={{ whiteSpace: "nowrap" }}>
                   {col.label}
                 </th>
               ))}
@@ -529,68 +545,68 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
           <tbody>
             {loading ? (
               <tr className="ui-tr">
-                <td colSpan={tab.columns.length} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>
-                  Cargando...
-                </td>
+                <td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>Cargando...</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr className="ui-tr">
-                <td colSpan={tab.columns.length} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>
+                <td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "48px 16px" }}>
                   Sin objeciones cargadas · Usa &quot;{tab.importLabel}&quot; para cargar un fichero
                 </td>
               </tr>
             ) : (
-              rows.map((row, ri) => (
-                <tr key={ri} className="ui-tr">
-                  {tab.columns.map((col) => {
-                    if (col.id === "_acciones") {
+              rows.map((row, ri) => {
+                const rowId = Number(row.id);
+                const isSelected = selectedIds.has(rowId);
+                return (
+                  <tr key={ri} className="ui-tr" style={{ background: isSelected ? "var(--nav-item-hover)" : undefined }}>
+                    {/* Checkbox fila */}
+                    <td className="ui-td" style={{ width: 36, padding: "6px 10px", textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(rowId)}
+                        style={{ cursor: "pointer", accentColor: "#1a2332" }}
+                      />
+                    </td>
+
+                    {tab.columns.map((col) => {
+                      if (col.id === "_acciones") {
+                        return (
+                          <td key="_acciones" className="ui-td" style={{ width: 64, padding: "6px 8px" }}>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button type="button" onClick={() => handleOpenModal(ri)} className="ui-btn ui-btn-ghost ui-btn-xs" title="Editar respuesta" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
+                                <IconEdit />
+                              </button>
+                              <button type="button" onClick={() => handleDeleteOne(rowId)} disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs" title="Borrar" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
+                                <IconTrash />
+                              </button>
+                            </div>
+                          </td>
+                        );
+                      }
+                      if (col.id === "aceptacion") {
+                        return (
+                          <td key={col.id} className="ui-td" style={{ whiteSpace: "nowrap" }}>
+                            <BadgeAceptacion valor={row.aceptacion ?? ""} />
+                          </td>
+                        );
+                      }
                       return (
-                        <td key="_acciones" className="ui-td" style={{ width: 36, padding: "6px 8px" }}>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenModal(ri)}
-                            className="ui-btn ui-btn-ghost ui-btn-xs"
-                            title="Editar respuesta"
-                            style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
-                          >
-                            <IconEdit />
-                          </button>
+                        <td key={col.id} className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")} style={{ whiteSpace: "nowrap" }}>
+                          {row[col.id] || <span className="ui-muted">—</span>}
                         </td>
                       );
-                    }
-                    if (col.id === "aceptacion") {
-                      return (
-                        <td key={col.id} className="ui-td" style={{ whiteSpace: "nowrap" }}>
-                          <BadgeAceptacion valor={row.aceptacion ?? ""} />
-                        </td>
-                      );
-                    }
-                    return (
-                      <td
-                        key={col.id}
-                        className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")}
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {row[col.id] || <span className="ui-muted">—</span>}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
+                    })}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
       {/* ── Modal detalle ── */}
-      <ObjecionDetalleModal
-        open={modalOpen}
-        onClose={handleCloseModal}
-        onSave={handleSave}
-        config={modalConfig}
-        fila={filaSeleccionada}
-        saving={saving}
-      />
+      <ObjecionDetalleModal open={modalOpen} onClose={handleCloseModal} onSave={handleSave} config={modalConfig} fila={filaSeleccionada} saving={saving} />
     </section>
   );
 }

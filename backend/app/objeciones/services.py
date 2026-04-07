@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import bz2
 import io
 import csv
 from datetime import datetime
@@ -17,7 +18,6 @@ from app.objeciones.models import ObjecionAGRECL, ObjecionCIL, ObjecionCUPS, Obj
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _dec(value: str) -> Optional[Decimal]:
-    """Convierte string a Decimal, devuelve None si vacío o inválido."""
     v = (value or "").strip().replace(",", ".")
     if not v:
         return None
@@ -33,27 +33,17 @@ def _str(value: str) -> Optional[str]:
 
 
 def _parse_csv_bytes(content: bytes) -> List[dict]:
-    """
-    Parsea el contenido de un fichero .0 (CSV con separador ';').
-    Salta líneas vacías y la primera línea si es el nombre del fichero
-    (no contiene ';' o todos los campos son vacíos).
-    Devuelve lista de dicts con las cabeceras de la primera fila válida.
-    """
     text = content.decode("latin-1", errors="replace")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
-
-    # Buscar la fila de cabeceras — primera que tenga más de 1 columna con datos
     header_idx = None
     for i, row in enumerate(rows):
         non_empty = [c for c in row if c.strip()]
         if len(non_empty) > 2:
             header_idx = i
             break
-
     if header_idx is None:
         return []
-
     headers = [h.strip() for h in rows[header_idx]]
     result = []
     for row in rows[header_idx + 1:]:
@@ -63,48 +53,27 @@ def _parse_csv_bytes(content: bytes) -> List[dict]:
         for i, h in enumerate(headers):
             record[h] = row[i].strip() if i < len(row) else ""
         result.append(record)
-
     return result
+
+
+def _csv_to_bz2(rows_data: List[List]) -> bytes:
+    """CSV con separador ';', sin cabeceras, comprimido en bz2."""
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";", lineterminator="\n")
+    for row in rows_data:
+        writer.writerow(row)
+    csv_bytes = output.getvalue().encode("latin-1", errors="replace")
+    return bz2.compress(csv_bytes)
 
 
 # ── AOBAGRECL ─────────────────────────────────────────────────────────────────
 
-# Cabeceras exactas del fichero AOBAGRECL (según Excel de referencia)
-_AGRECL_MAP = {
-    "ID de la objeción":                              "id_objecion",
-    "Distribuidor":                                   "distribuidor",
-    "Comercializador o consumidor directo a mercado": "comercializador",
-    "Nivel de tensión":                               "nivel_tension",
-    "Tarifa de acceso":                               "tarifa_acceso",
-    "Discriminación horaria":                         "disc_horaria",
-    "Tipo de punto de medida":                        "tipo_punto",
-    "Provincia o subsistema":                         "provincia",
-    "Tipo de demanda":                                "tipo_demanda",
-    "Periodo del cierre objetado":                    "periodo",
-    "Motivo de objeción":                             "motivo",
-    "Magnitud":                                       "magnitud",
-    "Valor de energía activa entrante publicado (kWh)": "e_publicada",
-    "Valor de energía activa entrante propuesto (kWh)": "e_propuesta",
-    "Comentario del emisor de la objeción":           "comentario_emisor",
-    "Objeción a autobjeción":                         "autoobjecion",
-}
-
-
-def import_agrecl(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-    content: bytes,
-) -> int:
+def import_agrecl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_csv_bytes(content)
     nuevos = 0
     for row in rows:
         obj = ObjecionAGRECL(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             id_objecion=_str(row.get("ID de la objeción", "")),
             distribuidor=_str(row.get("Distribuidor", "")),
             comercializador=_str(row.get("Comercializador o consumidor directo a mercado", "")),
@@ -128,13 +97,7 @@ def import_agrecl(
     return nuevos
 
 
-def list_agrecl(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: Optional[int] = None,
-    periodo: Optional[str] = None,
-) -> List[ObjecionAGRECL]:
+def list_agrecl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionAGRECL]:
     q = db.query(ObjecionAGRECL).filter(ObjecionAGRECL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionAGRECL.empresa_id == empresa_id)
@@ -143,20 +106,8 @@ def list_agrecl(
     return q.order_by(ObjecionAGRECL.id.desc()).all()
 
 
-def update_agrecl_respuesta(
-    db: Session,
-    *,
-    id: int,
-    tenant_id: int,
-    aceptacion: str,
-    motivo_no_aceptacion: Optional[str],
-    comentario_respuesta: Optional[str],
-    respuesta_publicada: Optional[int] = 0,
-) -> ObjecionAGRECL:
-    obj = db.query(ObjecionAGRECL).filter(
-        ObjecionAGRECL.id == id,
-        ObjecionAGRECL.tenant_id == tenant_id,
-    ).first()
+def update_agrecl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionAGRECL:
+    obj = db.query(ObjecionAGRECL).filter(ObjecionAGRECL.id == id, ObjecionAGRECL.tenant_id == tenant_id).first()
     if obj is None:
         raise ValueError(f"ObjecionAGRECL id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -169,84 +120,38 @@ def update_agrecl_respuesta(
     return obj
 
 
-def generate_reobagrecl(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    periodo: Optional[str] = None,
-) -> bytes:
-    """
-    Genera el fichero REOBAGRECL en formato CSV con separador ';'.
-    Cabeceras exactas según Excel de referencia — SIN ID de objeción.
-    """
+def delete_agrecl(db: Session, *, ids: List[int], tenant_id: int) -> int:
+    deleted = db.query(ObjecionAGRECL).filter(
+        ObjecionAGRECL.id.in_(ids),
+        ObjecionAGRECL.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def generate_reobagrecl(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
     rows = list_agrecl(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
-
-    cabeceras = [
-        "Distribuidor",
-        "Comercializador o consumidor directo a mercado",
-        "Nivel de tensión",
-        "Tarifa de acceso",
-        "Discriminación horaria",
-        "Tipo de punto de medida",
-        "Provincia o subsistema",
-        "Tipo de demanda",
-        "Periodo del cierre objetado",
-        "Motivo de objeción",
-        "Magnitud",
-        "Valor de energía activa entrante publicado (kWh)",
-        "Valor de energía activa entrante propuesto (kWh)",
-        "Comentario del emisor de la objeción",
-        "Objeción a autobjeción (S/N)",
-        "Aceptación",
-        "Motivo de no aceptación",
-        "Comentario del emisor de la respuesta",
-    ]
-
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", lineterminator="\n")
-    writer.writerow(cabeceras)
-    for r in rows:
-        writer.writerow([
-            r.distribuidor or "",
-            r.comercializador or "",
-            r.nivel_tension or "",
-            r.tarifa_acceso or "",
-            r.disc_horaria or "",
-            r.tipo_punto or "",
-            r.provincia or "",
-            r.tipo_demanda or "",
-            r.periodo or "",
-            r.motivo or "",
-            r.magnitud or "",
-            r.e_publicada or "",
-            r.e_propuesta or "",
-            r.comentario_emisor or "",
-            r.autoobjecion or "",
-            r.aceptacion or "",
-            r.motivo_no_aceptacion or "",
-            r.comentario_respuesta or "",
-        ])
-    return output.getvalue().encode("latin-1", errors="replace")
+    data = [[
+        r.distribuidor or "", r.comercializador or "", r.nivel_tension or "",
+        r.tarifa_acceso or "", r.disc_horaria or "", r.tipo_punto or "",
+        r.provincia or "", r.tipo_demanda or "", r.periodo or "",
+        r.motivo or "", r.magnitud or "",
+        r.e_publicada if r.e_publicada is not None else "",
+        r.e_propuesta if r.e_propuesta is not None else "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
+    ] for r in rows]
+    return _csv_to_bz2(data)
 
 
 # ── OBJEINCL ──────────────────────────────────────────────────────────────────
 
-def import_incl(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-    content: bytes,
-) -> int:
+def import_incl(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_csv_bytes(content)
     nuevos = 0
     for row in rows:
         obj = ObjecionINCL(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             cups=_str(row.get("CUPS", "")),
             periodo=_str(row.get("Periodo de la objeción", "")),
             motivo=_str(row.get("Motivo de la objeción", "")),
@@ -263,13 +168,7 @@ def import_incl(
     return nuevos
 
 
-def list_incl(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: Optional[int] = None,
-    periodo: Optional[str] = None,
-) -> List[ObjecionINCL]:
+def list_incl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionINCL]:
     q = db.query(ObjecionINCL).filter(ObjecionINCL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionINCL.empresa_id == empresa_id)
@@ -278,20 +177,8 @@ def list_incl(
     return q.order_by(ObjecionINCL.id.desc()).all()
 
 
-def update_incl_respuesta(
-    db: Session,
-    *,
-    id: int,
-    tenant_id: int,
-    aceptacion: str,
-    motivo_no_aceptacion: Optional[str],
-    comentario_respuesta: Optional[str],
-    respuesta_publicada: Optional[int] = 0,
-) -> ObjecionINCL:
-    obj = db.query(ObjecionINCL).filter(
-        ObjecionINCL.id == id,
-        ObjecionINCL.tenant_id == tenant_id,
-    ).first()
+def update_incl_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionINCL:
+    obj = db.query(ObjecionINCL).filter(ObjecionINCL.id == id, ObjecionINCL.tenant_id == tenant_id).first()
     if obj is None:
         raise ValueError(f"ObjecionINCL id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -304,69 +191,37 @@ def update_incl_respuesta(
     return obj
 
 
-def generate_reobjeincl(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    periodo: Optional[str] = None,
-) -> bytes:
-    """Genera REOBJEINCL — SIN ID de objeción."""
+def delete_incl(db: Session, *, ids: List[int], tenant_id: int) -> int:
+    deleted = db.query(ObjecionINCL).filter(
+        ObjecionINCL.id.in_(ids),
+        ObjecionINCL.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def generate_reobjeincl(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
     rows = list_incl(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
-
-    cabeceras = [
-        "CUPS",
-        "Periodo de la objeción",
-        "Motivo de la objeción",
-        "Valor de energía activa entrante publicado (kWh)",
-        "Valor de energía activa entrante propuesto (kWh)",
-        "Valor de energía activa saliente publicado (kWh)",
-        "Valor de energía saliente entrante propuesto (kWh)",
-        "Comentario",
-        "Objeción a autobjeción",
-        "Aceptación",
-        "Motivo de no aceptación",
-        "Comentario del emisor de la respuesta",
-    ]
-
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", lineterminator="\n")
-    writer.writerow(cabeceras)
-    for r in rows:
-        writer.writerow([
-            r.cups or "",
-            r.periodo or "",
-            r.motivo or "",
-            r.ae_publicada or "",
-            r.ae_propuesta or "",
-            r.as_publicada or "",
-            r.as_propuesta or "",
-            r.comentario_emisor or "",
-            r.autoobjecion or "",
-            r.aceptacion or "",
-            r.motivo_no_aceptacion or "",
-            r.comentario_respuesta or "",
-        ])
-    return output.getvalue().encode("latin-1", errors="replace")
+    data = [[
+        r.cups or "", r.periodo or "", r.motivo or "",
+        r.ae_publicada if r.ae_publicada is not None else "",
+        r.ae_propuesta if r.ae_propuesta is not None else "",
+        r.as_publicada if r.as_publicada is not None else "",
+        r.as_propuesta if r.as_propuesta is not None else "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
+    ] for r in rows]
+    return _csv_to_bz2(data)
 
 
 # ── AOBCUPS ───────────────────────────────────────────────────────────────────
 
-def import_cups(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-    content: bytes,
-) -> int:
+def import_cups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_csv_bytes(content)
     nuevos = 0
     for row in rows:
         obj = ObjecionCUPS(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             id_objecion=_str(row.get("ID de la objeción", "")),
             cups=_str(row.get("CUPS", "")),
             periodo=_str(row.get("Periodo de cierre objetado", "")),
@@ -386,13 +241,7 @@ def import_cups(
     return nuevos
 
 
-def list_cups(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: Optional[int] = None,
-    periodo: Optional[str] = None,
-) -> List[ObjecionCUPS]:
+def list_cups(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionCUPS]:
     q = db.query(ObjecionCUPS).filter(ObjecionCUPS.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionCUPS.empresa_id == empresa_id)
@@ -401,20 +250,8 @@ def list_cups(
     return q.order_by(ObjecionCUPS.id.desc()).all()
 
 
-def update_cups_respuesta(
-    db: Session,
-    *,
-    id: int,
-    tenant_id: int,
-    aceptacion: str,
-    motivo_no_aceptacion: Optional[str],
-    comentario_respuesta: Optional[str],
-    respuesta_publicada: Optional[int] = 0,
-) -> ObjecionCUPS:
-    obj = db.query(ObjecionCUPS).filter(
-        ObjecionCUPS.id == id,
-        ObjecionCUPS.tenant_id == tenant_id,
-    ).first()
+def update_cups_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionCUPS:
+    obj = db.query(ObjecionCUPS).filter(ObjecionCUPS.id == id, ObjecionCUPS.tenant_id == tenant_id).first()
     if obj is None:
         raise ValueError(f"ObjecionCUPS id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -427,70 +264,36 @@ def update_cups_respuesta(
     return obj
 
 
-def generate_reobcups(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    periodo: Optional[str] = None,
-) -> bytes:
-    """
-    Genera REOBCUPS — SIN ID de objeción.
-    El fichero AOBCUPS ya traía los campos de respuesta en la entrada.
-    """
+def delete_cups(db: Session, *, ids: List[int], tenant_id: int) -> int:
+    deleted = db.query(ObjecionCUPS).filter(
+        ObjecionCUPS.id.in_(ids),
+        ObjecionCUPS.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def generate_reobcups(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
     rows = list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
-
-    cabeceras = [
-        "CUPS",
-        "Periodo de cierre objetado",
-        "Motivo de objeción",
-        "Valor de energía activa entrante publicado (kWh)",
-        "Valor de energía activa entrante propuesto (kWh)",
-        "Comentario del emisor de la objeción",
-        "Objeción a autobjeción (S/N)",
-        "Aceptación",
-        "Motivo de no aceptación",
-        "Comentario del emisor de la respuesta",
-        "Magnitud",
-    ]
-
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", lineterminator="\n")
-    writer.writerow(cabeceras)
-    for r in rows:
-        writer.writerow([
-            r.cups or "",
-            r.periodo or "",
-            r.motivo or "",
-            r.e_publicada or "",
-            r.e_propuesta or "",
-            r.comentario_emisor or "",
-            r.autoobjecion or "",
-            r.aceptacion or "",
-            r.motivo_no_aceptacion or "",
-            r.comentario_respuesta or "",
-            r.magnitud or "",
-        ])
-    return output.getvalue().encode("latin-1", errors="replace")
+    data = [[
+        r.cups or "", r.periodo or "", r.motivo or "",
+        r.e_publicada if r.e_publicada is not None else "",
+        r.e_propuesta if r.e_propuesta is not None else "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
+        r.magnitud or "",
+    ] for r in rows]
+    return _csv_to_bz2(data)
 
 
 # ── AOBCIL ────────────────────────────────────────────────────────────────────
 
-def import_cil(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    nombre_fichero: str,
-    content: bytes,
-) -> int:
+def import_cil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str, content: bytes) -> int:
     rows = _parse_csv_bytes(content)
     nuevos = 0
     for row in rows:
         obj = ObjecionCIL(
-            tenant_id=tenant_id,
-            empresa_id=empresa_id,
-            nombre_fichero=nombre_fichero,
+            tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero,
             id_objecion=_str(row.get("ID de la objeción", "")),
             cil=_str(row.get("CIL", "")),
             periodo=_str(row.get("Periodo de cierre objetado", "")),
@@ -510,13 +313,7 @@ def import_cil(
     return nuevos
 
 
-def list_cil(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: Optional[int] = None,
-    periodo: Optional[str] = None,
-) -> List[ObjecionCIL]:
+def list_cil(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None, periodo: Optional[str] = None) -> List[ObjecionCIL]:
     q = db.query(ObjecionCIL).filter(ObjecionCIL.tenant_id == tenant_id)
     if empresa_id:
         q = q.filter(ObjecionCIL.empresa_id == empresa_id)
@@ -525,20 +322,8 @@ def list_cil(
     return q.order_by(ObjecionCIL.id.desc()).all()
 
 
-def update_cil_respuesta(
-    db: Session,
-    *,
-    id: int,
-    tenant_id: int,
-    aceptacion: str,
-    motivo_no_aceptacion: Optional[str],
-    comentario_respuesta: Optional[str],
-    respuesta_publicada: Optional[int] = 0,
-) -> ObjecionCIL:
-    obj = db.query(ObjecionCIL).filter(
-        ObjecionCIL.id == id,
-        ObjecionCIL.tenant_id == tenant_id,
-    ).first()
+def update_cil_respuesta(db: Session, *, id: int, tenant_id: int, aceptacion: str, motivo_no_aceptacion: Optional[str], comentario_respuesta: Optional[str], respuesta_publicada: Optional[int] = 0) -> ObjecionCIL:
+    obj = db.query(ObjecionCIL).filter(ObjecionCIL.id == id, ObjecionCIL.tenant_id == tenant_id).first()
     if obj is None:
         raise ValueError(f"ObjecionCIL id={id} no encontrada")
     obj.aceptacion = aceptacion  # type: ignore
@@ -551,51 +336,26 @@ def update_cil_respuesta(
     return obj
 
 
-def generate_reobcil(
-    db: Session,
-    *,
-    tenant_id: int,
-    empresa_id: int,
-    periodo: Optional[str] = None,
-) -> bytes:
-    """Genera REOBCIL — SIN ID de objeción."""
+def delete_cil(db: Session, *, ids: List[int], tenant_id: int) -> int:
+    deleted = db.query(ObjecionCIL).filter(
+        ObjecionCIL.id.in_(ids),
+        ObjecionCIL.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, periodo: Optional[str] = None) -> bytes:
     rows = list_cil(db, tenant_id=tenant_id, empresa_id=empresa_id, periodo=periodo)
-
-    cabeceras = [
-        "CIL",
-        "Periodo de cierre objetado",
-        "Motivo de objeción",
-        "Valor de energía activa saliente publicado (kWh)",
-        "Valor de energía activa saliente propuesto (kWh)",
-        "Valor de energía reactiva en el periodo cuadrante 2 publicado (kVArh) (3)",
-        "Valor de energía reactiva en el periodo cuadrante 2 propuesto (kVArh) (3)",
-        "Valor de energía reactiva en el periodo cuadrante 3 publicado (kVArh) (3)",
-        "Valor de energía reactiva en el periodo cuadrante 2 propuesto (kVArh) (3)3",
-        "Comentario del emisor de la objeción",
-        "Objeción a autobjeción",
-        "Aceptación (S/N)",
-        "Motivo de no aceptación",
-        "Comentario del emisor de la respuesta",
-    ]
-
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", lineterminator="\n")
-    writer.writerow(cabeceras)
-    for r in rows:
-        writer.writerow([
-            r.cil or "",
-            r.periodo or "",
-            r.motivo or "",
-            r.eas_publicada or "",
-            r.eas_propuesta or "",
-            r.eq2_publicada or "",
-            r.eq2_propuesta or "",
-            r.eq3_publicada or "",
-            r.eq3_propuesta or "",
-            r.comentario_emisor or "",
-            r.autoobjecion or "",
-            r.aceptacion or "",
-            r.motivo_no_aceptacion or "",
-            r.comentario_respuesta or "",
-        ])
-    return output.getvalue().encode("latin-1", errors="replace")
+    data = [[
+        r.cil or "", r.periodo or "", r.motivo or "",
+        r.eas_publicada if r.eas_publicada is not None else "",
+        r.eas_propuesta if r.eas_propuesta is not None else "",
+        r.eq2_publicada if r.eq2_publicada is not None else "",
+        r.eq2_propuesta if r.eq2_propuesta is not None else "",
+        r.eq3_publicada if r.eq3_publicada is not None else "",
+        r.eq3_propuesta if r.eq3_propuesta is not None else "",
+        r.comentario_emisor or "", r.autoobjecion or "",
+        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
+    ] for r in rows]
+    return _csv_to_bz2(data)

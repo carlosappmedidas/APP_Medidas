@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -27,7 +28,16 @@ from app.objeciones import services
 router = APIRouter(prefix="/objeciones", tags=["objeciones"])
 
 
-# ── Helpers de acceso (mismo patrón que alerts) ───────────────────────────────
+# ── Schemas locales ───────────────────────────────────────────────────────────
+
+class BulkDeletePayload(BaseModel):
+    ids: List[int]
+
+class DeleteResponse(BaseModel):
+    deleted: int
+
+
+# ── Helpers de acceso ─────────────────────────────────────────────────────────
 
 def _tenant_id(user: User) -> int:
     return int(getattr(user, "tenant_id"))
@@ -73,13 +83,7 @@ async def import_agrecl(
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
-    n = services.import_agrecl(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        nombre_fichero=file.filename or "",
-        content=content,
-    )
+    n = services.import_agrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="AOBAGRECL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
@@ -93,12 +97,7 @@ def get_agrecl(
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_agrecl(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
+    return services.list_agrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
 
 
 @router.patch("/agrecl/{id}", response_model=ObjecionAGRECLRead)
@@ -109,17 +108,29 @@ def patch_agrecl(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return services.update_agrecl_respuesta(
-            db,
-            id=id,
-            tenant_id=_effective_tenant(current_user),
-            aceptacion=payload.aceptacion,
-            motivo_no_aceptacion=payload.motivo_no_aceptacion,
-            comentario_respuesta=payload.comentario_respuesta,
-            respuesta_publicada=payload.respuesta_publicada,
-        )
+        return services.update_agrecl_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/agrecl/{id}", response_model=DeleteResponse)
+def delete_agrecl_one(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_agrecl(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.post("/agrecl/bulk-delete", response_model=DeleteResponse)
+def bulk_delete_agrecl(
+    payload: BulkDeletePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_agrecl(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
 
 
 @router.post("/agrecl/generate")
@@ -131,18 +142,9 @@ def generate_agrecl(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobagrecl(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
-    filename = f"REOBAGRECL_{periodo or 'todos'}.0"
-    return Response(
-        content=content,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    content = services.generate_reobagrecl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    filename = f"REOBAGRECL_{periodo or 'todos'}.bz2"
+    return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
 # ── OBJEINCL ──────────────────────────────────────────────────────────────────
@@ -157,13 +159,7 @@ async def import_incl(
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
-    n = services.import_incl(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        nombre_fichero=file.filename or "",
-        content=content,
-    )
+    n = services.import_incl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="OBJEINCL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
@@ -177,12 +173,7 @@ def get_incl(
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_incl(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
+    return services.list_incl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
 
 
 @router.patch("/incl/{id}", response_model=ObjecionINCLRead)
@@ -193,17 +184,29 @@ def patch_incl(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return services.update_incl_respuesta(
-            db,
-            id=id,
-            tenant_id=_effective_tenant(current_user),
-            aceptacion=payload.aceptacion,
-            motivo_no_aceptacion=payload.motivo_no_aceptacion,
-            comentario_respuesta=payload.comentario_respuesta,
-            respuesta_publicada=payload.respuesta_publicada,
-        )
+        return services.update_incl_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/incl/{id}", response_model=DeleteResponse)
+def delete_incl_one(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_incl(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.post("/incl/bulk-delete", response_model=DeleteResponse)
+def bulk_delete_incl(
+    payload: BulkDeletePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_incl(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
 
 
 @router.post("/incl/generate")
@@ -215,18 +218,9 @@ def generate_incl(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobjeincl(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
-    filename = f"REOBJEINCL_{periodo or 'todos'}.0"
-    return Response(
-        content=content,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    content = services.generate_reobjeincl(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    filename = f"REOBJEINCL_{periodo or 'todos'}.bz2"
+    return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
 # ── AOBCUPS ───────────────────────────────────────────────────────────────────
@@ -241,13 +235,7 @@ async def import_cups(
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
-    n = services.import_cups(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        nombre_fichero=file.filename or "",
-        content=content,
-    )
+    n = services.import_cups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="AOBCUPS", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
@@ -261,12 +249,7 @@ def get_cups(
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_cups(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
+    return services.list_cups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
 
 
 @router.patch("/cups/{id}", response_model=ObjecionCUPSRead)
@@ -277,17 +260,29 @@ def patch_cups(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return services.update_cups_respuesta(
-            db,
-            id=id,
-            tenant_id=_effective_tenant(current_user),
-            aceptacion=payload.aceptacion,
-            motivo_no_aceptacion=payload.motivo_no_aceptacion,
-            comentario_respuesta=payload.comentario_respuesta,
-            respuesta_publicada=payload.respuesta_publicada,
-        )
+        return services.update_cups_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/cups/{id}", response_model=DeleteResponse)
+def delete_cups_one(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_cups(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.post("/cups/bulk-delete", response_model=DeleteResponse)
+def bulk_delete_cups(
+    payload: BulkDeletePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_cups(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
 
 
 @router.post("/cups/generate")
@@ -299,18 +294,9 @@ def generate_cups(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobcups(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
-    filename = f"REOBCUPS_{periodo or 'todos'}.0"
-    return Response(
-        content=content,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    content = services.generate_reobcups(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    filename = f"REOBCUPS_{periodo or 'todos'}.bz2"
+    return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
 # ── AOBCIL ────────────────────────────────────────────────────────────────────
@@ -325,13 +311,7 @@ async def import_cil(
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
     content = await file.read()
-    n = services.import_cil(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        nombre_fichero=file.filename or "",
-        content=content,
-    )
+    n = services.import_cil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=file.filename or "", content=content)
     return ImportResponse(tipo="AOBCIL", fichero=file.filename or "", registros=n, empresa_id=empresa_id)
 
 
@@ -345,12 +325,7 @@ def get_cil(
     if empresa_id:
         empresa = _get_empresa_or_404(db, empresa_id)
         _assert_empresa_access(user=current_user, empresa=empresa)
-    return services.list_cil(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
+    return services.list_cil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
 
 
 @router.patch("/cil/{id}", response_model=ObjecionCILRead)
@@ -361,17 +336,29 @@ def patch_cil(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return services.update_cil_respuesta(
-            db,
-            id=id,
-            tenant_id=_effective_tenant(current_user),
-            aceptacion=payload.aceptacion,
-            motivo_no_aceptacion=payload.motivo_no_aceptacion,
-            comentario_respuesta=payload.comentario_respuesta,
-            respuesta_publicada=payload.respuesta_publicada,
-        )
+        return services.update_cil_respuesta(db, id=id, tenant_id=_effective_tenant(current_user), aceptacion=payload.aceptacion, motivo_no_aceptacion=payload.motivo_no_aceptacion, comentario_respuesta=payload.comentario_respuesta, respuesta_publicada=payload.respuesta_publicada)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/cil/{id}", response_model=DeleteResponse)
+def delete_cil_one(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_cil(db, ids=[id], tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
+
+
+@router.post("/cil/bulk-delete", response_model=DeleteResponse)
+def bulk_delete_cil(
+    payload: BulkDeletePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = services.delete_cil(db, ids=payload.ids, tenant_id=_effective_tenant(current_user))
+    return DeleteResponse(deleted=deleted)
 
 
 @router.post("/cil/generate")
@@ -383,15 +370,6 @@ def generate_cil(
 ):
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(user=current_user, empresa=empresa)
-    content = services.generate_reobcil(
-        db,
-        tenant_id=_effective_tenant(current_user),
-        empresa_id=empresa_id,
-        periodo=periodo,
-    )
-    filename = f"REOBCIL_{periodo or 'todos'}.0"
-    return Response(
-        content=content,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    content = services.generate_reobcil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, periodo=periodo)
+    filename = f"REOBCIL_{periodo or 'todos'}.bz2"
+    return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
