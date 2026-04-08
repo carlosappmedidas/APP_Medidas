@@ -64,6 +64,7 @@ def _config_to_dict(obj: FtpConfig, db: Session) -> dict:
         "id": obj.id,
         "empresa_id": obj.empresa_id,
         "empresa_nombre": _nombre_empresa(db, int(obj.empresa_id)),
+        "nombre": obj.nombre,                   # ← NUEVO
         "host": obj.host,
         "puerto": obj.puerto,
         "usuario": obj.usuario,
@@ -82,6 +83,7 @@ def create_config(
     db: Session, *,
     tenant_id: int,
     empresa_id: int,
+    nombre: Optional[str],
     host: str,
     puerto: int,
     usuario: str,
@@ -93,6 +95,7 @@ def create_config(
     obj = FtpConfig(
         tenant_id=tenant_id,
         empresa_id=empresa_id,
+        nombre=nombre,                          # ← NUEVO
         host=host,
         puerto=puerto,
         usuario=usuario,
@@ -111,6 +114,7 @@ def update_config(
     db: Session, *,
     config_id: int,
     tenant_id: int,
+    nombre: Optional[str],
     host: Optional[str],
     puerto: Optional[int],
     usuario: Optional[str],
@@ -125,6 +129,8 @@ def update_config(
     ).first()
     if obj is None:
         raise ValueError(f"FtpConfig id={config_id} no encontrada")
+    if nombre is not None:
+        obj.nombre = nombre  # type: ignore
     if host is not None:
         obj.host = host  # type: ignore
     if puerto is not None:
@@ -177,14 +183,21 @@ def _get_config_by_empresa(db: Session, *, empresa_id: int, tenant_id: int) -> F
     return obj
 
 
-# ── Conexión FTP — con TLS o sin TLS según configuración ─────────────────────
+def _get_config_by_id_activa(db: Session, *, config_id: int, tenant_id: int) -> FtpConfig:
+    """Obtiene una config por su ID (para el explorador que selecciona por conexión)."""
+    obj = db.query(FtpConfig).filter(
+        FtpConfig.id == config_id,
+        FtpConfig.tenant_id == tenant_id,
+        FtpConfig.activo.is_(True),
+    ).first()
+    if obj is None:
+        raise ValueError(f"Configuración FTP id={config_id} no encontrada o inactiva")
+    return obj
+
+
+# ── Conexión FTP ──────────────────────────────────────────────────────────────
 
 def _conectar_en_path(config: FtpConfig, path: str):
-    """
-    Conecta al FTP y navega al path indicado.
-    Si usar_tls=True  → usa FTPS con TLS explícito (_FTPSReuse)
-    Si usar_tls=False → usa FTP plano sin cifrado (ftplib.FTP)
-    """
     usar_tls = bool(getattr(config, "usar_tls", True))
     password = descifrar_password(str(config.password_cifrada))
     clean_path = (path or "/").strip() or "/"
@@ -204,7 +217,6 @@ def _conectar_en_path(config: FtpConfig, path: str):
 
     if clean_path != "/":
         ftp.cwd(clean_path)
-
     return ftp
 
 
@@ -307,18 +319,23 @@ def _parse_list_line(linea: str) -> Optional[dict]:
     }
 
 
-# ── Listar contenido de un path (carpetas + ficheros) ─────────────────────────
+# ── Listar contenido de un path ───────────────────────────────────────────────
 
 def listar_path(
     db: Session, *,
-    empresa_id: int,
+    config_id: int,
     tenant_id: int,
     path: str,
     filtro_nombre: Optional[str] = None,
     filtro_mes: Optional[str] = None,
     limite: int = 5000,
 ) -> dict:
-    config = _get_config_by_empresa(db, empresa_id=empresa_id, tenant_id=tenant_id)
+    """
+    Lista el contenido de un path FTP.
+    Ahora recibe config_id directamente en vez de empresa_id,
+    para soportar empresas con múltiples conexiones FTP.
+    """
+    config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
 
     partes_path = path.rstrip("/").rsplit("/", 1)
     path_padre = partes_path[0] if len(partes_path) > 1 and partes_path[0] else "/"
@@ -370,7 +387,6 @@ def listar_path(
 
     carpetas.sort(key=lambda c: c["nombre"])
     ficheros.sort(key=lambda f: f["fecha_sort"], reverse=True)
-
     for f in ficheros:
         f.pop("fecha_sort", None)
 
@@ -393,13 +409,13 @@ def _directorio_descarga() -> Path:
 
 def descargar_ficheros(
     db: Session, *,
-    empresa_id: int,
+    config_id: int,
     tenant_id: int,
     path: str,
     nombres: List[str],
 ) -> Tuple[int, int, List[str]]:
-    config = _get_config_by_empresa(db, empresa_id=empresa_id, tenant_id=tenant_id)
-    directorio_local = _directorio_descarga() / str(empresa_id)
+    config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
+    directorio_local = _directorio_descarga() / str(config.empresa_id)
     directorio_local.mkdir(parents=True, exist_ok=True)
 
     descargados = 0
@@ -414,13 +430,13 @@ def descargar_ficheros(
                 with open(destino, "wb") as f:
                     ftp.retrbinary(f"RETR {nombre}", f.write)
                 tamanio = destino.stat().st_size
-                _log(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre, tamanio=tamanio, estado="ok")
+                _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id), nombre_fichero=nombre, tamanio=tamanio, estado="ok")
                 descargados += 1
                 detalle.append(f"OK: {nombre}")
             except Exception as e:
                 errores += 1
                 msg = str(e)[:200]
-                _log(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre, tamanio=None, estado="error", mensaje_error=msg)
+                _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id), nombre_fichero=nombre, tamanio=None, estado="error", mensaje_error=msg)
                 detalle.append(f"ERROR: {nombre} — {msg}")
     finally:
         try:

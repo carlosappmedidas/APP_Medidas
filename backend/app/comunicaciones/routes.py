@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
-from app.empresas.models import Empresa
 from app.tenants.models import User
 from app.comunicaciones import services
 from app.comunicaciones.schemas import (
@@ -38,25 +37,6 @@ def _assert_not_viewer(user: User) -> None:
     if str(getattr(user, "rol", "")) == "viewer":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sin permisos")
 
-def _get_empresa_or_404(db: Session, empresa_id: int) -> Empresa:
-    emp = db.query(Empresa).filter(Empresa.id == empresa_id).first()
-    if emp is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa no encontrada")
-    return emp
-
-def _assert_empresa_access(user: User, empresa: Empresa) -> None:
-    if _is_superuser(user):
-        return
-    if int(getattr(empresa, "tenant_id")) != _tenant_id(user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sin acceso a esta empresa")
-    try:
-        rel = getattr(user, "empresas_permitidas", None) or []
-        allowed = [int(getattr(e, "id")) for e in rel]
-    except Exception:
-        allowed = []
-    if allowed and int(getattr(empresa, "id")) not in allowed:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sin acceso a esta empresa")
-
 
 # ── Configuraciones ───────────────────────────────────────────────────────────
 
@@ -76,13 +56,12 @@ def create_config(
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
-    empresa = _get_empresa_or_404(db, payload.empresa_id)
-    _assert_empresa_access(current_user, empresa)
     try:
         return services.create_config(
             db,
             tenant_id=_tenant_id(current_user),
             empresa_id=payload.empresa_id,
+            nombre=payload.nombre,
             host=payload.host,
             puerto=payload.puerto,
             usuario=payload.usuario,
@@ -108,6 +87,7 @@ def update_config(
             db,
             config_id=config_id,
             tenant_id=_tenant_id(current_user),
+            nombre=payload.nombre,
             host=payload.host,
             puerto=payload.puerto,
             usuario=payload.usuario,
@@ -147,11 +127,11 @@ def test_conexion(
     return TestResponse(ok=ok, message=msg)
 
 
-# ── Explorador — listar path ──────────────────────────────────────────────────
+# ── Explorador — listar path por config_id ────────────────────────────────────
 
-@router.get("/explorar/{empresa_id}")
+@router.get("/explorar/{config_id}")
 def explorar_path(
-    empresa_id: int,
+    config_id: int,
     path: str = Query("/", description="Path remoto a listar"),
     filtro_nombre: Optional[str] = Query(None, description="Filtrar por texto en el nombre del fichero"),
     filtro_mes: Optional[str] = Query(None, description="Filtrar por mes en formato YYYY-MM (ej: 2026-04)"),
@@ -160,12 +140,10 @@ def explorar_path(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     _assert_not_viewer(current_user)
-    empresa = _get_empresa_or_404(db, empresa_id)
-    _assert_empresa_access(current_user, empresa)
     try:
         return services.listar_path(
             db,
-            empresa_id=empresa_id,
+            config_id=config_id,
             tenant_id=_tenant_id(current_user),
             path=path,
             filtro_nombre=filtro_nombre,
@@ -178,29 +156,27 @@ def explorar_path(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
-# ── Descarga ──────────────────────────────────────────────────────────────────
+# ── Descarga por config_id ────────────────────────────────────────────────────
 
 class DescargarConPathPayload(BaseModel):
     path: str
     ficheros: List[str]
 
 
-@router.post("/descargar/{empresa_id}", response_model=DescargarResponse)
+@router.post("/descargar/{config_id}", response_model=DescargarResponse)
 def descargar_ficheros(
-    empresa_id: int,
+    config_id: int,
     payload: DescargarConPathPayload,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
-    empresa = _get_empresa_or_404(db, empresa_id)
-    _assert_empresa_access(current_user, empresa)
     if not payload.ficheros:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se indicaron ficheros")
     try:
         descargados, errores, detalle = services.descargar_ficheros(
             db,
-            empresa_id=empresa_id,
+            config_id=config_id,
             tenant_id=_tenant_id(current_user),
             path=payload.path,
             nombres=payload.ficheros,

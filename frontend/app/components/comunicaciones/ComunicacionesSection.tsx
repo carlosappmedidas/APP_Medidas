@@ -10,6 +10,7 @@ interface FtpConfig {
   id: number;
   empresa_id: number;
   empresa_nombre: string;
+  nombre: string | null;
   host: string;
   puerto: number;
   usuario: string;
@@ -20,6 +21,7 @@ interface FtpConfig {
 
 interface FtpConfigForm {
   empresa_id: number | "";
+  nombre: string;
   host: string;
   puerto: number;
   usuario: string;
@@ -81,8 +83,15 @@ function fmtSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Etiqueta legible para una conexión FTP
+function labelConexion(c: FtpConfig): string {
+  const base = c.nombre || c.empresa_nombre;
+  const tipo = c.usar_tls ? "TLS" : "FTP";
+  return `${base} — ${c.host} (${tipo})`;
+}
+
 const FORM_VACIO: FtpConfigForm = {
-  empresa_id: "", host: "www.asemeservicios.com", puerto: 22221,
+  empresa_id: "", nombre: "", host: "www.asemeservicios.com", puerto: 22221,
   usuario: "", password: "", directorio_remoto: "/", usar_tls: true, activo: true,
 };
 
@@ -188,8 +197,8 @@ export default function ComunicacionesSection({ token }: Props) {
   const [testingId, setTestingId]           = useState<number | null>(null);
   const [testResult, setTestResult]         = useState<Record<number, { ok: boolean; msg: string }>>({});
 
-  // Panel 2 — Explorador
-  const [explorerEmpresaId, setExplorerEmpresaId] = useState<number | "">("");
+  // Panel 2 — Explorador (ahora por config_id en vez de empresa_id)
+  const [explorerConfigId, setExplorerConfigId]   = useState<number | "">("");
   const [explorerResult, setExplorerResult]       = useState<ExplorerResult | null>(null);
   const [loadingExplorer, setLoadingExplorer]     = useState(false);
   const [errorExplorer, setErrorExplorer]         = useState<string | null>(null);
@@ -239,7 +248,7 @@ export default function ComunicacionesSection({ token }: Props) {
       const res = await fetch(url, {
         method,
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, nombre: form.nombre || null }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -258,6 +267,7 @@ export default function ComunicacionesSection({ token }: Props) {
       const res = await fetch(`${API_BASE_URL}/ftp/configs/${id}`, { method: "DELETE", headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setConfigs(prev => prev.filter(c => c.id !== id));
+      if (explorerConfigId === id) handleCambiarConexion("");
     } catch (e: unknown) {
       setErrorConfigs(e instanceof Error ? e.message : "Error borrando");
     }
@@ -275,14 +285,15 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setTestingId(null); }
   };
 
+  // Explorar usando config_id directamente
   const explorarPath = useCallback(async (path: string, nombre?: string, mes?: string) => {
-    if (!token || !explorerEmpresaId) return;
+    if (!token || !explorerConfigId) return;
     setLoadingExplorer(true); setErrorExplorer(null); setSelectedFicheros(new Set());
     try {
       const params = new URLSearchParams({ path, limite: "5000" });
       if (nombre && nombre.trim()) params.set("filtro_nombre", nombre.trim());
       if (mes && mes.trim()) params.set("filtro_mes", mes.trim());
-      const res = await fetch(`${API_BASE_URL}/ftp/explorar/${explorerEmpresaId}?${params}`, { headers: getAuthHeaders(token) });
+      const res = await fetch(`${API_BASE_URL}/ftp/explorar/${explorerConfigId}?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data: ExplorerResult = await res.json();
       setExplorerResult(data);
@@ -290,18 +301,18 @@ export default function ComunicacionesSection({ token }: Props) {
     } catch (e: unknown) {
       setErrorExplorer(e instanceof Error ? e.message : "Error explorando FTP");
     } finally { setLoadingExplorer(false); }
-  }, [token, explorerEmpresaId]);
+  }, [token, explorerConfigId]);
 
-  const handleCambiarEmpresa = (id: number | "") => {
-    setExplorerEmpresaId(id);
+  const handleCambiarConexion = (id: number | "") => {
+    setExplorerConfigId(id);
     setExplorerResult(null); setErrorExplorer(null);
     setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum("");
     setSelectedFicheros(new Set()); setRequiereFiltro(false);
   };
 
   const handleIrRaiz = () => {
-    if (!explorerEmpresaId) return;
-    const config = configs.find(c => c.empresa_id === explorerEmpresaId);
+    if (!explorerConfigId) return;
+    const config = configs.find(c => c.id === explorerConfigId);
     const raiz = config?.directorio_remoto || "/";
     setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum("");
     explorarPath(raiz);
@@ -319,10 +330,10 @@ export default function ComunicacionesSection({ token }: Props) {
   };
 
   const handleDescargar = async () => {
-    if (!token || !explorerEmpresaId || selectedFicheros.size === 0 || !explorerResult) return;
+    if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
     setDescargando(true); setErrorExplorer(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/ftp/descargar/${explorerEmpresaId}`, {
+      const res = await fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
         method: "POST",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
         body: JSON.stringify({ path: explorerResult.path_actual, ficheros: Array.from(selectedFicheros) }),
@@ -391,6 +402,8 @@ export default function ComunicacionesSection({ token }: Props) {
   };
 
   const hayFiltros = filtroNombre.trim() || filtroMes;
+  // Conexiones activas para el explorador
+  const conexionesActivas = configs.filter(c => c.activo);
 
   return (
     <div className="text-sm">
@@ -440,6 +453,14 @@ export default function ComunicacionesSection({ token }: Props) {
                     </select>
                   </div>
                   <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                      Nombre de la conexión <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(opcional)</span>
+                    </label>
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
+                      value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                      placeholder="ej: GISCE, DATADIS, CCH..." />
+                  </div>
+                  <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Host</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
                       value={form.host} onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
@@ -464,21 +485,18 @@ export default function ComunicacionesSection({ token }: Props) {
                       value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                       placeholder={editId ? "••••••••" : "Contraseña FTP"} />
                   </div>
-                  <div>
+                  <div style={{ gridColumn: "1 / -1" }}>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Directorio raíz</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
                       value={form.directorio_remoto} onChange={e => setForm(f => ({ ...f, directorio_remoto: e.target.value }))}
                       placeholder="/" />
                   </div>
                 </div>
-                {/* Checkboxes: TLS y Activo */}
                 <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input type="checkbox" id="usar-tls-chk" checked={form.usar_tls}
                       onChange={e => setForm(f => ({ ...f, usar_tls: e.target.checked }))} />
-                    <label htmlFor="usar-tls-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      Usar TLS/FTPS
-                    </label>
+                    <label htmlFor="usar-tls-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Usar TLS/FTPS</label>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input type="checkbox" id="activo-chk" checked={form.activo}
@@ -503,11 +521,12 @@ export default function ComunicacionesSection({ token }: Props) {
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
                   <tr>
+                    <th className="ui-th">Nombre</th>
                     <th className="ui-th">Empresa</th>
                     <th className="ui-th">Host</th>
                     <th className="ui-th">Puerto</th>
                     <th className="ui-th">Usuario</th>
-                    <th className="ui-th">Directorio raíz</th>
+                    <th className="ui-th">Dir. raíz</th>
                     <th className="ui-th" style={{ textAlign: "center" }}>Cifrado</th>
                     <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
                     <th className="ui-th">Test</th>
@@ -516,14 +535,17 @@ export default function ComunicacionesSection({ token }: Props) {
                 </thead>
                 <tbody>
                   {loadingConfigs ? (
-                    <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
+                    <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : configs.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                    <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                       Sin conexiones · Pulsa &quot;Añadir conexión FTP&quot; para empezar
                     </td></tr>
                   ) : configs.map(c => (
                     <tr key={c.id} className="ui-tr">
-                      <td className="ui-td" style={{ fontWeight: 500 }}>{c.empresa_nombre}</td>
+                      <td className="ui-td" style={{ fontWeight: 600 }}>
+                        {c.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}
+                      </td>
+                      <td className="ui-td">{c.empresa_nombre}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{c.host}</td>
                       <td className="ui-td">{c.puerto}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{c.usuario}</td>
@@ -558,7 +580,7 @@ export default function ComunicacionesSection({ token }: Props) {
                             style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
                             onClick={() => {
                               setEditId(c.id);
-                              setForm({ empresa_id: c.empresa_id, host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo });
+                              setForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo });
                               setShowForm(true);
                             }}>
                             <IconEdit />
@@ -595,17 +617,18 @@ export default function ComunicacionesSection({ token }: Props) {
         {panel2Open && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
 
+            {/* Selector de CONEXIÓN (no empresa) */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Empresa:</span>
-              <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 160 }}
-                value={explorerEmpresaId}
-                onChange={e => handleCambiarEmpresa(e.target.value === "" ? "" : Number(e.target.value))}>
-                <option value="">Selecciona empresa</option>
-                {empresas.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}</option>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Conexión:</span>
+              <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 280 }}
+                value={explorerConfigId}
+                onChange={e => handleCambiarConexion(e.target.value === "" ? "" : Number(e.target.value))}>
+                <option value="">Selecciona una conexión FTP</option>
+                {conexionesActivas.map(c => (
+                  <option key={c.id} value={c.id}>{labelConexion(c)}</option>
                 ))}
               </select>
-              {explorerEmpresaId && (
+              {explorerConfigId && (
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                   style={{ display: "flex", alignItems: "center", gap: 5 }}
                   onClick={handleIrRaiz} disabled={loadingExplorer}>
@@ -628,6 +651,7 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
+            {/* Filtros */}
             {explorerResult && (
               <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -682,9 +706,9 @@ export default function ComunicacionesSection({ token }: Props) {
 
             {errorExplorer && <div className="ui-alert ui-alert--danger mb-3">{errorExplorer}</div>}
 
-            {!explorerEmpresaId ? (
+            {!explorerConfigId ? (
               <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>
-                Selecciona una empresa y pulsa &quot;Conectar&quot;
+                Selecciona una conexión FTP y pulsa &quot;Conectar&quot;
               </div>
             ) : !explorerResult && !loadingExplorer ? (
               <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>
