@@ -84,6 +84,15 @@ const FORM_VACIO: FtpConfigForm = {
   usuario: "", password: "", directorio_remoto: "/", activo: true,
 };
 
+// Años disponibles en el filtro de mes
+const ANIOS = [2023, 2024, 2025, 2026];
+const MESES = [
+  { v: "01", l: "Enero" }, { v: "02", l: "Febrero" }, { v: "03", l: "Marzo" },
+  { v: "04", l: "Abril" }, { v: "05", l: "Mayo" },    { v: "06", l: "Junio" },
+  { v: "07", l: "Julio" }, { v: "08", l: "Agosto" },  { v: "09", l: "Septiembre" },
+  { v: "10", l: "Octubre" }, { v: "11", l: "Noviembre" }, { v: "12", l: "Diciembre" },
+];
+
 // ─── Iconos ───────────────────────────────────────────────────────────────────
 
 const IconFolder = () => (
@@ -185,7 +194,9 @@ export default function ComunicacionesSection({ token }: Props) {
   const [errorExplorer, setErrorExplorer]         = useState<string | null>(null);
   const [selectedFicheros, setSelectedFicheros]   = useState<Set<string>>(new Set());
   const [filtroNombre, setFiltroNombre]           = useState("");
-  const [filtroMes, setFiltroMes]                 = useState(""); // formato YYYY-MM
+  // filtroMes en formato YYYY-MM — construido desde dos selectores (mes + año)
+  const [filtroMesNum, setFiltroMesNum]           = useState(""); // "01".."12"
+  const [filtroAnioNum, setFiltroAnioNum]         = useState(""); // "2026"
   const [descargando, setDescargando]             = useState(false);
   const [requiereFiltro, setRequiereFiltro]       = useState(false);
 
@@ -193,6 +204,10 @@ export default function ComunicacionesSection({ token }: Props) {
   const [logs, setLogs]               = useState<FtpLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [errorLogs, setErrorLogs]     = useState<string | null>(null);
+
+  // filtroMes combinado YYYY-MM — solo válido si ambos selectores tienen valor
+  const anioDefault = new Date().getFullYear().toString();
+  const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : "";
 
   useEffect(() => {
     if (!token) return;
@@ -284,7 +299,7 @@ export default function ComunicacionesSection({ token }: Props) {
     setExplorerResult(null);
     setErrorExplorer(null);
     setFiltroNombre("");
-    setFiltroMes("");
+    setFiltroMesNum(""); setFiltroAnioNum("");
     setSelectedFicheros(new Set());
     setRequiereFiltro(false);
   };
@@ -293,7 +308,7 @@ export default function ComunicacionesSection({ token }: Props) {
     if (!explorerEmpresaId) return;
     const config = configs.find(c => c.empresa_id === explorerEmpresaId);
     const raiz = config?.directorio_remoto || "/";
-    setFiltroNombre(""); setFiltroMes("");
+    setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum("");
     explorarPath(raiz);
   };
 
@@ -304,7 +319,7 @@ export default function ComunicacionesSection({ token }: Props) {
 
   const handleLimpiar = () => {
     if (!explorerResult) return;
-    setFiltroNombre(""); setFiltroMes("");
+    setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum("");
     explorarPath(explorerResult.path_actual);
   };
 
@@ -359,7 +374,7 @@ export default function ComunicacionesSection({ token }: Props) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, flexWrap: "wrap" }}>
         <span style={{ cursor: "pointer", color: "var(--primary, #378ADD)" }}
-          onClick={() => { setFiltroNombre(""); setFiltroMes(""); explorarPath("/"); }}>
+          onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath("/"); }}>
           /
         </span>
         {partes.map((parte, i) => {
@@ -370,7 +385,7 @@ export default function ComunicacionesSection({ token }: Props) {
               <span style={{ color: "var(--text-muted)" }}>/</span>
               <span
                 style={{ cursor: esActual ? "default" : "pointer", color: esActual ? "var(--text)" : "var(--primary, #378ADD)", fontWeight: esActual ? 500 : 400 }}
-                onClick={() => { if (!esActual) { setFiltroNombre(""); setFiltroMes(""); explorarPath(subpath); } }}>
+                onClick={() => { if (!esActual) { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(subpath); } }}>
                 {parte}
               </span>
             </span>
@@ -380,7 +395,7 @@ export default function ComunicacionesSection({ token }: Props) {
     );
   };
 
-  const hayFiltros = filtroNombre.trim() || filtroMes.trim();
+  const hayFiltros = filtroNombre.trim() || filtroMes;
 
   return (
     <div className="text-sm">
@@ -590,7 +605,7 @@ export default function ComunicacionesSection({ token }: Props) {
               {explorerResult && explorerResult.path_actual !== "/" && (
                 <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
                   style={{ display: "flex", alignItems: "center", gap: 5 }}
-                  onClick={() => { setFiltroNombre(""); setFiltroMes(""); explorarPath(explorerResult.path_padre); }}>
+                  onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(explorerResult.path_padre); }}>
                   <IconUp /> Subir nivel
                 </button>
               )}
@@ -603,30 +618,40 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
-            {/* Fila 2 — Dos filtros separados */}
+            {/* Fila 2 — Dos filtros: nombre + mes/año con selectores compatibles Safari/Chrome */}
             {explorerResult && (
               <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+
                 {/* Filtro por nombre */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Nombre del fichero</label>
-                  <input className="ui-input" style={{ fontSize: 11, height: 28, width: 220 }}
+                  <input className="ui-input" style={{ fontSize: 11, height: 28, width: 200 }}
                     placeholder="BALD, MAGCLOS, 0148..."
                     value={filtroNombre}
                     onChange={e => setFiltroNombre(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") handleBuscar(); }}
                   />
                 </div>
-                {/* Filtro por mes */}
+
+                {/* Filtro por mes — dos selectores compatibles con todos los navegadores */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Mes de publicación</label>
-                  <input
-                    type="month"
-                    className="ui-input"
-                    style={{ fontSize: 11, height: 28, width: 160 }}
-                    value={filtroMes}
-                    onChange={e => setFiltroMes(e.target.value)}
-                  />
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <select className="ui-select" style={{ fontSize: 11, height: 28, width: 110 }}
+                      value={filtroMesNum}
+                      onChange={e => setFiltroMesNum(e.target.value)}>
+                      <option value="">Mes</option>
+                      {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                    </select>
+                    <select className="ui-select" style={{ fontSize: 11, height: 28, width: 78 }}
+                      value={filtroAnioNum}
+                      onChange={e => setFiltroAnioNum(e.target.value)}>
+                      <option value="">Año</option>
+                      {ANIOS.map(a => <option key={a} value={String(a)}>{a}</option>)}
+                    </select>
+                  </div>
                 </div>
+
                 {/* Botones */}
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                   style={{ display: "flex", alignItems: "center", gap: 5, height: 28 }}
@@ -692,7 +717,7 @@ export default function ComunicacionesSection({ token }: Props) {
                   <tbody>
                     {explorerResult.carpetas.map(c => (
                       <tr key={c.path} className="ui-tr" style={{ cursor: "pointer" }}
-                        onClick={() => { setFiltroNombre(""); setFiltroMes(""); explorarPath(c.path); }}>
+                        onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(c.path); }}>
                         <td className="ui-td" style={{ textAlign: "center" }}><IconFolder /></td>
                         <td className="ui-td" style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{c.nombre}/</td>
                         <td className="ui-td ui-muted">—</td>
