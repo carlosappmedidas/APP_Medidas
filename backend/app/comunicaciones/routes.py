@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import io
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -156,7 +158,7 @@ def explorar_path(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
-# ── Descarga manual ───────────────────────────────────────────────────────────
+# ── Descarga manual (al servidor) ────────────────────────────────────────────
 
 class DescargarConPathPayload(BaseModel):
     path: str
@@ -186,6 +188,42 @@ def descargar_ficheros(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
+
+
+# ── Descarga directa al navegador ─────────────────────────────────────────────
+
+@router.get("/descargar-archivo/{config_id}")
+def descargar_archivo_navegador(
+    config_id: int,
+    path: str = Query(...),
+    fichero: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Lee un fichero del FTP en memoria y lo envía directamente al navegador
+    como descarga (Content-Disposition: attachment).
+    La autenticación se realiza via JWT en el header Authorization (no query param).
+    """
+    _assert_not_viewer(current_user)
+    try:
+        contenido = services.leer_fichero_ftp(
+            db,
+            config_id=config_id,
+            tenant_id=_tenant_id(current_user),
+            path=path,
+            fichero=fichero,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
+
+    return StreamingResponse(
+        io.BytesIO(contenido),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{fichero}"'},
+    )
 
 
 # ── Reglas de sync automática ─────────────────────────────────────────────────

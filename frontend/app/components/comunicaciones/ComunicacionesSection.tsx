@@ -628,6 +628,7 @@ export default function ComunicacionesSection({ token }: Props) {
     explorarPath(raiz);
   };
 
+  // ── Descarga al servidor (múltiple selección) ─────────────────────────────────
   const handleDescargar = async () => {
     if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
     setDescargando(true); setErrorExplorer(null);
@@ -645,6 +646,31 @@ export default function ComunicacionesSection({ token }: Props) {
     } catch (e: unknown) {
       setErrorExplorer(e instanceof Error ? e.message : "Error descargando");
     } finally { setDescargando(false); }
+  };
+
+  // ── Descarga directa al navegador (fichero individual) ────────────────────────
+  const handleDescargarArchivo = async (fichero: string) => {
+    if (!token || !explorerConfigId || !explorerResult) return;
+    try {
+      const params = new URLSearchParams({
+        path: explorerResult.path_actual,
+        fichero,
+      });
+      const res = await fetch(
+        `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
+        { headers: getAuthHeaders(token) }
+      );
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fichero;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Error descargando fichero");
+    }
   };
 
   const toggleFichero = (nombre: string) => {
@@ -800,7 +826,6 @@ export default function ComunicacionesSection({ token }: Props) {
                         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>acumulado</div>
                       </div>
                     </div>
-                    {/* Últimas ejecuciones */}
                     <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Últimas ejecuciones</div>
                     {dashboard.conexiones.filter(c => c.sync_auto && c.ultima_ejecucion).slice(0, 2).map(c => (
                       <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
@@ -840,7 +865,6 @@ export default function ComunicacionesSection({ token }: Props) {
                         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>acumulado</div>
                       </div>
                     </div>
-                    {/* Últimas descargas manuales */}
                     <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Últimas descargas manuales</div>
                     {dashboard.conexiones.filter(c => c.manual_hoy > 0).slice(0, 2).map(c => (
                       <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
@@ -888,7 +912,6 @@ export default function ComunicacionesSection({ token }: Props) {
                         alignItems: "center",
                         background: tieneError ? "var(--color-background-danger, #FCEBEB)" : undefined,
                       }}>
-                        {/* Punto de color con tooltip en errores */}
                         <div style={{ position: "relative" }}
                           onMouseEnter={() => c.ultimo_error_msg ? setTooltipId(c.id) : undefined}
                           onMouseLeave={() => setTooltipId(null)}>
@@ -914,35 +937,23 @@ export default function ComunicacionesSection({ token }: Props) {
                             </div>
                           )}
                         </div>
-
-                        {/* Empresa */}
                         <div>
                           <div style={{ fontSize: 11, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)" }}>
                             {c.empresa_nombre}
                           </div>
                         </div>
-
-                        {/* Conexión */}
                         <div style={{ fontSize: 10, color: tieneError ? "#E24B4A" : "var(--text-muted)" }}>
                           {c.nombre || `${c.host}:${c.puerto}`} · {c.usar_tls ? "TLS" : "FTP"}
                         </div>
-
-                        {/* Auto hoy */}
                         <div style={{ fontSize: 12, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>
                           {c.auto_hoy}
                         </div>
-
-                        {/* Manual hoy */}
                         <div style={{ fontSize: 12, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>
                           {c.manual_hoy}
                         </div>
-
-                        {/* Errores hoy */}
                         <div style={{ fontSize: 12, fontWeight: 500, color: c.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)", textAlign: "right" }}>
                           {c.errores_hoy}
                         </div>
-
-                        {/* Sync */}
                         <div style={{ fontSize: 10 }}>
                           {c.sync_auto ? (
                             <span style={{ color: tieneError ? "#E24B4A" : "#1D9E75" }}>
@@ -957,8 +968,6 @@ export default function ComunicacionesSection({ token }: Props) {
                             </div>
                           )}
                         </div>
-
-                        {/* Próxima / Última OK */}
                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                           {c.proxima_sync ? (
                             <div>Próx: {fmtDate(c.proxima_sync)}</div>
@@ -1523,7 +1532,7 @@ export default function ComunicacionesSection({ token }: Props) {
                       <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                         style={{ height: 30, display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}
                         onClick={handleDescargar} disabled={descargando}>
-                        <IconDownload /> {descargando ? "Descargando..." : `Descargar (${selectedFicheros.size}) · ${fmtSizeTotal(tamanoSeleccionados)}`}
+                        <IconDownload /> {descargando ? "Descargando..." : `Descargar al servidor (${selectedFicheros.size}) · ${fmtSizeTotal(tamanoSeleccionados)}`}
                       </button>
                     )}
                   </div>
@@ -1611,6 +1620,7 @@ export default function ComunicacionesSection({ token }: Props) {
                               <th className="ui-th">Nombre</th>
                               <th className="ui-th" style={{ textAlign: "right", width: 80 }}>Tamaño</th>
                               <th className="ui-th" style={{ textAlign: "right", width: 110 }}>Fecha</th>
+                              <th className="ui-th" style={{ width: 36 }}></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1621,12 +1631,13 @@ export default function ComunicacionesSection({ token }: Props) {
                                 <td className="ui-td" style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{c.nombre}/</td>
                                 <td className="ui-td ui-muted" style={{ textAlign: "right" }}>—</td>
                                 <td className="ui-td ui-muted" style={{ textAlign: "right" }}>—</td>
+                                <td className="ui-td"></td>
                               </tr>
                             ))}
                             {ficherosPagina.length === 0 && explorerResult.carpetas.length === 0 ? (
-                              <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>Carpeta vacía</td></tr>
+                              <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>Carpeta vacía</td></tr>
                             ) : ficherosPagina.length === 0 && hayFiltros ? (
-                              <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>Sin resultados con los filtros aplicados</td></tr>
+                              <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>Sin resultados con los filtros aplicados</td></tr>
                             ) : (
                               ficherosPagina.map(f => {
                                 const sel = selectedFicheros.has(f.nombre);
@@ -1644,6 +1655,18 @@ export default function ComunicacionesSection({ token }: Props) {
                                     </td>
                                     <td className="ui-td ui-muted" style={{ textAlign: "right", fontSize: 10 }}>{fmtSize(f.tamanio)}</td>
                                     <td className="ui-td ui-muted" style={{ textAlign: "right", fontSize: 10 }}>{f.fecha}</td>
+                                    {/* ── Botón descarga directa al navegador ── */}
+                                    <td className="ui-td" style={{ textAlign: "center" }}>
+                                      <button
+                                        type="button"
+                                        className="ui-btn ui-btn-ghost ui-btn-xs"
+                                        style={{ padding: "3px 5px", display: "inline-flex", alignItems: "center" }}
+                                        title="Descargar al PC"
+                                        onClick={e => { e.stopPropagation(); handleDescargarArchivo(f.nombre); }}
+                                      >
+                                        <IconDownload />
+                                      </button>
+                                    </td>
                                   </tr>
                                 );
                               })

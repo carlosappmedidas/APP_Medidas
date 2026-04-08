@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ftplib
+import io
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -463,7 +464,7 @@ def listar_path(
     }
 
 
-# ── Descargar ficheros (manual) ───────────────────────────────────────────────
+# ── Descargar ficheros (al servidor) ─────────────────────────────────────────
 
 def _directorio_descarga() -> Path:
     base = Path(os.environ.get("FTP_DOWNLOAD_DIR", "/tmp/ftp_downloads"))
@@ -530,6 +531,33 @@ def descargar_ficheros(
             pass
 
     return descargados, errores, detalle
+
+
+# ── Leer fichero en memoria (descarga directa al navegador) ──────────────────
+
+def leer_fichero_ftp(
+    db: Session, *,
+    config_id: int,
+    tenant_id: int,
+    path: str,
+    fichero: str,
+) -> bytes:
+    """
+    Lee un fichero del FTP en memoria y lo devuelve como bytes.
+    Usado por el endpoint de descarga directa al navegador.
+    No registra log (es una lectura puntual de inspección).
+    """
+    config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
+    ftp = _conectar_en_path(config, path)
+    try:
+        buf = io.BytesIO()
+        ftp.retrbinary(f"RETR {fichero}", buf.write)
+        return buf.getvalue()
+    finally:
+        try:
+            ftp.quit()
+        except Exception:
+            pass
 
 
 # ── Ejecutar regla automática ─────────────────────────────────────────────────
@@ -713,10 +741,6 @@ def list_logs(
 # ── Borrado de logs ───────────────────────────────────────────────────────────
 
 def delete_log_by_id(db: Session, *, log_id: int, tenant_id: int) -> None:
-    """
-    Borra un registro concreto del historial.
-    El scheduler olvidará ese fichero y lo volverá a descargar en la próxima ejecución.
-    """
     obj = db.query(FtpSyncLog).filter(
         FtpSyncLog.id == log_id,
         FtpSyncLog.tenant_id == tenant_id,
@@ -733,12 +757,6 @@ def delete_logs(
     origen: Optional[str] = None,
     dias: Optional[int] = None,
 ) -> int:
-    """
-    Borra logs masivamente con filtros opcionales.
-    - origen: "auto" | "manual" | None = todos
-    - dias: borra registros con created_at < ahora - dias días
-    Devuelve el número de registros borrados.
-    """
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
     if origen:
         q = q.filter(FtpSyncLog.origen == origen)
@@ -754,23 +772,16 @@ def delete_logs(
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 def get_dashboard(db: Session, *, tenant_id: int) -> dict:
-    """
-    Calcula métricas globales y por conexión para el dashboard de comunicaciones.
-    Incluye datos separados de descarga automática y manual, y el motivo del
-    último error por conexión para mostrar en tooltip.
-    """
     hoy_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
     configs = db.query(FtpConfig).filter(FtpConfig.tenant_id == tenant_id).all()
     rules   = db.query(FtpSyncRule).filter(FtpSyncRule.tenant_id == tenant_id).all()
 
-    # Logs de hoy (todos)
     logs_hoy = db.query(FtpSyncLog).filter(
         FtpSyncLog.tenant_id == tenant_id,
         FtpSyncLog.created_at >= hoy_inicio,
     ).all()
 
-    # Logs de esta semana (todos)
     semana_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     semana_inicio = semana_inicio - timedelta(days=semana_inicio.weekday())
     logs_semana = db.query(FtpSyncLog).filter(
@@ -778,7 +789,6 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
         FtpSyncLog.created_at >= semana_inicio,
     ).all()
 
-    # Última descarga OK global
     ultimo_ok_global = (
         db.query(FtpSyncLog)
         .filter(FtpSyncLog.tenant_id == tenant_id, FtpSyncLog.estado == "ok")
@@ -786,7 +796,6 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
         .first()
     )
 
-    # Métricas globales separadas por origen
     auto_hoy    = sum(1 for log in logs_hoy if log.estado == "ok" and log.origen == "auto")
     manual_hoy  = sum(1 for log in logs_hoy if log.estado == "ok" and log.origen == "manual")
     errores_hoy = sum(1 for log in logs_hoy if log.estado == "error")
@@ -795,11 +804,9 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
     manual_semana  = sum(1 for log in logs_semana if log.estado == "ok" and log.origen == "manual")
     errores_semana = sum(1 for log in logs_semana if log.estado == "error")
 
-    # Próxima sync global
     proximas = [r.proxima_ejecucion for r in rules if r.activo and r.proxima_ejecucion]
     proxima_sync_global = min(proximas, default=None)
 
-    # Métricas por conexión
     conexiones = []
     for c in configs:
         logs_config_hoy = [log for log in logs_hoy if log.config_id == c.id]
@@ -814,7 +821,6 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
             default=None,
         )
 
-        # Último OK de esta conexión
         ultimo_ok_config = (
             db.query(FtpSyncLog)
             .filter(FtpSyncLog.config_id == c.id, FtpSyncLog.estado == "ok")
@@ -822,7 +828,6 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
             .first()
         )
 
-        # Último ERROR de esta conexión — para mostrar en tooltip
         ultimo_error_config = (
             db.query(FtpSyncLog)
             .filter(FtpSyncLog.config_id == c.id, FtpSyncLog.estado == "error")
@@ -841,17 +846,13 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
             "activo":           c.activo,
             "reglas_activas":   len(reglas_config),
             "sync_auto":        len(reglas_config) > 0,
-            # Métricas de hoy separadas
             "auto_hoy":         sum(1 for log in logs_config_hoy if log.estado == "ok" and log.origen == "auto"),
             "manual_hoy":       sum(1 for log in logs_config_hoy if log.estado == "ok" and log.origen == "manual"),
             "errores_hoy":      sum(1 for log in logs_config_hoy if log.estado == "error"),
-            # Último OK
             "ultimo_ok":        ultimo_ok_config.created_at if ultimo_ok_config else None,
             "ultimo_fichero":   ultimo_ok_config.nombre_fichero if ultimo_ok_config else None,
-            # Sync
             "proxima_sync":     proxima_sync_config,
             "ultima_ejecucion": ultima_ejec_config,
-            # Último error — para tooltip
             "ultimo_error":         ultimo_error_config.created_at if ultimo_error_config else None,
             "ultimo_error_msg":     ultimo_error_config.mensaje_error if ultimo_error_config else None,
             "ultimo_error_fichero": ultimo_error_config.nombre_fichero if ultimo_error_config else None,
@@ -861,14 +862,12 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
         "scheduler_activo":      True,
         "conexiones_activas":    sum(1 for c in configs if c.activo),
         "reglas_activas":        sum(1 for r in rules if r.activo),
-        # Métricas globales separadas por origen
         "auto_hoy":              auto_hoy,
         "manual_hoy":            manual_hoy,
         "errores_hoy":           errores_hoy,
         "auto_semana":           auto_semana,
         "manual_semana":         manual_semana,
         "errores_semana":        errores_semana,
-        # Compatibilidad con campos anteriores
         "total_descargados_hoy": auto_hoy + manual_hoy,
         "total_errores_hoy":     errores_hoy,
         "ultima_descarga":       ultimo_ok_global.created_at if ultimo_ok_global else None,
