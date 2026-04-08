@@ -190,20 +190,23 @@ def descargar_ficheros(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
-# ── Descarga directa al navegador ─────────────────────────────────────────────
+# ── Descarga directa al navegador ────────────────────────────────────────────
 
 @router.get("/descargar-archivo/{config_id}")
 def descargar_archivo_navegador(
     config_id: int,
     path: str = Query(...),
     fichero: str = Query(...),
+    registrar: bool = Query(True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     Lee un fichero del FTP en memoria y lo envía directamente al navegador
     como descarga (Content-Disposition: attachment).
-    La autenticación se realiza via JWT en el header Authorization (no query param).
+    - registrar=true (por defecto): anota en historial. Usar para descarga individual.
+    - registrar=false: solo lee sin log. Usar cuando el log ya fue registrado
+      por POST /descargar (descarga múltiple al servidor).
     """
     _assert_not_viewer(current_user)
     try:
@@ -213,6 +216,7 @@ def descargar_archivo_navegador(
             tenant_id=_tenant_id(current_user),
             path=path,
             fichero=fichero,
+            registrar=registrar,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

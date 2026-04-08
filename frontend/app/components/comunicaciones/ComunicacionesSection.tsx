@@ -660,7 +660,7 @@ export default function ComunicacionesSection({ token }: Props) {
       // 2. Descargar también al navegador (uno a uno, sin duplicar log)
       for (const nombre of Array.from(selectedFicheros)) {
         try {
-          const params = new URLSearchParams({ path: explorerResult.path_actual, fichero: nombre });
+          const params = new URLSearchParams({ path: explorerResult.path_actual, fichero: nombre, registrar: "false" });
           const resPC = await fetch(
             `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
             { headers: getAuthHeaders(token) }

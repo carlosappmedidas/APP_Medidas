@@ -534,7 +534,6 @@ def descargar_ficheros(
 
 
 # ── Leer fichero en memoria (descarga directa al navegador) ──────────────────
-# CAMBIO: ahora registra en el historial como descarga manual
 
 def leer_fichero_ftp(
     db: Session, *,
@@ -542,10 +541,13 @@ def leer_fichero_ftp(
     tenant_id: int,
     path: str,
     fichero: str,
+    registrar: bool = True,
 ) -> bytes:
     """
     Lee un fichero del FTP en memoria y lo devuelve como bytes.
-    Registra en el historial como descarga manual.
+    Si registrar=True (por defecto), anota en el historial como descarga manual.
+    Si registrar=False, solo lee sin dejar rastro (usado cuando el log
+    ya fue registrado por descargar_ficheros en la descarga múltiple).
     """
     config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
     ftp = _conectar_en_path(config, path)
@@ -558,17 +560,18 @@ def leer_fichero_ftp(
             ftp.quit()
         except Exception:
             pass
-    _log(
-        db,
-        tenant_id=tenant_id,
-        empresa_id=int(config.empresa_id),
-        config_id=config_id,
-        rule_id=None,
-        origen="manual",
-        nombre_fichero=fichero,
-        tamanio=len(contenido),
-        estado="ok",
-    )
+    if registrar:
+        _log(
+            db,
+            tenant_id=tenant_id,
+            empresa_id=int(config.empresa_id),
+            config_id=config_id,
+            rule_id=None,
+            origen="manual",
+            nombre_fichero=fichero,
+            tamanio=len(contenido),
+            estado="ok",
+        )
     return contenido
 
 
