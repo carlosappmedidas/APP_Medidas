@@ -286,13 +286,11 @@ const subPanelHeaderStyle: React.CSSProperties = {
 
 export default function ComunicacionesSection({ token }: Props) {
 
-  // Paneles principales
   const [panelDashOpen, setPanelDashOpen]     = useState(false);
   const [panelConfigOpen, setPanelConfigOpen] = useState(false);
   const [panelAutoOpen, setPanelAutoOpen]     = useState(false);
   const [panelManualOpen, setPanelManualOpen] = useState(false);
 
-  // Sub-paneles
   const [subReglasOpen, setSubReglasOpen]         = useState(false);
   const [subHistAutoOpen, setSubHistAutoOpen]     = useState(false);
   const [subExplorerOpen, setSubExplorerOpen]     = useState(false);
@@ -300,13 +298,11 @@ export default function ComunicacionesSection({ token }: Props) {
 
   const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
 
-  // Dashboard
   const [dashboard, setDashboard]     = useState<DashboardData | null>(null);
   const [loadingDash, setLoadingDash] = useState(false);
   const [errorDash, setErrorDash]     = useState<string | null>(null);
   const [tooltipId, setTooltipId]     = useState<number | null>(null);
 
-  // Configs
   const [configs, setConfigs]               = useState<FtpConfig[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
   const [errorConfigs, setErrorConfigs]     = useState<string | null>(null);
@@ -317,7 +313,6 @@ export default function ComunicacionesSection({ token }: Props) {
   const [testingId, setTestingId]           = useState<number | null>(null);
   const [testResult, setTestResult]         = useState<Record<number, { ok: boolean; msg: string }>>({});
 
-  // Reglas
   const [rules, setRules]               = useState<FtpSyncRule[]>([]);
   const [loadingRules, setLoadingRules] = useState(false);
   const [errorRules, setErrorRules]     = useState<string | null>(null);
@@ -327,7 +322,6 @@ export default function ComunicacionesSection({ token }: Props) {
   const [savingRule, setSavingRule]     = useState(false);
   const [executingRuleId, setExecutingRuleId] = useState<number | null>(null);
 
-  // Historial automático
   const [logsAuto, setLogsAuto]               = useState<FtpLog[]>([]);
   const [loadingLogsAuto, setLoadingLogsAuto] = useState(false);
   const [errorLogsAuto, setErrorLogsAuto]     = useState<string | null>(null);
@@ -335,7 +329,6 @@ export default function ComunicacionesSection({ token }: Props) {
   const [pageSizeLogsAuto, setPageSizeLogsAuto] = useState(20);
   const [diasBorradoAuto, setDiasBorradoAuto] = useState<string>("todos");
 
-  // Explorador
   const [explorerConfigId, setExplorerConfigId]   = useState<number | "">("");
   const [explorerResult, setExplorerResult]       = useState<ExplorerResult | null>(null);
   const [loadingExplorer, setLoadingExplorer]     = useState(false);
@@ -349,7 +342,6 @@ export default function ComunicacionesSection({ token }: Props) {
   const [pageExplorer, setPageExplorer]           = useState(0);
   const [pageSizeExplorer, setPageSizeExplorer]   = useState(20);
 
-  // Historial manual
   const [logsManual, setLogsManual]               = useState<FtpLog[]>([]);
   const [loadingLogsManual, setLoadingLogsManual] = useState(false);
   const [errorLogsManual, setErrorLogsManual]     = useState<string | null>(null);
@@ -357,7 +349,6 @@ export default function ComunicacionesSection({ token }: Props) {
   const [pageSizeLogsManual, setPageSizeLogsManual] = useState(20);
   const [diasBorradoManual, setDiasBorradoManual] = useState<string>("todos");
 
-  // Derivados
   const anioDefault = new Date().getFullYear().toString();
   const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : "";
   const hayFiltros = filtroNombre.trim() || filtroMes;
@@ -628,34 +619,11 @@ export default function ComunicacionesSection({ token }: Props) {
     explorarPath(raiz);
   };
 
-  // ── Descarga al servidor (múltiple selección) ─────────────────────────────────
-  const handleDescargar = async () => {
-    if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
-    setDescargando(true); setErrorExplorer(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
-        method: "POST",
-        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ path: explorerResult.path_actual, ficheros: Array.from(selectedFicheros) }),
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      const data = await res.json();
-      alert(`Descargados ${data.descargados ?? 0} fichero(s) correctamente.`);
-      setSelectedFicheros(new Set());
-      if (subHistManualOpen) cargarLogsManual();
-    } catch (e: unknown) {
-      setErrorExplorer(e instanceof Error ? e.message : "Error descargando");
-    } finally { setDescargando(false); }
-  };
-
-  // ── Descarga directa al navegador (fichero individual) ────────────────────────
+  // ── Descarga individual al PC + registra en log via backend ───────────────────
   const handleDescargarArchivo = async (fichero: string) => {
     if (!token || !explorerConfigId || !explorerResult) return;
     try {
-      const params = new URLSearchParams({
-        path: explorerResult.path_actual,
-        fichero,
-      });
+      const params = new URLSearchParams({ path: explorerResult.path_actual, fichero });
       const res = await fetch(
         `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
         { headers: getAuthHeaders(token) }
@@ -668,9 +636,53 @@ export default function ComunicacionesSection({ token }: Props) {
       a.download = fichero;
       a.click();
       URL.revokeObjectURL(url);
+      // El log se registra en el backend (leer_fichero_ftp ya llama a _log)
+      if (subHistManualOpen) cargarLogsManual();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error descargando fichero");
     }
+  };
+
+  // ── Descarga múltiple: servidor + PC ──────────────────────────────────────────
+  const handleDescargar = async () => {
+    if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
+    setDescargando(true); setErrorExplorer(null);
+    try {
+      // 1. Descargar al servidor + registrar en log
+      const res = await fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ path: explorerResult.path_actual, ficheros: Array.from(selectedFicheros) }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+
+      // 2. Descargar también al navegador (uno a uno, sin duplicar log)
+      for (const nombre of Array.from(selectedFicheros)) {
+        try {
+          const params = new URLSearchParams({ path: explorerResult.path_actual, fichero: nombre });
+          const resPC = await fetch(
+            `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
+            { headers: getAuthHeaders(token) }
+          );
+          if (resPC.ok) {
+            const blob = await resPC.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = nombre;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch { /* si falla uno, continuamos con el resto */ }
+      }
+
+      alert(`${data.descargados ?? 0} fichero(s) descargados al servidor y al PC.`);
+      setSelectedFicheros(new Set());
+      if (subHistManualOpen) cargarLogsManual();
+    } catch (e: unknown) {
+      setErrorExplorer(e instanceof Error ? e.message : "Error descargando");
+    } finally { setDescargando(false); }
   };
 
   const toggleFichero = (nombre: string) => {
@@ -759,43 +771,29 @@ export default function ComunicacionesSection({ token }: Props) {
         {panelDashOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorDash && <div className="ui-alert ui-alert--danger mb-3">{errorDash}</div>}
-            {loadingDash && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>Cargando...</div>
-            )}
+            {loadingDash && <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>Cargando...</div>}
             {dashboard && (
               <>
-                {/* Barra global compacta */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--field-bg-soft)", borderRadius: 8, padding: "8px 16px", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                   <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#1D9E75" }} />
                       <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>Scheduler activo</span>
                     </div>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{dashboard.conexiones_activas} conexiones · {dashboard.reglas_activas} reglas</span>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      {dashboard.conexiones_activas} conexiones · {dashboard.reglas_activas} reglas
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      Próxima sync: <strong style={{ color: "var(--text)" }}>
-                        {dashboard.proxima_sync_global ? fmtDate(dashboard.proxima_sync_global) : "—"}
-                      </strong>
+                      Próxima sync: <strong style={{ color: "var(--text)" }}>{dashboard.proxima_sync_global ? fmtDate(dashboard.proxima_sync_global) : "—"}</strong>
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                      {dashboard.ultima_descarga ? `Última: ${fmtDate(dashboard.ultima_descarga)}` : ""}
-                    </span>
-                    <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                      style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}
-                      onClick={cargarDashboard} disabled={loadingDash}>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{dashboard.ultima_descarga ? `Última: ${fmtDate(dashboard.ultima_descarga)}` : ""}</span>
+                    <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }} onClick={cargarDashboard} disabled={loadingDash}>
                       <IconRefresh /> Actualizar
                     </button>
                   </div>
                 </div>
 
-                {/* Dos bloques: Auto y Manual */}
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 12, marginBottom: 14 }}>
-
-                  {/* Automático */}
                   <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                       <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>Descarga automática</span>
@@ -804,27 +802,16 @@ export default function ComunicacionesSection({ token }: Props) {
                       </span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Hoy</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.auto_hoy}</div>
-                        <div style={{ fontSize: 10, color: dashboard.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)", marginTop: 2 }}>
-                          {dashboard.errores_hoy > 0 ? `${dashboard.errores_hoy} err.` : "sin errores"}
+                      {[["Hoy", dashboard.auto_hoy, dashboard.errores_hoy > 0 ? `${dashboard.errores_hoy} err.` : "sin errores", dashboard.errores_hoy > 0],
+                        ["Semana", dashboard.auto_semana, dashboard.errores_semana > 0 ? `${dashboard.errores_semana} err.` : "sin errores", dashboard.errores_semana > 0],
+                        ["Total", (dashboard.auto_hoy + dashboard.auto_semana).toLocaleString(), "acumulado", false]
+                      ].map(([label, val, sub, isErr]) => (
+                        <div key={String(label)} style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>{label}</div>
+                          <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{val}</div>
+                          <div style={{ fontSize: 10, color: isErr ? "#E24B4A" : "var(--text-muted)", marginTop: 2 }}>{sub}</div>
                         </div>
-                      </div>
-                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Semana</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.auto_semana}</div>
-                        <div style={{ fontSize: 10, color: dashboard.errores_semana > 0 ? "#E24B4A" : "var(--text-muted)", marginTop: 2 }}>
-                          {dashboard.errores_semana > 0 ? `${dashboard.errores_semana} err.` : "sin errores"}
-                        </div>
-                      </div>
-                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Total</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>
-                          {(dashboard.auto_hoy + dashboard.auto_semana).toLocaleString()}
-                        </div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>acumulado</div>
-                      </div>
+                      ))}
                     </div>
                     <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Últimas ejecuciones</div>
                     {dashboard.conexiones.filter(c => c.sync_auto && c.ultima_ejecucion).slice(0, 2).map(c => (
@@ -833,37 +820,22 @@ export default function ComunicacionesSection({ token }: Props) {
                         <span style={{ color: "var(--text-muted)" }}>{fmtDate(c.ultima_ejecucion)} · {c.auto_hoy} ficheros</span>
                       </div>
                     ))}
-                    {dashboard.conexiones.filter(c => c.sync_auto).length === 0 && (
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin reglas automáticas configuradas</div>
-                    )}
+                    {dashboard.conexiones.filter(c => c.sync_auto).length === 0 && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin reglas automáticas configuradas</div>}
                   </div>
 
-                  {/* Manual */}
                   <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                       <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>Descarga manual</span>
-                      <span style={{ fontSize: 10, background: "var(--field-bg-soft)", color: "var(--text-muted)", padding: "2px 8px", borderRadius: 6, border: "0.5px solid var(--card-border)" }}>
-                        Bajo demanda
-                      </span>
+                      <span style={{ fontSize: 10, background: "var(--field-bg-soft)", color: "var(--text-muted)", padding: "2px 8px", borderRadius: 6, border: "0.5px solid var(--card-border)" }}>Bajo demanda</span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Hoy</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.manual_hoy}</div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>ficheros</div>
-                      </div>
-                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Semana</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.manual_semana}</div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>ficheros</div>
-                      </div>
-                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Total</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>
-                          {(dashboard.manual_hoy + dashboard.manual_semana).toLocaleString()}
+                      {[["Hoy", dashboard.manual_hoy, "ficheros"], ["Semana", dashboard.manual_semana, "ficheros"], ["Total", (dashboard.manual_hoy + dashboard.manual_semana).toLocaleString(), "acumulado"]].map(([label, val, sub]) => (
+                        <div key={String(label)} style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>{label}</div>
+                          <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{val}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>
                         </div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>acumulado</div>
-                      </div>
+                      ))}
                     </div>
                     <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Últimas descargas manuales</div>
                     {dashboard.conexiones.filter(c => c.manual_hoy > 0).slice(0, 2).map(c => (
@@ -872,110 +844,46 @@ export default function ComunicacionesSection({ token }: Props) {
                         <span style={{ color: "var(--text-muted)" }}>{c.manual_hoy} ficheros hoy</span>
                       </div>
                     ))}
-                    {dashboard.ultimo_fichero && (
-                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        Último: {dashboard.ultimo_fichero}
-                      </div>
-                    )}
-                    {dashboard.manual_hoy === 0 && dashboard.manual_semana === 0 && (
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin descargas manuales esta semana</div>
-                    )}
+                    {dashboard.ultimo_fichero && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Último: {dashboard.ultimo_fichero}</div>}
+                    {dashboard.manual_hoy === 0 && dashboard.manual_semana === 0 && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin descargas manuales esta semana</div>}
                   </div>
                 </div>
 
-                {/* Tabla de conexiones con tooltip en errores */}
                 <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "10px 1fr 1fr 60px 60px 60px 110px 140px", gap: 10, padding: "8px 14px", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)", alignItems: "center" }}>
-                    <div />
-                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Empresa</span>
-                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Conexión</span>
-                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Auto</span>
-                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Manual</span>
-                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Errores</span>
-                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Sync</span>
+                    <div /><span style={{ fontSize: 10, color: "var(--text-muted)" }}>Empresa</span><span style={{ fontSize: 10, color: "var(--text-muted)" }}>Conexión</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Auto</span><span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Manual</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Errores</span><span style={{ fontSize: 10, color: "var(--text-muted)" }}>Sync</span>
                     <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Próxima / Estado</span>
                   </div>
-
                   {dashboard.conexiones.length === 0 ? (
-                    <div style={{ padding: "20px 14px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
-                      Sin conexiones configuradas
-                    </div>
+                    <div style={{ padding: "20px 14px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>Sin conexiones configuradas</div>
                   ) : dashboard.conexiones.map(c => {
                     const tieneError = c.errores_hoy > 0 || (c.ultimo_error_msg !== null && c.ultimo_ok === null);
                     const dotColor = !c.activo ? "#888" : tieneError ? "#E24B4A" : "#1D9E75";
                     return (
-                      <div key={c.id} style={{
-                        display: "grid",
-                        gridTemplateColumns: "10px 1fr 1fr 60px 60px 60px 110px 140px",
-                        gap: 10, padding: "10px 14px",
-                        borderTop: "1px solid var(--card-border)",
-                        alignItems: "center",
-                        background: tieneError ? "var(--color-background-danger, #FCEBEB)" : undefined,
-                      }}>
-                        <div style={{ position: "relative" }}
-                          onMouseEnter={() => c.ultimo_error_msg ? setTooltipId(c.id) : undefined}
-                          onMouseLeave={() => setTooltipId(null)}>
+                      <div key={c.id} style={{ display: "grid", gridTemplateColumns: "10px 1fr 1fr 60px 60px 60px 110px 140px", gap: 10, padding: "10px 14px", borderTop: "1px solid var(--card-border)", alignItems: "center", background: tieneError ? "var(--color-background-danger, #FCEBEB)" : undefined }}>
+                        <div style={{ position: "relative" }} onMouseEnter={() => c.ultimo_error_msg ? setTooltipId(c.id) : undefined} onMouseLeave={() => setTooltipId(null)}>
                           <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, cursor: c.ultimo_error_msg ? "help" : "default" }} />
                           {tooltipId === c.id && c.ultimo_error_msg && (
-                            <div style={{
-                              position: "absolute", left: 14, top: -4, zIndex: 50,
-                              background: "var(--card-bg)", border: "1px solid var(--card-border)",
-                              borderRadius: 6, padding: "8px 10px", minWidth: 220, maxWidth: 320,
-                              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                            }}>
-                              <div style={{ fontSize: 10, fontWeight: 600, color: "#E24B4A", marginBottom: 4 }}>
-                                Último error · {fmtDate(c.ultimo_error)}
-                              </div>
-                              {c.ultimo_error_fichero && (
-                                <div style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)", marginBottom: 4, wordBreak: "break-all" }}>
-                                  {c.ultimo_error_fichero}
-                                </div>
-                              )}
-                              <div style={{ fontSize: 11, color: "var(--text)", wordBreak: "break-word" }}>
-                                {c.ultimo_error_msg}
-                              </div>
+                            <div style={{ position: "absolute", left: 14, top: -4, zIndex: 50, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 6, padding: "8px 10px", minWidth: 220, maxWidth: 320, boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>
+                              <div style={{ fontSize: 10, fontWeight: 600, color: "#E24B4A", marginBottom: 4 }}>Último error · {fmtDate(c.ultimo_error)}</div>
+                              {c.ultimo_error_fichero && <div style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)", marginBottom: 4, wordBreak: "break-all" }}>{c.ultimo_error_fichero}</div>}
+                              <div style={{ fontSize: 11, color: "var(--text)", wordBreak: "break-word" }}>{c.ultimo_error_msg}</div>
                             </div>
                           )}
                         </div>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)" }}>
-                            {c.empresa_nombre}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 10, color: tieneError ? "#E24B4A" : "var(--text-muted)" }}>
-                          {c.nombre || `${c.host}:${c.puerto}`} · {c.usar_tls ? "TLS" : "FTP"}
-                        </div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>
-                          {c.auto_hoy}
-                        </div>
-                        <div style={{ fontSize: 12, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>
-                          {c.manual_hoy}
-                        </div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: c.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)", textAlign: "right" }}>
-                          {c.errores_hoy}
-                        </div>
+                        <div><div style={{ fontSize: 11, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)" }}>{c.empresa_nombre}</div></div>
+                        <div style={{ fontSize: 10, color: tieneError ? "#E24B4A" : "var(--text-muted)" }}>{c.nombre || `${c.host}:${c.puerto}`} · {c.usar_tls ? "TLS" : "FTP"}</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>{c.auto_hoy}</div>
+                        <div style={{ fontSize: 12, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>{c.manual_hoy}</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: c.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)", textAlign: "right" }}>{c.errores_hoy}</div>
                         <div style={{ fontSize: 10 }}>
-                          {c.sync_auto ? (
-                            <span style={{ color: tieneError ? "#E24B4A" : "#1D9E75" }}>
-                              Auto · {c.reglas_activas}h
-                            </span>
-                          ) : (
-                            <span style={{ color: "var(--text-muted)" }}>Solo manual</span>
-                          )}
-                          {c.ultima_ejecucion && (
-                            <div style={{ color: "var(--text-muted)", marginTop: 2, fontSize: 9 }}>
-                              Ejec: {fmtDate(c.ultima_ejecucion)}
-                            </div>
-                          )}
+                          {c.sync_auto ? <span style={{ color: tieneError ? "#E24B4A" : "#1D9E75" }}>Auto · {c.reglas_activas}h</span> : <span style={{ color: "var(--text-muted)" }}>Solo manual</span>}
+                          {c.ultima_ejecucion && <div style={{ color: "var(--text-muted)", marginTop: 2, fontSize: 9 }}>Ejec: {fmtDate(c.ultima_ejecucion)}</div>}
                         </div>
                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                          {c.proxima_sync ? (
-                            <div>Próx: {fmtDate(c.proxima_sync)}</div>
-                          ) : c.ultimo_ok ? (
-                            <div>Última OK: {fmtDate(c.ultimo_ok)}</div>
-                          ) : (
-                            <span style={{ color: "#E24B4A" }}>Sin descargas OK</span>
-                          )}
+                          {c.proxima_sync ? <div>Próx: {fmtDate(c.proxima_sync)}</div> : c.ultimo_ok ? <div>Última OK: {fmtDate(c.ultimo_ok)}</div> : <span style={{ color: "#E24B4A" }}>Sin descargas OK</span>}
                         </div>
                       </div>
                     );
@@ -994,8 +902,7 @@ export default function ComunicacionesSection({ token }: Props) {
             <div style={panelTitleStyle}>📡 Conexiones FTP</div>
             <div style={panelDescStyle}>Configura y gestiona las conexiones FTP/FTPS por empresa</div>
           </div>
-          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanelConfigOpen(v => !v); }}>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={e => { e.stopPropagation(); setPanelConfigOpen(v => !v); }}>
             {panelConfigOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
@@ -1004,8 +911,7 @@ export default function ComunicacionesSection({ token }: Props) {
             {errorConfigs && <div className="ui-alert ui-alert--danger mb-3">{errorConfigs}</div>}
             {!showConfigForm && (
               <div style={{ marginBottom: 14 }}>
-                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                  style={{ display: "flex", alignItems: "center", gap: 5 }}
+                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 5 }}
                   onClick={() => { setShowConfigForm(true); setEditConfigId(null); setConfigForm(FORM_CONFIG_VACIO); }}>
                   <IconPlus /> Añadir conexión FTP
                 </button>
@@ -1019,72 +925,51 @@ export default function ComunicacionesSection({ token }: Props) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
-                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={configForm.empresa_id}
-                      onChange={e => setConfigForm(f => ({ ...f, empresa_id: Number(e.target.value) }))}>
+                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.empresa_id} onChange={e => setConfigForm(f => ({ ...f, empresa_id: Number(e.target.value) }))}>
                       <option value="">Selecciona empresa</option>
-                      {empresas.map(emp => (
-                        <option key={emp.id} value={emp.id}>{emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}</option>
-                      ))}
+                      {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}</option>)}
                     </select>
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Nombre <span style={{ fontWeight: 400 }}>(opcional)</span></label>
-                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={configForm.nombre} onChange={e => setConfigForm(f => ({ ...f, nombre: e.target.value }))}
-                      placeholder="ej: GISCE, DATADIS..." />
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.nombre} onChange={e => setConfigForm(f => ({ ...f, nombre: e.target.value }))} placeholder="ej: GISCE, DATADIS..." />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Host</label>
-                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={configForm.host} onChange={e => setConfigForm(f => ({ ...f, host: e.target.value }))} />
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.host} onChange={e => setConfigForm(f => ({ ...f, host: e.target.value }))} />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Puerto</label>
-                    <input className="ui-input" type="number" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={configForm.puerto} onChange={e => setConfigForm(f => ({ ...f, puerto: Number(e.target.value) }))} />
+                    <input className="ui-input" type="number" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.puerto} onChange={e => setConfigForm(f => ({ ...f, puerto: Number(e.target.value) }))} />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Usuario</label>
-                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={configForm.usuario} onChange={e => setConfigForm(f => ({ ...f, usuario: e.target.value }))} />
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.usuario} onChange={e => setConfigForm(f => ({ ...f, usuario: e.target.value }))} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                      {editConfigId ? "Contraseña (vacío = no cambiar)" : "Contraseña"}
-                    </label>
-                    <input className="ui-input" type="password" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={configForm.password} onChange={e => setConfigForm(f => ({ ...f, password: e.target.value }))}
-                      placeholder={editConfigId ? "••••••••" : "Contraseña FTP"} />
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>{editConfigId ? "Contraseña (vacío = no cambiar)" : "Contraseña"}</label>
+                    <input className="ui-input" type="password" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.password} onChange={e => setConfigForm(f => ({ ...f, password: e.target.value }))} placeholder={editConfigId ? "••••••••" : "Contraseña FTP"} />
                   </div>
                   <div style={{ gridColumn: "1 / -1" }}>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Directorio raíz</label>
-                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={configForm.directorio_remoto} onChange={e => setConfigForm(f => ({ ...f, directorio_remoto: e.target.value }))}
-                      placeholder="/" />
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.directorio_remoto} onChange={e => setConfigForm(f => ({ ...f, directorio_remoto: e.target.value }))} placeholder="/" />
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="checkbox" id="usar-tls-chk" checked={configForm.usar_tls}
-                      onChange={e => setConfigForm(f => ({ ...f, usar_tls: e.target.checked }))} />
+                    <input type="checkbox" id="usar-tls-chk" checked={configForm.usar_tls} onChange={e => setConfigForm(f => ({ ...f, usar_tls: e.target.checked }))} />
                     <label htmlFor="usar-tls-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Usar TLS/FTPS</label>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="checkbox" id="activo-config-chk" checked={configForm.activo}
-                      onChange={e => setConfigForm(f => ({ ...f, activo: e.target.checked }))} />
+                    <input type="checkbox" id="activo-config-chk" checked={configForm.activo} onChange={e => setConfigForm(f => ({ ...f, activo: e.target.checked }))} />
                     <label htmlFor="activo-config-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Conexión activa</label>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                    onClick={handleSaveConfig} disabled={savingConfig || !configForm.empresa_id}>
+                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={handleSaveConfig} disabled={savingConfig || !configForm.empresa_id}>
                     {savingConfig ? "Guardando..." : editConfigId ? "Guardar cambios" : "Crear conexión"}
                   </button>
-                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                    onClick={() => { setShowConfigForm(false); setEditConfigId(null); setConfigForm(FORM_CONFIG_VACIO); }}>
-                    Cancelar
-                  </button>
+                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" onClick={() => { setShowConfigForm(false); setEditConfigId(null); setConfigForm(FORM_CONFIG_VACIO); }}>Cancelar</button>
                 </div>
               </div>
             )}
@@ -1092,75 +977,42 @@ export default function ComunicacionesSection({ token }: Props) {
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
                   <tr>
-                    <th className="ui-th">Nombre</th>
-                    <th className="ui-th">Empresa</th>
-                    <th className="ui-th">Host</th>
-                    <th className="ui-th">Puerto</th>
-                    <th className="ui-th">Usuario</th>
-                    <th className="ui-th">Dir. raíz</th>
-                    <th className="ui-th" style={{ textAlign: "center" }}>Cifrado</th>
-                    <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
-                    <th className="ui-th">Test</th>
-                    <th className="ui-th">Acciones</th>
+                    <th className="ui-th">Nombre</th><th className="ui-th">Empresa</th><th className="ui-th">Host</th>
+                    <th className="ui-th">Puerto</th><th className="ui-th">Usuario</th><th className="ui-th">Dir. raíz</th>
+                    <th className="ui-th" style={{ textAlign: "center" }}>Cifrado</th><th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                    <th className="ui-th">Test</th><th className="ui-th">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingConfigs ? (
                     <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : configs.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
-                      Sin conexiones · Pulsa &quot;Añadir conexión FTP&quot; para empezar
-                    </td></tr>
+                    <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Sin conexiones · Pulsa &quot;Añadir conexión FTP&quot; para empezar</td></tr>
                   ) : configs.map(c => (
                     <tr key={c.id} className="ui-tr">
-                      <td className="ui-td" style={{ fontWeight: 600 }}>
-                        {c.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}
-                      </td>
+                      <td className="ui-td" style={{ fontWeight: 600 }}>{c.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}</td>
                       <td className="ui-td">{c.empresa_nombre}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{c.host}</td>
                       <td className="ui-td">{c.puerto}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{c.usuario}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{c.directorio_remoto}</td>
-                      <td className="ui-td" style={{ textAlign: "center" }}>
-                        <span className={`ui-badge ${c.usar_tls ? "ui-badge--ok" : "ui-badge--neutral"}`}>
-                          {c.usar_tls ? "TLS" : "FTP"}
-                        </span>
-                      </td>
-                      <td className="ui-td" style={{ textAlign: "center" }}>
-                        <span className={`ui-badge ${c.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>
-                          {c.activo ? "Activa" : "Inactiva"}
-                        </span>
-                      </td>
+                      <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${c.usar_tls ? "ui-badge--ok" : "ui-badge--neutral"}`}>{c.usar_tls ? "TLS" : "FTP"}</span></td>
+                      <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${c.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>{c.activo ? "Activa" : "Inactiva"}</span></td>
                       <td className="ui-td">
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}
-                            onClick={() => handleTest(c.id)} disabled={testingId === c.id}>
+                          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }} onClick={() => handleTest(c.id)} disabled={testingId === c.id}>
                             <IconCheck /> {testingId === c.id ? "Probando..." : "Probar"}
                           </button>
-                          {testResult[c.id] && (
-                            <span style={{ fontSize: 9, color: testResult[c.id].ok ? "#1D9E75" : "#E24B4A" }}>
-                              {testResult[c.id].msg}
-                            </span>
-                          )}
+                          {testResult[c.id] && <span style={{ fontSize: 9, color: testResult[c.id].ok ? "#1D9E75" : "#E24B4A" }}>{testResult[c.id].msg}</span>}
                         </div>
                       </td>
                       <td className="ui-td">
                         <div style={{ display: "flex", gap: 4 }}>
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                            style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
-                            onClick={() => {
-                              setEditConfigId(c.id);
-                              setConfigForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo });
-                              setShowConfigForm(true);
-                            }}>
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
+                            onClick={() => { setEditConfigId(c.id); setConfigForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo }); setShowConfigForm(true); }}>
                             <IconEdit />
                           </button>
-                          <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
-                            style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
-                            onClick={() => handleDeleteConfig(c.id)}>
-                            <IconTrash />
-                          </button>
+                          <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }} onClick={() => handleDeleteConfig(c.id)}><IconTrash /></button>
                         </div>
                       </td>
                     </tr>
@@ -1179,15 +1031,12 @@ export default function ComunicacionesSection({ token }: Props) {
             <div style={panelTitleStyle}>🤖 Descarga automática</div>
             <div style={panelDescStyle}>Configura reglas de sync y consulta el historial automático</div>
           </div>
-          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanelAutoOpen(v => !v); }}>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={e => { e.stopPropagation(); setPanelAutoOpen(v => !v); }}>
             {panelAutoOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
         {panelAutoOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-
-            {/* Sub-panel: Reglas */}
             <div style={subPanelStyle}>
               <div style={subPanelHeaderStyle} onClick={() => setSubReglasOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1197,15 +1046,12 @@ export default function ComunicacionesSection({ token }: Props) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {subReglasOpen && (
-                    <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                      style={{ display: "flex", alignItems: "center", gap: 4 }}
+                    <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }}
                       onClick={e => { e.stopPropagation(); setShowRuleForm(true); setEditRuleId(null); setRuleForm(FORM_RULE_VACIO); }}>
                       <IconPlus /> Añadir
                     </button>
                   )}
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {subReglasOpen ? <IconChevronUp /> : <IconChevronDown />}
-                  </span>
+                  <span style={{ color: "var(--text-muted)" }}>{subReglasOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
                 </div>
               </div>
               {subReglasOpen && (
@@ -1219,62 +1065,41 @@ export default function ComunicacionesSection({ token }: Props) {
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                         <div>
                           <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Conexión FTP</label>
-                          <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                            value={ruleForm.config_id}
-                            onChange={e => setRuleForm(f => ({ ...f, config_id: Number(e.target.value) }))}>
+                          <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={ruleForm.config_id} onChange={e => setRuleForm(f => ({ ...f, config_id: Number(e.target.value) }))}>
                             <option value="">Selecciona conexión</option>
-                            {conexionesActivas.map(c => (
-                              <option key={c.id} value={c.id}>{labelConexion(c)}</option>
-                            ))}
+                            {conexionesActivas.map(c => <option key={c.id} value={c.id}>{labelConexion(c)}</option>)}
                           </select>
                         </div>
                         <div>
                           <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Nombre <span style={{ fontWeight: 400 }}>(opcional)</span></label>
-                          <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                            value={ruleForm.nombre} onChange={e => setRuleForm(f => ({ ...f, nombre: e.target.value }))}
-                            placeholder="ej: Descarga BALD diaria" />
+                          <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={ruleForm.nombre} onChange={e => setRuleForm(f => ({ ...f, nombre: e.target.value }))} placeholder="ej: Descarga BALD diaria" />
                         </div>
                         <div>
                           <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Directorio FTP</label>
-                          <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                            value={ruleForm.directorio} onChange={e => setRuleForm(f => ({ ...f, directorio: e.target.value }))}
-                            placeholder="/01/entradaHistorico" />
+                          <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={ruleForm.directorio} onChange={e => setRuleForm(f => ({ ...f, directorio: e.target.value }))} placeholder="/01/entradaHistorico" />
                         </div>
                         <div>
-                          <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Patrón de nombre <span style={{ fontWeight: 400 }}>(vacío = todos)</span></label>
-                          <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                            value={ruleForm.patron_nombre} onChange={e => setRuleForm(f => ({ ...f, patron_nombre: e.target.value }))}
-                            placeholder="ej: BALD_, MAGCLOS_" />
+                          <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Patrón <span style={{ fontWeight: 400 }}>(vacío = todos)</span></label>
+                          <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={ruleForm.patron_nombre} onChange={e => setRuleForm(f => ({ ...f, patron_nombre: e.target.value }))} placeholder="ej: BALD_, MAGCLOS_" />
                         </div>
                         <div>
                           <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Intervalo</label>
-                          <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                            value={ruleForm.intervalo_horas}
-                            onChange={e => setRuleForm(f => ({ ...f, intervalo_horas: Number(e.target.value) }))}>
-                            <option value={1}>Cada 1 hora</option>
-                            <option value={2}>Cada 2 horas</option>
-                            <option value={6}>Cada 6 horas</option>
-                            <option value={12}>Cada 12 horas</option>
-                            <option value={24}>Cada 24 horas (diario)</option>
+                          <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={ruleForm.intervalo_horas} onChange={e => setRuleForm(f => ({ ...f, intervalo_horas: Number(e.target.value) }))}>
+                            <option value={1}>Cada 1 hora</option><option value={2}>Cada 2 horas</option><option value={6}>Cada 6 horas</option><option value={12}>Cada 12 horas</option><option value={24}>Cada 24 horas (diario)</option>
                           </select>
                         </div>
                         <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input type="checkbox" id="activo-rule-chk" checked={ruleForm.activo}
-                              onChange={e => setRuleForm(f => ({ ...f, activo: e.target.checked }))} />
+                            <input type="checkbox" id="activo-rule-chk" checked={ruleForm.activo} onChange={e => setRuleForm(f => ({ ...f, activo: e.target.checked }))} />
                             <label htmlFor="activo-rule-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Regla activa</label>
                           </div>
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                        <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                          onClick={handleSaveRule} disabled={savingRule || !ruleForm.config_id}>
+                        <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={handleSaveRule} disabled={savingRule || !ruleForm.config_id}>
                           {savingRule ? "Guardando..." : editRuleId ? "Guardar cambios" : "Crear regla"}
                         </button>
-                        <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                          onClick={() => { setShowRuleForm(false); setEditRuleId(null); setRuleForm(FORM_RULE_VACIO); }}>
-                          Cancelar
-                        </button>
+                        <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" onClick={() => { setShowRuleForm(false); setEditRuleId(null); setRuleForm(FORM_RULE_VACIO); }}>Cancelar</button>
                       </div>
                     </div>
                   )}
@@ -1282,63 +1107,36 @@ export default function ComunicacionesSection({ token }: Props) {
                     <table className="ui-table text-[11px]">
                       <thead className="ui-thead">
                         <tr>
-                          <th className="ui-th">Nombre</th>
-                          <th className="ui-th">Conexión</th>
-                          <th className="ui-th">Directorio</th>
-                          <th className="ui-th">Patrón</th>
-                          <th className="ui-th">Intervalo</th>
-                          <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
-                          <th className="ui-th">Última ejec.</th>
-                          <th className="ui-th">Próxima</th>
-                          <th className="ui-th">Acciones</th>
+                          <th className="ui-th">Nombre</th><th className="ui-th">Conexión</th><th className="ui-th">Directorio</th>
+                          <th className="ui-th">Patrón</th><th className="ui-th">Intervalo</th><th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                          <th className="ui-th">Última ejec.</th><th className="ui-th">Próxima</th><th className="ui-th">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
                         {loadingRules ? (
                           <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
                         ) : rules.length === 0 ? (
-                          <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>
-                            Sin reglas · Pulsa &quot;Añadir&quot; para configurar la sync automática
-                          </td></tr>
+                          <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin reglas · Pulsa &quot;Añadir&quot; para configurar la sync automática</td></tr>
                         ) : rules.map(r => (
                           <tr key={r.id} className="ui-tr">
-                            <td className="ui-td" style={{ fontWeight: 500 }}>
-                              {r.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}
-                            </td>
+                            <td className="ui-td" style={{ fontWeight: 500 }}>{r.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}</td>
                             <td className="ui-td" style={{ fontSize: 10 }}>{r.config_nombre || r.empresa_nombre}</td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{r.directorio}</td>
-                            <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>
-                              {r.patron_nombre || <span style={{ color: "var(--text-muted)" }}>todos</span>}
-                            </td>
+                            <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{r.patron_nombre || <span style={{ color: "var(--text-muted)" }}>todos</span>}</td>
                             <td className="ui-td">{r.intervalo_horas}h</td>
-                            <td className="ui-td" style={{ textAlign: "center" }}>
-                              <span className={`ui-badge ${r.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>
-                                {r.activo ? "Activa" : "Pausada"}
-                              </span>
-                            </td>
+                            <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${r.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>{r.activo ? "Activa" : "Pausada"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.ultima_ejecucion)}</td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.proxima_ejecucion)}</td>
                             <td className="ui-td">
                               <div style={{ display: "flex", gap: 4 }}>
-                                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                                  style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 3, fontSize: 10 }}
-                                  onClick={() => handleExecuteRule(r.id)} disabled={executingRuleId === r.id}>
+                                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 3, fontSize: 10 }} onClick={() => handleExecuteRule(r.id)} disabled={executingRuleId === r.id}>
                                   <IconPlay /> {executingRuleId === r.id ? "..." : "Ejecutar"}
                                 </button>
-                                <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                                  style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
-                                  onClick={() => {
-                                    setEditRuleId(r.id);
-                                    setRuleForm({ config_id: r.config_id, nombre: r.nombre || "", directorio: r.directorio, patron_nombre: r.patron_nombre || "", intervalo_horas: r.intervalo_horas, activo: r.activo });
-                                    setShowRuleForm(true);
-                                  }}>
+                                <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
+                                  onClick={() => { setEditRuleId(r.id); setRuleForm({ config_id: r.config_id, nombre: r.nombre || "", directorio: r.directorio, patron_nombre: r.patron_nombre || "", intervalo_horas: r.intervalo_horas, activo: r.activo }); setShowRuleForm(true); }}>
                                   <IconEdit />
                                 </button>
-                                <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
-                                  style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
-                                  onClick={() => handleDeleteRule(r.id)}>
-                                  <IconTrash />
-                                </button>
+                                <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} onClick={() => handleDeleteRule(r.id)}><IconTrash /></button>
                               </div>
                             </td>
                           </tr>
@@ -1350,45 +1148,24 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
-            {/* Sub-panel: Historial automático */}
             <div style={subPanelStyle}>
               <div style={subPanelHeaderStyle} onClick={() => setSubHistAutoOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Historial automático</span>
-                  {logsAuto.length > 0 && (
-                    <span className="ui-badge ui-badge--ok">{logsAuto.filter(l => l.estado === "ok").length} OK</span>
-                  )}
-                  {logsAuto.filter(l => l.estado === "error").length > 0 && (
-                    <span className="ui-badge ui-badge--err">{logsAuto.filter(l => l.estado === "error").length} errores</span>
-                  )}
+                  {logsAuto.length > 0 && <span className="ui-badge ui-badge--ok">{logsAuto.filter(l => l.estado === "ok").length} OK</span>}
+                  {logsAuto.filter(l => l.estado === "error").length > 0 && <span className="ui-badge ui-badge--err">{logsAuto.filter(l => l.estado === "error").length} errores</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistAutoOpen && (
                     <>
-                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }}
-                        value={diasBorradoAuto}
-                        onChange={e => setDiasBorradoAuto(e.target.value)}
-                        onClick={e => e.stopPropagation()}>
-                        <option value="todos">Todos los registros</option>
-                        <option value="7">Más de 7 días</option>
-                        <option value="30">Más de 30 días</option>
-                        <option value="90">Más de 90 días</option>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }} value={diasBorradoAuto} onChange={e => setDiasBorradoAuto(e.target.value)} onClick={e => e.stopPropagation()}>
+                        <option value="todos">Todos los registros</option><option value="7">Más de 7 días</option><option value="30">Más de 30 días</option><option value="90">Más de 90 días</option>
                       </select>
-                      <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
-                        style={{ display: "flex", alignItems: "center", gap: 4 }}
-                        onClick={e => { e.stopPropagation(); handleLimpiarHistorial("auto"); }}>
-                        <IconTrash /> Limpiar
-                      </button>
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                        style={{ display: "flex", alignItems: "center", gap: 4 }}
-                        onClick={e => { e.stopPropagation(); cargarLogsAuto(); }}>
-                        <IconRefresh /> Actualizar
-                      </button>
+                      <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); handleLimpiarHistorial("auto"); }}><IconTrash /> Limpiar</button>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsAuto(); }}><IconRefresh /> Actualizar</button>
                     </>
                   )}
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {subHistAutoOpen ? <IconChevronUp /> : <IconChevronDown />}
-                  </span>
+                  <span style={{ color: "var(--text-muted)" }}>{subHistAutoOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
                 </div>
               </div>
               {subHistAutoOpen && (
@@ -1397,14 +1174,7 @@ export default function ComunicacionesSection({ token }: Props) {
                   <div className="ui-table-wrap">
                     <table className="ui-table text-[11px]">
                       <thead className="ui-thead">
-                        <tr>
-                          <th className="ui-th">Empresa</th>
-                          <th className="ui-th">Fichero</th>
-                          <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
-                          <th className="ui-th">Detalle</th>
-                          <th className="ui-th">Fecha</th>
-                          <th className="ui-th" style={{ width: 36 }}></th>
-                        </tr>
+                        <tr><th className="ui-th">Empresa</th><th className="ui-th">Fichero</th><th className="ui-th" style={{ textAlign: "center" }}>Estado</th><th className="ui-th">Detalle</th><th className="ui-th">Fecha</th><th className="ui-th" style={{ width: 36 }}></th></tr>
                       </thead>
                       <tbody>
                         {loadingLogsAuto ? (
@@ -1415,43 +1185,21 @@ export default function ComunicacionesSection({ token }: Props) {
                           <tr key={log.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
-                            <td className="ui-td" style={{ textAlign: "center" }}>
-                              <span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>
-                                {log.estado === "ok" ? "OK" : "Error"}
-                              </span>
-                            </td>
+                            <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>{log.estado === "ok" ? "OK" : "Error"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
                             <td className="ui-td ui-muted">{fmtDate(log.created_at)}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}>
-                              <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
-                                style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
-                                title="Eliminar este registro (el scheduler lo olvidará)"
-                                onClick={() => handleDeleteLog(log.id, "auto")}>
-                                <IconTrash />
-                              </button>
+                              <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} title="Eliminar este registro (el scheduler lo olvidará)" onClick={() => handleDeleteLog(log.id, "auto")}><IconTrash /></button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <TablePaginationFooter
-                    loading={loadingLogsAuto}
-                    hasLoadedOnce={logsAuto.length > 0 || !loadingLogsAuto}
-                    totalFilas={logsAuto.length}
-                    startIndex={pageLogsAuto * pageSizeLogsAuto}
-                    endIndex={Math.min((pageLogsAuto + 1) * pageSizeLogsAuto, logsAuto.length)}
-                    pageSize={pageSizeLogsAuto}
-                    setPageSize={(v) => { setPageSizeLogsAuto(v); setPageLogsAuto(0); }}
-                    currentPage={pageLogsAuto}
-                    totalPages={totalPagesLogsAuto}
-                    setPage={setPageLogsAuto}
-                    compact
-                  />
+                  <TablePaginationFooter loading={loadingLogsAuto} hasLoadedOnce={logsAuto.length > 0 || !loadingLogsAuto} totalFilas={logsAuto.length} startIndex={pageLogsAuto * pageSizeLogsAuto} endIndex={Math.min((pageLogsAuto + 1) * pageSizeLogsAuto, logsAuto.length)} pageSize={pageSizeLogsAuto} setPageSize={(v) => { setPageSizeLogsAuto(v); setPageLogsAuto(0); }} currentPage={pageLogsAuto} totalPages={totalPagesLogsAuto} setPage={setPageLogsAuto} compact />
                 </div>
               )}
             </div>
-
           </div>
         )}
       </div>
@@ -1463,8 +1211,7 @@ export default function ComunicacionesSection({ token }: Props) {
             <div style={panelTitleStyle}>🔧 Descarga manual</div>
             <div style={panelDescStyle}>Explora carpetas y descarga ficheros manualmente</div>
           </div>
-          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanelManualOpen(v => !v); }}>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={e => { e.stopPropagation(); setPanelManualOpen(v => !v); }}>
             {panelManualOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
@@ -1476,101 +1223,57 @@ export default function ComunicacionesSection({ token }: Props) {
               <div style={subPanelHeaderStyle} onClick={() => setSubExplorerOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Explorador FTP</span>
-                  {explorerResult && (
-                    <span className="ui-badge ui-badge--neutral">{explorerResult.ficheros.length} ficheros</span>
-                  )}
-                  {selectedFicheros.size > 0 && (
-                    <span className="ui-badge ui-badge--ok">
-                      {selectedFicheros.size} seleccionados · {fmtSizeTotal(tamanoSeleccionados)}
-                    </span>
-                  )}
+                  {explorerResult && <span className="ui-badge ui-badge--neutral">{explorerResult.ficheros.length} ficheros</span>}
+                  {selectedFicheros.size > 0 && <span className="ui-badge ui-badge--ok">{selectedFicheros.size} seleccionados · {fmtSizeTotal(tamanoSeleccionados)}</span>}
                 </div>
-                <span style={{ color: "var(--text-muted)" }}>
-                  {subExplorerOpen ? <IconChevronUp /> : <IconChevronDown />}
-                </span>
+                <span style={{ color: "var(--text-muted)" }}>{subExplorerOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
               </div>
               {subExplorerOpen && (
                 <div style={{ borderTop: "1px solid var(--card-border)", padding: "12px 14px" }}>
-
-                  {/* Barra herramientas */}
                   <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Conexión</label>
-                      <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 240 }}
-                        value={explorerConfigId}
-                        onChange={e => handleCambiarConexion(e.target.value === "" ? "" : Number(e.target.value))}>
+                      <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 240 }} value={explorerConfigId} onChange={e => handleCambiarConexion(e.target.value === "" ? "" : Number(e.target.value))}>
                         <option value="">Selecciona una conexión FTP</option>
-                        {conexionesActivas.map(c => (
-                          <option key={c.id} value={c.id}>{labelConexion(c)}</option>
-                        ))}
+                        {conexionesActivas.map(c => <option key={c.id} value={c.id}>{labelConexion(c)}</option>)}
                       </select>
                     </div>
                     <div style={{ display: "flex", gap: 4 }}>
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                        style={{ height: 30, display: "flex", alignItems: "center", gap: 5 }}
-                        onClick={handleIrRaiz} disabled={!explorerConfigId || loadingExplorer}>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 30, display: "flex", alignItems: "center", gap: 5 }} onClick={handleIrRaiz} disabled={!explorerConfigId || loadingExplorer}>
                         <IconRefresh /> {loadingExplorer ? "Cargando..." : explorerResult ? "Recargar" : "Conectar"}
                       </button>
                       {explorerResult && explorerResult.path_actual !== "/" && (
                         <>
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                            style={{ height: 30, width: 30, display: "flex", alignItems: "center", justifyContent: "center" }}
-                            title="Subir nivel"
-                            onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(explorerResult.path_padre); }}>
-                            <IconUp />
-                          </button>
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                            style={{ height: 30, width: 30, display: "flex", alignItems: "center", justifyContent: "center" }}
-                            title="Ir al raíz"
-                            onClick={handleIrRaiz}>
-                            <IconHome />
-                          </button>
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 30, width: 30, display: "flex", alignItems: "center", justifyContent: "center" }} title="Subir nivel" onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(explorerResult.path_padre); }}><IconUp /></button>
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 30, width: 30, display: "flex", alignItems: "center", justifyContent: "center" }} title="Ir al raíz" onClick={handleIrRaiz}><IconHome /></button>
                         </>
                       )}
                     </div>
                     {selectedFicheros.size > 0 && (
                       <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                         style={{ height: 30, display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}
-                        onClick={handleDescargar} disabled={descargando}>
-                        <IconDownload /> {descargando ? "Descargando..." : `Descargar al servidor (${selectedFicheros.size}) · ${fmtSizeTotal(tamanoSeleccionados)}`}
+                        onClick={handleDescargar} disabled={descargando}
+                        title="Descarga al servidor + al PC y registra en historial">
+                        <IconDownload /> {descargando ? "Descargando..." : `Servidor + PC (${selectedFicheros.size}) · ${fmtSizeTotal(tamanoSeleccionados)}`}
                       </button>
                     )}
                   </div>
 
-                  {/* Breadcrumb + filtros */}
                   {explorerResult && (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>{renderBreadcrumb()}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                        <input className="ui-input" style={{ fontSize: 11, height: 26, width: 140 }}
-                          placeholder="Buscar fichero..."
-                          value={filtroNombre}
-                          onChange={e => setFiltroNombre(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") explorarPath(explorerResult.path_actual, filtroNombre, filtroMes); }}
-                        />
-                        <select className="ui-select" style={{ fontSize: 11, height: 26, width: 88 }}
-                          value={filtroMesNum} onChange={e => setFiltroMesNum(e.target.value)}>
+                        <input className="ui-input" style={{ fontSize: 11, height: 26, width: 140 }} placeholder="Buscar fichero..." value={filtroNombre} onChange={e => setFiltroNombre(e.target.value)} onKeyDown={e => { if (e.key === "Enter") explorarPath(explorerResult.path_actual, filtroNombre, filtroMes); }} />
+                        <select className="ui-select" style={{ fontSize: 11, height: 26, width: 88 }} value={filtroMesNum} onChange={e => setFiltroMesNum(e.target.value)}>
                           <option value="">Mes</option>
                           {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
                         </select>
-                        <select className="ui-select" style={{ fontSize: 11, height: 26, width: 60 }}
-                          value={filtroAnioNum} onChange={e => setFiltroAnioNum(e.target.value)}>
+                        <select className="ui-select" style={{ fontSize: 11, height: 26, width: 60 }} value={filtroAnioNum} onChange={e => setFiltroAnioNum(e.target.value)}>
                           <option value="">Año</option>
                           {ANIOS.map(a => <option key={a} value={String(a)}>{a}</option>)}
                         </select>
-                        <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                          style={{ height: 26, display: "flex", alignItems: "center", gap: 4 }}
-                          onClick={() => explorarPath(explorerResult.path_actual, filtroNombre, filtroMes)}
-                          disabled={loadingExplorer}>
-                          <IconSearch />
-                        </button>
-                        {hayFiltros && (
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                            style={{ height: 26 }}
-                            onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(explorerResult.path_actual); }}>
-                            ✕
-                          </button>
-                        )}
+                        <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 26, display: "flex", alignItems: "center", gap: 4 }} onClick={() => explorarPath(explorerResult.path_actual, filtroNombre, filtroMes)} disabled={loadingExplorer}><IconSearch /></button>
+                        {hayFiltros && <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 26 }} onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(explorerResult.path_actual); }}>✕</button>}
                       </div>
                     </div>
                   )}
@@ -1584,17 +1287,11 @@ export default function ComunicacionesSection({ token }: Props) {
                   {errorExplorer && <div className="ui-alert ui-alert--danger mb-3">{errorExplorer}</div>}
 
                   {!explorerConfigId ? (
-                    <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>
-                      Selecciona una conexión FTP y pulsa &quot;Conectar&quot;
-                    </div>
+                    <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>Selecciona una conexión FTP y pulsa &quot;Conectar&quot;</div>
                   ) : !explorerResult && !loadingExplorer ? (
-                    <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>
-                      Pulsa &quot;Conectar&quot; para abrir el explorador FTP
-                    </div>
+                    <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>Pulsa &quot;Conectar&quot; para abrir el explorador FTP</div>
                   ) : loadingExplorer ? (
-                    <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>
-                      Conectando al FTP...
-                    </div>
+                    <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>Conectando al FTP...</div>
                   ) : explorerResult && (
                     <>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 10, color: "var(--text-muted)", padding: "0 2px" }}>
@@ -1602,25 +1299,19 @@ export default function ComunicacionesSection({ token }: Props) {
                           {explorerResult.carpetas.length} carpetas · {explorerResult.ficheros.length} ficheros
                           {explorerResult.total_ficheros > explorerResult.ficheros.length && ` (de ${explorerResult.total_ficheros} total)`}
                         </span>
-                        {selectedFicheros.size > 0 && (
-                          <span style={{ color: "var(--primary, #378ADD)", fontWeight: 500 }}>
-                            {selectedFicheros.size} seleccionados · {fmtSizeTotal(tamanoSeleccionados)}
-                          </span>
-                        )}
+                        {selectedFicheros.size > 0 && <span style={{ color: "var(--primary, #378ADD)", fontWeight: 500 }}>{selectedFicheros.size} seleccionados · {fmtSizeTotal(tamanoSeleccionados)}</span>}
                       </div>
                       <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
                         <table className="ui-table text-[11px]" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                           <thead className="ui-thead">
                             <tr>
                               <th className="ui-th" style={{ width: 32, textAlign: "center" }}>
-                                {ficherosPagina.length > 0 && (
-                                  <input type="checkbox" checked={todosEnPaginaSeleccionados} onChange={toggleTodos} />
-                                )}
+                                {ficherosPagina.length > 0 && <input type="checkbox" checked={todosEnPaginaSeleccionados} onChange={toggleTodos} />}
                               </th>
                               <th className="ui-th">Nombre</th>
                               <th className="ui-th" style={{ textAlign: "right", width: 80 }}>Tamaño</th>
                               <th className="ui-th" style={{ textAlign: "right", width: 110 }}>Fecha</th>
-                              <th className="ui-th" style={{ width: 36 }}></th>
+                              <th className="ui-th" style={{ width: 36 }} title="Descargar al PC (registra en historial)"></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1642,26 +1333,22 @@ export default function ComunicacionesSection({ token }: Props) {
                               ficherosPagina.map(f => {
                                 const sel = selectedFicheros.has(f.nombre);
                                 return (
-                                  <tr key={f.nombre} className="ui-tr"
-                                    style={{ cursor: "pointer", background: sel ? "var(--nav-item-hover)" : undefined }}
-                                    onClick={() => toggleFichero(f.nombre)}>
+                                  <tr key={f.nombre} className="ui-tr" style={{ cursor: "pointer", background: sel ? "var(--nav-item-hover)" : undefined }} onClick={() => toggleFichero(f.nombre)}>
                                     <td className="ui-td" style={{ textAlign: "center" }}>
-                                      <input type="checkbox" checked={sel}
-                                        onChange={() => toggleFichero(f.nombre)}
-                                        onClick={e => e.stopPropagation()} />
+                                      <input type="checkbox" checked={sel} onChange={() => toggleFichero(f.nombre)} onClick={e => e.stopPropagation()} />
                                     </td>
                                     <td className="ui-td" style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "monospace", fontSize: 10, color: sel ? "var(--primary, #378ADD)" : undefined }}>
                                       <IconFile selected={sel} /> {f.nombre}
                                     </td>
                                     <td className="ui-td ui-muted" style={{ textAlign: "right", fontSize: 10 }}>{fmtSize(f.tamanio)}</td>
                                     <td className="ui-td ui-muted" style={{ textAlign: "right", fontSize: 10 }}>{f.fecha}</td>
-                                    {/* ── Botón descarga directa al navegador ── */}
+                                    {/* ── Botón descarga individual al PC + registra en log ── */}
                                     <td className="ui-td" style={{ textAlign: "center" }}>
                                       <button
                                         type="button"
                                         className="ui-btn ui-btn-ghost ui-btn-xs"
                                         style={{ padding: "3px 5px", display: "inline-flex", alignItems: "center" }}
-                                        title="Descargar al PC"
+                                        title="Descargar al PC (registra en historial)"
                                         onClick={e => { e.stopPropagation(); handleDescargarArchivo(f.nombre); }}
                                       >
                                         <IconDownload />
@@ -1673,19 +1360,7 @@ export default function ComunicacionesSection({ token }: Props) {
                             )}
                           </tbody>
                         </table>
-                        <TablePaginationFooter
-                          loading={loadingExplorer}
-                          hasLoadedOnce={explorerResult !== null}
-                          totalFilas={explorerResult.ficheros.length}
-                          startIndex={pageExplorer * pageSizeExplorer}
-                          endIndex={Math.min((pageExplorer + 1) * pageSizeExplorer, explorerResult.ficheros.length)}
-                          pageSize={pageSizeExplorer}
-                          setPageSize={(v) => { setPageSizeExplorer(v); setPageExplorer(0); }}
-                          currentPage={pageExplorer}
-                          totalPages={totalPagesExplorer}
-                          setPage={setPageExplorer}
-                          compact
-                        />
+                        <TablePaginationFooter loading={loadingExplorer} hasLoadedOnce={explorerResult !== null} totalFilas={explorerResult.ficheros.length} startIndex={pageExplorer * pageSizeExplorer} endIndex={Math.min((pageExplorer + 1) * pageSizeExplorer, explorerResult.ficheros.length)} pageSize={pageSizeExplorer} setPageSize={(v) => { setPageSizeExplorer(v); setPageExplorer(0); }} currentPage={pageExplorer} totalPages={totalPagesExplorer} setPage={setPageExplorer} compact />
                       </div>
                     </>
                   )}
@@ -1698,40 +1373,20 @@ export default function ComunicacionesSection({ token }: Props) {
               <div style={subPanelHeaderStyle} onClick={() => setSubHistManualOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Historial manual</span>
-                  {logsManual.length > 0 && (
-                    <span className="ui-badge ui-badge--ok">{logsManual.filter(l => l.estado === "ok").length} OK</span>
-                  )}
-                  {logsManual.filter(l => l.estado === "error").length > 0 && (
-                    <span className="ui-badge ui-badge--err">{logsManual.filter(l => l.estado === "error").length} errores</span>
-                  )}
+                  {logsManual.length > 0 && <span className="ui-badge ui-badge--ok">{logsManual.filter(l => l.estado === "ok").length} OK</span>}
+                  {logsManual.filter(l => l.estado === "error").length > 0 && <span className="ui-badge ui-badge--err">{logsManual.filter(l => l.estado === "error").length} errores</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistManualOpen && (
                     <>
-                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }}
-                        value={diasBorradoManual}
-                        onChange={e => setDiasBorradoManual(e.target.value)}
-                        onClick={e => e.stopPropagation()}>
-                        <option value="todos">Todos los registros</option>
-                        <option value="7">Más de 7 días</option>
-                        <option value="30">Más de 30 días</option>
-                        <option value="90">Más de 90 días</option>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }} value={diasBorradoManual} onChange={e => setDiasBorradoManual(e.target.value)} onClick={e => e.stopPropagation()}>
+                        <option value="todos">Todos los registros</option><option value="7">Más de 7 días</option><option value="30">Más de 30 días</option><option value="90">Más de 90 días</option>
                       </select>
-                      <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
-                        style={{ display: "flex", alignItems: "center", gap: 4 }}
-                        onClick={e => { e.stopPropagation(); handleLimpiarHistorial("manual"); }}>
-                        <IconTrash /> Limpiar
-                      </button>
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                        style={{ display: "flex", alignItems: "center", gap: 4 }}
-                        onClick={e => { e.stopPropagation(); cargarLogsManual(); }}>
-                        <IconRefresh /> Actualizar
-                      </button>
+                      <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); handleLimpiarHistorial("manual"); }}><IconTrash /> Limpiar</button>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsManual(); }}><IconRefresh /> Actualizar</button>
                     </>
                   )}
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {subHistManualOpen ? <IconChevronUp /> : <IconChevronDown />}
-                  </span>
+                  <span style={{ color: "var(--text-muted)" }}>{subHistManualOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
                 </div>
               </div>
               {subHistManualOpen && (
@@ -1740,14 +1395,7 @@ export default function ComunicacionesSection({ token }: Props) {
                   <div className="ui-table-wrap">
                     <table className="ui-table text-[11px]">
                       <thead className="ui-thead">
-                        <tr>
-                          <th className="ui-th">Empresa</th>
-                          <th className="ui-th">Fichero</th>
-                          <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
-                          <th className="ui-th">Detalle</th>
-                          <th className="ui-th">Fecha</th>
-                          <th className="ui-th" style={{ width: 36 }}></th>
-                        </tr>
+                        <tr><th className="ui-th">Empresa</th><th className="ui-th">Fichero</th><th className="ui-th" style={{ textAlign: "center" }}>Estado</th><th className="ui-th">Detalle</th><th className="ui-th">Fecha</th><th className="ui-th" style={{ width: 36 }}></th></tr>
                       </thead>
                       <tbody>
                         {loadingLogsManual ? (
@@ -1758,39 +1406,18 @@ export default function ComunicacionesSection({ token }: Props) {
                           <tr key={log.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
-                            <td className="ui-td" style={{ textAlign: "center" }}>
-                              <span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>
-                                {log.estado === "ok" ? "OK" : "Error"}
-                              </span>
-                            </td>
+                            <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>{log.estado === "ok" ? "OK" : "Error"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
                             <td className="ui-td ui-muted">{fmtDate(log.created_at)}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}>
-                              <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
-                                style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
-                                title="Eliminar este registro"
-                                onClick={() => handleDeleteLog(log.id, "manual")}>
-                                <IconTrash />
-                              </button>
+                              <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} title="Eliminar este registro" onClick={() => handleDeleteLog(log.id, "manual")}><IconTrash /></button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <TablePaginationFooter
-                    loading={loadingLogsManual}
-                    hasLoadedOnce={logsManual.length > 0 || !loadingLogsManual}
-                    totalFilas={logsManual.length}
-                    startIndex={pageLogsManual * pageSizeLogsManual}
-                    endIndex={Math.min((pageLogsManual + 1) * pageSizeLogsManual, logsManual.length)}
-                    pageSize={pageSizeLogsManual}
-                    setPageSize={(v) => { setPageSizeLogsManual(v); setPageLogsManual(0); }}
-                    currentPage={pageLogsManual}
-                    totalPages={totalPagesLogsManual}
-                    setPage={setPageLogsManual}
-                    compact
-                  />
+                  <TablePaginationFooter loading={loadingLogsManual} hasLoadedOnce={logsManual.length > 0 || !loadingLogsManual} totalFilas={logsManual.length} startIndex={pageLogsManual * pageSizeLogsManual} endIndex={Math.min((pageLogsManual + 1) * pageSizeLogsManual, logsManual.length)} pageSize={pageSizeLogsManual} setPageSize={(v) => { setPageSizeLogsManual(v); setPageLogsManual(0); }} currentPage={pageLogsManual} totalPages={totalPagesLogsManual} setPage={setPageLogsManual} compact />
                 </div>
               )}
             </div>
