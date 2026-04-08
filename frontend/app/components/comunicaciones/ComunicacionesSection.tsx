@@ -185,8 +185,8 @@ export default function ComunicacionesSection({ token }: Props) {
   const [errorExplorer, setErrorExplorer]         = useState<string | null>(null);
   const [selectedFicheros, setSelectedFicheros]   = useState<Set<string>>(new Set());
   const [filtroNombre, setFiltroNombre]           = useState("");
+  const [filtroMes, setFiltroMes]                 = useState(""); // formato YYYY-MM
   const [descargando, setDescargando]             = useState(false);
-  // Indica si el path actual tiene potencialmente muchos ficheros (requiere filtro)
   const [requiereFiltro, setRequiereFiltro]       = useState(false);
 
   // Panel 3 — Logs
@@ -261,19 +261,19 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setTestingId(null); }
   };
 
-  // Explorar path — solo lista carpetas si no hay filtro, lista ficheros si hay filtro
-  const explorarPath = useCallback(async (path: string, filtro?: string) => {
+  // Explorar path con los dos filtros separados
+  const explorarPath = useCallback(async (path: string, nombre?: string, mes?: string) => {
     if (!token || !explorerEmpresaId) return;
     setLoadingExplorer(true); setErrorExplorer(null); setSelectedFicheros(new Set());
     try {
-      const params = new URLSearchParams({ path, limite: "4000" });
-      if (filtro && filtro.trim()) params.set("filtro", filtro.trim());
+      const params = new URLSearchParams({ path, limite: "5000" });
+      if (nombre && nombre.trim()) params.set("filtro_nombre", nombre.trim());
+      if (mes && mes.trim()) params.set("filtro_mes", mes.trim());
       const res = await fetch(`${API_BASE_URL}/ftp/explorar/${explorerEmpresaId}?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data: ExplorerResult = await res.json();
       setExplorerResult(data);
-      // Si devuelve exactamente el límite de ficheros, probablemente hay más — requiere filtro
-      setRequiereFiltro(data.total_ficheros >= 1000 && !filtro);
+      setRequiereFiltro(data.total_ficheros >= 5000 && !nombre && !mes);
     } catch (e: unknown) {
       setErrorExplorer(e instanceof Error ? e.message : "Error explorando FTP");
     } finally { setLoadingExplorer(false); }
@@ -284,6 +284,7 @@ export default function ComunicacionesSection({ token }: Props) {
     setExplorerResult(null);
     setErrorExplorer(null);
     setFiltroNombre("");
+    setFiltroMes("");
     setSelectedFicheros(new Set());
     setRequiereFiltro(false);
   };
@@ -292,13 +293,19 @@ export default function ComunicacionesSection({ token }: Props) {
     if (!explorerEmpresaId) return;
     const config = configs.find(c => c.empresa_id === explorerEmpresaId);
     const raiz = config?.directorio_remoto || "/";
-    setFiltroNombre("");
+    setFiltroNombre(""); setFiltroMes("");
     explorarPath(raiz);
   };
 
   const handleBuscar = () => {
     if (!explorerResult) return;
-    explorarPath(explorerResult.path_actual, filtroNombre);
+    explorarPath(explorerResult.path_actual, filtroNombre, filtroMes);
+  };
+
+  const handleLimpiar = () => {
+    if (!explorerResult) return;
+    setFiltroNombre(""); setFiltroMes("");
+    explorarPath(explorerResult.path_actual);
   };
 
   const handleDescargar = async () => {
@@ -350,9 +357,9 @@ export default function ComunicacionesSection({ token }: Props) {
     const path = explorerResult.path_actual;
     const partes = path.split("/").filter(Boolean);
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, flexWrap: "wrap", color: "var(--text-muted)" }}>
-        <span style={{ cursor: "pointer", color: "var(--text)" }}
-          onClick={() => { setFiltroNombre(""); explorarPath("/"); }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, flexWrap: "wrap" }}>
+        <span style={{ cursor: "pointer", color: "var(--primary, #378ADD)" }}
+          onClick={() => { setFiltroNombre(""); setFiltroMes(""); explorarPath("/"); }}>
           /
         </span>
         {partes.map((parte, i) => {
@@ -363,7 +370,7 @@ export default function ComunicacionesSection({ token }: Props) {
               <span style={{ color: "var(--text-muted)" }}>/</span>
               <span
                 style={{ cursor: esActual ? "default" : "pointer", color: esActual ? "var(--text)" : "var(--primary, #378ADD)", fontWeight: esActual ? 500 : 400 }}
-                onClick={() => { if (!esActual) { setFiltroNombre(""); explorarPath(subpath); } }}>
+                onClick={() => { if (!esActual) { setFiltroNombre(""); setFiltroMes(""); explorarPath(subpath); } }}>
                 {parte}
               </span>
             </span>
@@ -372,6 +379,8 @@ export default function ComunicacionesSection({ token }: Props) {
       </div>
     );
   };
+
+  const hayFiltros = filtroNombre.trim() || filtroMes.trim();
 
   return (
     <div className="text-sm">
@@ -581,7 +590,7 @@ export default function ComunicacionesSection({ token }: Props) {
               {explorerResult && explorerResult.path_actual !== "/" && (
                 <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
                   style={{ display: "flex", alignItems: "center", gap: 5 }}
-                  onClick={() => { setFiltroNombre(""); explorarPath(explorerResult.path_padre); }}>
+                  onClick={() => { setFiltroNombre(""); setFiltroMes(""); explorarPath(explorerResult.path_padre); }}>
                   <IconUp /> Subir nivel
                 </button>
               )}
@@ -594,33 +603,50 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
-            {/* Fila 2 — Búsqueda (siempre visible si hay carpeta seleccionada) */}
+            {/* Fila 2 — Dos filtros separados */}
             {explorerResult && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <input className="ui-input" style={{ fontSize: 11, height: 28, flex: 1, maxWidth: 400 }}
-                  placeholder="Buscar ficheros por nombre, tipo o fecha (ej: BALD, 20260408)..."
-                  value={filtroNombre}
-                  onChange={e => setFiltroNombre(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") handleBuscar(); }}
-                />
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                {/* Filtro por nombre */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Nombre del fichero</label>
+                  <input className="ui-input" style={{ fontSize: 11, height: 28, width: 220 }}
+                    placeholder="BALD, MAGCLOS, 0148..."
+                    value={filtroNombre}
+                    onChange={e => setFiltroNombre(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleBuscar(); }}
+                  />
+                </div>
+                {/* Filtro por mes */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Mes de publicación</label>
+                  <input
+                    type="month"
+                    className="ui-input"
+                    style={{ fontSize: 11, height: 28, width: 160 }}
+                    value={filtroMes}
+                    onChange={e => setFiltroMes(e.target.value)}
+                  />
+                </div>
+                {/* Botones */}
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                  style={{ display: "flex", alignItems: "center", gap: 5 }}
+                  style={{ display: "flex", alignItems: "center", gap: 5, height: 28 }}
                   onClick={handleBuscar} disabled={loadingExplorer}>
                   <IconSearch /> Buscar
                 </button>
-                {filtroNombre && (
+                {hayFiltros && (
                   <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                    onClick={() => { setFiltroNombre(""); explorarPath(explorerResult.path_actual); }}>
+                    style={{ height: 28 }}
+                    onClick={handleLimpiar}>
                     Limpiar
                   </button>
                 )}
               </div>
             )}
 
-            {/* Aviso cuando hay muchos ficheros y no hay filtro */}
-            {requiereFiltro && !filtroNombre && (
+            {/* Aviso carpeta grande */}
+            {requiereFiltro && !hayFiltros && (
               <div style={{ marginBottom: 10, padding: "8px 12px", background: "var(--color-background-warning, #FAEEDA)", borderRadius: 6, fontSize: 11, color: "#854F0B", border: "1px solid #FAC775" }}>
-                Esta carpeta tiene más de 1.000 ficheros. Usa el buscador para encontrar los ficheros que necesitas (ej: fecha <strong>20260408</strong>, tipo <strong>BALD</strong>, empresa <strong>0148</strong>).
+                Esta carpeta tiene más de 5.000 ficheros. Usa los filtros para encontrar los que necesitas — por nombre (ej: <strong>BALD</strong>) o por mes de publicación.
               </div>
             )}
 
@@ -633,7 +659,7 @@ export default function ComunicacionesSection({ token }: Props) {
 
             {errorExplorer && <div className="ui-alert ui-alert--danger mb-3">{errorExplorer}</div>}
 
-            {/* Contenido explorador */}
+            {/* Contenido */}
             {!explorerEmpresaId ? (
               <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>
                 Selecciona una empresa y pulsa &quot;Conectar&quot;
@@ -664,40 +690,26 @@ export default function ComunicacionesSection({ token }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Carpetas */}
                     {explorerResult.carpetas.map(c => (
                       <tr key={c.path} className="ui-tr" style={{ cursor: "pointer" }}
-                        onClick={() => { setFiltroNombre(""); explorarPath(c.path); }}>
-                        <td className="ui-td" style={{ textAlign: "center" }}>
-                          <IconFolder />
-                        </td>
-                        <td className="ui-td" style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
-                          {c.nombre}/
-                        </td>
+                        onClick={() => { setFiltroNombre(""); setFiltroMes(""); explorarPath(c.path); }}>
+                        <td className="ui-td" style={{ textAlign: "center" }}><IconFolder /></td>
+                        <td className="ui-td" style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{c.nombre}/</td>
                         <td className="ui-td ui-muted">—</td>
                         <td className="ui-td ui-muted">—</td>
                       </tr>
                     ))}
 
-                    {/* Ficheros */}
                     {explorerResult.ficheros.length === 0 && explorerResult.carpetas.length === 0 ? (
-                      <tr className="ui-tr">
-                        <td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>
-                          Carpeta vacía
-                        </td>
-                      </tr>
-                    ) : explorerResult.ficheros.length === 0 && filtroNombre ? (
-                      <tr className="ui-tr">
-                        <td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>
-                          Sin resultados para &quot;{filtroNombre}&quot; · Prueba con otro término
-                        </td>
-                      </tr>
+                      <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>Carpeta vacía</td></tr>
+                    ) : explorerResult.ficheros.length === 0 && hayFiltros ? (
+                      <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>
+                        Sin resultados con los filtros aplicados · Prueba con otros valores
+                      </td></tr>
                     ) : explorerResult.ficheros.length === 0 && requiereFiltro ? (
-                      <tr className="ui-tr">
-                        <td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>
-                          Usa el buscador para encontrar ficheros en esta carpeta
-                        </td>
-                      </tr>
+                      <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>
+                        Usa los filtros para buscar ficheros en esta carpeta
+                      </td></tr>
                     ) : (
                       explorerResult.ficheros.map(f => (
                         <tr key={f.nombre} className="ui-tr"
@@ -720,7 +732,7 @@ export default function ComunicacionesSection({ token }: Props) {
                 </table>
                 {explorerResult.total_ficheros > explorerResult.ficheros.length && (
                   <div style={{ padding: "8px 12px", fontSize: 10, color: "var(--text-muted)", borderTop: "1px solid var(--card-border)" }}>
-                    Mostrando {explorerResult.ficheros.length} de {explorerResult.total_ficheros} ficheros · Usa el buscador para acotar resultados
+                    Mostrando {explorerResult.ficheros.length} de {explorerResult.total_ficheros} ficheros · Usa los filtros para acotar resultados
                   </div>
                 )}
               </div>
