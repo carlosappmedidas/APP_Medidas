@@ -31,16 +31,31 @@ interface FtpConfigForm {
   activo: boolean;
 }
 
-interface FtpCarpeta {
-  nombre: string;
-  path: string;
+interface FtpSyncRule {
+  id: number;
+  config_id: number;
+  config_nombre: string | null;
+  empresa_nombre: string;
+  nombre: string | null;
+  directorio: string;
+  patron_nombre: string | null;
+  intervalo_horas: number;
+  activo: boolean;
+  ultima_ejecucion: string | null;
+  proxima_ejecucion: string | null;
 }
 
-interface FtpFichero {
+interface FtpSyncRuleForm {
+  config_id: number | "";
   nombre: string;
-  tamanio: number;
-  fecha: string;
+  directorio: string;
+  patron_nombre: string;
+  intervalo_horas: number;
+  activo: boolean;
 }
+
+interface FtpCarpeta { nombre: string; path: string; }
+interface FtpFichero { nombre: string; tamanio: number; fecha: string; }
 
 interface ExplorerResult {
   path_actual: string;
@@ -53,28 +68,29 @@ interface ExplorerResult {
 interface FtpLog {
   id: number;
   empresa_nombre: string;
+  config_id: number | null;
+  rule_id: number | null;
+  origen: string;
   nombre_fichero: string;
   estado: "ok" | "error";
   mensaje_error: string | null;
   created_at: string;
 }
 
-interface EmpresaOption {
-  id: number;
-  nombre: string;
-  codigo_ree: string | null;
-}
+interface EmpresaOption { id: number; nombre: string; codigo_ree: string | null; }
 
-interface Props {
-  token: string | null;
-  currentUser: User | null;
-}
+interface Props { token: string | null; currentUser: User | null; }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(s: string | null): string {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return s; }
+  try {
+    return new Date(s).toLocaleString("es-ES", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return s; }
 }
 
 function fmtSize(bytes: number): string {
@@ -83,24 +99,28 @@ function fmtSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// Etiqueta legible para una conexión FTP
 function labelConexion(c: FtpConfig): string {
   const base = c.nombre || c.empresa_nombre;
   const tipo = c.usar_tls ? "TLS" : "FTP";
   return `${base} — ${c.host} (${tipo})`;
 }
 
-const FORM_VACIO: FtpConfigForm = {
+const FORM_CONFIG_VACIO: FtpConfigForm = {
   empresa_id: "", nombre: "", host: "www.asemeservicios.com", puerto: 22221,
   usuario: "", password: "", directorio_remoto: "/", usar_tls: true, activo: true,
 };
 
+const FORM_RULE_VACIO: FtpSyncRuleForm = {
+  config_id: "", nombre: "", directorio: "/01/entradaHistorico",
+  patron_nombre: "", intervalo_horas: 1, activo: true,
+};
+
 const ANIOS = [2023, 2024, 2025, 2026];
 const MESES = [
-  { v: "01", l: "Enero" },    { v: "02", l: "Febrero" },   { v: "03", l: "Marzo" },
-  { v: "04", l: "Abril" },    { v: "05", l: "Mayo" },       { v: "06", l: "Junio" },
-  { v: "07", l: "Julio" },    { v: "08", l: "Agosto" },     { v: "09", l: "Septiembre" },
-  { v: "10", l: "Octubre" },  { v: "11", l: "Noviembre" },  { v: "12", l: "Diciembre" },
+  { v: "01", l: "Enero" }, { v: "02", l: "Febrero" }, { v: "03", l: "Marzo" },
+  { v: "04", l: "Abril" }, { v: "05", l: "Mayo" }, { v: "06", l: "Junio" },
+  { v: "07", l: "Julio" }, { v: "08", l: "Agosto" }, { v: "09", l: "Septiembre" },
+  { v: "10", l: "Octubre" }, { v: "11", l: "Noviembre" }, { v: "12", l: "Diciembre" },
 ];
 
 // ─── Iconos ───────────────────────────────────────────────────────────────────
@@ -112,7 +132,8 @@ const IconFolder = () => (
 );
 const IconFile = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: "var(--text-muted)" }}>
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
   </svg>
 );
 const IconUp = () => (
@@ -122,22 +143,27 @@ const IconUp = () => (
 );
 const IconRefresh = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    <polyline points="23 4 23 10 17 10"/>
+    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
   </svg>
 );
 const IconDownload = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
   </svg>
 );
 const IconSearch = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    <circle cx="11" cy="11" r="8"/>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
   </svg>
 );
 const IconPlus = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    <line x1="12" y1="5" x2="12" y2="19"/>
+    <line x1="5" y1="12" x2="19" y2="12"/>
   </svg>
 );
 const IconEdit = () => (
@@ -148,13 +174,20 @@ const IconEdit = () => (
 );
 const IconTrash = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-    <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    <path d="M10 11v6M14 11v6"/>
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
   </svg>
 );
 const IconCheck = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <polyline points="20 6 9 17 4 12"/>
+  </svg>
+);
+const IconPlay = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polygon points="5 3 19 12 5 21 5 3"/>
   </svg>
 );
 
@@ -180,24 +213,41 @@ const panelDescStyle: React.CSSProperties = {
 
 export default function ComunicacionesSection({ token }: Props) {
 
-  const [panel1Open, setPanel1Open] = useState(false);
-  const [panel2Open, setPanel2Open] = useState(false);
-  const [panel3Open, setPanel3Open] = useState(false);
+  // Paneles — todos cerrados por defecto
+  const [panelDashOpen, setPanelDashOpen]     = useState(false);
+  const [panelConfigOpen, setPanelConfigOpen] = useState(false);
+  const [panelAutoOpen, setPanelAutoOpen]     = useState(false);
+  const [panelManualOpen, setPanelManualOpen] = useState(false);
 
   const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
 
-  // Panel 1 — Configs
+  // ── Configs ──────────────────────────────────────────────────────────────────
   const [configs, setConfigs]               = useState<FtpConfig[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
   const [errorConfigs, setErrorConfigs]     = useState<string | null>(null);
-  const [showForm, setShowForm]             = useState(false);
-  const [editId, setEditId]                 = useState<number | null>(null);
-  const [form, setForm]                     = useState<FtpConfigForm>(FORM_VACIO);
-  const [savingForm, setSavingForm]         = useState(false);
+  const [showConfigForm, setShowConfigForm] = useState(false);
+  const [editConfigId, setEditConfigId]     = useState<number | null>(null);
+  const [configForm, setConfigForm]         = useState<FtpConfigForm>(FORM_CONFIG_VACIO);
+  const [savingConfig, setSavingConfig]     = useState(false);
   const [testingId, setTestingId]           = useState<number | null>(null);
   const [testResult, setTestResult]         = useState<Record<number, { ok: boolean; msg: string }>>({});
 
-  // Panel 2 — Explorador (ahora por config_id en vez de empresa_id)
+  // ── Reglas automáticas ────────────────────────────────────────────────────────
+  const [rules, setRules]               = useState<FtpSyncRule[]>([]);
+  const [loadingRules, setLoadingRules] = useState(false);
+  const [errorRules, setErrorRules]     = useState<string | null>(null);
+  const [showRuleForm, setShowRuleForm] = useState(false);
+  const [editRuleId, setEditRuleId]     = useState<number | null>(null);
+  const [ruleForm, setRuleForm]         = useState<FtpSyncRuleForm>(FORM_RULE_VACIO);
+  const [savingRule, setSavingRule]     = useState(false);
+  const [executingRuleId, setExecutingRuleId] = useState<number | null>(null);
+
+  // ── Historial automático ──────────────────────────────────────────────────────
+  const [logsAuto, setLogsAuto]               = useState<FtpLog[]>([]);
+  const [loadingLogsAuto, setLoadingLogsAuto] = useState(false);
+  const [errorLogsAuto, setErrorLogsAuto]     = useState<string | null>(null);
+
+  // ── Explorador manual ─────────────────────────────────────────────────────────
   const [explorerConfigId, setExplorerConfigId]   = useState<number | "">("");
   const [explorerResult, setExplorerResult]       = useState<ExplorerResult | null>(null);
   const [loadingExplorer, setLoadingExplorer]     = useState(false);
@@ -209,14 +259,17 @@ export default function ComunicacionesSection({ token }: Props) {
   const [descargando, setDescargando]             = useState(false);
   const [requiereFiltro, setRequiereFiltro]       = useState(false);
 
-  // Panel 3 — Logs
-  const [logs, setLogs]               = useState<FtpLog[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(false);
-  const [errorLogs, setErrorLogs]     = useState<string | null>(null);
+  // ── Historial manual ──────────────────────────────────────────────────────────
+  const [logsManual, setLogsManual]               = useState<FtpLog[]>([]);
+  const [loadingLogsManual, setLoadingLogsManual] = useState(false);
+  const [errorLogsManual, setErrorLogsManual]     = useState<string | null>(null);
 
   const anioDefault = new Date().getFullYear().toString();
   const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : "";
+  const hayFiltros = filtroNombre.trim() || filtroMes;
+  const conexionesActivas = configs.filter(c => c.activo);
 
+  // ── Cargar empresas ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) return;
     fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) })
@@ -225,6 +278,7 @@ export default function ComunicacionesSection({ token }: Props) {
       .catch(() => {});
   }, [token]);
 
+  // ── Cargar configs ────────────────────────────────────────────────────────────
   const cargarConfigs = useCallback(async () => {
     if (!token) return;
     setLoadingConfigs(true); setErrorConfigs(null);
@@ -237,28 +291,29 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setLoadingConfigs(false); }
   }, [token]);
 
-  useEffect(() => { if (panel1Open) cargarConfigs(); }, [panel1Open, cargarConfigs]);
+  useEffect(() => { if (panelConfigOpen || panelAutoOpen || panelManualOpen) cargarConfigs(); }, [panelConfigOpen, panelAutoOpen, panelManualOpen, cargarConfigs]);
 
+  // ── Guardar config ────────────────────────────────────────────────────────────
   const handleSaveConfig = async () => {
-    if (!token || !form.empresa_id) return;
-    setSavingForm(true); setErrorConfigs(null);
+    if (!token || !configForm.empresa_id) return;
+    setSavingConfig(true); setErrorConfigs(null);
     try {
-      const url = editId ? `${API_BASE_URL}/ftp/configs/${editId}` : `${API_BASE_URL}/ftp/configs`;
-      const method = editId ? "PATCH" : "POST";
+      const url = editConfigId ? `${API_BASE_URL}/ftp/configs/${editConfigId}` : `${API_BASE_URL}/ftp/configs`;
+      const method = editConfigId ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, nombre: form.nombre || null }),
+        body: JSON.stringify({ ...configForm, nombre: configForm.nombre || null }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
       }
       await cargarConfigs();
-      setShowForm(false); setEditId(null); setForm(FORM_VACIO);
+      setShowConfigForm(false); setEditConfigId(null); setConfigForm(FORM_CONFIG_VACIO);
     } catch (e: unknown) {
       setErrorConfigs(e instanceof Error ? e.message : "Error guardando");
-    } finally { setSavingForm(false); }
+    } finally { setSavingConfig(false); }
   };
 
   const handleDeleteConfig = async (id: number) => {
@@ -267,7 +322,6 @@ export default function ComunicacionesSection({ token }: Props) {
       const res = await fetch(`${API_BASE_URL}/ftp/configs/${id}`, { method: "DELETE", headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setConfigs(prev => prev.filter(c => c.id !== id));
-      if (explorerConfigId === id) handleCambiarConexion("");
     } catch (e: unknown) {
       setErrorConfigs(e instanceof Error ? e.message : "Error borrando");
     }
@@ -279,13 +333,95 @@ export default function ComunicacionesSection({ token }: Props) {
     try {
       const res = await fetch(`${API_BASE_URL}/ftp/test/${id}`, { method: "POST", headers: getAuthHeaders(token) });
       const data = await res.json();
-      setTestResult(prev => ({ ...prev, [id]: { ok: res.ok, msg: data.message || (res.ok ? "Conexión exitosa" : "Error") } }));
+      setTestResult(prev => ({ ...prev, [id]: { ok: res.ok, msg: data.message || (res.ok ? "OK" : "Error") } }));
     } catch {
       setTestResult(prev => ({ ...prev, [id]: { ok: false, msg: "No se pudo conectar" } }));
     } finally { setTestingId(null); }
   };
 
-  // Explorar usando config_id directamente
+  // ── Cargar reglas ─────────────────────────────────────────────────────────────
+  const cargarRules = useCallback(async () => {
+    if (!token) return;
+    setLoadingRules(true); setErrorRules(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/ftp/rules`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setRules(await res.json());
+    } catch (e: unknown) {
+      setErrorRules(e instanceof Error ? e.message : "Error");
+    } finally { setLoadingRules(false); }
+  }, [token]);
+
+  useEffect(() => { if (panelAutoOpen) { cargarConfigs(); cargarRules(); } }, [panelAutoOpen, cargarConfigs, cargarRules]);
+
+  // ── Guardar regla ─────────────────────────────────────────────────────────────
+  const handleSaveRule = async () => {
+    if (!token || !ruleForm.config_id) return;
+    setSavingRule(true); setErrorRules(null);
+    try {
+      const url = editRuleId ? `${API_BASE_URL}/ftp/rules/${editRuleId}` : `${API_BASE_URL}/ftp/rules`;
+      const method = editRuleId ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...ruleForm,
+          nombre: ruleForm.nombre || null,
+          patron_nombre: ruleForm.patron_nombre || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+      }
+      await cargarRules();
+      setShowRuleForm(false); setEditRuleId(null); setRuleForm(FORM_RULE_VACIO);
+    } catch (e: unknown) {
+      setErrorRules(e instanceof Error ? e.message : "Error guardando");
+    } finally { setSavingRule(false); }
+  };
+
+  const handleDeleteRule = async (id: number) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/ftp/rules/${id}`, { method: "DELETE", headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setRules(prev => prev.filter(r => r.id !== id));
+    } catch (e: unknown) {
+      setErrorRules(e instanceof Error ? e.message : "Error borrando");
+    }
+  };
+
+  const handleExecuteRule = async (id: number) => {
+    if (!token) return;
+    setExecutingRuleId(id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/ftp/rules/${id}/ejecutar`, { method: "POST", headers: getAuthHeaders(token) });
+      const data = await res.json();
+      alert(`Ejecutado: ${data.descargados ?? 0} descargados, ${data.errores ?? 0} errores.`);
+      await cargarRules();
+      cargarLogsAuto();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Error ejecutando regla");
+    } finally { setExecutingRuleId(null); }
+  };
+
+  // ── Logs automáticos ──────────────────────────────────────────────────────────
+  const cargarLogsAuto = useCallback(async () => {
+    if (!token) return;
+    setLoadingLogsAuto(true); setErrorLogsAuto(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/ftp/logs?origen=auto&limit=100`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setLogsAuto(await res.json());
+    } catch (e: unknown) {
+      setErrorLogsAuto(e instanceof Error ? e.message : "Error");
+    } finally { setLoadingLogsAuto(false); }
+  }, [token]);
+
+  useEffect(() => { if (panelAutoOpen) cargarLogsAuto(); }, [panelAutoOpen, cargarLogsAuto]);
+
+  // ── Explorador ────────────────────────────────────────────────────────────────
   const explorarPath = useCallback(async (path: string, nombre?: string, mes?: string) => {
     if (!token || !explorerConfigId) return;
     setLoadingExplorer(true); setErrorExplorer(null); setSelectedFicheros(new Set());
@@ -318,17 +454,6 @@ export default function ComunicacionesSection({ token }: Props) {
     explorarPath(raiz);
   };
 
-  const handleBuscar = () => {
-    if (!explorerResult) return;
-    explorarPath(explorerResult.path_actual, filtroNombre, filtroMes);
-  };
-
-  const handleLimpiar = () => {
-    if (!explorerResult) return;
-    setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum("");
-    explorarPath(explorerResult.path_actual);
-  };
-
   const handleDescargar = async () => {
     if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
     setDescargando(true); setErrorExplorer(null);
@@ -342,7 +467,7 @@ export default function ComunicacionesSection({ token }: Props) {
       const data = await res.json();
       alert(`Descargados ${data.descargados ?? 0} fichero(s) correctamente.`);
       setSelectedFicheros(new Set());
-      if (panel3Open) cargarLogs();
+      cargarLogsManual();
     } catch (e: unknown) {
       setErrorExplorer(e instanceof Error ? e.message : "Error descargando");
     } finally { setDescargando(false); }
@@ -350,28 +475,32 @@ export default function ComunicacionesSection({ token }: Props) {
 
   const toggleFichero = (nombre: string) => {
     setSelectedFicheros(prev => {
-      const s = new Set(prev); s.has(nombre) ? s.delete(nombre) : s.add(nombre); return s;
+      const s = new Set(prev);
+      s.has(nombre) ? s.delete(nombre) : s.add(nombre);
+      return s;
     });
   };
+
   const toggleTodos = () => {
     const todos = explorerResult?.ficheros ?? [];
     if (selectedFicheros.size === todos.length) setSelectedFicheros(new Set());
     else setSelectedFicheros(new Set(todos.map(f => f.nombre)));
   };
 
-  const cargarLogs = useCallback(async () => {
+  // ── Logs manuales ─────────────────────────────────────────────────────────────
+  const cargarLogsManual = useCallback(async () => {
     if (!token) return;
-    setLoadingLogs(true); setErrorLogs(null);
+    setLoadingLogsManual(true); setErrorLogsManual(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/ftp/logs`, { headers: getAuthHeaders(token) });
+      const res = await fetch(`${API_BASE_URL}/ftp/logs?origen=manual&limit=100`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      setLogs(await res.json());
+      setLogsManual(await res.json());
     } catch (e: unknown) {
-      setErrorLogs(e instanceof Error ? e.message : "Error");
-    } finally { setLoadingLogs(false); }
+      setErrorLogsManual(e instanceof Error ? e.message : "Error");
+    } finally { setLoadingLogsManual(false); }
   }, [token]);
 
-  useEffect(() => { if (panel3Open) cargarLogs(); }, [panel3Open, cargarLogs]);
+  useEffect(() => { if (panelManualOpen) { cargarConfigs(); cargarLogsManual(); } }, [panelManualOpen, cargarConfigs, cargarLogsManual]);
 
   const renderBreadcrumb = () => {
     if (!explorerResult) return null;
@@ -401,51 +530,140 @@ export default function ComunicacionesSection({ token }: Props) {
     );
   };
 
-  const hayFiltros = filtroNombre.trim() || filtroMes;
-  // Conexiones activas para el explorador
-  const conexionesActivas = configs.filter(c => c.activo);
+  // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <div className="text-sm">
 
-      {/* ── PANEL 1: Configuraciones FTP ── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          PANEL 1 — DASHBOARD
+      ══════════════════════════════════════════════════════════════════════ */}
       <div style={panelStyle}>
-        <div style={panelHeaderStyle} onClick={() => setPanel1Open(v => !v)}>
+        <div style={panelHeaderStyle} onClick={() => setPanelDashOpen(v => !v)}>
           <div>
-            <div style={panelTitleStyle}>Conexiones FTP</div>
+            <div style={panelTitleStyle}>📊 Dashboard</div>
+            <div style={panelDescStyle}>Estado global de conexiones y sincronización</div>
+          </div>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+            onClick={e => { e.stopPropagation(); setPanelDashOpen(v => !v); }}>
+            {panelDashOpen ? "Ocultar" : "Mostrar"}
+          </button>
+        </div>
+        {panelDashOpen && (
+          <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
+            {/* Métricas rápidas */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Conexiones activas</div>
+                <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{conexionesActivas.length}</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                  {conexionesActivas.filter(c => c.usar_tls).length} TLS · {conexionesActivas.filter(c => !c.usar_tls).length} FTP
+                </div>
+              </div>
+              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Reglas activas</div>
+                <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{rules.filter(r => r.activo).length}</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>de {rules.length} configuradas</div>
+              </div>
+              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Scheduler</div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: "#1D9E75", marginTop: 4 }}>● Activo</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>comprueba cada minuto</div>
+              </div>
+              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Próximas syncs</div>
+                {rules.filter(r => r.activo && r.proxima_ejecucion).slice(0, 2).map(r => (
+                  <div key={r.id} style={{ fontSize: 10, color: "var(--text)", marginTop: 2 }}>
+                    {r.nombre || r.patron_nombre || "Regla"} · {fmtDate(r.proxima_ejecucion)}
+                  </div>
+                ))}
+                {rules.filter(r => r.activo).length === 0 && (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Sin reglas activas</div>
+                )}
+              </div>
+            </div>
+
+            {/* Estado por conexión */}
+            <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
+              <div style={{ padding: "8px 14px", background: "var(--field-bg-soft)", fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Estado de conexiones
+              </div>
+              {configs.length === 0 ? (
+                <div style={{ padding: "20px 14px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
+                  Sin conexiones configuradas
+                </div>
+              ) : configs.map(c => {
+                const reglasConexion = rules.filter(r => r.config_id === c.id && r.activo);
+                return (
+                  <div key={c.id} style={{ display: "grid", gridTemplateColumns: "10px 1fr 120px 120px 130px", gap: 12, padding: "10px 14px", borderTop: "1px solid var(--card-border)", alignItems: "center" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.activo ? "#1D9E75" : "#888", flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{c.nombre || c.empresa_nombre}</div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.host}:{c.puerto} · {c.usar_tls ? "TLS" : "FTP"}</div>
+                    </div>
+                    <div>
+                      <span className={`ui-badge ${c.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>
+                        {c.activo ? "Activa" : "Inactiva"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                      {reglasConexion.length > 0
+                        ? `${reglasConexion.length} regla${reglasConexion.length > 1 ? "s" : ""} auto`
+                        : "Solo manual"}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                      {reglasConexion[0]?.proxima_ejecucion
+                        ? `Próx: ${fmtDate(reglasConexion[0].proxima_ejecucion)}`
+                        : "—"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          PANEL 2 — CONEXIONES FTP
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div style={panelStyle}>
+        <div style={panelHeaderStyle} onClick={() => setPanelConfigOpen(v => !v)}>
+          <div>
+            <div style={panelTitleStyle}>📡 Conexiones FTP</div>
             <div style={panelDescStyle}>Configura y gestiona las conexiones FTP/FTPS por empresa</div>
           </div>
           <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanel1Open(v => !v); }}>
-            {panel1Open ? "Ocultar" : "Mostrar"}
+            onClick={e => { e.stopPropagation(); setPanelConfigOpen(v => !v); }}>
+            {panelConfigOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
 
-        {panel1Open && (
+        {panelConfigOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorConfigs && <div className="ui-alert ui-alert--danger mb-3">{errorConfigs}</div>}
 
-            {!showForm && (
+            {!showConfigForm && (
               <div style={{ marginBottom: 14 }}>
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                   style={{ display: "flex", alignItems: "center", gap: 5 }}
-                  onClick={() => { setShowForm(true); setEditId(null); setForm(FORM_VACIO); }}>
+                  onClick={() => { setShowConfigForm(true); setEditConfigId(null); setConfigForm(FORM_CONFIG_VACIO); }}>
                   <IconPlus /> Añadir conexión FTP
                 </button>
               </div>
             )}
 
-            {showForm && (
+            {showConfigForm && (
               <div style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px 16px", marginBottom: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  {editId ? "Editar conexión" : "Nueva conexión FTP"}
+                  {editConfigId ? "Editar conexión" : "Nueva conexión FTP"}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
                     <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={form.empresa_id}
-                      onChange={e => setForm(f => ({ ...f, empresa_id: Number(e.target.value) }))}>
+                      value={configForm.empresa_id}
+                      onChange={e => setConfigForm(f => ({ ...f, empresa_id: Number(e.target.value) }))}>
                       <option value="">Selecciona empresa</option>
                       {empresas.map(emp => (
                         <option key={emp.id} value={emp.id}>{emp.nombre || emp.codigo_ree || `Empresa ${emp.id}`}</option>
@@ -454,63 +672,62 @@ export default function ComunicacionesSection({ token }: Props) {
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                      Nombre de la conexión <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(opcional)</span>
+                      Nombre de la conexión <span style={{ fontWeight: 400 }}>(opcional)</span>
                     </label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                      placeholder="ej: GISCE, DATADIS, CCH..." />
+                      value={configForm.nombre} onChange={e => setConfigForm(f => ({ ...f, nombre: e.target.value }))}
+                      placeholder="ej: GISCE, DATADIS..." />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Host</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={form.host} onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
+                      value={configForm.host} onChange={e => setConfigForm(f => ({ ...f, host: e.target.value }))}
                       placeholder="www.servidor.com" />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Puerto</label>
                     <input className="ui-input" type="number" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={form.puerto} onChange={e => setForm(f => ({ ...f, puerto: Number(e.target.value) }))} />
+                      value={configForm.puerto} onChange={e => setConfigForm(f => ({ ...f, puerto: Number(e.target.value) }))} />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Usuario</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={form.usuario} onChange={e => setForm(f => ({ ...f, usuario: e.target.value }))}
-                      placeholder="usuario" />
+                      value={configForm.usuario} onChange={e => setConfigForm(f => ({ ...f, usuario: e.target.value }))} />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                      {editId ? "Nueva contraseña (vacío = no cambiar)" : "Contraseña"}
+                      {editConfigId ? "Contraseña (vacío = no cambiar)" : "Contraseña"}
                     </label>
                     <input className="ui-input" type="password" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                      placeholder={editId ? "••••••••" : "Contraseña FTP"} />
+                      value={configForm.password} onChange={e => setConfigForm(f => ({ ...f, password: e.target.value }))}
+                      placeholder={editConfigId ? "••••••••" : "Contraseña FTP"} />
                   </div>
                   <div style={{ gridColumn: "1 / -1" }}>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Directorio raíz</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={form.directorio_remoto} onChange={e => setForm(f => ({ ...f, directorio_remoto: e.target.value }))}
+                      value={configForm.directorio_remoto} onChange={e => setConfigForm(f => ({ ...f, directorio_remoto: e.target.value }))}
                       placeholder="/" />
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="checkbox" id="usar-tls-chk" checked={form.usar_tls}
-                      onChange={e => setForm(f => ({ ...f, usar_tls: e.target.checked }))} />
+                    <input type="checkbox" id="usar-tls-chk" checked={configForm.usar_tls}
+                      onChange={e => setConfigForm(f => ({ ...f, usar_tls: e.target.checked }))} />
                     <label htmlFor="usar-tls-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Usar TLS/FTPS</label>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="checkbox" id="activo-chk" checked={form.activo}
-                      onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} />
-                    <label htmlFor="activo-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Conexión activa</label>
+                    <input type="checkbox" id="activo-config-chk" checked={configForm.activo}
+                      onChange={e => setConfigForm(f => ({ ...f, activo: e.target.checked }))} />
+                    <label htmlFor="activo-config-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Conexión activa</label>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                    onClick={handleSaveConfig} disabled={savingForm || !form.empresa_id}>
-                    {savingForm ? "Guardando..." : editId ? "Guardar cambios" : "Crear conexión"}
+                    onClick={handleSaveConfig} disabled={savingConfig || !configForm.empresa_id}>
+                    {savingConfig ? "Guardando..." : editConfigId ? "Guardar cambios" : "Crear conexión"}
                   </button>
                   <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                    onClick={() => { setShowForm(false); setEditId(null); setForm(FORM_VACIO); }}>
+                    onClick={() => { setShowConfigForm(false); setEditConfigId(null); setConfigForm(FORM_CONFIG_VACIO); }}>
                     Cancelar
                   </button>
                 </div>
@@ -579,9 +796,9 @@ export default function ComunicacionesSection({ token }: Props) {
                           <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
                             style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
                             onClick={() => {
-                              setEditId(c.id);
-                              setForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo });
-                              setShowForm(true);
+                              setEditConfigId(c.id);
+                              setConfigForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo });
+                              setShowConfigForm(true);
                             }}>
                             <IconEdit />
                           </button>
@@ -601,23 +818,261 @@ export default function ComunicacionesSection({ token }: Props) {
         )}
       </div>
 
-      {/* ── PANEL 2: Explorador FTP ── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          PANEL 3 — DESCARGA AUTOMÁTICA
+      ══════════════════════════════════════════════════════════════════════ */}
       <div style={panelStyle}>
-        <div style={panelHeaderStyle} onClick={() => setPanel2Open(v => !v)}>
+        <div style={panelHeaderStyle} onClick={() => setPanelAutoOpen(v => !v)}>
           <div>
-            <div style={panelTitleStyle}>Explorador FTP remoto</div>
-            <div style={panelDescStyle}>Navega por carpetas y descarga ficheros desde el servidor FTP</div>
+            <div style={panelTitleStyle}>🤖 Descarga automática</div>
+            <div style={panelDescStyle}>Configura reglas de sync y consulta el historial automático</div>
           </div>
           <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanel2Open(v => !v); }}>
-            {panel2Open ? "Ocultar" : "Mostrar"}
+            onClick={e => { e.stopPropagation(); setPanelAutoOpen(v => !v); }}>
+            {panelAutoOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
 
-        {panel2Open && (
+        {panelAutoOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
 
-            {/* Selector de CONEXIÓN (no empresa) */}
+            {/* Reglas */}
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Reglas de sincronización
+            </div>
+            {errorRules && <div className="ui-alert ui-alert--danger mb-3">{errorRules}</div>}
+
+            {!showRuleForm && (
+              <div style={{ marginBottom: 14 }}>
+                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                  style={{ display: "flex", alignItems: "center", gap: 5 }}
+                  onClick={() => { setShowRuleForm(true); setEditRuleId(null); setRuleForm(FORM_RULE_VACIO); }}>
+                  <IconPlus /> Añadir regla
+                </button>
+              </div>
+            )}
+
+            {showRuleForm && (
+              <div style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px 16px", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  {editRuleId ? "Editar regla" : "Nueva regla de sync"}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Conexión FTP</label>
+                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
+                      value={ruleForm.config_id}
+                      onChange={e => setRuleForm(f => ({ ...f, config_id: Number(e.target.value) }))}>
+                      <option value="">Selecciona conexión</option>
+                      {conexionesActivas.map(c => (
+                        <option key={c.id} value={c.id}>{labelConexion(c)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                      Nombre de la regla <span style={{ fontWeight: 400 }}>(opcional)</span>
+                    </label>
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
+                      value={ruleForm.nombre} onChange={e => setRuleForm(f => ({ ...f, nombre: e.target.value }))}
+                      placeholder="ej: Descarga BALD diaria" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Directorio FTP</label>
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
+                      value={ruleForm.directorio} onChange={e => setRuleForm(f => ({ ...f, directorio: e.target.value }))}
+                      placeholder="/01/entradaHistorico" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                      Patrón de nombre <span style={{ fontWeight: 400 }}>(vacío = todos)</span>
+                    </label>
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
+                      value={ruleForm.patron_nombre} onChange={e => setRuleForm(f => ({ ...f, patron_nombre: e.target.value }))}
+                      placeholder="ej: BALD_, MAGCLOS_" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Intervalo</label>
+                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
+                      value={ruleForm.intervalo_horas}
+                      onChange={e => setRuleForm(f => ({ ...f, intervalo_horas: Number(e.target.value) }))}>
+                      <option value={1}>Cada 1 hora</option>
+                      <option value={2}>Cada 2 horas</option>
+                      <option value={6}>Cada 6 horas</option>
+                      <option value={12}>Cada 12 horas</option>
+                      <option value={24}>Cada 24 horas (diario)</option>
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" id="activo-rule-chk" checked={ruleForm.activo}
+                        onChange={e => setRuleForm(f => ({ ...f, activo: e.target.checked }))} />
+                      <label htmlFor="activo-rule-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Regla activa</label>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                    onClick={handleSaveRule} disabled={savingRule || !ruleForm.config_id}>
+                    {savingRule ? "Guardando..." : editRuleId ? "Guardar cambios" : "Crear regla"}
+                  </button>
+                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
+                    onClick={() => { setShowRuleForm(false); setEditRuleId(null); setRuleForm(FORM_RULE_VACIO); }}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="ui-table-wrap" style={{ marginBottom: 20 }}>
+              <table className="ui-table text-[11px]">
+                <thead className="ui-thead">
+                  <tr>
+                    <th className="ui-th">Nombre</th>
+                    <th className="ui-th">Conexión</th>
+                    <th className="ui-th">Directorio</th>
+                    <th className="ui-th">Patrón</th>
+                    <th className="ui-th">Intervalo</th>
+                    <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                    <th className="ui-th">Última ejecución</th>
+                    <th className="ui-th">Próxima</th>
+                    <th className="ui-th">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingRules ? (
+                    <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
+                  ) : rules.length === 0 ? (
+                    <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                      Sin reglas · Pulsa &quot;Añadir regla&quot; para configurar la sync automática
+                    </td></tr>
+                  ) : rules.map(r => (
+                    <tr key={r.id} className="ui-tr">
+                      <td className="ui-td" style={{ fontWeight: 500 }}>
+                        {r.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}
+                      </td>
+                      <td className="ui-td" style={{ fontSize: 10 }}>{r.config_nombre || r.empresa_nombre}</td>
+                      <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{r.directorio}</td>
+                      <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>
+                        {r.patron_nombre || <span style={{ color: "var(--text-muted)" }}>todos</span>}
+                      </td>
+                      <td className="ui-td">{r.intervalo_horas}h</td>
+                      <td className="ui-td" style={{ textAlign: "center" }}>
+                        <span className={`ui-badge ${r.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>
+                          {r.activo ? "Activa" : "Pausada"}
+                        </span>
+                      </td>
+                      <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.ultima_ejecucion)}</td>
+                      <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.proxima_ejecucion)}</td>
+                      <td className="ui-td">
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                            style={{ padding: "4px 6px", display: "flex", alignItems: "center", gap: 3, fontSize: 10 }}
+                            onClick={() => handleExecuteRule(r.id)} disabled={executingRuleId === r.id}>
+                            <IconPlay /> {executingRuleId === r.id ? "..." : "Ejecutar"}
+                          </button>
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
+                            style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
+                            onClick={() => {
+                              setEditRuleId(r.id);
+                              setRuleForm({
+                                config_id: r.config_id,
+                                nombre: r.nombre || "",
+                                directorio: r.directorio,
+                                patron_nombre: r.patron_nombre || "",
+                                intervalo_horas: r.intervalo_horas,
+                                activo: r.activo,
+                              });
+                              setShowRuleForm(true);
+                            }}>
+                            <IconEdit />
+                          </button>
+                          <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
+                            style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
+                            onClick={() => handleDeleteRule(r.id)}>
+                            <IconTrash />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Historial automático */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Historial automático
+              </div>
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                style={{ display: "flex", alignItems: "center", gap: 5 }}
+                onClick={cargarLogsAuto} disabled={loadingLogsAuto}>
+                <IconRefresh /> {loadingLogsAuto ? "Actualizando..." : "Actualizar"}
+              </button>
+            </div>
+            {errorLogsAuto && <div className="ui-alert ui-alert--danger mb-3">{errorLogsAuto}</div>}
+            <div className="ui-table-wrap">
+              <table className="ui-table text-[11px]">
+                <thead className="ui-thead">
+                  <tr>
+                    <th className="ui-th">Empresa</th>
+                    <th className="ui-th">Fichero</th>
+                    <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                    <th className="ui-th">Detalle</th>
+                    <th className="ui-th">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingLogsAuto ? (
+                    <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                  ) : logsAuto.length === 0 ? (
+                    <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>
+                      Sin descargas automáticas registradas aún
+                    </td></tr>
+                  ) : logsAuto.map(log => (
+                    <tr key={log.id} className="ui-tr">
+                      <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
+                      <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
+                      <td className="ui-td" style={{ textAlign: "center" }}>
+                        <span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>
+                          {log.estado === "ok" ? "OK" : "Error"}
+                        </span>
+                      </td>
+                      <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
+                      <td className="ui-td ui-muted">{fmtDate(log.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          PANEL 4 — DESCARGA MANUAL
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div style={panelStyle}>
+        <div style={panelHeaderStyle} onClick={() => setPanelManualOpen(v => !v)}>
+          <div>
+            <div style={panelTitleStyle}>🔧 Descarga manual</div>
+            <div style={panelDescStyle}>Explora carpetas y descarga ficheros manualmente</div>
+          </div>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+            onClick={e => { e.stopPropagation(); setPanelManualOpen(v => !v); }}>
+            {panelManualOpen ? "Ocultar" : "Mostrar"}
+          </button>
+        </div>
+
+        {panelManualOpen && (
+          <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
+
+            {/* Explorador */}
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Explorador FTP
+            </div>
+
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Conexión:</span>
               <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 280 }}
@@ -651,7 +1106,6 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
-            {/* Filtros */}
             {explorerResult && (
               <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -660,7 +1114,7 @@ export default function ComunicacionesSection({ token }: Props) {
                     placeholder="BALD, MAGCLOS, 0148..."
                     value={filtroNombre}
                     onChange={e => setFiltroNombre(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") handleBuscar(); }}
+                    onKeyDown={e => { if (e.key === "Enter") explorarPath(explorerResult.path_actual, filtroNombre, filtroMes); }}
                   />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -680,12 +1134,14 @@ export default function ComunicacionesSection({ token }: Props) {
                 </div>
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                   style={{ display: "flex", alignItems: "center", gap: 5, height: 28 }}
-                  onClick={handleBuscar} disabled={loadingExplorer}>
+                  onClick={() => explorarPath(explorerResult.path_actual, filtroNombre, filtroMes)}
+                  disabled={loadingExplorer}>
                   <IconSearch /> Buscar
                 </button>
                 {hayFiltros && (
                   <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                    style={{ height: 28 }} onClick={handleLimpiar}>
+                    style={{ height: 28 }}
+                    onClick={() => { setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum(""); explorarPath(explorerResult.path_actual); }}>
                     Limpiar
                   </button>
                 )}
@@ -694,7 +1150,7 @@ export default function ComunicacionesSection({ token }: Props) {
 
             {requiereFiltro && !hayFiltros && (
               <div style={{ marginBottom: 10, padding: "8px 12px", background: "var(--color-background-warning, #FAEEDA)", borderRadius: 6, fontSize: 11, color: "#854F0B", border: "1px solid #FAC775" }}>
-                Esta carpeta tiene más de 5.000 ficheros. Usa los filtros para encontrar los que necesitas — por nombre (ej: <strong>BALD</strong>) o por mes de publicación.
+                Esta carpeta tiene más de 5.000 ficheros. Usa los filtros para encontrar los que necesitas.
               </div>
             )}
 
@@ -719,7 +1175,7 @@ export default function ComunicacionesSection({ token }: Props) {
                 Conectando al FTP...
               </div>
             ) : explorerResult && (
-              <div className="ui-table-wrap">
+              <div className="ui-table-wrap" style={{ marginBottom: 20 }}>
                 <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
                   <thead className="ui-thead">
                     <tr>
@@ -749,11 +1205,7 @@ export default function ComunicacionesSection({ token }: Props) {
                       <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>Carpeta vacía</td></tr>
                     ) : explorerResult.ficheros.length === 0 && hayFiltros ? (
                       <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>
-                        Sin resultados con los filtros aplicados · Prueba con otros valores
-                      </td></tr>
-                    ) : explorerResult.ficheros.length === 0 && requiereFiltro ? (
-                      <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>
-                        Usa los filtros para buscar ficheros en esta carpeta
+                        Sin resultados con los filtros aplicados
                       </td></tr>
                     ) : (
                       explorerResult.ficheros.map(f => (
@@ -777,38 +1229,24 @@ export default function ComunicacionesSection({ token }: Props) {
                 </table>
                 {explorerResult.total_ficheros > explorerResult.ficheros.length && (
                   <div style={{ padding: "8px 12px", fontSize: 10, color: "var(--text-muted)", borderTop: "1px solid var(--card-border)" }}>
-                    Mostrando {explorerResult.ficheros.length} de {explorerResult.total_ficheros} ficheros · Usa los filtros para acotar resultados
+                    Mostrando {explorerResult.ficheros.length} de {explorerResult.total_ficheros} ficheros
                   </div>
                 )}
               </div>
             )}
-          </div>
-        )}
-      </div>
 
-      {/* ── PANEL 3: Historial ── */}
-      <div style={panelStyle}>
-        <div style={panelHeaderStyle} onClick={() => setPanel3Open(v => !v)}>
-          <div>
-            <div style={panelTitleStyle}>Historial de descargas</div>
-            <div style={panelDescStyle}>Log de ficheros descargados con estado y errores</div>
-          </div>
-          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanel3Open(v => !v); }}>
-            {panel3Open ? "Ocultar" : "Mostrar"}
-          </button>
-        </div>
-
-        {panel3Open && (
-          <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            {/* Historial manual */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Historial manual
+              </div>
               <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                 style={{ display: "flex", alignItems: "center", gap: 5 }}
-                onClick={cargarLogs} disabled={loadingLogs}>
-                <IconRefresh /> {loadingLogs ? "Actualizando..." : "Actualizar"}
+                onClick={cargarLogsManual} disabled={loadingLogsManual}>
+                <IconRefresh /> {loadingLogsManual ? "Actualizando..." : "Actualizar"}
               </button>
             </div>
-            {errorLogs && <div className="ui-alert ui-alert--danger mb-3">{errorLogs}</div>}
+            {errorLogsManual && <div className="ui-alert ui-alert--danger mb-3">{errorLogsManual}</div>}
             <div className="ui-table-wrap">
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
@@ -821,11 +1259,11 @@ export default function ComunicacionesSection({ token }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {loadingLogs ? (
-                    <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
-                  ) : logs.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Sin descargas registradas</td></tr>
-                  ) : logs.map(log => (
+                  {loadingLogsManual ? (
+                    <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                  ) : logsManual.length === 0 ? (
+                    <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas manuales registradas</td></tr>
+                  ) : logsManual.map(log => (
                     <tr key={log.id} className="ui-tr">
                       <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
@@ -841,6 +1279,7 @@ export default function ComunicacionesSection({ token }: Props) {
                 </tbody>
               </table>
             </div>
+
           </div>
         )}
       </div>
