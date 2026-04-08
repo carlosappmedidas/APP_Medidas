@@ -107,8 +107,7 @@ function fmtSizeTotal(bytes: number): string {
 }
 
 function labelConexion(c: FtpConfig): string {
-  const base = c.nombre || c.empresa_nombre;
-  return `${base} — ${c.host} (${c.usar_tls ? "TLS" : "FTP"})`;
+  return `${c.nombre || c.empresa_nombre} — ${c.host} (${c.usar_tls ? "TLS" : "FTP"})`;
 }
 
 const FORM_CONFIG_VACIO: FtpConfigForm = {
@@ -216,7 +215,7 @@ const IconPlay = () => (
   </svg>
 );
 
-// ─── Estilos reutilizables ────────────────────────────────────────────────────
+// ─── Estilos ──────────────────────────────────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
   background: "var(--card-bg)", border: "1px solid var(--card-border)",
@@ -233,8 +232,6 @@ const panelTitleStyle: React.CSSProperties = {
 const panelDescStyle: React.CSSProperties = {
   fontSize: "11px", color: "var(--text-muted)", marginTop: 3,
 };
-
-// Sub-panel desplegable interno
 const subPanelStyle: React.CSSProperties = {
   background: "var(--card-bg)", border: "1px solid var(--card-border)",
   borderRadius: 8, overflow: "hidden",
@@ -245,25 +242,25 @@ const subPanelHeaderStyle: React.CSSProperties = {
   background: "var(--field-bg-soft)",
 };
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function ComunicacionesSection({ token }: Props) {
 
-  // Paneles principales — todos cerrados por defecto
+  // Paneles principales
   const [panelDashOpen, setPanelDashOpen]     = useState(false);
   const [panelConfigOpen, setPanelConfigOpen] = useState(false);
   const [panelAutoOpen, setPanelAutoOpen]     = useState(false);
   const [panelManualOpen, setPanelManualOpen] = useState(false);
 
-  // Sub-paneles — cerrados por defecto
-  const [subRulasOpen, setSubReglasOpen]         = useState(false);
+  // Sub-paneles
+  const [subReglasOpen, setSubReglasOpen]         = useState(false);
   const [subHistAutoOpen, setSubHistAutoOpen]     = useState(false);
   const [subExplorerOpen, setSubExplorerOpen]     = useState(false);
   const [subHistManualOpen, setSubHistManualOpen] = useState(false);
 
   const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
 
-  // ── Configs ───────────────────────────────────────────────────────────────────
+  // Configs
   const [configs, setConfigs]               = useState<FtpConfig[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
   const [errorConfigs, setErrorConfigs]     = useState<string | null>(null);
@@ -274,7 +271,7 @@ export default function ComunicacionesSection({ token }: Props) {
   const [testingId, setTestingId]           = useState<number | null>(null);
   const [testResult, setTestResult]         = useState<Record<number, { ok: boolean; msg: string }>>({});
 
-  // ── Reglas ────────────────────────────────────────────────────────────────────
+  // Reglas
   const [rules, setRules]               = useState<FtpSyncRule[]>([]);
   const [loadingRules, setLoadingRules] = useState(false);
   const [errorRules, setErrorRules]     = useState<string | null>(null);
@@ -284,14 +281,15 @@ export default function ComunicacionesSection({ token }: Props) {
   const [savingRule, setSavingRule]     = useState(false);
   const [executingRuleId, setExecutingRuleId] = useState<number | null>(null);
 
-  // ── Historial automático ──────────────────────────────────────────────────────
+  // Historial automático
   const [logsAuto, setLogsAuto]               = useState<FtpLog[]>([]);
   const [loadingLogsAuto, setLoadingLogsAuto] = useState(false);
   const [errorLogsAuto, setErrorLogsAuto]     = useState<string | null>(null);
   const [pageLogsAuto, setPageLogsAuto]       = useState(0);
   const [pageSizeLogsAuto, setPageSizeLogsAuto] = useState(20);
+  const [diasBorradoAuto, setDiasBorradoAuto] = useState<string>("todos");
 
-  // ── Explorador ────────────────────────────────────────────────────────────────
+  // Explorador
   const [explorerConfigId, setExplorerConfigId]   = useState<number | "">("");
   const [explorerResult, setExplorerResult]       = useState<ExplorerResult | null>(null);
   const [loadingExplorer, setLoadingExplorer]     = useState(false);
@@ -302,24 +300,23 @@ export default function ComunicacionesSection({ token }: Props) {
   const [filtroAnioNum, setFiltroAnioNum]         = useState("");
   const [descargando, setDescargando]             = useState(false);
   const [requiereFiltro, setRequiereFiltro]       = useState(false);
-  // Paginación explorador
   const [pageExplorer, setPageExplorer]           = useState(0);
   const [pageSizeExplorer, setPageSizeExplorer]   = useState(20);
 
-  // ── Historial manual ──────────────────────────────────────────────────────────
+  // Historial manual
   const [logsManual, setLogsManual]               = useState<FtpLog[]>([]);
   const [loadingLogsManual, setLoadingLogsManual] = useState(false);
   const [errorLogsManual, setErrorLogsManual]     = useState<string | null>(null);
   const [pageLogsManual, setPageLogsManual]       = useState(0);
   const [pageSizeLogsManual, setPageSizeLogsManual] = useState(20);
+  const [diasBorradoManual, setDiasBorradoManual] = useState<string>("todos");
 
-  // ── Derivados ─────────────────────────────────────────────────────────────────
+  // Derivados
   const anioDefault = new Date().getFullYear().toString();
   const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : "";
   const hayFiltros = filtroNombre.trim() || filtroMes;
   const conexionesActivas = configs.filter(c => c.activo);
 
-  // Paginación explorador
   const ficherosPagina = explorerResult
     ? explorerResult.ficheros.slice(pageExplorer * pageSizeExplorer, (pageExplorer + 1) * pageSizeExplorer)
     : [];
@@ -327,18 +324,17 @@ export default function ComunicacionesSection({ token }: Props) {
     ? Math.ceil(explorerResult.ficheros.length / pageSizeExplorer)
     : 0;
 
-  // Paginación logs auto
-  const logsAutoPagina = logsAuto.slice(pageLogsAuto * pageSizeLogsAuto, (pageLogsAuto + 1) * pageSizeLogsAuto);
+  const logsAutoPagina    = logsAuto.slice(pageLogsAuto * pageSizeLogsAuto, (pageLogsAuto + 1) * pageSizeLogsAuto);
   const totalPagesLogsAuto = Math.ceil(logsAuto.length / pageSizeLogsAuto);
 
-  // Paginación logs manual
-  const logsManualPagina = logsManual.slice(pageLogsManual * pageSizeLogsManual, (pageLogsManual + 1) * pageSizeLogsManual);
+  const logsManualPagina    = logsManual.slice(pageLogsManual * pageSizeLogsManual, (pageLogsManual + 1) * pageSizeLogsManual);
   const totalPagesLogsManual = Math.ceil(logsManual.length / pageSizeLogsManual);
 
-  // Tamaño acumulado seleccionados
   const tamanoSeleccionados = explorerResult
     ? explorerResult.ficheros.filter(f => selectedFicheros.has(f.nombre)).reduce((a, f) => a + f.tamanio, 0)
     : 0;
+
+  const todosEnPaginaSeleccionados = ficherosPagina.length > 0 && ficherosPagina.every(f => selectedFicheros.has(f.nombre));
 
   // ── Empresas ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -349,7 +345,7 @@ export default function ComunicacionesSection({ token }: Props) {
       .catch(() => {});
   }, [token]);
 
-  // ── Cargar configs ────────────────────────────────────────────────────────────
+  // ── Configs ───────────────────────────────────────────────────────────────────
   const cargarConfigs = useCallback(async () => {
     if (!token) return;
     setLoadingConfigs(true); setErrorConfigs(null);
@@ -366,7 +362,6 @@ export default function ComunicacionesSection({ token }: Props) {
     if (panelConfigOpen || panelAutoOpen || panelManualOpen || panelDashOpen) cargarConfigs();
   }, [panelConfigOpen, panelAutoOpen, panelManualOpen, panelDashOpen, cargarConfigs]);
 
-  // ── CRUD Configs ──────────────────────────────────────────────────────────────
   const handleSaveConfig = async () => {
     if (!token || !configForm.empresa_id) return;
     setSavingConfig(true); setErrorConfigs(null);
@@ -412,7 +407,7 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setTestingId(null); }
   };
 
-  // ── Cargar reglas ─────────────────────────────────────────────────────────────
+  // ── Reglas ────────────────────────────────────────────────────────────────────
   const cargarRules = useCallback(async () => {
     if (!token) return;
     setLoadingRules(true); setErrorRules(null);
@@ -429,7 +424,6 @@ export default function ComunicacionesSection({ token }: Props) {
     if (panelAutoOpen) { cargarConfigs(); cargarRules(); }
   }, [panelAutoOpen, cargarConfigs, cargarRules]);
 
-  // ── CRUD Reglas ───────────────────────────────────────────────────────────────
   const handleSaveRule = async () => {
     if (!token || !ruleForm.config_id) return;
     setSavingRule(true); setErrorRules(null);
@@ -495,7 +489,59 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setLoadingLogsAuto(false); }
   }, [token]);
 
-  useEffect(() => { if (panelAutoOpen && subHistAutoOpen) cargarLogsAuto(); }, [panelAutoOpen, subHistAutoOpen, cargarLogsAuto]);
+  useEffect(() => {
+    if (panelAutoOpen && subHistAutoOpen) cargarLogsAuto();
+  }, [panelAutoOpen, subHistAutoOpen, cargarLogsAuto]);
+
+  // ── Borrado de logs ───────────────────────────────────────────────────────────
+  const handleDeleteLog = async (logId: number, origen: "auto" | "manual") => {
+    if (!token) return;
+    if (!confirm("¿Eliminar este registro? Si es automático, el scheduler lo olvidará y podría volver a descargarlo.")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/ftp/logs/${logId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      if (origen === "auto") {
+        setLogsAuto(prev => prev.filter(l => l.id !== logId));
+      } else {
+        setLogsManual(prev => prev.filter(l => l.id !== logId));
+      }
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Error borrando registro");
+    }
+  };
+
+  const handleLimpiarHistorial = async (origen: "auto" | "manual") => {
+    if (!token) return;
+    const dias = origen === "auto" ? diasBorradoAuto : diasBorradoManual;
+    const diasNum = dias === "todos" ? null : Number(dias);
+    const msg = diasNum
+      ? `¿Borrar registros de ${origen === "auto" ? "descarga automática" : "descarga manual"} con más de ${diasNum} días?`
+      : `¿Borrar TODO el historial de ${origen === "auto" ? "descarga automática" : "descarga manual"}?\n\n${origen === "auto" ? "⚠️ El scheduler olvidará todos los ficheros y los volverá a descargar." : ""}`;
+    if (!confirm(msg)) return;
+    try {
+      const params = new URLSearchParams({ origen });
+      if (diasNum) params.set("dias", String(diasNum));
+      const res = await fetch(`${API_BASE_URL}/ftp/logs?${params}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      alert(`Borrados ${data.deleted} registros.`);
+      if (origen === "auto") {
+        setLogsAuto([]);
+        setPageLogsAuto(0);
+      } else {
+        setLogsManual([]);
+        setPageLogsManual(0);
+      }
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Error limpiando historial");
+    }
+  };
 
   // ── Explorador ────────────────────────────────────────────────────────────────
   const explorarPath = useCallback(async (path: string, nombre?: string, mes?: string) => {
@@ -569,8 +615,6 @@ export default function ComunicacionesSection({ token }: Props) {
     });
   };
 
-  const todosEnPaginaSeleccionados = ficherosPagina.length > 0 && ficherosPagina.every(f => selectedFicheros.has(f.nombre));
-
   // ── Logs manuales ─────────────────────────────────────────────────────────────
   const cargarLogsManual = useCallback(async () => {
     if (!token) return;
@@ -586,7 +630,7 @@ export default function ComunicacionesSection({ token }: Props) {
   }, [token]);
 
   useEffect(() => {
-    if (panelManualOpen) { cargarConfigs(); }
+    if (panelManualOpen) cargarConfigs();
     if (panelManualOpen && subHistManualOpen) cargarLogsManual();
   }, [panelManualOpen, subHistManualOpen, cargarConfigs, cargarLogsManual]);
 
@@ -623,9 +667,7 @@ export default function ComunicacionesSection({ token }: Props) {
   return (
     <div className="text-sm">
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          PANEL 1 — DASHBOARD
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ PANEL 1 — DASHBOARD ══ */}
       <div style={panelStyle}>
         <div style={panelHeaderStyle} onClick={() => setPanelDashOpen(v => !v)}>
           <div>
@@ -679,7 +721,7 @@ export default function ComunicacionesSection({ token }: Props) {
                 const reglasConexion = rules.filter(r => r.config_id === c.id && r.activo);
                 return (
                   <div key={c.id} style={{ display: "grid", gridTemplateColumns: "10px 1fr 100px 120px 140px", gap: 12, padding: "10px 14px", borderTop: "1px solid var(--card-border)", alignItems: "center" }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.activo ? "#1D9E75" : "#888", flexShrink: 0 }} />
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.activo ? "#1D9E75" : "#888" }} />
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{c.nombre || c.empresa_nombre}</div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.host}:{c.puerto} · {c.usar_tls ? "TLS" : "FTP"}</div>
@@ -701,9 +743,7 @@ export default function ComunicacionesSection({ token }: Props) {
         )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          PANEL 2 — CONEXIONES FTP
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ PANEL 2 — CONEXIONES FTP ══ */}
       <div style={panelStyle}>
         <div style={panelHeaderStyle} onClick={() => setPanelConfigOpen(v => !v)}>
           <div>
@@ -888,9 +928,7 @@ export default function ComunicacionesSection({ token }: Props) {
         )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          PANEL 3 — DESCARGA AUTOMÁTICA
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ PANEL 3 — DESCARGA AUTOMÁTICA ══ */}
       <div style={panelStyle}>
         <div style={panelHeaderStyle} onClick={() => setPanelAutoOpen(v => !v)}>
           <div>
@@ -905,7 +943,7 @@ export default function ComunicacionesSection({ token }: Props) {
         {panelAutoOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
 
-            {/* ── Sub-panel: Reglas ── */}
+            {/* Sub-panel: Reglas */}
             <div style={subPanelStyle}>
               <div style={subPanelHeaderStyle} onClick={() => setSubReglasOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -914,7 +952,7 @@ export default function ComunicacionesSection({ token }: Props) {
                   <span className="ui-badge ui-badge--neutral">{rules.length} total</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {subRulasOpen && (
+                  {subReglasOpen && (
                     <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                       style={{ display: "flex", alignItems: "center", gap: 4 }}
                       onClick={e => { e.stopPropagation(); setShowRuleForm(true); setEditRuleId(null); setRuleForm(FORM_RULE_VACIO); }}>
@@ -922,14 +960,13 @@ export default function ComunicacionesSection({ token }: Props) {
                     </button>
                   )}
                   <span style={{ color: "var(--text-muted)" }}>
-                    {subRulasOpen ? <IconChevronUp /> : <IconChevronDown />}
+                    {subReglasOpen ? <IconChevronUp /> : <IconChevronDown />}
                   </span>
                 </div>
               </div>
-              {subRulasOpen && (
+              {subReglasOpen && (
                 <div style={{ borderTop: "1px solid var(--card-border)", padding: "12px 14px" }}>
                   {errorRules && <div className="ui-alert ui-alert--danger mb-3">{errorRules}</div>}
-
                   {showRuleForm && (
                     <div style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px", marginBottom: 14 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -997,7 +1034,6 @@ export default function ComunicacionesSection({ token }: Props) {
                       </div>
                     </div>
                   )}
-
                   <div className="ui-table-wrap">
                     <table className="ui-table text-[11px]">
                       <thead className="ui-thead">
@@ -1070,9 +1106,9 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
-            {/* ── Sub-panel: Historial automático ── */}
+            {/* Sub-panel: Historial automático */}
             <div style={subPanelStyle}>
-              <div style={subPanelHeaderStyle} onClick={() => { setSubHistAutoOpen(v => !v); }}>
+              <div style={subPanelHeaderStyle} onClick={() => setSubHistAutoOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Historial automático</span>
                   {logsAuto.length > 0 && (
@@ -1082,13 +1118,29 @@ export default function ComunicacionesSection({ token }: Props) {
                     <span className="ui-badge ui-badge--err">{logsAuto.filter(l => l.estado === "error").length} errores</span>
                   )}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistAutoOpen && (
-                    <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                      style={{ display: "flex", alignItems: "center", gap: 4 }}
-                      onClick={e => { e.stopPropagation(); cargarLogsAuto(); }}>
-                      <IconRefresh /> Actualizar
-                    </button>
+                    <>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }}
+                        value={diasBorradoAuto}
+                        onChange={e => setDiasBorradoAuto(e.target.value)}
+                        onClick={e => e.stopPropagation()}>
+                        <option value="todos">Todos los registros</option>
+                        <option value="7">Más de 7 días</option>
+                        <option value="30">Más de 30 días</option>
+                        <option value="90">Más de 90 días</option>
+                      </select>
+                      <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
+                        style={{ display: "flex", alignItems: "center", gap: 4 }}
+                        onClick={e => { e.stopPropagation(); handleLimpiarHistorial("auto"); }}>
+                        <IconTrash /> Limpiar
+                      </button>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                        style={{ display: "flex", alignItems: "center", gap: 4 }}
+                        onClick={e => { e.stopPropagation(); cargarLogsAuto(); }}>
+                        <IconRefresh /> Actualizar
+                      </button>
+                    </>
                   )}
                   <span style={{ color: "var(--text-muted)" }}>
                     {subHistAutoOpen ? <IconChevronUp /> : <IconChevronDown />}
@@ -1107,13 +1159,14 @@ export default function ComunicacionesSection({ token }: Props) {
                           <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
                           <th className="ui-th">Detalle</th>
                           <th className="ui-th">Fecha</th>
+                          <th className="ui-th" style={{ width: 36 }}></th>
                         </tr>
                       </thead>
                       <tbody>
                         {loadingLogsAuto ? (
-                          <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
                         ) : logsAuto.length === 0 ? (
-                          <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas automáticas registradas aún</td></tr>
+                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas automáticas registradas aún</td></tr>
                         ) : logsAutoPagina.map(log => (
                           <tr key={log.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
@@ -1125,6 +1178,14 @@ export default function ComunicacionesSection({ token }: Props) {
                             </td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
                             <td className="ui-td ui-muted">{fmtDate(log.created_at)}</td>
+                            <td className="ui-td" style={{ textAlign: "center" }}>
+                              <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
+                                style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
+                                title="Eliminar este registro (el scheduler lo olvidará)"
+                                onClick={() => handleDeleteLog(log.id, "auto")}>
+                                <IconTrash />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1151,9 +1212,7 @@ export default function ComunicacionesSection({ token }: Props) {
         )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          PANEL 4 — DESCARGA MANUAL
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ PANEL 4 — DESCARGA MANUAL ══ */}
       <div style={panelStyle}>
         <div style={panelHeaderStyle} onClick={() => setPanelManualOpen(v => !v)}>
           <div>
@@ -1168,15 +1227,13 @@ export default function ComunicacionesSection({ token }: Props) {
         {panelManualOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
 
-            {/* ── Sub-panel: Explorador ── */}
+            {/* Sub-panel: Explorador */}
             <div style={subPanelStyle}>
               <div style={subPanelHeaderStyle} onClick={() => setSubExplorerOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Explorador FTP</span>
                   {explorerResult && (
-                    <span className="ui-badge ui-badge--neutral">
-                      {explorerResult.ficheros.length} ficheros
-                    </span>
+                    <span className="ui-badge ui-badge--neutral">{explorerResult.ficheros.length} ficheros</span>
                   )}
                   {selectedFicheros.size > 0 && (
                     <span className="ui-badge ui-badge--ok">
@@ -1188,7 +1245,6 @@ export default function ComunicacionesSection({ token }: Props) {
                   {subExplorerOpen ? <IconChevronUp /> : <IconChevronDown />}
                 </span>
               </div>
-
               {subExplorerOpen && (
                 <div style={{ borderTop: "1px solid var(--card-border)", padding: "12px 14px" }}>
 
@@ -1237,7 +1293,7 @@ export default function ComunicacionesSection({ token }: Props) {
                     )}
                   </div>
 
-                  {/* Breadcrumb + filtros en una sola barra */}
+                  {/* Breadcrumb + filtros */}
                   {explorerResult && (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>{renderBreadcrumb()}</div>
@@ -1297,7 +1353,6 @@ export default function ComunicacionesSection({ token }: Props) {
                     </div>
                   ) : explorerResult && (
                     <>
-                      {/* Info resultados */}
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 10, color: "var(--text-muted)", padding: "0 2px" }}>
                         <span>
                           {explorerResult.carpetas.length} carpetas · {explorerResult.ficheros.length} ficheros
@@ -1309,16 +1364,13 @@ export default function ComunicacionesSection({ token }: Props) {
                           </span>
                         )}
                       </div>
-
                       <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
                         <table className="ui-table text-[11px]" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                           <thead className="ui-thead">
                             <tr>
                               <th className="ui-th" style={{ width: 32, textAlign: "center" }}>
                                 {ficherosPagina.length > 0 && (
-                                  <input type="checkbox"
-                                    checked={todosEnPaginaSeleccionados}
-                                    onChange={toggleTodos} />
+                                  <input type="checkbox" checked={todosEnPaginaSeleccionados} onChange={toggleTodos} />
                                 )}
                               </th>
                               <th className="ui-th">Nombre</th>
@@ -1383,7 +1435,7 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
-            {/* ── Sub-panel: Historial manual ── */}
+            {/* Sub-panel: Historial manual */}
             <div style={subPanelStyle}>
               <div style={subPanelHeaderStyle} onClick={() => setSubHistManualOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1395,13 +1447,29 @@ export default function ComunicacionesSection({ token }: Props) {
                     <span className="ui-badge ui-badge--err">{logsManual.filter(l => l.estado === "error").length} errores</span>
                   )}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistManualOpen && (
-                    <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                      style={{ display: "flex", alignItems: "center", gap: 4 }}
-                      onClick={e => { e.stopPropagation(); cargarLogsManual(); }}>
-                      <IconRefresh /> Actualizar
-                    </button>
+                    <>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }}
+                        value={diasBorradoManual}
+                        onChange={e => setDiasBorradoManual(e.target.value)}
+                        onClick={e => e.stopPropagation()}>
+                        <option value="todos">Todos los registros</option>
+                        <option value="7">Más de 7 días</option>
+                        <option value="30">Más de 30 días</option>
+                        <option value="90">Más de 90 días</option>
+                      </select>
+                      <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
+                        style={{ display: "flex", alignItems: "center", gap: 4 }}
+                        onClick={e => { e.stopPropagation(); handleLimpiarHistorial("manual"); }}>
+                        <IconTrash /> Limpiar
+                      </button>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                        style={{ display: "flex", alignItems: "center", gap: 4 }}
+                        onClick={e => { e.stopPropagation(); cargarLogsManual(); }}>
+                        <IconRefresh /> Actualizar
+                      </button>
+                    </>
                   )}
                   <span style={{ color: "var(--text-muted)" }}>
                     {subHistManualOpen ? <IconChevronUp /> : <IconChevronDown />}
@@ -1420,13 +1488,14 @@ export default function ComunicacionesSection({ token }: Props) {
                           <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
                           <th className="ui-th">Detalle</th>
                           <th className="ui-th">Fecha</th>
+                          <th className="ui-th" style={{ width: 36 }}></th>
                         </tr>
                       </thead>
                       <tbody>
                         {loadingLogsManual ? (
-                          <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
                         ) : logsManual.length === 0 ? (
-                          <tr className="ui-tr"><td colSpan={5} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas manuales registradas</td></tr>
+                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas manuales registradas</td></tr>
                         ) : logsManualPagina.map(log => (
                           <tr key={log.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
@@ -1438,6 +1507,14 @@ export default function ComunicacionesSection({ token }: Props) {
                             </td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
                             <td className="ui-td ui-muted">{fmtDate(log.created_at)}</td>
+                            <td className="ui-td" style={{ textAlign: "center" }}>
+                              <button type="button" className="ui-btn ui-btn-danger ui-btn-xs"
+                                style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
+                                title="Eliminar este registro"
+                                onClick={() => handleDeleteLog(log.id, "manual")}>
+                                <IconTrash />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
