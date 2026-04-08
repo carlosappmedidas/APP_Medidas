@@ -19,14 +19,14 @@ from app.empresas.models import Empresa
 # ── Cifrado de contraseñas ────────────────────────────────────────────────────
 
 def _get_fernet() -> Fernet:
-    """Obtiene la clave Fernet desde variable de entorno FTP_SECRET_KEY.
-    Si no existe, genera una nueva (solo para desarrollo — en producción
-    siempre debe estar definida en .env)."""
-    key = os.environ.get("FTP_SECRET_KEY", "")
+    from app.core.config import get_settings
+    key = get_settings().FTP_SECRET_KEY
     if not key:
-        key = Fernet.generate_key().decode()
-        os.environ["FTP_SECRET_KEY"] = key
-    return Fernet(key.encode() if isinstance(key, str) else key)
+        raise RuntimeError(
+            "FTP_SECRET_KEY no definida en .env. "
+            "Genera una con: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+    return Fernet(key.encode())
 
 
 def cifrar_password(password: str) -> str:
@@ -35,6 +35,19 @@ def cifrar_password(password: str) -> str:
 
 def descifrar_password(password_cifrada: str) -> str:
     return _get_fernet().decrypt(password_cifrada.encode()).decode()
+
+
+# ── FTP_TLS con reutilización de sesión SSL ───────────────────────────────────
+
+class _FTPSReuse(ftplib.FTP_TLS):
+    def ntransfercmd(self, cmd: str, rest=None):
+        conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+        conn = self.context.wrap_socket(
+            conn,
+            server_hostname=self.host,
+            session=self.sock.session,
+        )
+        return conn, size
 
 
 # ── Helpers empresa ───────────────────────────────────────────────────────────
@@ -116,7 +129,6 @@ def update_config(
     ).first()
     if obj is None:
         raise ValueError(f"FtpConfig id={config_id} no encontrada")
-
     if host is not None:
         obj.host = host  # type: ignore
     if puerto is not None:
@@ -130,7 +142,6 @@ def update_config(
     if activo is not None:
         obj.activo = activo  # type: ignore
     obj.updated_at = datetime.utcnow()  # type: ignore
-
     db.commit()
     db.refresh(obj)
     return {
@@ -179,15 +190,15 @@ def _get_config_by_empresa(db: Session, *, empresa_id: int, tenant_id: int) -> F
 
 # ── Conexión FTPS ─────────────────────────────────────────────────────────────
 
-def _conectar(config: FtpConfig) -> ftplib.FTP_TLS:
-    """Crea y devuelve una conexión FTPS con TLS explícito."""
-    ftp = ftplib.FTP_TLS()
-    ftp.connect(str(config.host), int(config.puerto), timeout=15)
+def _conectar(config: FtpConfig) -> _FTPSReuse:
+    ftp = _FTPSReuse()
+    ftp.connect(str(config.host), int(config.puerto), timeout=30)
     ftp.auth()
     ftp.login(str(config.usuario), descifrar_password(str(config.password_cifrada)))
     ftp.prot_p()
-    directorio = str(config.directorio_remoto) or "/"
-    if directorio != "/":
+    ftp.set_pasv(True)
+    directorio = str(config.directorio_remoto or "/").strip()
+    if directorio and directorio != "/":
         ftp.cwd(directorio)
     return ftp
 
@@ -211,45 +222,67 @@ def test_conexion(db: Session, *, config_id: int, tenant_id: int) -> Tuple[bool,
 
 # ── Listar ficheros remotos ───────────────────────────────────────────────────
 
-def listar_ficheros(db: Session, *, empresa_id: int, tenant_id: int) -> List[dict]:
+def _parse_list_line(linea: str) -> Optional[dict]:
+    """Parsea línea LIST formato Unix: -rw-rw-rw- 1 user group SIZE MES DIA HORA NOMBRE"""
+    partes = linea.split()
+    if len(partes) < 9:
+        return None
+    if not partes[0].startswith("-"):
+        return None  # directorio u otro tipo
+    try:
+        tamanio = int(partes[4])
+    except ValueError:
+        tamanio = 0
+    nombre = " ".join(partes[8:])
+    fecha_str = f"{partes[5]} {partes[6]} {partes[7]}"
+    return {"nombre": nombre, "tamanio": tamanio, "fecha": fecha_str}
+
+
+def listar_ficheros(
+    db: Session, *,
+    empresa_id: int,
+    tenant_id: int,
+    filtro: Optional[str] = None,
+    limite: int = 1000,
+) -> List[dict]:
+    """
+    Lista ficheros del FTP remoto.
+    - Si se pasa filtro, solo devuelve ficheros cuyo nombre contiene el texto.
+    - Siempre limita a los últimos `limite` ficheros ordenados por nombre descendente.
+    """
     config = _get_config_by_empresa(db, empresa_id=empresa_id, tenant_id=tenant_id)
     ftp = _conectar(config)
+    ficheros: List[dict] = []
 
-    ficheros = []
     try:
         lineas: List[str] = []
         ftp.retrlines("LIST", lineas.append)
+
         for linea in lineas:
-            partes = linea.split()
-            if len(partes) < 9:
+            parsed = _parse_list_line(linea)
+            if not parsed:
                 continue
-            permisos = partes[0]
-            if permisos.startswith("d"):
+            # Aplicar filtro por nombre si se proporcionó
+            if filtro and filtro.lower() not in parsed["nombre"].lower():
                 continue
-            tamanio = int(partes[4]) if partes[4].isdigit() else 0
-            nombre = " ".join(partes[8:])
-            mes = partes[5]
-            dia = partes[6]
-            hora_o_anio = partes[7]
-            fecha_str = f"{mes} {dia} {hora_o_anio}"
-            ficheros.append({
-                "nombre": nombre,
-                "tamanio": tamanio,
-                "fecha": fecha_str,
-            })
+            ficheros.append(parsed)
+
     finally:
         try:
             ftp.quit()
         except Exception:
             pass
 
-    return sorted(ficheros, key=lambda f: f["nombre"])
+    # Ordenar por nombre descendente (los más recientes suelen tener fecha en el nombre)
+    ficheros.sort(key=lambda f: f["nombre"], reverse=True)
+
+    # Limitar al número máximo solicitado
+    return ficheros[:limite]
 
 
 # ── Descargar ficheros ────────────────────────────────────────────────────────
 
 def _directorio_descarga() -> Path:
-    """Directorio local donde se guardan los ficheros descargados del FTP."""
     base = Path(os.environ.get("FTP_DOWNLOAD_DIR", "/tmp/ftp_downloads"))
     base.mkdir(parents=True, exist_ok=True)
     return base
@@ -261,10 +294,6 @@ def descargar_ficheros(
     tenant_id: int,
     nombres: List[str],
 ) -> Tuple[int, int, List[str]]:
-    """
-    Descarga una lista de ficheros del FTP remoto al directorio local.
-    Devuelve (descargados, errores, detalle).
-    """
     config = _get_config_by_empresa(db, empresa_id=empresa_id, tenant_id=tenant_id)
     directorio_local = _directorio_descarga() / str(empresa_id)
     directorio_local.mkdir(parents=True, exist_ok=True)

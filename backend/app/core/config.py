@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Orígenes CORS permitidos, separados por coma
     CORS_ORIGINS: str = ""
 
+    # Clave Fernet para cifrar contraseñas FTP
+    FTP_SECRET_KEY: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

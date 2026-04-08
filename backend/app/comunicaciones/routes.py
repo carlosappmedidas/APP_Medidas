@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -151,6 +151,8 @@ def test_conexion(
 @router.get("/listar/{empresa_id}", response_model=List[FtpFichero])
 def listar_ficheros(
     empresa_id: int,
+    filtro: Optional[str] = Query(None, description="Filtrar por texto en el nombre del fichero"),
+    limite: int = Query(1000, ge=1, le=5000, description="Máximo de ficheros a devolver"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -158,7 +160,13 @@ def listar_ficheros(
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(current_user, empresa)
     try:
-        return services.listar_ficheros(db, empresa_id=empresa_id, tenant_id=_tenant_id(current_user))
+        return services.listar_ficheros(
+            db,
+            empresa_id=empresa_id,
+            tenant_id=_tenant_id(current_user),
+            filtro=filtro,
+            limite=limite,
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
