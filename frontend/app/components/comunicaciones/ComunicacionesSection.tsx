@@ -180,7 +180,7 @@ const panelDescStyle: React.CSSProperties = {
 
 export default function ComunicacionesSection({ token }: Props) {
 
-  const [panel1Open, setPanel1Open] = useState(true);
+  const [panel1Open, setPanel1Open] = useState(false);
   const [panel2Open, setPanel2Open] = useState(false);
   const [panel3Open, setPanel3Open] = useState(false);
 

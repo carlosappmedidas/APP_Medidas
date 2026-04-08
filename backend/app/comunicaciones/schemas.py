@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 class FtpConfigCreate(BaseModel):
     empresa_id:        int
-    nombre:            Optional[str] = None    # ← NUEVO
+    nombre:            Optional[str] = None
     host:              str
     puerto:            int  = 22221
     usuario:           str
@@ -24,7 +24,7 @@ class FtpConfigCreate(BaseModel):
 
 
 class FtpConfigUpdate(BaseModel):
-    nombre:            Optional[str]  = None   # ← NUEVO
+    nombre:            Optional[str]  = None
     host:              Optional[str]  = None
     puerto:            Optional[int]  = None
     usuario:           Optional[str]  = None
@@ -38,7 +38,7 @@ class FtpConfigRead(BaseModel):
     id:                int
     empresa_id:        int
     empresa_nombre:    str
-    nombre:            Optional[str]  # ← NUEVO
+    nombre:            Optional[str]
     host:              str
     puerto:            int
     usuario:           str
@@ -49,12 +49,50 @@ class FtpConfigRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── FtpSyncRule ───────────────────────────────────────────────────────────────
+
+class FtpSyncRuleCreate(BaseModel):
+    config_id:       int
+    nombre:          Optional[str] = None
+    directorio:      str  = "/"
+    patron_nombre:   Optional[str] = None   # vacío = todos los ficheros
+    intervalo_horas: int  = 1               # 1, 6, 12, 24
+    activo:          bool = True
+
+
+class FtpSyncRuleUpdate(BaseModel):
+    nombre:          Optional[str]  = None
+    directorio:      Optional[str]  = None
+    patron_nombre:   Optional[str]  = None
+    intervalo_horas: Optional[int]  = None
+    activo:          Optional[bool] = None
+
+
+class FtpSyncRuleRead(BaseModel):
+    id:               int
+    config_id:        int
+    config_nombre:    Optional[str]   # nombre de la conexión
+    empresa_nombre:   str
+    nombre:           Optional[str]
+    directorio:       str
+    patron_nombre:    Optional[str]
+    intervalo_horas:  int
+    activo:           bool
+    ultima_ejecucion: Optional[datetime]
+    proxima_ejecucion: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
 # ── FtpSyncLog ────────────────────────────────────────────────────────────────
 
 class FtpSyncLogRead(BaseModel):
     id:             int
     empresa_id:     int
     empresa_nombre: str
+    config_id:      Optional[int]
+    rule_id:        Optional[int]
+    origen:         str             # "manual" | "auto"
     nombre_fichero: str
     tamanio:        Optional[int] = None
     estado:         str

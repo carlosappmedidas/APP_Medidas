@@ -12,20 +12,17 @@ from typing import List, Optional, Tuple
 from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 
-from app.comunicaciones.models import FtpConfig, FtpSyncLog
+from app.comunicaciones.models import FtpConfig, FtpSyncLog, FtpSyncRule
 from app.empresas.models import Empresa
 
 
-# ── Cifrado de contraseñas ────────────────────────────────────────────────────
+# ── Cifrado ───────────────────────────────────────────────────────────────────
 
 def _get_fernet() -> Fernet:
     from app.core.config import get_settings
     key = get_settings().FTP_SECRET_KEY
     if not key:
-        raise RuntimeError(
-            "FTP_SECRET_KEY no definida en .env. "
-            "Genera una con: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-        )
+        raise RuntimeError("FTP_SECRET_KEY no definida en .env.")
     return Fernet(key.encode())
 
 
@@ -50,21 +47,19 @@ class _FTPSReuse(ftplib.FTP_TLS):
         return conn, size
 
 
-# ── Helpers empresa ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _nombre_empresa(db: Session, empresa_id: int) -> str:
     emp = db.query(Empresa).filter(Empresa.id == empresa_id).first()
     return str(getattr(emp, "nombre", "") or f"Empresa {empresa_id}") if emp else f"Empresa {empresa_id}"
 
 
-# ── CRUD FtpConfig ────────────────────────────────────────────────────────────
-
 def _config_to_dict(obj: FtpConfig, db: Session) -> dict:
     return {
         "id": obj.id,
         "empresa_id": obj.empresa_id,
         "empresa_nombre": _nombre_empresa(db, int(obj.empresa_id)),
-        "nombre": obj.nombre,                   # ← NUEVO
+        "nombre": obj.nombre,
         "host": obj.host,
         "puerto": obj.puerto,
         "usuario": obj.usuario,
@@ -73,6 +68,25 @@ def _config_to_dict(obj: FtpConfig, db: Session) -> dict:
         "activo": obj.activo,
     }
 
+
+def _rule_to_dict(obj: FtpSyncRule, db: Session) -> dict:
+    config = db.query(FtpConfig).filter(FtpConfig.id == obj.config_id).first()
+    return {
+        "id": obj.id,
+        "config_id": obj.config_id,
+        "config_nombre": getattr(config, "nombre", None) if config else None,
+        "empresa_nombre": _nombre_empresa(db, int(config.empresa_id)) if config else "—",
+        "nombre": obj.nombre,
+        "directorio": obj.directorio,
+        "patron_nombre": obj.patron_nombre,
+        "intervalo_horas": obj.intervalo_horas,
+        "activo": obj.activo,
+        "ultima_ejecucion": obj.ultima_ejecucion,
+        "proxima_ejecucion": obj.proxima_ejecucion,
+    }
+
+
+# ── CRUD FtpConfig ────────────────────────────────────────────────────────────
 
 def list_configs(db: Session, *, tenant_id: int) -> List[dict]:
     rows = db.query(FtpConfig).filter(FtpConfig.tenant_id == tenant_id).all()
@@ -95,7 +109,7 @@ def create_config(
     obj = FtpConfig(
         tenant_id=tenant_id,
         empresa_id=empresa_id,
-        nombre=nombre,                          # ← NUEVO
+        nombre=nombre,
         host=host,
         puerto=puerto,
         usuario=usuario,
@@ -172,36 +186,120 @@ def _get_config_or_raise(db: Session, *, config_id: int, tenant_id: int) -> FtpC
     return obj
 
 
-def _get_config_by_empresa(db: Session, *, empresa_id: int, tenant_id: int) -> FtpConfig:
-    obj = db.query(FtpConfig).filter(
-        FtpConfig.empresa_id == empresa_id,
-        FtpConfig.tenant_id == tenant_id,
-        FtpConfig.activo.is_(True),
-    ).first()
-    if obj is None:
-        raise ValueError(f"No hay configuración FTP activa para empresa {empresa_id}")
-    return obj
-
-
 def _get_config_by_id_activa(db: Session, *, config_id: int, tenant_id: int) -> FtpConfig:
-    """Obtiene una config por su ID (para el explorador que selecciona por conexión)."""
     obj = db.query(FtpConfig).filter(
         FtpConfig.id == config_id,
         FtpConfig.tenant_id == tenant_id,
         FtpConfig.activo.is_(True),
     ).first()
     if obj is None:
-        raise ValueError(f"Configuración FTP id={config_id} no encontrada o inactiva")
+        raise ValueError(f"Config FTP id={config_id} no encontrada o inactiva")
     return obj
 
 
+# ── CRUD FtpSyncRule ──────────────────────────────────────────────────────────
+
+def list_rules(db: Session, *, tenant_id: int, config_id: Optional[int] = None) -> List[dict]:
+    q = db.query(FtpSyncRule).filter(FtpSyncRule.tenant_id == tenant_id)
+    if config_id:
+        q = q.filter(FtpSyncRule.config_id == config_id)
+    return [_rule_to_dict(r, db) for r in q.all()]
+
+
+def create_rule(
+    db: Session, *,
+    tenant_id: int,
+    config_id: int,
+    nombre: Optional[str],
+    directorio: str,
+    patron_nombre: Optional[str],
+    intervalo_horas: int,
+    activo: bool,
+) -> dict:
+    proxima = datetime.utcnow() + timedelta(hours=intervalo_horas)
+    obj = FtpSyncRule(
+        tenant_id=tenant_id,
+        config_id=config_id,
+        nombre=nombre,
+        directorio=directorio,
+        patron_nombre=patron_nombre or None,
+        intervalo_horas=intervalo_horas,
+        activo=activo,
+        proxima_ejecucion=proxima,
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return _rule_to_dict(obj, db)
+
+
+def update_rule(
+    db: Session, *,
+    rule_id: int,
+    tenant_id: int,
+    nombre: Optional[str],
+    directorio: Optional[str],
+    patron_nombre: Optional[str],
+    intervalo_horas: Optional[int],
+    activo: Optional[bool],
+) -> dict:
+    obj = db.query(FtpSyncRule).filter(
+        FtpSyncRule.id == rule_id,
+        FtpSyncRule.tenant_id == tenant_id,
+    ).first()
+    if obj is None:
+        raise ValueError(f"FtpSyncRule id={rule_id} no encontrada")
+    if nombre is not None:
+        obj.nombre = nombre  # type: ignore
+    if directorio is not None:
+        obj.directorio = directorio  # type: ignore
+    if patron_nombre is not None:
+        obj.patron_nombre = patron_nombre or None  # type: ignore
+    if intervalo_horas is not None:
+        obj.intervalo_horas = intervalo_horas  # type: ignore
+        obj.proxima_ejecucion = datetime.utcnow() + timedelta(hours=intervalo_horas)  # type: ignore
+    if activo is not None:
+        obj.activo = activo  # type: ignore
+    obj.updated_at = datetime.utcnow()  # type: ignore
+    db.commit()
+    db.refresh(obj)
+    return _rule_to_dict(obj, db)
+
+
+def delete_rule(db: Session, *, rule_id: int, tenant_id: int) -> None:
+    obj = db.query(FtpSyncRule).filter(
+        FtpSyncRule.id == rule_id,
+        FtpSyncRule.tenant_id == tenant_id,
+    ).first()
+    if obj is None:
+        raise ValueError(f"FtpSyncRule id={rule_id} no encontrada")
+    db.delete(obj)
+    db.commit()
+
+
 # ── Conexión FTP ──────────────────────────────────────────────────────────────
+
+def _get_tz_offset() -> int:
+    try:
+        from app.core.config import get_settings
+        return int(getattr(get_settings(), "FTP_TZ_OFFSET", 2))
+    except Exception:
+        return 2
+
+
+def _aplicar_tz(hora_utc: str) -> str:
+    try:
+        h, m = hora_utc.split(":")
+        dt = datetime(2000, 1, 1, int(h), int(m)) + timedelta(hours=_get_tz_offset())
+        return f"{dt.hour:02d}:{dt.minute:02d}"
+    except Exception:
+        return hora_utc
+
 
 def _conectar_en_path(config: FtpConfig, path: str):
     usar_tls = bool(getattr(config, "usar_tls", True))
     password = descifrar_password(str(config.password_cifrada))
     clean_path = (path or "/").strip() or "/"
-
     if usar_tls:
         ftp = _FTPSReuse()
         ftp.connect(str(config.host), int(config.puerto), timeout=30)
@@ -214,7 +312,6 @@ def _conectar_en_path(config: FtpConfig, path: str):
         ftp.connect(str(config.host), int(config.puerto), timeout=30)
         ftp.login(str(config.usuario), password)
         ftp.set_pasv(True)
-
     if clean_path != "/":
         ftp.cwd(clean_path)
     return ftp
@@ -232,8 +329,7 @@ def test_conexion(db: Session, *, config_id: int, tenant_id: int) -> Tuple[bool,
         ftp = _conectar_en_path(config, _directorio_base(config))
         bienvenida = ftp.getwelcome()
         ftp.quit()
-        usar_tls = bool(getattr(config, "usar_tls", True))
-        modo = "FTPS/TLS" if usar_tls else "FTP"
+        modo = "FTPS/TLS" if bool(getattr(config, "usar_tls", True)) else "FTP"
         return True, f"Conexión {modo} exitosa · {bienvenida[:80]}"
     except ValueError as e:
         return False, str(e)
@@ -241,26 +337,6 @@ def test_conexion(db: Session, *, config_id: int, tenant_id: int) -> Tuple[bool,
         return False, f"Error FTP: {str(e)[:200]}"
     except Exception as e:
         return False, f"Error: {str(e)[:200]}"
-
-
-# ── Zona horaria FTP ──────────────────────────────────────────────────────────
-
-def _get_tz_offset() -> int:
-    try:
-        from app.core.config import get_settings
-        val = getattr(get_settings(), "FTP_TZ_OFFSET", 2)
-        return int(val)
-    except Exception:
-        return 2
-
-
-def _aplicar_tz(hora_utc: str) -> str:
-    try:
-        h, m = hora_utc.split(":")
-        dt = datetime(2000, 1, 1, int(h), int(m)) + timedelta(hours=_get_tz_offset())
-        return f"{dt.hour:02d}:{dt.minute:02d}"
-    except Exception:
-        return hora_utc
 
 
 # ── Parsear línea LIST ────────────────────────────────────────────────────────
@@ -306,20 +382,17 @@ def _parse_list_line(linea: str) -> Optional[dict]:
         hora_num = "0000"
         fecha_str = f"{mes_str} {dia_str} {tercero}"
 
-    fecha_sort = f"{anio_num}{mes_num}{dia_num}{hora_num}"
-    fecha_mes_key = f"{anio_num}{mes_num}"
-
     return {
         "tipo": tipo,
         "nombre": nombre,
         "tamanio": tamanio,
         "fecha": fecha_str,
-        "fecha_sort": fecha_sort,
-        "fecha_mes_key": fecha_mes_key,
+        "fecha_sort": f"{anio_num}{mes_num}{dia_num}{hora_num}",
+        "fecha_mes_key": f"{anio_num}{mes_num}",
     }
 
 
-# ── Listar contenido de un path ───────────────────────────────────────────────
+# ── Listar path (explorador manual) ──────────────────────────────────────────
 
 def listar_path(
     db: Session, *,
@@ -330,23 +403,16 @@ def listar_path(
     filtro_mes: Optional[str] = None,
     limite: int = 5000,
 ) -> dict:
-    """
-    Lista el contenido de un path FTP.
-    Ahora recibe config_id directamente en vez de empresa_id,
-    para soportar empresas con múltiples conexiones FTP.
-    """
     config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
-
     partes_path = path.rstrip("/").rsplit("/", 1)
     path_padre = partes_path[0] if len(partes_path) > 1 and partes_path[0] else "/"
 
-    # Convertir filtro_mes YYYY-MM → YYYYMM
     mes_key: Optional[str] = None
     if filtro_mes and filtro_mes.strip():
         try:
-            partes_mes = filtro_mes.strip().split("-")
-            if len(partes_mes) == 2:
-                mes_key = f"{partes_mes[0]}{partes_mes[1].zfill(2)}"
+            p = filtro_mes.strip().split("-")
+            if len(p) == 2:
+                mes_key = f"{p[0]}{p[1].zfill(2)}"
         except Exception:
             pass
 
@@ -357,7 +423,6 @@ def listar_path(
     try:
         lineas: List[str] = []
         ftp.retrlines("LIST", lineas.append)
-
         for linea in lineas:
             parsed = _parse_list_line(linea)
             if not parsed:
@@ -378,7 +443,6 @@ def listar_path(
                     "fecha": parsed["fecha"],
                     "fecha_sort": parsed["fecha_sort"],
                 })
-
     finally:
         try:
             ftp.quit()
@@ -399,7 +463,7 @@ def listar_path(
     }
 
 
-# ── Descargar ficheros ────────────────────────────────────────────────────────
+# ── Descargar ficheros (manual) ───────────────────────────────────────────────
 
 def _directorio_descarga() -> Path:
     base = Path(os.environ.get("FTP_DOWNLOAD_DIR", "/tmp/ftp_downloads"))
@@ -430,13 +494,34 @@ def descargar_ficheros(
                 with open(destino, "wb") as f:
                     ftp.retrbinary(f"RETR {nombre}", f.write)
                 tamanio = destino.stat().st_size
-                _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id), nombre_fichero=nombre, tamanio=tamanio, estado="ok")
+                _log(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=int(config.empresa_id),
+                    config_id=config_id,
+                    rule_id=None,
+                    origen="manual",
+                    nombre_fichero=nombre,
+                    tamanio=tamanio,
+                    estado="ok",
+                )
                 descargados += 1
                 detalle.append(f"OK: {nombre}")
             except Exception as e:
                 errores += 1
                 msg = str(e)[:200]
-                _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id), nombre_fichero=nombre, tamanio=None, estado="error", mensaje_error=msg)
+                _log(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=int(config.empresa_id),
+                    config_id=config_id,
+                    rule_id=None,
+                    origen="manual",
+                    nombre_fichero=nombre,
+                    tamanio=None,
+                    estado="error",
+                    mensaje_error=msg,
+                )
                 detalle.append(f"ERROR: {nombre} — {msg}")
     finally:
         try:
@@ -447,12 +532,139 @@ def descargar_ficheros(
     return descargados, errores, detalle
 
 
-# ── Historial ─────────────────────────────────────────────────────────────────
+# ── Ejecutar regla automática ─────────────────────────────────────────────────
+
+def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
+    """
+    Ejecuta una regla de sync automática:
+    1. Lista ficheros en el FTP que coinciden con el patrón
+    2. Filtra los que ya están descargados en ftp_sync_log (estado=ok)
+    3. Descarga solo los nuevos
+    4. Actualiza ultima_ejecucion y proxima_ejecucion
+    """
+    rule = db.query(FtpSyncRule).filter(FtpSyncRule.id == rule_id).first()
+    if rule is None:
+        raise ValueError(f"Regla id={rule_id} no encontrada")
+
+    config = db.query(FtpConfig).filter(
+        FtpConfig.id == rule.config_id,
+        FtpConfig.activo.is_(True),
+    ).first()
+    if config is None:
+        raise ValueError(f"Conexión id={rule.config_id} no encontrada o inactiva")
+
+    tenant_id = int(rule.tenant_id)
+    empresa_id = int(config.empresa_id)
+    directorio = str(rule.directorio or "/")
+    patron = str(rule.patron_nombre or "").lower().strip()
+
+    # Ficheros ya descargados correctamente para esta conexión
+    ya_descargados = set(
+        row.nombre_fichero
+        for row in db.query(FtpSyncLog).filter(
+            FtpSyncLog.config_id == rule.config_id,
+            FtpSyncLog.estado == "ok",
+        ).all()
+    )
+
+    # Listar ficheros del FTP
+    ftp = _conectar_en_path(config, directorio)
+    candidatos: List[str] = []
+    try:
+        lineas: List[str] = []
+        ftp.retrlines("LIST", lineas.append)
+        for linea in lineas:
+            parsed = _parse_list_line(linea)
+            if not parsed or parsed["tipo"] != "file":
+                continue
+            nombre = parsed["nombre"]
+            if patron and patron not in nombre.lower():
+                continue
+            if nombre in ya_descargados:
+                continue
+            candidatos.append(nombre)
+    finally:
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+
+    if not candidatos:
+        _actualizar_tiempos_regla(db, rule)
+        return 0, 0, ["Sin ficheros nuevos"]
+
+    # Descargar candidatos
+    directorio_local = _directorio_descarga() / str(empresa_id)
+    directorio_local.mkdir(parents=True, exist_ok=True)
+
+    descargados = 0
+    errores = 0
+    detalle: List[str] = []
+
+    ftp2 = _conectar_en_path(config, directorio)
+    try:
+        for nombre in candidatos:
+            try:
+                destino = directorio_local / nombre
+                with open(destino, "wb") as f:
+                    ftp2.retrbinary(f"RETR {nombre}", f.write)
+                tamanio = destino.stat().st_size
+                _log(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=empresa_id,
+                    config_id=int(rule.config_id),
+                    rule_id=rule_id,
+                    origen="auto",
+                    nombre_fichero=nombre,
+                    tamanio=tamanio,
+                    estado="ok",
+                )
+                descargados += 1
+                detalle.append(f"OK: {nombre}")
+            except Exception as e:
+                errores += 1
+                msg = str(e)[:200]
+                _log(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=empresa_id,
+                    config_id=int(rule.config_id),
+                    rule_id=rule_id,
+                    origen="auto",
+                    nombre_fichero=nombre,
+                    tamanio=None,
+                    estado="error",
+                    mensaje_error=msg,
+                )
+                detalle.append(f"ERROR: {nombre} — {msg}")
+    finally:
+        try:
+            ftp2.quit()
+        except Exception:
+            pass
+
+    _actualizar_tiempos_regla(db, rule)
+    return descargados, errores, detalle
+
+
+def _actualizar_tiempos_regla(db: Session, rule: FtpSyncRule) -> None:
+    ahora = datetime.utcnow()
+    rule.ultima_ejecucion = ahora  # type: ignore
+    rule.proxima_ejecucion = ahora + timedelta(hours=int(rule.intervalo_horas))  # type: ignore
+    rule.updated_at = ahora  # type: ignore
+    db.commit()
+
+
+# ── Log ───────────────────────────────────────────────────────────────────────
 
 def _log(
     db: Session, *,
     tenant_id: int,
     empresa_id: int,
+    config_id: Optional[int],
+    rule_id: Optional[int],
+    origen: str,
     nombre_fichero: str,
     tamanio: Optional[int],
     estado: str,
@@ -461,6 +673,9 @@ def _log(
     entry = FtpSyncLog(
         tenant_id=tenant_id,
         empresa_id=empresa_id,
+        config_id=config_id,
+        rule_id=rule_id,
+        origen=origen,
         nombre_fichero=nombre_fichero,
         tamanio=tamanio,
         estado=estado,
@@ -470,20 +685,25 @@ def _log(
     db.commit()
 
 
-def list_logs(db: Session, *, tenant_id: int, limit: int = 100) -> List[dict]:
-    rows = (
-        db.query(FtpSyncLog)
-        .filter(FtpSyncLog.tenant_id == tenant_id)
-        .order_by(FtpSyncLog.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+def list_logs(
+    db: Session, *,
+    tenant_id: int,
+    origen: Optional[str] = None,
+    limit: int = 100,
+) -> List[dict]:
+    q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
+    if origen:
+        q = q.filter(FtpSyncLog.origen == origen)
+    rows = q.order_by(FtpSyncLog.created_at.desc()).limit(limit).all()
     result = []
     for r in rows:
         result.append({
             "id": r.id,
             "empresa_id": r.empresa_id,
             "empresa_nombre": _nombre_empresa(db, int(r.empresa_id)),
+            "config_id": r.config_id,
+            "rule_id": r.rule_id,
+            "origen": r.origen,
             "nombre_fichero": r.nombre_fichero,
             "tamanio": r.tamanio,
             "estado": r.estado,
