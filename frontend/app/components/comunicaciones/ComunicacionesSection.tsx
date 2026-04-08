@@ -78,6 +78,36 @@ interface FtpLog {
   created_at: string;
 }
 
+interface DashboardConexion {
+  id: number;
+  nombre: string | null;
+  empresa_nombre: string;
+  host: string;
+  puerto: number;
+  usar_tls: boolean;
+  activo: boolean;
+  sync_auto: boolean;
+  reglas_activas: number;
+  descargados_hoy: number;
+  errores_hoy: number;
+  ultimo_ok: string | null;
+  ultimo_fichero: string | null;
+  proxima_sync: string | null;
+  ultima_ejecucion: string | null;
+}
+
+interface DashboardData {
+  scheduler_activo: boolean;
+  conexiones_activas: number;
+  reglas_activas: number;
+  total_descargados_hoy: number;
+  total_errores_hoy: number;
+  ultima_descarga: string | null;
+  ultimo_fichero: string | null;
+  proxima_sync_global: string | null;
+  conexiones: DashboardConexion[];
+}
+
 interface EmpresaOption { id: number; nombre: string; codigo_ree: string | null; }
 interface Props { token: string | null; currentUser: User | null; }
 
@@ -260,6 +290,11 @@ export default function ComunicacionesSection({ token }: Props) {
 
   const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
 
+  // Dashboard
+  const [dashboard, setDashboard]     = useState<DashboardData | null>(null);
+  const [loadingDash, setLoadingDash] = useState(false);
+  const [errorDash, setErrorDash]     = useState<string | null>(null);
+
   // Configs
   const [configs, setConfigs]               = useState<FtpConfig[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
@@ -324,10 +359,10 @@ export default function ComunicacionesSection({ token }: Props) {
     ? Math.ceil(explorerResult.ficheros.length / pageSizeExplorer)
     : 0;
 
-  const logsAutoPagina    = logsAuto.slice(pageLogsAuto * pageSizeLogsAuto, (pageLogsAuto + 1) * pageSizeLogsAuto);
+  const logsAutoPagina     = logsAuto.slice(pageLogsAuto * pageSizeLogsAuto, (pageLogsAuto + 1) * pageSizeLogsAuto);
   const totalPagesLogsAuto = Math.ceil(logsAuto.length / pageSizeLogsAuto);
 
-  const logsManualPagina    = logsManual.slice(pageLogsManual * pageSizeLogsManual, (pageLogsManual + 1) * pageSizeLogsManual);
+  const logsManualPagina     = logsManual.slice(pageLogsManual * pageSizeLogsManual, (pageLogsManual + 1) * pageSizeLogsManual);
   const totalPagesLogsManual = Math.ceil(logsManual.length / pageSizeLogsManual);
 
   const tamanoSeleccionados = explorerResult
@@ -345,6 +380,21 @@ export default function ComunicacionesSection({ token }: Props) {
       .catch(() => {});
   }, [token]);
 
+  // ── Dashboard ─────────────────────────────────────────────────────────────────
+  const cargarDashboard = useCallback(async () => {
+    if (!token) return;
+    setLoadingDash(true); setErrorDash(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/ftp/dashboard`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setDashboard(await res.json());
+    } catch (e: unknown) {
+      setErrorDash(e instanceof Error ? e.message : "Error");
+    } finally { setLoadingDash(false); }
+  }, [token]);
+
+  useEffect(() => { if (panelDashOpen) cargarDashboard(); }, [panelDashOpen, cargarDashboard]);
+
   // ── Configs ───────────────────────────────────────────────────────────────────
   const cargarConfigs = useCallback(async () => {
     if (!token) return;
@@ -359,8 +409,8 @@ export default function ComunicacionesSection({ token }: Props) {
   }, [token]);
 
   useEffect(() => {
-    if (panelConfigOpen || panelAutoOpen || panelManualOpen || panelDashOpen) cargarConfigs();
-  }, [panelConfigOpen, panelAutoOpen, panelManualOpen, panelDashOpen, cargarConfigs]);
+    if (panelConfigOpen || panelAutoOpen || panelManualOpen) cargarConfigs();
+  }, [panelConfigOpen, panelAutoOpen, panelManualOpen, cargarConfigs]);
 
   const handleSaveConfig = async () => {
     if (!token || !configForm.empresa_id) return;
@@ -499,15 +549,11 @@ export default function ComunicacionesSection({ token }: Props) {
     if (!confirm("¿Eliminar este registro? Si es automático, el scheduler lo olvidará y podría volver a descargarlo.")) return;
     try {
       const res = await fetch(`${API_BASE_URL}/ftp/logs/${logId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(token),
+        method: "DELETE", headers: getAuthHeaders(token),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      if (origen === "auto") {
-        setLogsAuto(prev => prev.filter(l => l.id !== logId));
-      } else {
-        setLogsManual(prev => prev.filter(l => l.id !== logId));
-      }
+      if (origen === "auto") setLogsAuto(prev => prev.filter(l => l.id !== logId));
+      else setLogsManual(prev => prev.filter(l => l.id !== logId));
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error borrando registro");
     }
@@ -525,19 +571,13 @@ export default function ComunicacionesSection({ token }: Props) {
       const params = new URLSearchParams({ origen });
       if (diasNum) params.set("dias", String(diasNum));
       const res = await fetch(`${API_BASE_URL}/ftp/logs?${params}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(token),
+        method: "DELETE", headers: getAuthHeaders(token),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       alert(`Borrados ${data.deleted} registros.`);
-      if (origen === "auto") {
-        setLogsAuto([]);
-        setPageLogsAuto(0);
-      } else {
-        setLogsManual([]);
-        setPageLogsManual(0);
-      }
+      if (origen === "auto") { setLogsAuto([]); setPageLogsAuto(0); }
+      else { setLogsManual([]); setPageLogsManual(0); }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error limpiando historial");
     }
@@ -681,64 +721,140 @@ export default function ComunicacionesSection({ token }: Props) {
         </div>
         {panelDashOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
-              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Conexiones activas</div>
-                <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{conexionesActivas.length}</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                  {conexionesActivas.filter(c => c.usar_tls).length} TLS · {conexionesActivas.filter(c => !c.usar_tls).length} FTP
+            {errorDash && <div className="ui-alert ui-alert--danger mb-3">{errorDash}</div>}
+            {loadingDash && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>
+                Cargando...
+              </div>
+            )}
+            {dashboard && (
+              <>
+                {/* Métricas globales */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Conexiones activas</div>
+                    <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.conexiones_activas}</div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                      {dashboard.conexiones.filter(c => c.usar_tls).length} TLS · {dashboard.conexiones.filter(c => !c.usar_tls).length} FTP
+                    </div>
+                  </div>
+                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Descargados hoy</div>
+                    <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.total_descargados_hoy}</div>
+                    <div style={{ fontSize: 10, color: dashboard.total_errores_hoy > 0 ? "var(--color-text-danger, #E24B4A)" : "var(--text-muted)", marginTop: 3 }}>
+                      {dashboard.total_errores_hoy > 0 ? `${dashboard.total_errores_hoy} errores` : "sin errores"}
+                    </div>
+                  </div>
+                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Scheduler</div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: "#1D9E75", marginTop: 4 }}>● Activo</div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                      {dashboard.reglas_activas} regla{dashboard.reglas_activas !== 1 ? "s" : ""} activa{dashboard.reglas_activas !== 1 ? "s" : ""}
+                    </div>
+                  </div>
+                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Próxima sync</div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", marginTop: 4 }}>
+                      {dashboard.proxima_sync_global ? fmtDate(dashboard.proxima_sync_global) : "—"}
+                    </div>
+                    {dashboard.ultima_descarga && (
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                        Última: {fmtDate(dashboard.ultima_descarga)}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Reglas activas</div>
-                <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{rules.filter(r => r.activo).length}</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>de {rules.length} configuradas</div>
-              </div>
-              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Scheduler</div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: "#1D9E75", marginTop: 4 }}>● Activo</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>comprueba cada minuto</div>
-              </div>
-              <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Próximas syncs</div>
-                {rules.filter(r => r.activo && r.proxima_ejecucion).slice(0, 2).map(r => (
-                  <div key={r.id} style={{ fontSize: 10, color: "var(--text)", marginTop: 2 }}>
-                    {r.nombre || r.patron_nombre || "Regla"} · {fmtDate(r.proxima_ejecucion)}
-                  </div>
-                ))}
-                {rules.filter(r => r.activo).length === 0 && (
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Sin reglas activas</div>
-                )}
-              </div>
-            </div>
-            <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
-              <div style={{ padding: "8px 14px", background: "var(--field-bg-soft)", fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                Estado de conexiones
-              </div>
-              {configs.length === 0 ? (
-                <div style={{ padding: "20px 14px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>Sin conexiones configuradas</div>
-              ) : configs.map(c => {
-                const reglasConexion = rules.filter(r => r.config_id === c.id && r.activo);
-                return (
-                  <div key={c.id} style={{ display: "grid", gridTemplateColumns: "10px 1fr 100px 120px 140px", gap: 12, padding: "10px 14px", borderTop: "1px solid var(--card-border)", alignItems: "center" }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.activo ? "#1D9E75" : "#888" }} />
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{c.nombre || c.empresa_nombre}</div>
-                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.host}:{c.puerto} · {c.usar_tls ? "TLS" : "FTP"}</div>
-                    </div>
-                    <span className={`ui-badge ${c.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>
-                      {c.activo ? "Activa" : "Inactiva"}
+
+                {/* Estado por conexión */}
+                <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)" }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Estado de conexiones
                     </span>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                      {reglasConexion.length > 0 ? `${reglasConexion.length} regla${reglasConexion.length > 1 ? "s" : ""} auto` : "Solo manual"}
-                    </div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                      {reglasConexion[0]?.proxima_ejecucion ? `Próx: ${fmtDate(reglasConexion[0].proxima_ejecucion)}` : "—"}
-                    </div>
+                    <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
+                      style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}
+                      onClick={cargarDashboard} disabled={loadingDash}>
+                      <IconRefresh /> Actualizar
+                    </button>
                   </div>
-                );
-              })}
-            </div>
+                  {dashboard.conexiones.length === 0 ? (
+                    <div style={{ padding: "20px 14px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
+                      Sin conexiones configuradas
+                    </div>
+                  ) : dashboard.conexiones.map(c => (
+                    <div key={c.id} style={{
+                      display: "grid",
+                      gridTemplateColumns: "10px 1fr 70px 70px 130px 150px",
+                      gap: 12, padding: "10px 14px",
+                      borderTop: "1px solid var(--card-border)",
+                      alignItems: "center",
+                    }}>
+                      {/* Indicador color */}
+                      <div style={{
+                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                        background: !c.activo ? "#888" : c.errores_hoy > 0 ? "#E24B4A" : "#1D9E75",
+                      }} />
+                      {/* Nombre + host */}
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>
+                          {c.nombre || c.empresa_nombre}
+                          {c.nombre && (
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
+                              {c.empresa_nombre}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {c.host}:{c.puerto} · {c.usar_tls ? "TLS" : "FTP"}
+                        </div>
+                      </div>
+                      {/* Descargados hoy */}
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>{c.descargados_hoy}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>hoy</div>
+                      </div>
+                      {/* Errores hoy */}
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: c.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)" }}>
+                          {c.errores_hoy}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>errores</div>
+                      </div>
+                      {/* Sync */}
+                      <div style={{ fontSize: 10 }}>
+                        {c.sync_auto ? (
+                          <span style={{ color: "#1D9E75" }}>
+                            Auto · {c.reglas_activas} regla{c.reglas_activas !== 1 ? "s" : ""}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)" }}>Solo manual</span>
+                        )}
+                        {c.ultima_ejecucion && (
+                          <div style={{ color: "var(--text-muted)", marginTop: 2 }}>
+                            Ejec: {fmtDate(c.ultima_ejecucion)}
+                          </div>
+                        )}
+                      </div>
+                      {/* Próxima / Última OK */}
+                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                        {c.proxima_sync ? (
+                          <div>Próx: {fmtDate(c.proxima_sync)}</div>
+                        ) : c.ultimo_ok ? (
+                          <div>Última OK: {fmtDate(c.ultimo_ok)}</div>
+                        ) : (
+                          <span>—</span>
+                        )}
+                        {c.ultimo_fichero && (
+                          <div style={{ fontSize: 9, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>
+                            {c.ultimo_fichero}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

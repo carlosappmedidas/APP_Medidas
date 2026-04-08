@@ -313,7 +313,7 @@ def delete_log(
 @router.delete("/logs", status_code=status.HTTP_200_OK)
 def delete_logs(
     origen: Optional[str] = Query(None, description="'auto' | 'manual' | None = todos"),
-    dias: Optional[int] = Query(None, description="Borrar registros con más de N días de antigüedad. None = borrar todos"),
+    dias: Optional[int] = Query(None, description="Borrar registros con más de N días. None = borrar todos"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -330,3 +330,19 @@ def delete_logs(
         dias=dias,
     )
     return {"deleted": count}
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+@router.get("/dashboard")
+def get_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Métricas globales y por conexión para el dashboard de comunicaciones.
+    Incluye: scheduler activo, conexiones activas, reglas activas,
+    descargados/errores hoy, última descarga, próxima sync y detalle por conexión.
+    """
+    _assert_not_viewer(current_user)
+    return services.get_dashboard(db, tenant_id=_tenant_id(current_user))

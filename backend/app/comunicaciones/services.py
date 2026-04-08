@@ -558,7 +558,6 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
     directorio = str(rule.directorio or "/")
     patron = str(rule.patron_nombre or "").lower().strip()
 
-    # Ficheros ya descargados correctamente para esta conexión
     ya_descargados = set(
         row.nombre_fichero
         for row in db.query(FtpSyncLog).filter(
@@ -567,7 +566,6 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
         ).all()
     )
 
-    # Listar ficheros del FTP
     ftp = _conectar_en_path(config, directorio)
     candidatos: List[str] = []
     try:
@@ -593,7 +591,6 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
         _actualizar_tiempos_regla(db, rule)
         return 0, 0, ["Sin ficheros nuevos"]
 
-    # Descargar candidatos
     directorio_local = _directorio_descarga() / str(empresa_id)
     directorio_local.mkdir(parents=True, exist_ok=True)
 
@@ -742,8 +739,6 @@ def delete_logs(
     - dias: borra registros con created_at < ahora - dias días
             None = borra todos sin límite de fecha
     Devuelve el número de registros borrados.
-    Advertencia: borrar logs automáticos hace que el scheduler
-    vuelva a descargar esos ficheros en la próxima ejecución.
     """
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
     if origen:
@@ -755,3 +750,92 @@ def delete_logs(
     q.delete(synchronize_session=False)
     db.commit()
     return count
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+def get_dashboard(db: Session, *, tenant_id: int) -> dict:
+    """
+    Calcula métricas globales y por conexión para el dashboard de comunicaciones.
+    Todos los cálculos son en UTC — el frontend formatea las fechas.
+    """
+    hoy_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    configs = db.query(FtpConfig).filter(FtpConfig.tenant_id == tenant_id).all()
+    rules   = db.query(FtpSyncRule).filter(FtpSyncRule.tenant_id == tenant_id).all()
+
+    # Logs de hoy (todos)
+    logs_hoy = db.query(FtpSyncLog).filter(
+        FtpSyncLog.tenant_id == tenant_id,
+        FtpSyncLog.created_at >= hoy_inicio,
+    ).all()
+
+    # Última descarga OK global
+    ultimo_ok = (
+        db.query(FtpSyncLog)
+        .filter(FtpSyncLog.tenant_id == tenant_id, FtpSyncLog.estado == "ok")
+        .order_by(FtpSyncLog.created_at.desc())
+        .first()
+    )
+
+    # Métricas globales
+    total_descargados_hoy = sum(1 for log in logs_hoy if log.estado == "ok")
+    total_errores_hoy     = sum(1 for log in logs_hoy if log.estado == "error")
+
+    # Próxima sync global — la más próxima entre todas las reglas activas
+    proximas = [r.proxima_ejecucion for r in rules if r.activo and r.proxima_ejecucion]
+    proxima_sync_global = min(proximas, default=None)
+
+    # Métricas por conexión
+    conexiones = []
+    for c in configs:
+        logs_config_hoy = [log for log in logs_hoy if log.config_id == c.id]
+        reglas_config   = [r for r in rules if r.config_id == c.id and r.activo]
+
+        proxima_sync_config = min(
+            (r.proxima_ejecucion for r in reglas_config if r.proxima_ejecucion),
+            default=None,
+        )
+        ultima_ejec_config = max(
+            (r.ultima_ejecucion for r in reglas_config if r.ultima_ejecucion),
+            default=None,
+        )
+
+        # Último fichero OK de esta conexión
+        ultimo_ok_config = (
+            db.query(FtpSyncLog)
+            .filter(FtpSyncLog.config_id == c.id, FtpSyncLog.estado == "ok")
+            .order_by(FtpSyncLog.created_at.desc())
+            .first()
+        )
+
+        conexiones.append({
+            "id":               c.id,
+            "nombre":           c.nombre,
+            "empresa_id":       c.empresa_id,
+            "empresa_nombre":   _nombre_empresa(db, int(c.empresa_id)),
+            "host":             c.host,
+            "puerto":           c.puerto,
+            "usar_tls":         c.usar_tls,
+            "activo":           c.activo,
+            "reglas_activas":   len(reglas_config),
+            "sync_auto":        len(reglas_config) > 0,
+            "descargados_hoy":  sum(1 for log in logs_config_hoy if log.estado == "ok"),
+            "errores_hoy":      sum(1 for log in logs_config_hoy if log.estado == "error"),
+            "ultimo_ok":        ultimo_ok_config.created_at if ultimo_ok_config else None,
+            "ultimo_fichero":   ultimo_ok_config.nombre_fichero if ultimo_ok_config else None,
+            "proxima_sync":     proxima_sync_config,
+            "ultima_ejecucion": ultima_ejec_config,
+        })
+
+    return {
+        "scheduler_activo":      True,
+        "conexiones_activas":    sum(1 for c in configs if c.activo),
+        "reglas_activas":        sum(1 for r in rules if r.activo),
+        "total_descargados_hoy": total_descargados_hoy,
+        "total_errores_hoy":     total_errores_hoy,
+        "ultima_descarga":       ultimo_ok.created_at if ultimo_ok else None,
+        "ultimo_fichero":        ultimo_ok.nombre_fichero if ultimo_ok else None,
+        "proxima_sync_global":   proxima_sync_global,
+        "conexiones":            conexiones,
+    }
