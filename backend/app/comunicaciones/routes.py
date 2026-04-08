@@ -88,6 +88,7 @@ def create_config(
             usuario=payload.usuario,
             password=payload.password,
             directorio_remoto=payload.directorio_remoto,
+            usar_tls=payload.usar_tls,
             activo=payload.activo,
         )
     except ValueError as e:
@@ -112,6 +113,7 @@ def update_config(
             usuario=payload.usuario,
             password=payload.password,
             directorio_remoto=payload.directorio_remoto,
+            usar_tls=payload.usar_tls,
             activo=payload.activo,
         )
     except ValueError as e:
@@ -145,7 +147,7 @@ def test_conexion(
     return TestResponse(ok=ok, message=msg)
 
 
-# ── Explorador — listar path (carpetas + ficheros) ────────────────────────────
+# ── Explorador — listar path ──────────────────────────────────────────────────
 
 @router.get("/explorar/{empresa_id}")
 def explorar_path(

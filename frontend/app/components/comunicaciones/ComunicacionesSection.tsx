@@ -14,6 +14,7 @@ interface FtpConfig {
   puerto: number;
   usuario: string;
   directorio_remoto: string;
+  usar_tls: boolean;
   activo: boolean;
 }
 
@@ -24,6 +25,7 @@ interface FtpConfigForm {
   usuario: string;
   password: string;
   directorio_remoto: string;
+  usar_tls: boolean;
   activo: boolean;
 }
 
@@ -81,16 +83,15 @@ function fmtSize(bytes: number): string {
 
 const FORM_VACIO: FtpConfigForm = {
   empresa_id: "", host: "www.asemeservicios.com", puerto: 22221,
-  usuario: "", password: "", directorio_remoto: "/", activo: true,
+  usuario: "", password: "", directorio_remoto: "/", usar_tls: true, activo: true,
 };
 
-// Años disponibles en el filtro de mes
 const ANIOS = [2023, 2024, 2025, 2026];
 const MESES = [
-  { v: "01", l: "Enero" }, { v: "02", l: "Febrero" }, { v: "03", l: "Marzo" },
-  { v: "04", l: "Abril" }, { v: "05", l: "Mayo" },    { v: "06", l: "Junio" },
-  { v: "07", l: "Julio" }, { v: "08", l: "Agosto" },  { v: "09", l: "Septiembre" },
-  { v: "10", l: "Octubre" }, { v: "11", l: "Noviembre" }, { v: "12", l: "Diciembre" },
+  { v: "01", l: "Enero" },    { v: "02", l: "Febrero" },   { v: "03", l: "Marzo" },
+  { v: "04", l: "Abril" },    { v: "05", l: "Mayo" },       { v: "06", l: "Junio" },
+  { v: "07", l: "Julio" },    { v: "08", l: "Agosto" },     { v: "09", l: "Septiembre" },
+  { v: "10", l: "Octubre" },  { v: "11", l: "Noviembre" },  { v: "12", l: "Diciembre" },
 ];
 
 // ─── Iconos ───────────────────────────────────────────────────────────────────
@@ -194,9 +195,8 @@ export default function ComunicacionesSection({ token }: Props) {
   const [errorExplorer, setErrorExplorer]         = useState<string | null>(null);
   const [selectedFicheros, setSelectedFicheros]   = useState<Set<string>>(new Set());
   const [filtroNombre, setFiltroNombre]           = useState("");
-  // filtroMes en formato YYYY-MM — construido desde dos selectores (mes + año)
-  const [filtroMesNum, setFiltroMesNum]           = useState(""); // "01".."12"
-  const [filtroAnioNum, setFiltroAnioNum]         = useState(""); // "2026"
+  const [filtroMesNum, setFiltroMesNum]           = useState("");
+  const [filtroAnioNum, setFiltroAnioNum]         = useState("");
   const [descargando, setDescargando]             = useState(false);
   const [requiereFiltro, setRequiereFiltro]       = useState(false);
 
@@ -205,7 +205,6 @@ export default function ComunicacionesSection({ token }: Props) {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [errorLogs, setErrorLogs]     = useState<string | null>(null);
 
-  // filtroMes combinado YYYY-MM — solo válido si ambos selectores tienen valor
   const anioDefault = new Date().getFullYear().toString();
   const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : "";
 
@@ -276,7 +275,6 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setTestingId(null); }
   };
 
-  // Explorar path con los dos filtros separados
   const explorarPath = useCallback(async (path: string, nombre?: string, mes?: string) => {
     if (!token || !explorerEmpresaId) return;
     setLoadingExplorer(true); setErrorExplorer(null); setSelectedFicheros(new Set());
@@ -296,12 +294,9 @@ export default function ComunicacionesSection({ token }: Props) {
 
   const handleCambiarEmpresa = (id: number | "") => {
     setExplorerEmpresaId(id);
-    setExplorerResult(null);
-    setErrorExplorer(null);
-    setFiltroNombre("");
-    setFiltroMesNum(""); setFiltroAnioNum("");
-    setSelectedFicheros(new Set());
-    setRequiereFiltro(false);
+    setExplorerResult(null); setErrorExplorer(null);
+    setFiltroNombre(""); setFiltroMesNum(""); setFiltroAnioNum("");
+    setSelectedFicheros(new Set()); setRequiereFiltro(false);
   };
 
   const handleIrRaiz = () => {
@@ -405,7 +400,7 @@ export default function ComunicacionesSection({ token }: Props) {
         <div style={panelHeaderStyle} onClick={() => setPanel1Open(v => !v)}>
           <div>
             <div style={panelTitleStyle}>Conexiones FTP</div>
-            <div style={panelDescStyle}>Configura y gestiona las conexiones FTPS por empresa</div>
+            <div style={panelDescStyle}>Configura y gestiona las conexiones FTP/FTPS por empresa</div>
           </div>
           <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
             onClick={e => { e.stopPropagation(); setPanel1Open(v => !v); }}>
@@ -448,7 +443,7 @@ export default function ComunicacionesSection({ token }: Props) {
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Host</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
                       value={form.host} onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
-                      placeholder="www.asemeservicios.com" />
+                      placeholder="www.servidor.com" />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Puerto</label>
@@ -459,7 +454,7 @@ export default function ComunicacionesSection({ token }: Props) {
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Usuario</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }}
                       value={form.usuario} onChange={e => setForm(f => ({ ...f, usuario: e.target.value }))}
-                      placeholder="0148" />
+                      placeholder="usuario" />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
@@ -476,10 +471,20 @@ export default function ComunicacionesSection({ token }: Props) {
                       placeholder="/" />
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
-                  <input type="checkbox" id="activo-chk" checked={form.activo}
-                    onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} />
-                  <label htmlFor="activo-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Conexión activa</label>
+                {/* Checkboxes: TLS y Activo */}
+                <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="checkbox" id="usar-tls-chk" checked={form.usar_tls}
+                      onChange={e => setForm(f => ({ ...f, usar_tls: e.target.checked }))} />
+                    <label htmlFor="usar-tls-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      Usar TLS/FTPS
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="checkbox" id="activo-chk" checked={form.activo}
+                      onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} />
+                    <label htmlFor="activo-chk" style={{ fontSize: 11, color: "var(--text-muted)" }}>Conexión activa</label>
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
@@ -503,6 +508,7 @@ export default function ComunicacionesSection({ token }: Props) {
                     <th className="ui-th">Puerto</th>
                     <th className="ui-th">Usuario</th>
                     <th className="ui-th">Directorio raíz</th>
+                    <th className="ui-th" style={{ textAlign: "center" }}>Cifrado</th>
                     <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
                     <th className="ui-th">Test</th>
                     <th className="ui-th">Acciones</th>
@@ -510,9 +516,9 @@ export default function ComunicacionesSection({ token }: Props) {
                 </thead>
                 <tbody>
                   {loadingConfigs ? (
-                    <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
+                    <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : configs.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                    <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                       Sin conexiones · Pulsa &quot;Añadir conexión FTP&quot; para empezar
                     </td></tr>
                   ) : configs.map(c => (
@@ -522,6 +528,11 @@ export default function ComunicacionesSection({ token }: Props) {
                       <td className="ui-td">{c.puerto}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{c.usuario}</td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{c.directorio_remoto}</td>
+                      <td className="ui-td" style={{ textAlign: "center" }}>
+                        <span className={`ui-badge ${c.usar_tls ? "ui-badge--ok" : "ui-badge--neutral"}`}>
+                          {c.usar_tls ? "TLS" : "FTP"}
+                        </span>
+                      </td>
                       <td className="ui-td" style={{ textAlign: "center" }}>
                         <span className={`ui-badge ${c.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>
                           {c.activo ? "Activa" : "Inactiva"}
@@ -547,7 +558,7 @@ export default function ComunicacionesSection({ token }: Props) {
                             style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
                             onClick={() => {
                               setEditId(c.id);
-                              setForm({ empresa_id: c.empresa_id, host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, activo: c.activo });
+                              setForm({ empresa_id: c.empresa_id, host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo });
                               setShowForm(true);
                             }}>
                             <IconEdit />
@@ -584,7 +595,6 @@ export default function ComunicacionesSection({ token }: Props) {
         {panel2Open && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
 
-            {/* Fila 1 — Empresa + navegación */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Empresa:</span>
               <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 160 }}
@@ -618,11 +628,8 @@ export default function ComunicacionesSection({ token }: Props) {
               )}
             </div>
 
-            {/* Fila 2 — Dos filtros: nombre + mes/año con selectores compatibles Safari/Chrome */}
             {explorerResult && (
               <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-
-                {/* Filtro por nombre */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Nombre del fichero</label>
                   <input className="ui-input" style={{ fontSize: 11, height: 28, width: 200 }}
@@ -632,27 +639,21 @@ export default function ComunicacionesSection({ token }: Props) {
                     onKeyDown={e => { if (e.key === "Enter") handleBuscar(); }}
                   />
                 </div>
-
-                {/* Filtro por mes — dos selectores compatibles con todos los navegadores */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Mes de publicación</label>
                   <div style={{ display: "flex", gap: 4 }}>
                     <select className="ui-select" style={{ fontSize: 11, height: 28, width: 110 }}
-                      value={filtroMesNum}
-                      onChange={e => setFiltroMesNum(e.target.value)}>
+                      value={filtroMesNum} onChange={e => setFiltroMesNum(e.target.value)}>
                       <option value="">Mes</option>
                       {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
                     </select>
                     <select className="ui-select" style={{ fontSize: 11, height: 28, width: 78 }}
-                      value={filtroAnioNum}
-                      onChange={e => setFiltroAnioNum(e.target.value)}>
+                      value={filtroAnioNum} onChange={e => setFiltroAnioNum(e.target.value)}>
                       <option value="">Año</option>
                       {ANIOS.map(a => <option key={a} value={String(a)}>{a}</option>)}
                     </select>
                   </div>
                 </div>
-
-                {/* Botones */}
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                   style={{ display: "flex", alignItems: "center", gap: 5, height: 28 }}
                   onClick={handleBuscar} disabled={loadingExplorer}>
@@ -660,22 +661,19 @@ export default function ComunicacionesSection({ token }: Props) {
                 </button>
                 {hayFiltros && (
                   <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                    style={{ height: 28 }}
-                    onClick={handleLimpiar}>
+                    style={{ height: 28 }} onClick={handleLimpiar}>
                     Limpiar
                   </button>
                 )}
               </div>
             )}
 
-            {/* Aviso carpeta grande */}
             {requiereFiltro && !hayFiltros && (
               <div style={{ marginBottom: 10, padding: "8px 12px", background: "var(--color-background-warning, #FAEEDA)", borderRadius: 6, fontSize: 11, color: "#854F0B", border: "1px solid #FAC775" }}>
                 Esta carpeta tiene más de 5.000 ficheros. Usa los filtros para encontrar los que necesitas — por nombre (ej: <strong>BALD</strong>) o por mes de publicación.
               </div>
             )}
 
-            {/* Breadcrumb */}
             {explorerResult && (
               <div style={{ marginBottom: 10, padding: "6px 10px", background: "var(--field-bg-soft)", borderRadius: 6 }}>
                 {renderBreadcrumb()}
@@ -684,7 +682,6 @@ export default function ComunicacionesSection({ token }: Props) {
 
             {errorExplorer && <div className="ui-alert ui-alert--danger mb-3">{errorExplorer}</div>}
 
-            {/* Contenido */}
             {!explorerEmpresaId ? (
               <div className="ui-muted text-center" style={{ padding: "32px 16px", fontSize: 11 }}>
                 Selecciona una empresa y pulsa &quot;Conectar&quot;
@@ -724,7 +721,6 @@ export default function ComunicacionesSection({ token }: Props) {
                         <td className="ui-td ui-muted">—</td>
                       </tr>
                     ))}
-
                     {explorerResult.ficheros.length === 0 && explorerResult.carpetas.length === 0 ? (
                       <tr className="ui-tr"><td colSpan={4} className="ui-td text-center ui-muted" style={{ padding: "20px 16px" }}>Carpeta vacía</td></tr>
                     ) : explorerResult.ficheros.length === 0 && hayFiltros ? (

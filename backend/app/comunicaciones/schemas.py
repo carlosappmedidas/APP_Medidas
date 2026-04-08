@@ -12,33 +12,36 @@ from pydantic import BaseModel
 # ── FtpConfig ─────────────────────────────────────────────────────────────────
 
 class FtpConfigCreate(BaseModel):
-    empresa_id: int
-    host: str
-    puerto: int = 22221
-    usuario: str
-    password: str
-    directorio_remoto: str = "/"
-    activo: bool = True
+    empresa_id:        int
+    host:              str
+    puerto:            int  = 22221
+    usuario:           str
+    password:          str
+    directorio_remoto: str  = "/"
+    usar_tls:          bool = True   # ← NUEVO
+    activo:            bool = True
 
 
 class FtpConfigUpdate(BaseModel):
-    host: Optional[str] = None
-    puerto: Optional[int] = None
-    usuario: Optional[str] = None
-    password: Optional[str] = None
-    directorio_remoto: Optional[str] = None
-    activo: Optional[bool] = None
+    host:              Optional[str]  = None
+    puerto:            Optional[int]  = None
+    usuario:           Optional[str]  = None
+    password:          Optional[str]  = None
+    directorio_remoto: Optional[str]  = None
+    usar_tls:          Optional[bool] = None   # ← NUEVO
+    activo:            Optional[bool] = None
 
 
 class FtpConfigRead(BaseModel):
-    id: int
-    empresa_id: int
-    empresa_nombre: str
-    host: str
-    puerto: int
-    usuario: str
+    id:                int
+    empresa_id:        int
+    empresa_nombre:    str
+    host:              str
+    puerto:            int
+    usuario:           str
     directorio_remoto: str
-    activo: bool
+    usar_tls:          bool   # ← NUEVO
+    activo:            bool
 
     model_config = {"from_attributes": True}
 
@@ -46,14 +49,14 @@ class FtpConfigRead(BaseModel):
 # ── FtpSyncLog ────────────────────────────────────────────────────────────────
 
 class FtpSyncLogRead(BaseModel):
-    id: int
-    empresa_id: int
+    id:             int
+    empresa_id:     int
     empresa_nombre: str
     nombre_fichero: str
-    tamanio: Optional[int] = None
-    estado: str
-    mensaje_error: Optional[str] = None
-    created_at: datetime
+    tamanio:        Optional[int] = None
+    estado:         str
+    mensaje_error:  Optional[str] = None
+    created_at:     datetime
 
     model_config = {"from_attributes": True}
 
@@ -61,9 +64,9 @@ class FtpSyncLogRead(BaseModel):
 # ── Fichero remoto ────────────────────────────────────────────────────────────
 
 class FtpFichero(BaseModel):
-    nombre: str
+    nombre:  str
     tamanio: int
-    fecha: str
+    fecha:   str
 
 
 # ── Payloads ──────────────────────────────────────────────────────────────────
@@ -73,11 +76,11 @@ class DescargarPayload(BaseModel):
 
 
 class TestResponse(BaseModel):
-    ok: bool
+    ok:      bool
     message: str
 
 
 class DescargarResponse(BaseModel):
     descargados: int
-    errores: int
-    detalle: List[str]
+    errores:     int
+    detalle:     List[str]

@@ -59,21 +59,23 @@ def _nombre_empresa(db: Session, empresa_id: int) -> str:
 
 # ── CRUD FtpConfig ────────────────────────────────────────────────────────────
 
+def _config_to_dict(obj: FtpConfig, db: Session) -> dict:
+    return {
+        "id": obj.id,
+        "empresa_id": obj.empresa_id,
+        "empresa_nombre": _nombre_empresa(db, int(obj.empresa_id)),
+        "host": obj.host,
+        "puerto": obj.puerto,
+        "usuario": obj.usuario,
+        "directorio_remoto": obj.directorio_remoto,
+        "usar_tls": obj.usar_tls,
+        "activo": obj.activo,
+    }
+
+
 def list_configs(db: Session, *, tenant_id: int) -> List[dict]:
     rows = db.query(FtpConfig).filter(FtpConfig.tenant_id == tenant_id).all()
-    result = []
-    for r in rows:
-        result.append({
-            "id": r.id,
-            "empresa_id": r.empresa_id,
-            "empresa_nombre": _nombre_empresa(db, int(r.empresa_id)),
-            "host": r.host,
-            "puerto": r.puerto,
-            "usuario": r.usuario,
-            "directorio_remoto": r.directorio_remoto,
-            "activo": r.activo,
-        })
-    return result
+    return [_config_to_dict(r, db) for r in rows]
 
 
 def create_config(
@@ -85,6 +87,7 @@ def create_config(
     usuario: str,
     password: str,
     directorio_remoto: str,
+    usar_tls: bool,
     activo: bool,
 ) -> dict:
     obj = FtpConfig(
@@ -95,21 +98,13 @@ def create_config(
         usuario=usuario,
         password_cifrada=cifrar_password(password),
         directorio_remoto=directorio_remoto,
+        usar_tls=usar_tls,
         activo=activo,
     )
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    return {
-        "id": obj.id,
-        "empresa_id": obj.empresa_id,
-        "empresa_nombre": _nombre_empresa(db, int(obj.empresa_id)),
-        "host": obj.host,
-        "puerto": obj.puerto,
-        "usuario": obj.usuario,
-        "directorio_remoto": obj.directorio_remoto,
-        "activo": obj.activo,
-    }
+    return _config_to_dict(obj, db)
 
 
 def update_config(
@@ -121,6 +116,7 @@ def update_config(
     usuario: Optional[str],
     password: Optional[str],
     directorio_remoto: Optional[str],
+    usar_tls: Optional[bool],
     activo: Optional[bool],
 ) -> dict:
     obj = db.query(FtpConfig).filter(
@@ -139,21 +135,14 @@ def update_config(
         obj.password_cifrada = cifrar_password(password)  # type: ignore
     if directorio_remoto is not None:
         obj.directorio_remoto = directorio_remoto  # type: ignore
+    if usar_tls is not None:
+        obj.usar_tls = usar_tls  # type: ignore
     if activo is not None:
         obj.activo = activo  # type: ignore
     obj.updated_at = datetime.utcnow()  # type: ignore
     db.commit()
     db.refresh(obj)
-    return {
-        "id": obj.id,
-        "empresa_id": obj.empresa_id,
-        "empresa_nombre": _nombre_empresa(db, int(obj.empresa_id)),
-        "host": obj.host,
-        "puerto": obj.puerto,
-        "usuario": obj.usuario,
-        "directorio_remoto": obj.directorio_remoto,
-        "activo": obj.activo,
-    }
+    return _config_to_dict(obj, db)
 
 
 def delete_config(db: Session, *, config_id: int, tenant_id: int) -> None:
@@ -188,18 +177,34 @@ def _get_config_by_empresa(db: Session, *, empresa_id: int, tenant_id: int) -> F
     return obj
 
 
-# ── Conexión FTPS ─────────────────────────────────────────────────────────────
+# ── Conexión FTP — con TLS o sin TLS según configuración ─────────────────────
 
-def _conectar_en_path(config: FtpConfig, path: str) -> _FTPSReuse:
-    ftp = _FTPSReuse()
-    ftp.connect(str(config.host), int(config.puerto), timeout=30)
-    ftp.auth()
-    ftp.login(str(config.usuario), descifrar_password(str(config.password_cifrada)))
-    ftp.prot_p()
-    ftp.set_pasv(True)
-    clean = path.strip() or "/"
-    if clean != "/":
-        ftp.cwd(clean)
+def _conectar_en_path(config: FtpConfig, path: str):
+    """
+    Conecta al FTP y navega al path indicado.
+    Si usar_tls=True  → usa FTPS con TLS explícito (_FTPSReuse)
+    Si usar_tls=False → usa FTP plano sin cifrado (ftplib.FTP)
+    """
+    usar_tls = bool(getattr(config, "usar_tls", True))
+    password = descifrar_password(str(config.password_cifrada))
+    clean_path = (path or "/").strip() or "/"
+
+    if usar_tls:
+        ftp = _FTPSReuse()
+        ftp.connect(str(config.host), int(config.puerto), timeout=30)
+        ftp.auth()
+        ftp.login(str(config.usuario), password)
+        ftp.prot_p()
+        ftp.set_pasv(True)
+    else:
+        ftp = ftplib.FTP()  # type: ignore
+        ftp.connect(str(config.host), int(config.puerto), timeout=30)
+        ftp.login(str(config.usuario), password)
+        ftp.set_pasv(True)
+
+    if clean_path != "/":
+        ftp.cwd(clean_path)
+
     return ftp
 
 
@@ -215,7 +220,9 @@ def test_conexion(db: Session, *, config_id: int, tenant_id: int) -> Tuple[bool,
         ftp = _conectar_en_path(config, _directorio_base(config))
         bienvenida = ftp.getwelcome()
         ftp.quit()
-        return True, f"Conexión exitosa · {bienvenida[:80]}"
+        usar_tls = bool(getattr(config, "usar_tls", True))
+        modo = "FTPS/TLS" if usar_tls else "FTP"
+        return True, f"Conexión {modo} exitosa · {bienvenida[:80]}"
     except ValueError as e:
         return False, str(e)
     except ftplib.all_errors as e:
@@ -247,9 +254,6 @@ def _aplicar_tz(hora_utc: str) -> str:
 # ── Parsear línea LIST ────────────────────────────────────────────────────────
 
 def _parse_list_line(linea: str) -> Optional[dict]:
-    """
-    Parsea línea LIST Unix: -rw-rw-rw- 1 user group SIZE MES DIA HORA NOMBRE
-    """
     partes = linea.split()
     if len(partes) < 9:
         return None
@@ -291,7 +295,6 @@ def _parse_list_line(linea: str) -> Optional[dict]:
         fecha_str = f"{mes_str} {dia_str} {tercero}"
 
     fecha_sort = f"{anio_num}{mes_num}{dia_num}{hora_num}"
-    # YYYYMM para filtro por mes — ej: "202604"
     fecha_mes_key = f"{anio_num}{mes_num}"
 
     return {
@@ -315,18 +318,12 @@ def listar_path(
     filtro_mes: Optional[str] = None,
     limite: int = 5000,
 ) -> dict:
-    """
-    Lista el contenido de un path FTP remoto.
-    - filtro_nombre: texto libre que se busca en el nombre del fichero
-    - filtro_mes: mes en formato YYYY-MM (ej: 2026-04) — filtra por mes y año
-    - Los dos filtros se aplican combinados (AND)
-    """
     config = _get_config_by_empresa(db, empresa_id=empresa_id, tenant_id=tenant_id)
 
     partes_path = path.rstrip("/").rsplit("/", 1)
     path_padre = partes_path[0] if len(partes_path) > 1 and partes_path[0] else "/"
 
-    # Convertir filtro_mes YYYY-MM → YYYYMM para comparar con fecha_mes_key
+    # Convertir filtro_mes YYYY-MM → YYYYMM
     mes_key: Optional[str] = None
     if filtro_mes and filtro_mes.strip():
         try:
@@ -354,10 +351,8 @@ def listar_path(
                     "path": f"{path.rstrip('/')}/{parsed['nombre']}",
                 })
             else:
-                # Filtro por nombre — texto libre en el nombre del fichero
                 if filtro_nombre and filtro_nombre.strip().lower() not in parsed["nombre"].lower():
                     continue
-                # Filtro por mes — coincidencia exacta YYYYMM
                 if mes_key and parsed["fecha_mes_key"] != mes_key:
                     continue
                 ficheros.append({
