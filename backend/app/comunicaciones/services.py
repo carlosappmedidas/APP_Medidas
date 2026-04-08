@@ -689,7 +689,7 @@ def list_logs(
     db: Session, *,
     tenant_id: int,
     origen: Optional[str] = None,
-    limit: int = 100,
+    limit: int = 500,
 ) -> List[dict]:
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
     if origen:
@@ -711,3 +711,47 @@ def list_logs(
             "created_at": r.created_at,
         })
     return result
+
+
+# ── Borrado de logs ───────────────────────────────────────────────────────────
+
+def delete_log_by_id(db: Session, *, log_id: int, tenant_id: int) -> None:
+    """
+    Borra un registro concreto del historial.
+    El scheduler olvidará ese fichero y lo volverá a descargar en la próxima ejecución.
+    """
+    obj = db.query(FtpSyncLog).filter(
+        FtpSyncLog.id == log_id,
+        FtpSyncLog.tenant_id == tenant_id,
+    ).first()
+    if obj is None:
+        raise ValueError(f"Log id={log_id} no encontrado")
+    db.delete(obj)
+    db.commit()
+
+
+def delete_logs(
+    db: Session, *,
+    tenant_id: int,
+    origen: Optional[str] = None,
+    dias: Optional[int] = None,
+) -> int:
+    """
+    Borra logs masivamente con filtros opcionales.
+    - origen: "auto" | "manual" | None = todos
+    - dias: borra registros con created_at < ahora - dias días
+            None = borra todos sin límite de fecha
+    Devuelve el número de registros borrados.
+    Advertencia: borrar logs automáticos hace que el scheduler
+    vuelva a descargar esos ficheros en la próxima ejecución.
+    """
+    q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
+    if origen:
+        q = q.filter(FtpSyncLog.origen == origen)
+    if dias is not None:
+        desde = datetime.utcnow() - timedelta(days=dias)
+        q = q.filter(FtpSyncLog.created_at < desde)
+    count = q.count()
+    q.delete(synchronize_session=False)
+    db.commit()
+    return count

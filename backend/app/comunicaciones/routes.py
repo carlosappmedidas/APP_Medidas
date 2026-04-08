@@ -41,43 +41,71 @@ def _assert_not_viewer(user: User) -> None:
 # ── Configuraciones ───────────────────────────────────────────────────────────
 
 @router.get("/configs", response_model=List[FtpConfigRead])
-def get_configs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_configs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     return services.list_configs(db, tenant_id=_tenant_id(current_user))
 
 
 @router.post("/configs", response_model=FtpConfigRead, status_code=status.HTTP_201_CREATED)
-def create_config(payload: FtpConfigCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_config(
+    payload: FtpConfigCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     try:
         return services.create_config(
-            db, tenant_id=_tenant_id(current_user), empresa_id=payload.empresa_id,
-            nombre=payload.nombre, host=payload.host, puerto=payload.puerto,
-            usuario=payload.usuario, password=payload.password,
+            db,
+            tenant_id=_tenant_id(current_user),
+            empresa_id=payload.empresa_id,
+            nombre=payload.nombre,
+            host=payload.host,
+            puerto=payload.puerto,
+            usuario=payload.usuario,
+            password=payload.password,
             directorio_remoto=payload.directorio_remoto,
-            usar_tls=payload.usar_tls, activo=payload.activo,
+            usar_tls=payload.usar_tls,
+            activo=payload.activo,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.patch("/configs/{config_id}", response_model=FtpConfigRead)
-def update_config(config_id: int, payload: FtpConfigUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_config(
+    config_id: int,
+    payload: FtpConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     try:
         return services.update_config(
-            db, config_id=config_id, tenant_id=_tenant_id(current_user),
-            nombre=payload.nombre, host=payload.host, puerto=payload.puerto,
-            usuario=payload.usuario, password=payload.password,
+            db,
+            config_id=config_id,
+            tenant_id=_tenant_id(current_user),
+            nombre=payload.nombre,
+            host=payload.host,
+            puerto=payload.puerto,
+            usuario=payload.usuario,
+            password=payload.password,
             directorio_remoto=payload.directorio_remoto,
-            usar_tls=payload.usar_tls, activo=payload.activo,
+            usar_tls=payload.usar_tls,
+            activo=payload.activo,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_config(config_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def delete_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     try:
         services.delete_config(db, config_id=config_id, tenant_id=_tenant_id(current_user))
@@ -89,7 +117,11 @@ def delete_config(config_id: int, db: Session = Depends(get_db), current_user: U
 # ── Test conexión ─────────────────────────────────────────────────────────────
 
 @router.post("/test/{config_id}", response_model=TestResponse)
-def test_conexion(config_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def test_conexion(
+    config_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     ok, msg = services.test_conexion(db, config_id=config_id, tenant_id=_tenant_id(current_user))
     return TestResponse(ok=ok, message=msg)
@@ -110,8 +142,13 @@ def explorar_path(
     _assert_not_viewer(current_user)
     try:
         return services.listar_path(
-            db, config_id=config_id, tenant_id=_tenant_id(current_user),
-            path=path, filtro_nombre=filtro_nombre, filtro_mes=filtro_mes, limite=limite,
+            db,
+            config_id=config_id,
+            tenant_id=_tenant_id(current_user),
+            path=path,
+            filtro_nombre=filtro_nombre,
+            filtro_mes=filtro_mes,
+            limite=limite,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
@@ -127,14 +164,22 @@ class DescargarConPathPayload(BaseModel):
 
 
 @router.post("/descargar/{config_id}", response_model=DescargarResponse)
-def descargar_ficheros(config_id: int, payload: DescargarConPathPayload, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def descargar_ficheros(
+    config_id: int,
+    payload: DescargarConPathPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     if not payload.ficheros:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se indicaron ficheros")
     try:
         descargados, errores, detalle = services.descargar_ficheros(
-            db, config_id=config_id, tenant_id=_tenant_id(current_user),
-            path=payload.path, nombres=payload.ficheros,
+            db,
+            config_id=config_id,
+            tenant_id=_tenant_id(current_user),
+            path=payload.path,
+            nombres=payload.ficheros,
         )
         return DescargarResponse(descargados=descargados, errores=errores, detalle=detalle)
     except ValueError as e:
@@ -147,7 +192,7 @@ def descargar_ficheros(config_id: int, payload: DescargarConPathPayload, db: Ses
 
 @router.get("/rules", response_model=List[FtpSyncRuleRead])
 def get_rules(
-    config_id: Optional[int] = Query(None, description="Filtrar por conexión"),
+    config_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -156,35 +201,56 @@ def get_rules(
 
 
 @router.post("/rules", response_model=FtpSyncRuleRead, status_code=status.HTTP_201_CREATED)
-def create_rule(payload: FtpSyncRuleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_rule(
+    payload: FtpSyncRuleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     try:
         return services.create_rule(
-            db, tenant_id=_tenant_id(current_user), config_id=payload.config_id,
-            nombre=payload.nombre, directorio=payload.directorio,
+            db,
+            tenant_id=_tenant_id(current_user),
+            config_id=payload.config_id,
+            nombre=payload.nombre,
+            directorio=payload.directorio,
             patron_nombre=payload.patron_nombre,
-            intervalo_horas=payload.intervalo_horas, activo=payload.activo,
+            intervalo_horas=payload.intervalo_horas,
+            activo=payload.activo,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.patch("/rules/{rule_id}", response_model=FtpSyncRuleRead)
-def update_rule(rule_id: int, payload: FtpSyncRuleUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_rule(
+    rule_id: int,
+    payload: FtpSyncRuleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     try:
         return services.update_rule(
-            db, rule_id=rule_id, tenant_id=_tenant_id(current_user),
-            nombre=payload.nombre, directorio=payload.directorio,
+            db,
+            rule_id=rule_id,
+            tenant_id=_tenant_id(current_user),
+            nombre=payload.nombre,
+            directorio=payload.directorio,
             patron_nombre=payload.patron_nombre,
-            intervalo_horas=payload.intervalo_horas, activo=payload.activo,
+            intervalo_horas=payload.intervalo_horas,
+            activo=payload.activo,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_rule(rule_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def delete_rule(
+    rule_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _assert_not_viewer(current_user)
     try:
         services.delete_rule(db, rule_id=rule_id, tenant_id=_tenant_id(current_user))
@@ -194,8 +260,12 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db), current_user: User 
 
 
 @router.post("/rules/{rule_id}/ejecutar", response_model=DescargarResponse)
-def ejecutar_regla_manual(rule_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Ejecuta una regla ahora mismo de forma manual (sin esperar al scheduler)."""
+def ejecutar_regla_manual(
+    rule_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ejecuta una regla ahora mismo sin esperar al scheduler."""
     _assert_not_viewer(current_user)
     try:
         descargados, errores, detalle = services.ejecutar_regla(db, rule_id=rule_id)
@@ -206,14 +276,57 @@ def ejecutar_regla_manual(rule_id: int, db: Session = Depends(get_db), current_u
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
-# ── Historial (separado por origen) ──────────────────────────────────────────
+# ── Historial ─────────────────────────────────────────────────────────────────
 
 @router.get("/logs", response_model=List[FtpSyncLogRead])
 def get_logs(
     origen: Optional[str] = Query(None, description="'manual' o 'auto'"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(500, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
     return services.list_logs(db, tenant_id=_tenant_id(current_user), origen=origen, limit=limit)
+
+
+# ── Borrado de logs ───────────────────────────────────────────────────────────
+
+@router.delete("/logs/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_log(
+    log_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Borra un registro concreto del historial.
+    Si el registro era de origen 'auto', el scheduler olvidará ese fichero
+    y lo volverá a descargar en la próxima ejecución.
+    """
+    _assert_not_viewer(current_user)
+    try:
+        services.delete_log_by_id(db, log_id=log_id, tenant_id=_tenant_id(current_user))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    return None
+
+
+@router.delete("/logs", status_code=status.HTTP_200_OK)
+def delete_logs(
+    origen: Optional[str] = Query(None, description="'auto' | 'manual' | None = todos"),
+    dias: Optional[int] = Query(None, description="Borrar registros con más de N días de antigüedad. None = borrar todos"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Borra logs masivamente con filtros opcionales.
+    Advertencia: borrar logs de origen 'auto' hace que el scheduler
+    vuelva a descargar esos ficheros en la próxima ejecución.
+    """
+    _assert_not_viewer(current_user)
+    count = services.delete_logs(
+        db,
+        tenant_id=_tenant_id(current_user),
+        origen=origen,
+        dias=dias,
+    )
+    return {"deleted": count}
