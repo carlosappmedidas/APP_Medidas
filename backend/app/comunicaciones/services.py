@@ -737,7 +737,6 @@ def delete_logs(
     Borra logs masivamente con filtros opcionales.
     - origen: "auto" | "manual" | None = todos
     - dias: borra registros con created_at < ahora - dias días
-            None = borra todos sin límite de fecha
     Devuelve el número de registros borrados.
     """
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
@@ -757,7 +756,8 @@ def delete_logs(
 def get_dashboard(db: Session, *, tenant_id: int) -> dict:
     """
     Calcula métricas globales y por conexión para el dashboard de comunicaciones.
-    Todos los cálculos son en UTC — el frontend formatea las fechas.
+    Incluye datos separados de descarga automática y manual, y el motivo del
+    último error por conexión para mostrar en tooltip.
     """
     hoy_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -770,19 +770,32 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
         FtpSyncLog.created_at >= hoy_inicio,
     ).all()
 
+    # Logs de esta semana (todos)
+    semana_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    semana_inicio = semana_inicio - timedelta(days=semana_inicio.weekday())
+    logs_semana = db.query(FtpSyncLog).filter(
+        FtpSyncLog.tenant_id == tenant_id,
+        FtpSyncLog.created_at >= semana_inicio,
+    ).all()
+
     # Última descarga OK global
-    ultimo_ok = (
+    ultimo_ok_global = (
         db.query(FtpSyncLog)
         .filter(FtpSyncLog.tenant_id == tenant_id, FtpSyncLog.estado == "ok")
         .order_by(FtpSyncLog.created_at.desc())
         .first()
     )
 
-    # Métricas globales
-    total_descargados_hoy = sum(1 for log in logs_hoy if log.estado == "ok")
-    total_errores_hoy     = sum(1 for log in logs_hoy if log.estado == "error")
+    # Métricas globales separadas por origen
+    auto_hoy    = sum(1 for log in logs_hoy if log.estado == "ok" and log.origen == "auto")
+    manual_hoy  = sum(1 for log in logs_hoy if log.estado == "ok" and log.origen == "manual")
+    errores_hoy = sum(1 for log in logs_hoy if log.estado == "error")
 
-    # Próxima sync global — la más próxima entre todas las reglas activas
+    auto_semana    = sum(1 for log in logs_semana if log.estado == "ok" and log.origen == "auto")
+    manual_semana  = sum(1 for log in logs_semana if log.estado == "ok" and log.origen == "manual")
+    errores_semana = sum(1 for log in logs_semana if log.estado == "error")
+
+    # Próxima sync global
     proximas = [r.proxima_ejecucion for r in rules if r.activo and r.proxima_ejecucion]
     proxima_sync_global = min(proximas, default=None)
 
@@ -801,10 +814,18 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
             default=None,
         )
 
-        # Último fichero OK de esta conexión
+        # Último OK de esta conexión
         ultimo_ok_config = (
             db.query(FtpSyncLog)
             .filter(FtpSyncLog.config_id == c.id, FtpSyncLog.estado == "ok")
+            .order_by(FtpSyncLog.created_at.desc())
+            .first()
+        )
+
+        # Último ERROR de esta conexión — para mostrar en tooltip
+        ultimo_error_config = (
+            db.query(FtpSyncLog)
+            .filter(FtpSyncLog.config_id == c.id, FtpSyncLog.estado == "error")
             .order_by(FtpSyncLog.created_at.desc())
             .first()
         )
@@ -820,22 +841,38 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
             "activo":           c.activo,
             "reglas_activas":   len(reglas_config),
             "sync_auto":        len(reglas_config) > 0,
-            "descargados_hoy":  sum(1 for log in logs_config_hoy if log.estado == "ok"),
+            # Métricas de hoy separadas
+            "auto_hoy":         sum(1 for log in logs_config_hoy if log.estado == "ok" and log.origen == "auto"),
+            "manual_hoy":       sum(1 for log in logs_config_hoy if log.estado == "ok" and log.origen == "manual"),
             "errores_hoy":      sum(1 for log in logs_config_hoy if log.estado == "error"),
+            # Último OK
             "ultimo_ok":        ultimo_ok_config.created_at if ultimo_ok_config else None,
             "ultimo_fichero":   ultimo_ok_config.nombre_fichero if ultimo_ok_config else None,
+            # Sync
             "proxima_sync":     proxima_sync_config,
             "ultima_ejecucion": ultima_ejec_config,
+            # Último error — para tooltip
+            "ultimo_error":         ultimo_error_config.created_at if ultimo_error_config else None,
+            "ultimo_error_msg":     ultimo_error_config.mensaje_error if ultimo_error_config else None,
+            "ultimo_error_fichero": ultimo_error_config.nombre_fichero if ultimo_error_config else None,
         })
 
     return {
         "scheduler_activo":      True,
         "conexiones_activas":    sum(1 for c in configs if c.activo),
         "reglas_activas":        sum(1 for r in rules if r.activo),
-        "total_descargados_hoy": total_descargados_hoy,
-        "total_errores_hoy":     total_errores_hoy,
-        "ultima_descarga":       ultimo_ok.created_at if ultimo_ok else None,
-        "ultimo_fichero":        ultimo_ok.nombre_fichero if ultimo_ok else None,
+        # Métricas globales separadas por origen
+        "auto_hoy":              auto_hoy,
+        "manual_hoy":            manual_hoy,
+        "errores_hoy":           errores_hoy,
+        "auto_semana":           auto_semana,
+        "manual_semana":         manual_semana,
+        "errores_semana":        errores_semana,
+        # Compatibilidad con campos anteriores
+        "total_descargados_hoy": auto_hoy + manual_hoy,
+        "total_errores_hoy":     errores_hoy,
+        "ultima_descarga":       ultimo_ok_global.created_at if ultimo_ok_global else None,
+        "ultimo_fichero":        ultimo_ok_global.nombre_fichero if ultimo_ok_global else None,
         "proxima_sync_global":   proxima_sync_global,
         "conexiones":            conexiones,
     }

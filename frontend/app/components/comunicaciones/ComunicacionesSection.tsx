@@ -88,18 +88,28 @@ interface DashboardConexion {
   activo: boolean;
   sync_auto: boolean;
   reglas_activas: number;
-  descargados_hoy: number;
+  auto_hoy: number;
+  manual_hoy: number;
   errores_hoy: number;
   ultimo_ok: string | null;
   ultimo_fichero: string | null;
   proxima_sync: string | null;
   ultima_ejecucion: string | null;
+  ultimo_error: string | null;
+  ultimo_error_msg: string | null;
+  ultimo_error_fichero: string | null;
 }
 
 interface DashboardData {
   scheduler_activo: boolean;
   conexiones_activas: number;
   reglas_activas: number;
+  auto_hoy: number;
+  manual_hoy: number;
+  errores_hoy: number;
+  auto_semana: number;
+  manual_semana: number;
+  errores_semana: number;
   total_descargados_hoy: number;
   total_errores_hoy: number;
   ultima_descarga: string | null;
@@ -272,7 +282,7 @@ const subPanelHeaderStyle: React.CSSProperties = {
   background: "var(--field-bg-soft)",
 };
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+// ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function ComunicacionesSection({ token }: Props) {
 
@@ -294,6 +304,7 @@ export default function ComunicacionesSection({ token }: Props) {
   const [dashboard, setDashboard]     = useState<DashboardData | null>(null);
   const [loadingDash, setLoadingDash] = useState(false);
   const [errorDash, setErrorDash]     = useState<string | null>(null);
+  const [tooltipId, setTooltipId]     = useState<number | null>(null);
 
   // Configs
   const [configs, setConfigs]               = useState<FtpConfig[]>([]);
@@ -723,53 +734,29 @@ export default function ComunicacionesSection({ token }: Props) {
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorDash && <div className="ui-alert ui-alert--danger mb-3">{errorDash}</div>}
             {loadingDash && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>
-                Cargando...
-              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>Cargando...</div>
             )}
             {dashboard && (
               <>
-                {/* Métricas globales */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
-                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Conexiones activas</div>
-                    <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.conexiones_activas}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                      {dashboard.conexiones.filter(c => c.usar_tls).length} TLS · {dashboard.conexiones.filter(c => !c.usar_tls).length} FTP
+                {/* Barra global compacta */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--field-bg-soft)", borderRadius: 8, padding: "8px 16px", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#1D9E75" }} />
+                      <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>Scheduler activo</span>
                     </div>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      {dashboard.conexiones_activas} conexiones · {dashboard.reglas_activas} reglas
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      Próxima sync: <strong style={{ color: "var(--text)" }}>
+                        {dashboard.proxima_sync_global ? fmtDate(dashboard.proxima_sync_global) : "—"}
+                      </strong>
+                    </span>
                   </div>
-                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Descargados hoy</div>
-                    <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.total_descargados_hoy}</div>
-                    <div style={{ fontSize: 10, color: dashboard.total_errores_hoy > 0 ? "var(--color-text-danger, #E24B4A)" : "var(--text-muted)", marginTop: 3 }}>
-                      {dashboard.total_errores_hoy > 0 ? `${dashboard.total_errores_hoy} errores` : "sin errores"}
-                    </div>
-                  </div>
-                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Scheduler</div>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: "#1D9E75", marginTop: 4 }}>● Activo</div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                      {dashboard.reglas_activas} regla{dashboard.reglas_activas !== 1 ? "s" : ""} activa{dashboard.reglas_activas !== 1 ? "s" : ""}
-                    </div>
-                  </div>
-                  <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>Próxima sync</div>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", marginTop: 4 }}>
-                      {dashboard.proxima_sync_global ? fmtDate(dashboard.proxima_sync_global) : "—"}
-                    </div>
-                    {dashboard.ultima_descarga && (
-                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                        Última: {fmtDate(dashboard.ultima_descarga)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Estado por conexión */}
-                <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Estado de conexiones
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                      {dashboard.ultima_descarga ? `Última: ${fmtDate(dashboard.ultima_descarga)}` : ""}
                     </span>
                     <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
                       style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}
@@ -777,81 +764,213 @@ export default function ComunicacionesSection({ token }: Props) {
                       <IconRefresh /> Actualizar
                     </button>
                   </div>
+                </div>
+
+                {/* Dos bloques: Auto y Manual */}
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 12, marginBottom: 14 }}>
+
+                  {/* Automático */}
+                  <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>Descarga automática</span>
+                      <span style={{ fontSize: 10, background: "var(--color-background-success, #E1F5EE)", color: "var(--color-text-success, #0F6E56)", padding: "2px 8px", borderRadius: 6 }}>
+                        {dashboard.reglas_activas} regla{dashboard.reglas_activas !== 1 ? "s" : ""} ON
+                      </span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Hoy</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.auto_hoy}</div>
+                        <div style={{ fontSize: 10, color: dashboard.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)", marginTop: 2 }}>
+                          {dashboard.errores_hoy > 0 ? `${dashboard.errores_hoy} err.` : "sin errores"}
+                        </div>
+                      </div>
+                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Semana</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.auto_semana}</div>
+                        <div style={{ fontSize: 10, color: dashboard.errores_semana > 0 ? "#E24B4A" : "var(--text-muted)", marginTop: 2 }}>
+                          {dashboard.errores_semana > 0 ? `${dashboard.errores_semana} err.` : "sin errores"}
+                        </div>
+                      </div>
+                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Total</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>
+                          {(dashboard.auto_hoy + dashboard.auto_semana).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>acumulado</div>
+                      </div>
+                    </div>
+                    {/* Últimas ejecuciones */}
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Últimas ejecuciones</div>
+                    {dashboard.conexiones.filter(c => c.sync_auto && c.ultima_ejecucion).slice(0, 2).map(c => (
+                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
+                        <span style={{ color: "var(--text)" }}>{c.nombre || c.empresa_nombre}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{fmtDate(c.ultima_ejecucion)} · {c.auto_hoy} ficheros</span>
+                      </div>
+                    ))}
+                    {dashboard.conexiones.filter(c => c.sync_auto).length === 0 && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin reglas automáticas configuradas</div>
+                    )}
+                  </div>
+
+                  {/* Manual */}
+                  <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>Descarga manual</span>
+                      <span style={{ fontSize: 10, background: "var(--field-bg-soft)", color: "var(--text-muted)", padding: "2px 8px", borderRadius: 6, border: "0.5px solid var(--card-border)" }}>
+                        Bajo demanda
+                      </span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Hoy</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.manual_hoy}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>ficheros</div>
+                      </div>
+                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Semana</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>{dashboard.manual_semana}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>ficheros</div>
+                      </div>
+                      <div style={{ background: "var(--field-bg-soft)", borderRadius: 6, padding: "10px" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>Total</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, color: "var(--text)" }}>
+                          {(dashboard.manual_hoy + dashboard.manual_semana).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>acumulado</div>
+                      </div>
+                    </div>
+                    {/* Últimas descargas manuales */}
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Últimas descargas manuales</div>
+                    {dashboard.conexiones.filter(c => c.manual_hoy > 0).slice(0, 2).map(c => (
+                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
+                        <span style={{ color: "var(--text)" }}>{c.nombre || c.empresa_nombre}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{c.manual_hoy} ficheros hoy</span>
+                      </div>
+                    ))}
+                    {dashboard.ultimo_fichero && (
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Último: {dashboard.ultimo_fichero}
+                      </div>
+                    )}
+                    {dashboard.manual_hoy === 0 && dashboard.manual_semana === 0 && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin descargas manuales esta semana</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tabla de conexiones con tooltip en errores */}
+                <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "10px 1fr 1fr 60px 60px 60px 110px 140px", gap: 10, padding: "8px 14px", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)", alignItems: "center" }}>
+                    <div />
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Empresa</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Conexión</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Auto</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Manual</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>Errores</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Sync</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Próxima / Estado</span>
+                  </div>
+
                   {dashboard.conexiones.length === 0 ? (
                     <div style={{ padding: "20px 14px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
                       Sin conexiones configuradas
                     </div>
-                  ) : dashboard.conexiones.map(c => (
-                    <div key={c.id} style={{
-                      display: "grid",
-                      gridTemplateColumns: "10px 1fr 70px 70px 130px 150px",
-                      gap: 12, padding: "10px 14px",
-                      borderTop: "1px solid var(--card-border)",
-                      alignItems: "center",
-                    }}>
-                      {/* Indicador color */}
-                      <div style={{
-                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                        background: !c.activo ? "#888" : c.errores_hoy > 0 ? "#E24B4A" : "#1D9E75",
-                      }} />
-                      {/* Nombre + host */}
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>
-                          {c.nombre || c.empresa_nombre}
-                          {c.nombre && (
-                            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
-                              {c.empresa_nombre}
-                            </span>
+                  ) : dashboard.conexiones.map(c => {
+                    const tieneError = c.errores_hoy > 0 || (c.ultimo_error_msg !== null && c.ultimo_ok === null);
+                    const dotColor = !c.activo ? "#888" : tieneError ? "#E24B4A" : "#1D9E75";
+                    return (
+                      <div key={c.id} style={{
+                        display: "grid",
+                        gridTemplateColumns: "10px 1fr 1fr 60px 60px 60px 110px 140px",
+                        gap: 10, padding: "10px 14px",
+                        borderTop: "1px solid var(--card-border)",
+                        alignItems: "center",
+                        background: tieneError ? "var(--color-background-danger, #FCEBEB)" : undefined,
+                      }}>
+                        {/* Punto de color con tooltip en errores */}
+                        <div style={{ position: "relative" }}
+                          onMouseEnter={() => c.ultimo_error_msg ? setTooltipId(c.id) : undefined}
+                          onMouseLeave={() => setTooltipId(null)}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, cursor: c.ultimo_error_msg ? "help" : "default" }} />
+                          {tooltipId === c.id && c.ultimo_error_msg && (
+                            <div style={{
+                              position: "absolute", left: 14, top: -4, zIndex: 50,
+                              background: "var(--card-bg)", border: "1px solid var(--card-border)",
+                              borderRadius: 6, padding: "8px 10px", minWidth: 220, maxWidth: 320,
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                            }}>
+                              <div style={{ fontSize: 10, fontWeight: 600, color: "#E24B4A", marginBottom: 4 }}>
+                                Último error · {fmtDate(c.ultimo_error)}
+                              </div>
+                              {c.ultimo_error_fichero && (
+                                <div style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)", marginBottom: 4, wordBreak: "break-all" }}>
+                                  {c.ultimo_error_fichero}
+                                </div>
+                              )}
+                              <div style={{ fontSize: 11, color: "var(--text)", wordBreak: "break-word" }}>
+                                {c.ultimo_error_msg}
+                              </div>
+                            </div>
                           )}
                         </div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                          {c.host}:{c.puerto} · {c.usar_tls ? "TLS" : "FTP"}
+
+                        {/* Empresa */}
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)" }}>
+                            {c.empresa_nombre}
+                          </div>
                         </div>
-                      </div>
-                      {/* Descargados hoy */}
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>{c.descargados_hoy}</div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>hoy</div>
-                      </div>
-                      {/* Errores hoy */}
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: c.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)" }}>
+
+                        {/* Conexión */}
+                        <div style={{ fontSize: 10, color: tieneError ? "#E24B4A" : "var(--text-muted)" }}>
+                          {c.nombre || `${c.host}:${c.puerto}`} · {c.usar_tls ? "TLS" : "FTP"}
+                        </div>
+
+                        {/* Auto hoy */}
+                        <div style={{ fontSize: 12, fontWeight: 500, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>
+                          {c.auto_hoy}
+                        </div>
+
+                        {/* Manual hoy */}
+                        <div style={{ fontSize: 12, color: tieneError ? "#E24B4A" : "var(--text)", textAlign: "right" }}>
+                          {c.manual_hoy}
+                        </div>
+
+                        {/* Errores hoy */}
+                        <div style={{ fontSize: 12, fontWeight: 500, color: c.errores_hoy > 0 ? "#E24B4A" : "var(--text-muted)", textAlign: "right" }}>
                           {c.errores_hoy}
                         </div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>errores</div>
+
+                        {/* Sync */}
+                        <div style={{ fontSize: 10 }}>
+                          {c.sync_auto ? (
+                            <span style={{ color: tieneError ? "#E24B4A" : "#1D9E75" }}>
+                              Auto · {c.reglas_activas}h
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)" }}>Solo manual</span>
+                          )}
+                          {c.ultima_ejecucion && (
+                            <div style={{ color: "var(--text-muted)", marginTop: 2, fontSize: 9 }}>
+                              Ejec: {fmtDate(c.ultima_ejecucion)}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Próxima / Última OK */}
+                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {c.proxima_sync ? (
+                            <div>Próx: {fmtDate(c.proxima_sync)}</div>
+                          ) : c.ultimo_ok ? (
+                            <div>Última OK: {fmtDate(c.ultimo_ok)}</div>
+                          ) : (
+                            <span style={{ color: "#E24B4A" }}>Sin descargas OK</span>
+                          )}
+                        </div>
                       </div>
-                      {/* Sync */}
-                      <div style={{ fontSize: 10 }}>
-                        {c.sync_auto ? (
-                          <span style={{ color: "#1D9E75" }}>
-                            Auto · {c.reglas_activas} regla{c.reglas_activas !== 1 ? "s" : ""}
-                          </span>
-                        ) : (
-                          <span style={{ color: "var(--text-muted)" }}>Solo manual</span>
-                        )}
-                        {c.ultima_ejecucion && (
-                          <div style={{ color: "var(--text-muted)", marginTop: 2 }}>
-                            Ejec: {fmtDate(c.ultima_ejecucion)}
-                          </div>
-                        )}
-                      </div>
-                      {/* Próxima / Última OK */}
-                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                        {c.proxima_sync ? (
-                          <div>Próx: {fmtDate(c.proxima_sync)}</div>
-                        ) : c.ultimo_ok ? (
-                          <div>Última OK: {fmtDate(c.ultimo_ok)}</div>
-                        ) : (
-                          <span>—</span>
-                        )}
-                        {c.ultimo_fichero && (
-                          <div style={{ fontSize: 9, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>
-                            {c.ultimo_fichero}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
