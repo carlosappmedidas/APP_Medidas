@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Clave Fernet para cifrar contraseñas FTP
     FTP_SECRET_KEY: str = ""
+    FTP_TZ_OFFSET: int = 2
 
     model_config = SettingsConfigDict(
         env_file=".env",

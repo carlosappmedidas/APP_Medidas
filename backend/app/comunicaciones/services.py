@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import ftplib
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -190,17 +190,21 @@ def _get_config_by_empresa(db: Session, *, empresa_id: int, tenant_id: int) -> F
 
 # ── Conexión FTPS ─────────────────────────────────────────────────────────────
 
-def _conectar(config: FtpConfig) -> _FTPSReuse:
+def _conectar_en_path(config: FtpConfig, path: str) -> _FTPSReuse:
     ftp = _FTPSReuse()
     ftp.connect(str(config.host), int(config.puerto), timeout=30)
     ftp.auth()
     ftp.login(str(config.usuario), descifrar_password(str(config.password_cifrada)))
     ftp.prot_p()
     ftp.set_pasv(True)
-    directorio = str(config.directorio_remoto or "/").strip()
-    if directorio and directorio != "/":
-        ftp.cwd(directorio)
+    clean = path.strip() or "/"
+    if clean != "/":
+        ftp.cwd(clean)
     return ftp
+
+
+def _directorio_base(config: FtpConfig) -> str:
+    return str(config.directorio_remoto or "/").strip() or "/"
 
 
 # ── Test conexión ─────────────────────────────────────────────────────────────
@@ -208,7 +212,7 @@ def _conectar(config: FtpConfig) -> _FTPSReuse:
 def test_conexion(db: Session, *, config_id: int, tenant_id: int) -> Tuple[bool, str]:
     try:
         config = _get_config_or_raise(db, config_id=config_id, tenant_id=tenant_id)
-        ftp = _conectar(config)
+        ftp = _conectar_en_path(config, _directorio_base(config))
         bienvenida = ftp.getwelcome()
         ftp.quit()
         return True, f"Conexión exitosa · {bienvenida[:80]}"
@@ -220,38 +224,120 @@ def test_conexion(db: Session, *, config_id: int, tenant_id: int) -> Tuple[bool,
         return False, f"Error: {str(e)[:200]}"
 
 
-# ── Listar ficheros remotos ───────────────────────────────────────────────────
+# ── Zona horaria FTP ──────────────────────────────────────────────────────────
+
+def _get_tz_offset() -> int:
+    try:
+        from app.core.config import get_settings
+        val = getattr(get_settings(), "FTP_TZ_OFFSET", 2)
+        return int(val)
+    except Exception:
+        return 2
+
+
+def _aplicar_tz(hora_utc: str) -> str:
+    try:
+        h, m = hora_utc.split(":")
+        dt = datetime(2000, 1, 1, int(h), int(m)) + timedelta(hours=_get_tz_offset())
+        return f"{dt.hour:02d}:{dt.minute:02d}"
+    except Exception:
+        return hora_utc
+
+
+# ── Parsear línea LIST ────────────────────────────────────────────────────────
 
 def _parse_list_line(linea: str) -> Optional[dict]:
-    """Parsea línea LIST formato Unix: -rw-rw-rw- 1 user group SIZE MES DIA HORA NOMBRE"""
+    """
+    Parsea línea LIST Unix: -rw-rw-rw- 1 user group SIZE MES DIA HORA NOMBRE
+    """
     partes = linea.split()
     if len(partes) < 9:
         return None
-    if not partes[0].startswith("-"):
-        return None  # directorio u otro tipo
+    permisos = partes[0]
+    if permisos.startswith("d"):
+        tipo = "dir"
+    elif permisos.startswith("-"):
+        tipo = "file"
+    else:
+        return None
     try:
         tamanio = int(partes[4])
     except ValueError:
         tamanio = 0
     nombre = " ".join(partes[8:])
-    fecha_str = f"{partes[5]} {partes[6]} {partes[7]}"
-    return {"nombre": nombre, "tamanio": tamanio, "fecha": fecha_str}
+    if nombre in (".", ".."):
+        return None
+
+    mes_str = partes[5]
+    dia_str = partes[6]
+    tercero = partes[7]
+
+    meses = {
+        "Jan": "01", "Feb": "02", "Mar": "03", "Apr": "04",
+        "May": "05", "Jun": "06", "Jul": "07", "Aug": "08",
+        "Sep": "09", "Oct": "10", "Nov": "11", "Dec": "12",
+    }
+    mes_num = meses.get(mes_str, "00")
+    dia_num = dia_str.zfill(2)
+
+    if ":" in tercero:
+        hora_local = _aplicar_tz(tercero)
+        anio_num = str(datetime.now().year)
+        hora_num = hora_local.replace(":", "")
+        fecha_str = f"{mes_str} {dia_str} {hora_local}"
+    else:
+        anio_num = tercero.zfill(4)
+        hora_num = "0000"
+        fecha_str = f"{mes_str} {dia_str} {tercero}"
+
+    fecha_sort = f"{anio_num}{mes_num}{dia_num}{hora_num}"
+    # YYYYMM para filtro por mes — ej: "202604"
+    fecha_mes_key = f"{anio_num}{mes_num}"
+
+    return {
+        "tipo": tipo,
+        "nombre": nombre,
+        "tamanio": tamanio,
+        "fecha": fecha_str,
+        "fecha_sort": fecha_sort,
+        "fecha_mes_key": fecha_mes_key,
+    }
 
 
-def listar_ficheros(
+# ── Listar contenido de un path (carpetas + ficheros) ─────────────────────────
+
+def listar_path(
     db: Session, *,
     empresa_id: int,
     tenant_id: int,
-    filtro: Optional[str] = None,
-    limite: int = 1000,
-) -> List[dict]:
+    path: str,
+    filtro_nombre: Optional[str] = None,
+    filtro_mes: Optional[str] = None,
+    limite: int = 5000,
+) -> dict:
     """
-    Lista ficheros del FTP remoto.
-    - Si se pasa filtro, solo devuelve ficheros cuyo nombre contiene el texto.
-    - Siempre limita a los últimos `limite` ficheros ordenados por nombre descendente.
+    Lista el contenido de un path FTP remoto.
+    - filtro_nombre: texto libre que se busca en el nombre del fichero
+    - filtro_mes: mes en formato YYYY-MM (ej: 2026-04) — filtra por mes y año
+    - Los dos filtros se aplican combinados (AND)
     """
     config = _get_config_by_empresa(db, empresa_id=empresa_id, tenant_id=tenant_id)
-    ftp = _conectar(config)
+
+    partes_path = path.rstrip("/").rsplit("/", 1)
+    path_padre = partes_path[0] if len(partes_path) > 1 and partes_path[0] else "/"
+
+    # Convertir filtro_mes YYYY-MM → YYYYMM para comparar con fecha_mes_key
+    mes_key: Optional[str] = None
+    if filtro_mes and filtro_mes.strip():
+        try:
+            partes_mes = filtro_mes.strip().split("-")
+            if len(partes_mes) == 2:
+                mes_key = f"{partes_mes[0]}{partes_mes[1].zfill(2)}"
+        except Exception:
+            pass
+
+    ftp = _conectar_en_path(config, path)
+    carpetas: List[dict] = []
     ficheros: List[dict] = []
 
     try:
@@ -262,10 +348,24 @@ def listar_ficheros(
             parsed = _parse_list_line(linea)
             if not parsed:
                 continue
-            # Aplicar filtro por nombre si se proporcionó
-            if filtro and filtro.lower() not in parsed["nombre"].lower():
-                continue
-            ficheros.append(parsed)
+            if parsed["tipo"] == "dir":
+                carpetas.append({
+                    "nombre": parsed["nombre"],
+                    "path": f"{path.rstrip('/')}/{parsed['nombre']}",
+                })
+            else:
+                # Filtro por nombre — texto libre en el nombre del fichero
+                if filtro_nombre and filtro_nombre.strip().lower() not in parsed["nombre"].lower():
+                    continue
+                # Filtro por mes — coincidencia exacta YYYYMM
+                if mes_key and parsed["fecha_mes_key"] != mes_key:
+                    continue
+                ficheros.append({
+                    "nombre": parsed["nombre"],
+                    "tamanio": parsed["tamanio"],
+                    "fecha": parsed["fecha"],
+                    "fecha_sort": parsed["fecha_sort"],
+                })
 
     finally:
         try:
@@ -273,11 +373,19 @@ def listar_ficheros(
         except Exception:
             pass
 
-    # Ordenar por nombre descendente (los más recientes suelen tener fecha en el nombre)
-    ficheros.sort(key=lambda f: f["nombre"], reverse=True)
+    carpetas.sort(key=lambda c: c["nombre"])
+    ficheros.sort(key=lambda f: f["fecha_sort"], reverse=True)
 
-    # Limitar al número máximo solicitado
-    return ficheros[:limite]
+    for f in ficheros:
+        f.pop("fecha_sort", None)
+
+    return {
+        "path_actual": path,
+        "path_padre": path_padre,
+        "carpetas": carpetas,
+        "ficheros": ficheros[:limite],
+        "total_ficheros": len(ficheros),
+    }
 
 
 # ── Descargar ficheros ────────────────────────────────────────────────────────
@@ -292,6 +400,7 @@ def descargar_ficheros(
     db: Session, *,
     empresa_id: int,
     tenant_id: int,
+    path: str,
     nombres: List[str],
 ) -> Tuple[int, int, List[str]]:
     config = _get_config_by_empresa(db, empresa_id=empresa_id, tenant_id=tenant_id)
@@ -302,7 +411,7 @@ def descargar_ficheros(
     errores = 0
     detalle: List[str] = []
 
-    ftp = _conectar(config)
+    ftp = _conectar_en_path(config, path)
     try:
         for nombre in nombres:
             try:

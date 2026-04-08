@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -14,12 +15,10 @@ from app.empresas.models import Empresa
 from app.tenants.models import User
 from app.comunicaciones import services
 from app.comunicaciones.schemas import (
-    DescargarPayload,
     DescargarResponse,
     FtpConfigCreate,
     FtpConfigRead,
     FtpConfigUpdate,
-    FtpFichero,
     FtpSyncLogRead,
     TestResponse,
 )
@@ -146,25 +145,29 @@ def test_conexion(
     return TestResponse(ok=ok, message=msg)
 
 
-# ── Explorador remoto ─────────────────────────────────────────────────────────
+# ── Explorador — listar path (carpetas + ficheros) ────────────────────────────
 
-@router.get("/listar/{empresa_id}", response_model=List[FtpFichero])
-def listar_ficheros(
+@router.get("/explorar/{empresa_id}")
+def explorar_path(
     empresa_id: int,
-    filtro: Optional[str] = Query(None, description="Filtrar por texto en el nombre del fichero"),
-    limite: int = Query(1000, ge=1, le=5000, description="Máximo de ficheros a devolver"),
+    path: str = Query("/", description="Path remoto a listar"),
+    filtro_nombre: Optional[str] = Query(None, description="Filtrar por texto en el nombre del fichero"),
+    filtro_mes: Optional[str] = Query(None, description="Filtrar por mes en formato YYYY-MM (ej: 2026-04)"),
+    limite: int = Query(5000, ge=1, le=10000, description="Máximo ficheros a devolver"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> Any:
     _assert_not_viewer(current_user)
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(current_user, empresa)
     try:
-        return services.listar_ficheros(
+        return services.listar_path(
             db,
             empresa_id=empresa_id,
             tenant_id=_tenant_id(current_user),
-            filtro=filtro,
+            path=path,
+            filtro_nombre=filtro_nombre,
+            filtro_mes=filtro_mes,
             limite=limite,
         )
     except ValueError as e:
@@ -175,10 +178,15 @@ def listar_ficheros(
 
 # ── Descarga ──────────────────────────────────────────────────────────────────
 
+class DescargarConPathPayload(BaseModel):
+    path: str
+    ficheros: List[str]
+
+
 @router.post("/descargar/{empresa_id}", response_model=DescargarResponse)
 def descargar_ficheros(
     empresa_id: int,
-    payload: DescargarPayload,
+    payload: DescargarConPathPayload,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -186,12 +194,13 @@ def descargar_ficheros(
     empresa = _get_empresa_or_404(db, empresa_id)
     _assert_empresa_access(current_user, empresa)
     if not payload.ficheros:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se indicaron ficheros a descargar")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se indicaron ficheros")
     try:
         descargados, errores, detalle = services.descargar_ficheros(
             db,
             empresa_id=empresa_id,
             tenant_id=_tenant_id(current_user),
+            path=payload.path,
             nombres=payload.ficheros,
         )
         return DescargarResponse(descargados=descargados, errores=errores, detalle=detalle)
