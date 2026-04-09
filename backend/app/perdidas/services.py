@@ -163,16 +163,16 @@ def delete_concentrador(db: Session, *, concentrador_id: int, tenant_id: int) ->
 
 def _parse_s02(content: bytes) -> dict:
     """
-    Parsea un fichero S02 XML y extrae:
-    - id_concentrador
-    - id_supervisor (el Cnt con mayor Magn, o Id que empieza por CIR)
-    - magn_supervisor
-    - lecturas por contador
+    Parsea un fichero S02 XML y extrae supervisor y clientes.
 
-    Criterio de supervisor mejorado: se queda con el contador de mayor Magn.
-    Si hay empate a Magn=1, se queda con el que empiece por CIR.
+    Reglas de detección del supervisor:
+    - Si algún contador tiene Magn > 1 → ese es el supervisor (mayor Magn gana)
+    - Si todos tienen Magn = 1 → el PRIMER contador del fichero es el supervisor
+      (el formato S02 siempre pone el contador principal en primer lugar,
+       independientemente del prefijo: CIR, SAG, ZIV, ORM, ORB, KFM, etc.)
     """
     text = content.decode("latin1", errors="replace")
+    # Eliminar namespace XML para compatibilidad versiones 3.x y 4.0
     text = re.sub(r' xmlns[^=]*="[^"]*"', '', text)
     root = ET.fromstring(text.replace("\r", ""))
 
@@ -194,27 +194,17 @@ def _parse_s02(content: bytes) -> dict:
         total_ae = sum(int(s.get("AE", 0)) for s in lecturas) * magn
         horas = len(lecturas)
 
-        es_supervisor = False
         if magn > 1:
-            # Magn > 1 siempre es supervisor
-            es_supervisor = True
-        elif cid.startswith("CIR"):
-            # ID empieza por CIR y Magn=1 → puede ser supervisor
-            es_supervisor = True
-
-        if es_supervisor:
-            # Quedarse con el de mayor Magn (el supervisor real)
+            # Magn > 1 → supervisor seguro. Si hay varios, gana el de mayor Magn.
             if supervisor is None or magn > supervisor["magn"]:
-                supervisor = {
-                    "id":    cid,
-                    "magn":  magn,
-                    "ai":    total_ai,
-                    "ae":    total_ae,
-                    "horas": horas,
-                }
+                if supervisor is not None:
+                    clientes.append({"id": supervisor["id"], "ai": supervisor["ai"], "ae": supervisor["ae"]})
+                supervisor = {"id": cid, "magn": magn, "ai": total_ai, "ae": total_ae, "horas": horas}
             else:
-                # Mismo Magn pero el anterior ya es supervisor, este va como cliente
                 clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
+        elif supervisor is None:
+            # Todos Magn=1 → el primero es el supervisor
+            supervisor = {"id": cid, "magn": magn, "ai": total_ai, "ae": total_ae, "horas": horas}
         else:
             clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
 
@@ -273,6 +263,7 @@ def descubrir_concentradores(
     solo lee el listado del directorio para ser rápido.
     Selecciona el fichero S02 de mayor tamaño por concentrador
     para evitar coger ficheros truncados o parciales.
+    Detecta cualquier prefijo: CIR, ZIV, SAG, ORM, CUR, etc.
     """
     config = db.query(FtpConfig).filter(
         FtpConfig.id == ftp_config_id,
@@ -300,6 +291,7 @@ def descubrir_concentradores(
         if len(partes) < 9:
             continue
         nombre = " ".join(partes[8:])
+        # Detecta cualquier prefijo de 3 letras mayúsculas + dígitos
         m = re.match(r"^([A-Z]{3}\d+)_0_S02_", nombre)
         if m:
             cid = m.group(1)

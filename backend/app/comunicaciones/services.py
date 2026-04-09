@@ -48,6 +48,18 @@ class _FTPSReuse(ftplib.FTP_TLS):
         return conn, size
 
 
+# ── FTP plano con fix NAT — fuerza IP del host en PASV ───────────────────────
+
+class _FTPNatPassive(ftplib.FTP):
+    """
+    FTP pasivo que ignora la IP devuelta por PASV y usa la IP del host.
+    Necesario para servidores FTP detrás de NAT (ej: San José, Las Mercedes).
+    """
+    def makepasv(self):
+        _, port = super().makepasv()
+        return self.host, port
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _nombre_empresa(db: Session, empresa_id: int) -> str:
@@ -309,10 +321,11 @@ def _conectar_en_path(config: FtpConfig, path: str):
         ftp.prot_p()
         ftp.set_pasv(True)
     else:
-        ftp = ftplib.FTP()  # type: ignore
+        # FTP plano: usar modo pasivo con fix NAT (ignora IP del PASV, usa host)
+        ftp = _FTPNatPassive()  # type: ignore
         ftp.connect(str(config.host), int(config.puerto), timeout=30)
         ftp.login(str(config.usuario), password)
-        ftp.set_pasv(False)
+        ftp.set_pasv(True)
     if clean_path != "/":
         ftp.cwd(clean_path)
     return ftp
@@ -381,7 +394,6 @@ def _parse_list_line(linea: str) -> Optional[dict]:
             anio_num = str(ahora.year if fecha_tentativa <= ahora else ahora.year - 1)
         except Exception:
             anio_num = str(ahora.year)
-
         hora_num = hora_local.replace(":", "")
         fecha_str = f"{mes_str} {dia_str} {hora_local}"
     else:
