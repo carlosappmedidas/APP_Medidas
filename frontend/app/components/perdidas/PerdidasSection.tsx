@@ -206,7 +206,7 @@ export default function PerdidasSection({ token }: Props) {
 
   // ── Descubrimiento ────────────────────────────────────────────────────────
   const [descFtpConfigId,      setDescFtpConfigId]      = useState<number | "">("");
-  const [descDirectorio,       setDescDirectorio]        = useState("/202604/");
+  const [descDirectorio,       setDescDirectorio]        = useState("");
   const [descubriendo,         setDescubriendo]         = useState(false);
   const [descubiertos,         setDescubiertos]         = useState<ConcentradorDescubierto[]>([]);
   const [errorDesc,            setErrorDesc]            = useState<string | null>(null);

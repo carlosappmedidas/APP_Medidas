@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import io
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -168,7 +167,6 @@ def _parse_s02(content: bytes) -> dict:
     - id_supervisor (el Cnt con Id que empieza por CIR, o Magn != 1)
     - magn_supervisor
     - lecturas por contador
-    Devuelve un dict con los datos necesarios para calcular pérdidas.
     """
     text = content.decode("latin1", errors="replace")
     root = ET.fromstring(text.replace("\r", ""))
@@ -217,7 +215,7 @@ def _calcular_perdida(supervisor: dict, clientes: list, magn: int) -> dict:  # n
     ai_cli = sum(c["ai"] for c in clientes)
     ae_cli = sum(c["ae"] for c in clientes)
 
-    energia_neta  = ai_sup  # ya viene multiplicado por magn en el parse
+    energia_neta  = ai_sup
     neta_clientes = ai_cli - ae_cli
     perdida_wh    = energia_neta - neta_clientes
 
@@ -243,7 +241,7 @@ def _calcular_perdida(supervisor: dict, clientes: list, magn: int) -> dict:  # n
     }
 
 
-# ── Descubrimiento automático desde FTP ──────────────────────────────────────
+# ── Descubrimiento automático desde FTP — solo listado, sin descargar ─────────
 
 def descubrir_concentradores(
     db: Session, *,
@@ -252,8 +250,10 @@ def descubrir_concentradores(
     directorio: str,
 ) -> List[dict]:
     """
-    Escanea el directorio FTP buscando ficheros S02,
-    descarga uno por concentrador y extrae su configuración.
+    Escanea el directorio FTP buscando ficheros S02 y devuelve la lista
+    de concentradores únicos encontrados. NO descarga los ficheros —
+    solo lee el listado del directorio para ser rápido.
+    El supervisor se puede identificar manualmente o con el botón Analizar.
     """
     config = db.query(FtpConfig).filter(
         FtpConfig.id == ftp_config_id,
@@ -274,7 +274,7 @@ def descubrir_concentradores(
         except Exception:
             pass
 
-    # Agrupar ficheros S02 por concentrador (coger el más reciente de cada uno)
+    # Agrupar ficheros S02 por concentrador (el más reciente de cada uno)
     s02_por_concentrador: dict = {}
     for linea in lineas:
         partes = linea.split()
@@ -289,43 +289,19 @@ def descubrir_concentradores(
             elif nombre > s02_por_concentrador[cid]:
                 s02_por_concentrador[cid] = nombre
 
-    # Descargar y parsear un S02 por concentrador
+    # Devolver solo el listado — sin descargar ni parsear nada
     resultado = []
-    ftp2 = _conectar_en_path(config, directorio)
-    try:
-        for id_conc, fichero in s02_por_concentrador.items():
-            try:
-                buf = io.BytesIO()
-                ftp2.retrbinary(f"RETR {fichero}", buf.write)
-                datos = _parse_s02(buf.getvalue())
-                sup = datos.get("supervisor")
-                resultado.append({
-                    "id_concentrador":   id_conc,
-                    "id_supervisor":     sup["id"] if sup else None,
-                    "magn_supervisor":   sup["magn"] if sup else 1000,
-                    "num_contadores":    datos["num_contadores"],
-                    "directorio_ftp":    directorio,
-                    "nombre_fichero":    fichero,
-                    "ftp_config_id":     ftp_config_id,
-                    "ftp_config_nombre": str(config.nombre or config.host),
-                })
-            except Exception as e:
-                resultado.append({
-                    "id_concentrador":   id_conc,
-                    "id_supervisor":     None,
-                    "magn_supervisor":   1000,
-                    "num_contadores":    0,
-                    "directorio_ftp":    directorio,
-                    "nombre_fichero":    fichero,
-                    "ftp_config_id":     ftp_config_id,
-                    "ftp_config_nombre": str(config.nombre or config.host),
-                    "error":             str(e)[:200],
-                })
-    finally:
-        try:
-            ftp2.quit()
-        except Exception:
-            pass
+    for id_conc, fichero in s02_por_concentrador.items():
+        resultado.append({
+            "id_concentrador":   id_conc,
+            "id_supervisor":     None,   # se detecta al añadir o manualmente
+            "magn_supervisor":   1000,
+            "num_contadores":    0,
+            "directorio_ftp":    directorio,
+            "nombre_fichero":    fichero,
+            "ftp_config_id":     ftp_config_id,
+            "ftp_config_nombre": str(config.nombre or config.host),
+        })
 
     return resultado
 
