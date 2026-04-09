@@ -32,6 +32,7 @@ router = APIRouter(prefix="/perdidas", tags=["perdidas"])
 def _tenant_id(user: User) -> int:
     return int(getattr(user, "tenant_id"))
 
+
 def _assert_not_viewer(user: User) -> None:
     if str(getattr(user, "rol", "")) == "viewer":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sin permisos")
@@ -127,6 +128,35 @@ def descubrir_concentradores(
             tenant_id=_tenant_id(current_user),
             ftp_config_id=ftp_config_id,
             directorio=directorio,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
+
+
+# ── Análisis de un S02 concreto ───────────────────────────────────────────────
+
+@router.get("/concentradores/analizar")
+def analizar_concentrador(
+    ftp_config_id: int = Query(...),
+    directorio: str = Query(...),
+    fichero: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Descarga y parsea un fichero S02 concreto del FTP para extraer
+    id_supervisor, magn_supervisor y num_contadores.
+    """
+    _assert_not_viewer(current_user)
+    try:
+        return services.analizar_s02_ftp(
+            db,
+            tenant_id=_tenant_id(current_user),
+            ftp_config_id=ftp_config_id,
+            directorio=directorio,
+            fichero=fichero,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

@@ -187,48 +187,50 @@ const IconSearch = () => (
 
 export default function PerdidasSection({ token }: Props) {
 
-  const [panelConfigOpen,   setPanelConfigOpen]   = useState(false);
-  const [panelProcesarOpen, setPanelProcesarOpen] = useState(false);
-  const [panelDiariasOpen,  setPanelDiariasOpen]  = useState(false);
-  const [panelMensualesOpen,setPanelMensualesOpen]= useState(false);
+  const [panelConfigOpen,    setPanelConfigOpen]    = useState(false);
+  const [panelProcesarOpen,  setPanelProcesarOpen]  = useState(false);
+  const [panelDiariasOpen,   setPanelDiariasOpen]   = useState(false);
+  const [panelMensualesOpen, setPanelMensualesOpen] = useState(false);
 
-  const [empresas,    setEmpresas]    = useState<EmpresaOption[]>([]);
-  const [ftpConfigs,  setFtpConfigs]  = useState<FtpConfig[]>([]);
+  const [empresas,   setEmpresas]   = useState<EmpresaOption[]>([]);
+  const [ftpConfigs, setFtpConfigs] = useState<FtpConfig[]>([]);
 
   // ── Concentradores ────────────────────────────────────────────────────────
-  const [concentradores,       setConcentradores]       = useState<Concentrador[]>([]);
-  const [loadingConcs,         setLoadingConcs]         = useState(false);
-  const [errorConcs,           setErrorConcs]           = useState<string | null>(null);
-  const [showForm,             setShowForm]             = useState(false);
-  const [editId,               setEditId]               = useState<number | null>(null);
-  const [form,                 setForm]                 = useState<ConcentradorForm>(FORM_VACIO);
-  const [saving,               setSaving]               = useState(false);
+  const [concentradores, setConcentradores] = useState<Concentrador[]>([]);
+  const [loadingConcs,   setLoadingConcs]   = useState(false);
+  const [errorConcs,     setErrorConcs]     = useState<string | null>(null);
+  const [showForm,       setShowForm]       = useState(false);
+  const [editId,         setEditId]         = useState<number | null>(null);
+  const [form,           setForm]           = useState<ConcentradorForm>(FORM_VACIO);
+  const [saving,         setSaving]         = useState(false);
 
   // ── Descubrimiento ────────────────────────────────────────────────────────
-  const [descFtpConfigId,      setDescFtpConfigId]      = useState<number | "">("");
-  const [descDirectorio,       setDescDirectorio]        = useState("");
-  const [descubriendo,         setDescubriendo]         = useState(false);
-  const [descubiertos,         setDescubiertos]         = useState<ConcentradorDescubierto[]>([]);
-  const [errorDesc,            setErrorDesc]            = useState<string | null>(null);
+  const [descFtpConfigId, setDescFtpConfigId] = useState<number | "">("");
+  const [descDirectorio,  setDescDirectorio]  = useState("");
+  const [descubriendo,    setDescubriendo]    = useState(false);
+  const [descubiertos,    setDescubiertos]    = useState<ConcentradorDescubierto[]>([]);
+  const [errorDesc,       setErrorDesc]       = useState<string | null>(null);
+  // Estado de análisis por concentrador: id_concentrador -> "loading" | "ok" | "error"
+  const [analizando,      setAnalizando]      = useState<Record<string, string>>({});
 
   // ── Procesamiento ─────────────────────────────────────────────────────────
-  const [procFechaDesde,       setProcFechaDesde]       = useState("");
-  const [procFechaHasta,       setProcFechaHasta]       = useState("");
-  const [procConcentradorIds,  setProcConcentradorIds]  = useState<number[]>([]);
-  const [procesando,           setProcesando]           = useState(false);
-  const [procResultado,        setProcResultado]         = useState<{procesados:number;errores:number;omitidos:number;detalle:string[]} | null>(null);
-  const [errorProc,            setErrorProc]            = useState<string | null>(null);
+  const [procFechaDesde,      setProcFechaDesde]      = useState("");
+  const [procFechaHasta,      setProcFechaHasta]      = useState("");
+  const [procConcentradorIds, setProcConcentradorIds] = useState<number[]>([]);
+  const [procesando,          setProcesando]          = useState(false);
+  const [procResultado,       setProcResultado]       = useState<{procesados:number;errores:number;omitidos:number;detalle:string[]} | null>(null);
+  const [errorProc,           setErrorProc]           = useState<string | null>(null);
 
   // ── Pérdidas diarias ──────────────────────────────────────────────────────
-  const [perdidas,             setPerdidas]             = useState<PerdidaDiaria[]>([]);
-  const [loadingPerdidas,      setLoadingPerdidas]      = useState(false);
-  const [errorPerdidas,        setErrorPerdidas]        = useState<string | null>(null);
-  const [filtroEmpresaD,       setFiltroEmpresaD]       = useState<number | "">("");
-  const [filtroConcentradorD,  setFiltroConcentradorD]  = useState<number | "">("");
-  const [filtroDesdeD,         setFiltroDesdeD]         = useState("");
-  const [filtroHastaD,         setFiltroHastaD]         = useState("");
-  const [pageDiarias,          setPageDiarias]          = useState(0);
-  const [pageSizeDiarias,      setPageSizeDiarias]      = useState(20);
+  const [perdidas,            setPerdidas]            = useState<PerdidaDiaria[]>([]);
+  const [loadingPerdidas,     setLoadingPerdidas]     = useState(false);
+  const [errorPerdidas,       setErrorPerdidas]       = useState<string | null>(null);
+  const [filtroEmpresaD,      setFiltroEmpresaD]      = useState<number | "">("");
+  const [filtroConcentradorD, setFiltroConcentradorD] = useState<number | "">("");
+  const [filtroDesdeD,        setFiltroDesdeD]        = useState("");
+  const [filtroHastaD,        setFiltroHastaD]        = useState("");
+  const [pageDiarias,         setPageDiarias]         = useState(0);
+  const [pageSizeDiarias,     setPageSizeDiarias]     = useState(20);
 
   // ── Pérdidas mensuales ────────────────────────────────────────────────────
   const [mensuales,            setMensuales]            = useState<PerdidaMensual[]>([]);
@@ -239,8 +241,8 @@ export default function PerdidasSection({ token }: Props) {
   const [filtroAnioM,          setFiltroAnioM]          = useState<string>("");
 
   // Derivados
-  const perdidasPagina     = perdidas.slice(pageDiarias * pageSizeDiarias, (pageDiarias + 1) * pageSizeDiarias);
-  const totalPagesDiarias  = Math.ceil(perdidas.length / pageSizeDiarias);
+  const perdidasPagina    = perdidas.slice(pageDiarias * pageSizeDiarias, (pageDiarias + 1) * pageSizeDiarias);
+  const totalPagesDiarias = Math.ceil(perdidas.length / pageSizeDiarias);
 
   // ── Carga inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -319,7 +321,7 @@ export default function PerdidasSection({ token }: Props) {
   // ── Descubrimiento ────────────────────────────────────────────────────────
   const handleDescubrir = async () => {
     if (!token || !descFtpConfigId || !descDirectorio) return;
-    setDescubriendo(true); setErrorDesc(null); setDescubiertos([]);
+    setDescubriendo(true); setErrorDesc(null); setDescubiertos([]); setAnalizando({});
     try {
       const params = new URLSearchParams({
         ftp_config_id: String(descFtpConfigId),
@@ -335,8 +337,34 @@ export default function PerdidasSection({ token }: Props) {
     } finally { setDescubriendo(false); }
   };
 
+  // ── Analizar un S02 concreto para obtener supervisor y num_contadores ─────
+  const handleAnalizar = async (d: ConcentradorDescubierto) => {
+    if (!token) return;
+    setAnalizando(prev => ({ ...prev, [d.id_concentrador]: "loading" }));
+    try {
+      const params = new URLSearchParams({
+        ftp_config_id: String(d.ftp_config_id),
+        directorio:    d.directorio_ftp,
+        fichero:       d.nombre_fichero,
+      });
+      const res = await fetch(`${API_BASE_URL}/perdidas/concentradores/analizar?${params}`, {
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const datos = await res.json() as { id_supervisor: string | null; magn_supervisor: number; num_contadores: number };
+      // Actualizar el concentrador descubierto con los datos del análisis
+      setDescubiertos(prev => prev.map(c =>
+        c.id_concentrador === d.id_concentrador
+          ? { ...c, id_supervisor: datos.id_supervisor, magn_supervisor: datos.magn_supervisor, num_contadores: datos.num_contadores }
+          : c
+      ));
+      setAnalizando(prev => ({ ...prev, [d.id_concentrador]: "ok" }));
+    } catch (e: unknown) {
+      setAnalizando(prev => ({ ...prev, [d.id_concentrador]: "error" }));
+    }
+  };
+
   const handleConfirmarDescubierto = (d: ConcentradorDescubierto) => {
-    // Prellenar el formulario con los datos descubiertos
     setForm({
       empresa_id:      "",
       nombre_ct:       "",
@@ -349,9 +377,7 @@ export default function PerdidasSection({ token }: Props) {
     });
     setEditId(null);
     setShowForm(true);
-    // Scroll al formulario
     window.scrollTo({ top: 0, behavior: "smooth" });
-    // Mensaje informativo
     alert(`Concentrador ${d.id_concentrador} listo para configurar.\nRellena el nombre del CT y la empresa antes de guardar.`);
   };
 
@@ -382,10 +408,10 @@ export default function PerdidasSection({ token }: Props) {
     setLoadingPerdidas(true); setErrorPerdidas(null);
     try {
       const params = new URLSearchParams({ limit: "1000" });
-      if (filtroEmpresaD)      params.set("empresa_id",       String(filtroEmpresaD));
-      if (filtroConcentradorD) params.set("concentrador_id",  String(filtroConcentradorD));
-      if (filtroDesdeD)        params.set("fecha_desde",      filtroDesdeD);
-      if (filtroHastaD)        params.set("fecha_hasta",      filtroHastaD);
+      if (filtroEmpresaD)      params.set("empresa_id",      String(filtroEmpresaD));
+      if (filtroConcentradorD) params.set("concentrador_id", String(filtroConcentradorD));
+      if (filtroDesdeD)        params.set("fecha_desde",     filtroDesdeD);
+      if (filtroHastaD)        params.set("fecha_hasta",     filtroHastaD);
       const res = await fetch(`${API_BASE_URL}/perdidas/diarias?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setPerdidas(await res.json());
@@ -422,17 +448,17 @@ export default function PerdidasSection({ token }: Props) {
 
   // ── Datos para gráficos ───────────────────────────────────────────────────
   const datosGraficoDiario = perdidas.slice().reverse().map(p => ({
-    fecha:      p.fecha,
-    perdida_wh: p.perdida_wh,
+    fecha:       p.fecha,
+    perdida_wh:  p.perdida_wh,
     perdida_pct: p.perdida_pct !== null ? Number(p.perdida_pct) : 0,
-    nombre_ct:  p.nombre_ct,
+    nombre_ct:   p.nombre_ct,
   }));
 
   const datosGraficoMensual = mensuales.slice().reverse().map(m => ({
-    periodo:    `${nombreMes(m.mes)} ${m.anio}`,
-    perdida_wh: m.perdida_wh,
+    periodo:     `${nombreMes(m.mes)} ${m.anio}`,
+    perdida_wh:  m.perdida_wh,
     perdida_pct: m.perdida_pct !== null ? Number(m.perdida_pct) : 0,
-    nombre_ct:  m.nombre_ct,
+    nombre_ct:   m.nombre_ct,
   }));
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -482,7 +508,7 @@ export default function PerdidasSection({ token }: Props) {
                 </div>
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                   style={{ height: 30, display: "flex", alignItems: "center", gap: 5 }}
-                  onClick={handleDescubrir} disabled={!descFtpConfigId || descubriendo}>
+                  onClick={handleDescubrir} disabled={!descFtpConfigId || !descDirectorio || descubriendo}>
                   <IconSearch /> {descubriendo ? "Escaneando..." : "Descubrir concentradores"}
                 </button>
               </div>
@@ -501,7 +527,7 @@ export default function PerdidasSection({ token }: Props) {
                           <th className="ui-th" style={{ textAlign: "center" }}>Magn</th>
                           <th className="ui-th" style={{ textAlign: "right" }}>Contadores</th>
                           <th className="ui-th">Directorio</th>
-                          <th className="ui-th"></th>
+                          <th className="ui-th">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -509,19 +535,38 @@ export default function PerdidasSection({ token }: Props) {
                           <tr key={d.id_concentrador} className="ui-tr">
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{d.id_concentrador}</td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>
-                              {d.id_supervisor || <span style={{ color: "var(--text-muted)" }}>No detectado</span>}
+                              {d.id_supervisor
+                                ? <span style={{ color: "#1D9E75" }}>{d.id_supervisor}</span>
+                                : <span style={{ color: "var(--text-muted)" }}>No analizado</span>
+                              }
                             </td>
                             <td className="ui-td" style={{ textAlign: "center" }}>{d.magn_supervisor}</td>
-                            <td className="ui-td" style={{ textAlign: "right" }}>{d.num_contadores}</td>
+                            <td className="ui-td" style={{ textAlign: "right" }}>
+                              {d.num_contadores > 0 ? d.num_contadores : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                            </td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{d.directorio_ftp}</td>
                             <td className="ui-td">
                               {d.error ? (
                                 <span style={{ fontSize: 10, color: "#E24B4A" }}>Error</span>
                               ) : (
-                                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                                  onClick={() => handleConfirmarDescubierto(d)}>
-                                  Añadir
-                                </button>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
+                                    disabled={analizando[d.id_concentrador] === "loading"}
+                                    onClick={() => handleAnalizar(d)}
+                                    title="Descargar S02 y detectar supervisor">
+                                    {analizando[d.id_concentrador] === "loading"
+                                      ? "Analizando..."
+                                      : analizando[d.id_concentrador] === "error"
+                                      ? "⚠️ Error"
+                                      : analizando[d.id_concentrador] === "ok"
+                                      ? "✅ Analizado"
+                                      : "🔬 Analizar"}
+                                  </button>
+                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                                    onClick={() => handleConfirmarDescubierto(d)}>
+                                    Añadir
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -624,7 +669,7 @@ export default function PerdidasSection({ token }: Props) {
               </div>
             )}
 
-            {/* Tabla de concentradores */}
+            {/* Tabla de concentradores configurados */}
             <div className="ui-table-wrap">
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
@@ -754,15 +799,9 @@ export default function PerdidasSection({ token }: Props) {
             {procResultado && (
               <div style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                 <div style={{ display: "flex", gap: 20, marginBottom: 10 }}>
-                  <div style={{ fontSize: 11 }}>
-                    ✅ <strong style={{ color: "#1D9E75" }}>{procResultado.procesados}</strong> procesados
-                  </div>
-                  <div style={{ fontSize: 11 }}>
-                    ❌ <strong style={{ color: "#E24B4A" }}>{procResultado.errores}</strong> errores
-                  </div>
-                  <div style={{ fontSize: 11 }}>
-                    ⏭️ <strong style={{ color: "var(--text-muted)" }}>{procResultado.omitidos}</strong> omitidos
-                  </div>
+                  <div style={{ fontSize: 11 }}>✅ <strong style={{ color: "#1D9E75" }}>{procResultado.procesados}</strong> procesados</div>
+                  <div style={{ fontSize: 11 }}>❌ <strong style={{ color: "#E24B4A" }}>{procResultado.errores}</strong> errores</div>
+                  <div style={{ fontSize: 11 }}>⏭️ <strong style={{ color: "var(--text-muted)" }}>{procResultado.omitidos}</strong> omitidos</div>
                 </div>
                 <div style={{ maxHeight: 150, overflowY: "auto", fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)" }}>
                   {procResultado.detalle.map((d, i) => (
@@ -793,7 +832,6 @@ export default function PerdidasSection({ token }: Props) {
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorPerdidas && <div className="ui-alert ui-alert--danger mb-3">{errorPerdidas}</div>}
 
-            {/* Filtros */}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
@@ -830,7 +868,6 @@ export default function PerdidasSection({ token }: Props) {
               </button>
             </div>
 
-            {/* Gráfico evolución diaria */}
             {datosGraficoDiario.length > 0 && (
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
@@ -849,7 +886,6 @@ export default function PerdidasSection({ token }: Props) {
               </div>
             )}
 
-            {/* Tabla */}
             <div className="ui-table-wrap">
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
@@ -923,7 +959,6 @@ export default function PerdidasSection({ token }: Props) {
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorMensuales && <div className="ui-alert ui-alert--danger mb-3">{errorMensuales}</div>}
 
-            {/* Filtros */}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
@@ -958,7 +993,6 @@ export default function PerdidasSection({ token }: Props) {
               </button>
             </div>
 
-            {/* Gráfico evolución mensual */}
             {datosGraficoMensual.length > 0 && (
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
@@ -977,7 +1011,6 @@ export default function PerdidasSection({ token }: Props) {
               </div>
             )}
 
-            {/* Tabla */}
             <div className="ui-table-wrap">
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
@@ -1027,6 +1060,3 @@ export default function PerdidasSection({ token }: Props) {
     </div>
   );
 }
-
-// Suprimir warning de variable no usada en handleConfirmarDescubierto
-declare const _: unknown;

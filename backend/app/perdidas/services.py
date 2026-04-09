@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -164,11 +165,15 @@ def _parse_s02(content: bytes) -> dict:
     """
     Parsea un fichero S02 XML y extrae:
     - id_concentrador
-    - id_supervisor (el Cnt con Id que empieza por CIR, o Magn != 1)
+    - id_supervisor (el Cnt con mayor Magn, o Id que empieza por CIR)
     - magn_supervisor
     - lecturas por contador
+
+    Criterio de supervisor mejorado: se queda con el contador de mayor Magn.
+    Si hay empate a Magn=1, se queda con el que empiece por CIR.
     """
     text = content.decode("latin1", errors="replace")
+    text = re.sub(r' xmlns[^=]*="[^"]*"', '', text)
     root = ET.fromstring(text.replace("\r", ""))
 
     cnc = root.find("Cnc")
@@ -189,14 +194,27 @@ def _parse_s02(content: bytes) -> dict:
         total_ae = sum(int(s.get("AE", 0)) for s in lecturas) * magn
         horas = len(lecturas)
 
-        if magn != 1 or cid.startswith("CIR"):
-            supervisor = {
-                "id":    cid,
-                "magn":  magn,
-                "ai":    total_ai,
-                "ae":    total_ae,
-                "horas": horas,
-            }
+        es_supervisor = False
+        if magn > 1:
+            # Magn > 1 siempre es supervisor
+            es_supervisor = True
+        elif cid.startswith("CIR"):
+            # ID empieza por CIR y Magn=1 → puede ser supervisor
+            es_supervisor = True
+
+        if es_supervisor:
+            # Quedarse con el de mayor Magn (el supervisor real)
+            if supervisor is None or magn > supervisor["magn"]:
+                supervisor = {
+                    "id":    cid,
+                    "magn":  magn,
+                    "ai":    total_ai,
+                    "ae":    total_ae,
+                    "horas": horas,
+                }
+            else:
+                # Mismo Magn pero el anterior ya es supervisor, este va como cliente
+                clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
         else:
             clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
 
@@ -253,7 +271,8 @@ def descubrir_concentradores(
     Escanea el directorio FTP buscando ficheros S02 y devuelve la lista
     de concentradores únicos encontrados. NO descarga los ficheros —
     solo lee el listado del directorio para ser rápido.
-    El supervisor se puede identificar manualmente o con el botón Analizar.
+    Selecciona el fichero S02 de mayor tamaño por concentrador
+    para evitar coger ficheros truncados o parciales.
     """
     config = db.query(FtpConfig).filter(
         FtpConfig.id == ftp_config_id,
@@ -263,7 +282,6 @@ def descubrir_concentradores(
     if config is None:
         raise ValueError(f"FtpConfig id={ftp_config_id} no encontrada o inactiva")
 
-    # Listar ficheros S02 en el directorio
     ftp = _conectar_en_path(config, directorio)
     lineas: List[str] = []
     try:
@@ -274,7 +292,8 @@ def descubrir_concentradores(
         except Exception:
             pass
 
-    # Agrupar ficheros S02 por concentrador (el más reciente de cada uno)
+    # Agrupar S02 por concentrador — coger el de MAYOR TAMAÑO (evita ficheros truncados)
+    # s02_por_concentrador[cid] = (nombre, tamanio)
     s02_por_concentrador: dict = {}
     for linea in lineas:
         partes = linea.split()
@@ -284,17 +303,19 @@ def descubrir_concentradores(
         m = re.match(r"^(CIR\d+)_0_S02_", nombre)
         if m:
             cid = m.group(1)
-            if cid not in s02_por_concentrador:
-                s02_por_concentrador[cid] = nombre
-            elif nombre > s02_por_concentrador[cid]:
-                s02_por_concentrador[cid] = nombre
+            try:
+                tamanio = int(partes[4])
+            except (ValueError, IndexError):
+                tamanio = 0
+            if cid not in s02_por_concentrador or tamanio > s02_por_concentrador[cid][1]:
+                s02_por_concentrador[cid] = (nombre, tamanio)
 
     # Devolver solo el listado — sin descargar ni parsear nada
     resultado = []
-    for id_conc, fichero in s02_por_concentrador.items():
+    for id_conc, (fichero, _tamanio) in s02_por_concentrador.items():
         resultado.append({
             "id_concentrador":   id_conc,
-            "id_supervisor":     None,   # se detecta al añadir o manualmente
+            "id_supervisor":     None,   # se detecta con el botón Analizar
             "magn_supervisor":   1000,
             "num_contadores":    0,
             "directorio_ftp":    directorio,
@@ -304,6 +325,47 @@ def descubrir_concentradores(
         })
 
     return resultado
+
+
+def analizar_s02_ftp(
+    db: Session, *,
+    tenant_id: int,
+    ftp_config_id: int,
+    directorio: str,
+    fichero: str,
+) -> dict:
+    """
+    Descarga un fichero S02 concreto del FTP y extrae:
+    - id_supervisor
+    - magn_supervisor
+    - num_contadores
+    Se usa desde el botón Analizar en la tabla de concentradores descubiertos.
+    """
+    config = db.query(FtpConfig).filter(
+        FtpConfig.id == ftp_config_id,
+        FtpConfig.tenant_id == tenant_id,
+        FtpConfig.activo.is_(True),
+    ).first()
+    if config is None:
+        raise ValueError(f"FtpConfig id={ftp_config_id} no encontrada o inactiva")
+
+    ftp = _conectar_en_path(config, directorio)
+    try:
+        buf = io.BytesIO()
+        ftp.retrbinary(f"RETR {fichero}", buf.write)
+    finally:
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+
+    datos = _parse_s02(buf.getvalue())
+    sup = datos.get("supervisor")
+    return {
+        "id_supervisor":   sup["id"] if sup else None,
+        "magn_supervisor": sup["magn"] if sup else 1000,
+        "num_contadores":  datos["num_contadores"],
+    }
 
 
 # ── Procesamiento de S02 ──────────────────────────────────────────────────────
@@ -406,7 +468,6 @@ def procesar_s02(
                 db.add(perdida)
                 db.commit()
 
-                # Actualizar fecha_ultimo_proceso del concentrador
                 if conc.fecha_ultimo_proceso is None or fecha_f > conc.fecha_ultimo_proceso:
                     conc.fecha_ultimo_proceso = fecha_f  # type: ignore
                     conc.updated_at = datetime.utcnow()  # type: ignore
