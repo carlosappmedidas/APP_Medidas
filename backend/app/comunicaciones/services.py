@@ -375,7 +375,13 @@ def _parse_list_line(linea: str) -> Optional[dict]:
 
     if ":" in tercero:
         hora_local = _aplicar_tz(tercero)
-        anio_num = str(datetime.now().year)
+        ahora = datetime.now()
+        try:
+            fecha_tentativa = datetime(ahora.year, int(mes_num), int(dia_num))
+            anio_num = str(ahora.year if fecha_tentativa <= ahora else ahora.year - 1)
+        except Exception:
+            anio_num = str(ahora.year)
+
         hora_num = hora_local.replace(":", "")
         fecha_str = f"{mes_str} {dia_str} {hora_local}"
     else:
@@ -413,7 +419,11 @@ def listar_path(
         try:
             p = filtro_mes.strip().split("-")
             if len(p) == 2:
+                # Formato YYYY-MM → filtro por año y mes
                 mes_key = f"{p[0]}{p[1].zfill(2)}"
+            elif len(p) == 1 and p[0].isdigit():
+                # Formato YYYY → filtro solo por año (4 dígitos)
+                mes_key = p[0]
         except Exception:
             pass
 
@@ -436,8 +446,13 @@ def listar_path(
             else:
                 if filtro_nombre and filtro_nombre.strip().lower() not in parsed["nombre"].lower():
                     continue
-                if mes_key and parsed["fecha_mes_key"] != mes_key:
-                    continue
+                if mes_key:
+                    if len(mes_key) == 6 and parsed["fecha_mes_key"] != mes_key:
+                        # Filtro exacto año+mes (ej: 202604)
+                        continue
+                    elif len(mes_key) == 4 and not parsed["fecha_mes_key"].startswith(mes_key):
+                        # Filtro solo año (ej: 2026)
+                        continue
                 ficheros.append({
                     "nombre": parsed["nombre"],
                     "tamanio": parsed["tamanio"],

@@ -350,7 +350,7 @@ export default function ComunicacionesSection({ token }: Props) {
   const [diasBorradoManual, setDiasBorradoManual] = useState<string>("todos");
 
   const anioDefault = new Date().getFullYear().toString();
-  const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : "";
+  const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : filtroAnioNum ? filtroAnioNum : "";
   const hayFiltros = filtroNombre.trim() || filtroMes;
   const conexionesActivas = configs.filter(c => c.activo);
 
