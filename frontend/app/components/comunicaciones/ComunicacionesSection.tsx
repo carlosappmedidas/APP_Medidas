@@ -1077,6 +1077,9 @@ export default function ComunicacionesSection({ token }: Props) {
                         <div>
                           <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Directorio FTP</label>
                           <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={ruleForm.directorio} onChange={e => setRuleForm(f => ({ ...f, directorio: e.target.value }))} placeholder="/01/entradaHistorico" />
+                          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                            Usa <code>{"{mes_actual}"}</code> o <code>{"{mes_anterior}"}</code> para directorio dinámico · ej: <code>{"/{mes_actual}/"}</code>
+                          </div>
                         </div>
                         <div>
                           <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Patrón <span style={{ fontWeight: 400 }}>(vacío = todos)</span></label>
@@ -1093,7 +1096,11 @@ export default function ComunicacionesSection({ token }: Props) {
                           <input className="ui-input" type="date" style={{ width: "100%", fontSize: 11, height: 30 }}
                             value={ruleForm.descargar_desde}
                             onChange={e => setRuleForm(f => ({ ...f, descargar_desde: e.target.value }))} />
-                          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>Solo descargará ficheros publicados desde esta fecha</div>
+                          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                            {ruleForm.directorio.includes("{mes_actual}")
+                              ? "1ª ejecución: descarga histórico mes a mes desde esta fecha. Siguientes: solo el mes actual."
+                              : "Solo descargará ficheros publicados desde esta fecha"}
+                          </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

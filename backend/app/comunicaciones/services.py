@@ -6,9 +6,10 @@ from __future__ import annotations
 import ftplib
 import io
 import os
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
@@ -98,6 +99,170 @@ def _rule_to_dict(obj: FtpSyncRule, db: Session) -> dict:
         "proxima_ejecucion": obj.proxima_ejecucion,
         "descargar_desde": obj.descargar_desde,
     }
+
+
+# ── Directorio dinámico ───────────────────────────────────────────────────────
+
+def _resolver_directorio(directorio: str, mes: Optional[str] = None) -> str:
+    """
+    Sustituye placeholders de fecha en el directorio FTP:
+      {mes_actual}   → YYYYMM del mes en curso       ej: 202604
+      {mes_anterior} → YYYYMM del mes anterior        ej: 202603
+    Si se pasa 'mes' (formato YYYYMM), {mes_actual} se sustituye por ese mes.
+    Útil para FTPs con carpetas mensuales (ej: /202604/).
+    """
+    hoy = date.today()
+    mes_actual = mes if mes else hoy.strftime("%Y%m")
+    primer_dia = hoy.replace(day=1)
+    mes_anterior = (primer_dia - timedelta(days=1)).strftime("%Y%m")
+    directorio = directorio.replace("{mes_actual}", mes_actual)
+    directorio = directorio.replace("{mes_anterior}", mes_anterior)
+    return directorio
+
+
+def _es_directorio_mensual(directorio: str) -> bool:
+    """Devuelve True si el directorio contiene el placeholder {mes_actual}."""
+    return "{mes_actual}" in directorio
+
+
+def _meses_entre(desde: date, hasta: date) -> List[str]:
+    """
+    Devuelve lista de meses en formato YYYYMM desde 'desde' hasta 'hasta' inclusive.
+    ej: desde=2026-01-01, hasta=2026-04-09 → ['202601','202602','202603','202604']
+    """
+    meses = []
+    actual = desde.replace(day=1)
+    fin = hasta.replace(day=1)
+    while actual <= fin:
+        meses.append(actual.strftime("%Y%m"))
+        # Avanzar al siguiente mes
+        if actual.month == 12:
+            actual = actual.replace(year=actual.year + 1, month=1)
+        else:
+            actual = actual.replace(month=actual.month + 1)
+    return meses
+
+
+# ── Filtro S02 más grande por concentrador/día ────────────────────────────────
+
+def _filtrar_s02_mas_grandes(candidatos: List[dict]) -> List[str]:
+    """
+    De una lista de ficheros candidatos, para los que siguen el patrón S02
+    (CONCENTRADOR_XXX_S02_XXX_YYYYMMDDHHMMSS), selecciona solo el de mayor
+    tamaño por cada concentrador y día. El resto se descarta.
+    Los ficheros que no sigan ese patrón se incluyen siempre.
+    """
+    patron_s02 = re.compile(r"^([A-Z]{3}\d+)_[^_]+_S02_[^_]+_(\d{8})\d+$")
+
+    grupos: Dict[Tuple[str, str], dict] = {}
+    no_s02: List[str] = []
+
+    for item in candidatos:
+        nombre = item["nombre"]
+        tamanio = item["tamanio"]
+        m = patron_s02.match(nombre)
+        if m:
+            clave = (m.group(1), m.group(2))
+            if clave not in grupos or tamanio > grupos[clave]["tamanio"]:
+                grupos[clave] = {"nombre": nombre, "tamanio": tamanio}
+        else:
+            no_s02.append(nombre)
+
+    return [v["nombre"] for v in grupos.values()] + no_s02
+
+
+# ── Descarga de un directorio concreto ───────────────────────────────────────
+
+def _descargar_directorio(
+    config: FtpConfig,
+    directorio: str,
+    patron: str,
+    ya_descargados: set,
+    directorio_local: Path,
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    rule_id: int,
+) -> Tuple[int, int, List[str]]:
+    """
+    Lista y descarga ficheros de un directorio FTP concreto.
+    Reutilizable para el histórico y para la ejecución normal.
+    """
+    ftp = _conectar_en_path(config, directorio)
+    candidatos_raw: List[dict] = []
+    try:
+        lineas: List[str] = []
+        ftp.retrlines("LIST", lineas.append)
+        for linea in lineas:
+            parsed = _parse_list_line(linea)
+            if not parsed or parsed["tipo"] != "file":
+                continue
+            nombre = parsed["nombre"]
+            if patron and patron not in nombre.lower():
+                continue
+            if nombre in ya_descargados:
+                continue
+            candidatos_raw.append({"nombre": nombre, "tamanio": parsed["tamanio"]})
+    finally:
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+
+    candidatos = _filtrar_s02_mas_grandes(candidatos_raw)
+
+    if not candidatos:
+        return 0, 0, []
+
+    descargados = 0
+    errores = 0
+    detalle: List[str] = []
+
+    ftp2 = _conectar_en_path(config, directorio)
+    try:
+        for nombre in candidatos:
+            try:
+                destino = directorio_local / nombre
+                with open(destino, "wb") as f:
+                    ftp2.retrbinary(f"RETR {nombre}", f.write)
+                tamanio = destino.stat().st_size
+                _log(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=empresa_id,
+                    config_id=int(config.id),
+                    rule_id=rule_id,
+                    origen="auto",
+                    nombre_fichero=nombre,
+                    tamanio=tamanio,
+                    estado="ok",
+                )
+                ya_descargados.add(nombre)
+                descargados += 1
+                detalle.append(f"OK [{directorio}]: {nombre}")
+            except Exception as e:
+                errores += 1
+                msg = str(e)[:200]
+                _log(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=empresa_id,
+                    config_id=int(config.id),
+                    rule_id=rule_id,
+                    origen="auto",
+                    nombre_fichero=nombre,
+                    tamanio=None,
+                    estado="error",
+                    mensaje_error=msg,
+                )
+                detalle.append(f"ERROR [{directorio}]: {nombre} — {msg}")
+    finally:
+        try:
+            ftp2.quit()
+        except Exception:
+            pass
+
+    return descargados, errores, detalle
 
 
 # ── CRUD FtpConfig ────────────────────────────────────────────────────────────
@@ -327,7 +492,6 @@ def _conectar_en_path(config: FtpConfig, path: str):
         ftp.prot_p()
         ftp.set_pasv(True)
     else:
-        # FTP plano: usar modo pasivo con fix NAT (ignora IP del PASV, usa host)
         ftp = _FTPNatPassive()  # type: ignore
         ftp.connect(str(config.host), int(config.puerto), timeout=30)
         ftp.login(str(config.usuario), password)
@@ -603,11 +767,14 @@ def leer_fichero_ftp(
 def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
     """
     Ejecuta una regla de sync automática:
-    1. Lista ficheros en el FTP que coinciden con el patrón
-    2. Filtra por fecha de publicación si descargar_desde está configurado
-    3. Filtra los que ya están descargados en ftp_sync_log (estado=ok)
-    4. Descarga solo los nuevos
-    5. Actualiza ultima_ejecucion y proxima_ejecucion
+
+    Si el directorio contiene {mes_actual} Y hay descargar_desde Y es la primera
+    ejecución (ultima_ejecucion es null):
+      → Modo histórico: recorre todos los meses desde descargar_desde hasta hoy,
+        descargando el S02 más grande por concentrador/día en cada carpeta mensual.
+
+    En ejecuciones posteriores (o si no hay {mes_actual}):
+      → Modo normal: solo descarga del directorio actual los ficheros nuevos.
     """
     rule = db.query(FtpSyncRule).filter(FtpSyncRule.id == rule_id).first()
     if rule is None:
@@ -622,13 +789,7 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
 
     tenant_id = int(rule.tenant_id)
     empresa_id = int(config.empresa_id)
-    directorio = str(rule.directorio or "/")
     patron = str(rule.patron_nombre or "").lower().strip()
-
-    # Fecha mínima de publicación — formato YYYYMMDD para comparar con fecha_sort
-    fecha_min: Optional[str] = None
-    if rule.descargar_desde:
-        fecha_min = rule.descargar_desde.strftime("%Y%m%d")
 
     ya_descargados = set(
         row.nombre_fichero
@@ -638,86 +799,67 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
         ).all()
     )
 
-    ftp = _conectar_en_path(config, directorio)
-    candidatos: List[str] = []
-    try:
-        lineas: List[str] = []
-        ftp.retrlines("LIST", lineas.append)
-        for linea in lineas:
-            parsed = _parse_list_line(linea)
-            if not parsed or parsed["tipo"] != "file":
-                continue
-            nombre = parsed["nombre"]
-            if patron and patron not in nombre.lower():
-                continue
-            # Filtro por fecha de publicación en el FTP
-            if fecha_min and parsed["fecha_sort"][:8] < fecha_min:
-                continue
-            if nombre in ya_descargados:
-                continue
-            candidatos.append(nombre)
-    finally:
-        try:
-            ftp.quit()
-        except Exception:
-            pass
-
-    if not candidatos:
-        _actualizar_tiempos_regla(db, rule)
-        return 0, 0, ["Sin ficheros nuevos"]
-
     directorio_local = _directorio_descarga() / str(empresa_id)
     directorio_local.mkdir(parents=True, exist_ok=True)
 
-    descargados = 0
-    errores = 0
-    detalle: List[str] = []
+    total_descargados = 0
+    total_errores = 0
+    total_detalle: List[str] = []
 
-    ftp2 = _conectar_en_path(config, directorio)
-    try:
-        for nombre in candidatos:
+    es_mensual = _es_directorio_mensual(str(rule.directorio or "/"))
+    es_primera_ejecucion = rule.ultima_ejecucion is None
+
+    if es_mensual and rule.descargar_desde and es_primera_ejecucion:
+        # ── MODO HISTÓRICO ────────────────────────────────────────────────────
+        # Primera ejecución con directorio mensual y fecha de inicio configurada:
+        # recorrer todos los meses desde descargar_desde hasta hoy
+        meses = _meses_entre(rule.descargar_desde, date.today())
+        for mes in meses:
+            directorio_mes = _resolver_directorio(str(rule.directorio), mes=mes)
             try:
-                destino = directorio_local / nombre
-                with open(destino, "wb") as f:
-                    ftp2.retrbinary(f"RETR {nombre}", f.write)
-                tamanio = destino.stat().st_size
-                _log(
-                    db,
+                d, e, det = _descargar_directorio(
+                    config=config,
+                    directorio=directorio_mes,
+                    patron=patron,
+                    ya_descargados=ya_descargados,
+                    directorio_local=directorio_local,
+                    db=db,
                     tenant_id=tenant_id,
                     empresa_id=empresa_id,
-                    config_id=int(rule.config_id),
                     rule_id=rule_id,
-                    origen="auto",
-                    nombre_fichero=nombre,
-                    tamanio=tamanio,
-                    estado="ok",
                 )
-                descargados += 1
-                detalle.append(f"OK: {nombre}")
-            except Exception as e:
-                errores += 1
-                msg = str(e)[:200]
-                _log(
-                    db,
-                    tenant_id=tenant_id,
-                    empresa_id=empresa_id,
-                    config_id=int(rule.config_id),
-                    rule_id=rule_id,
-                    origen="auto",
-                    nombre_fichero=nombre,
-                    tamanio=None,
-                    estado="error",
-                    mensaje_error=msg,
-                )
-                detalle.append(f"ERROR: {nombre} — {msg}")
-    finally:
+                total_descargados += d
+                total_errores += e
+                total_detalle.extend(det)
+            except Exception as ex:
+                total_detalle.append(f"ERROR directorio {directorio_mes}: {str(ex)[:200]}")
+    else:
+        # ── MODO NORMAL ───────────────────────────────────────────────────────
+        # Ejecuciones posteriores o directorios fijos: solo el directorio actual
+        directorio = _resolver_directorio(str(rule.directorio or "/"))
         try:
-            ftp2.quit()
-        except Exception:
-            pass
+            d, e, det = _descargar_directorio(
+                config=config,
+                directorio=directorio,
+                patron=patron,
+                ya_descargados=ya_descargados,
+                directorio_local=directorio_local,
+                db=db,
+                tenant_id=tenant_id,
+                empresa_id=empresa_id,
+                rule_id=rule_id,
+            )
+            total_descargados += d
+            total_errores += e
+            total_detalle.extend(det)
+        except Exception as ex:
+            total_detalle.append(f"ERROR directorio {directorio}: {str(ex)[:200]}")
+
+    if not total_detalle:
+        total_detalle = ["Sin ficheros nuevos"]
 
     _actualizar_tiempos_regla(db, rule)
-    return descargados, errores, detalle
+    return total_descargados, total_errores, total_detalle
 
 
 def _actualizar_tiempos_regla(db: Session, rule: FtpSyncRule) -> None:
