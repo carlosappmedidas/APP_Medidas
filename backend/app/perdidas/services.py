@@ -300,7 +300,7 @@ def descubrir_concentradores(
         if len(partes) < 9:
             continue
         nombre = " ".join(partes[8:])
-        m = re.match(r"^(CIR\d+)_0_S02_", nombre)
+        m = re.match(r"^([A-Z]{3}\d+)_0_S02_", nombre)
         if m:
             cid = m.group(1)
             try:
