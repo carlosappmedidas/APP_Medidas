@@ -77,6 +77,7 @@ interface FtpLog {
   nombre_fichero: string;
   estado: "ok" | "error";
   mensaje_error: string | null;
+  fecha_ftp: string | null;
   created_at: string;
 }
 
@@ -1190,20 +1191,29 @@ export default function ComunicacionesSection({ token }: Props) {
                   <div className="ui-table-wrap">
                     <table className="ui-table text-[11px]">
                       <thead className="ui-thead">
-                        <tr><th className="ui-th">Empresa</th><th className="ui-th">Fichero</th><th className="ui-th" style={{ textAlign: "center" }}>Estado</th><th className="ui-th">Detalle</th><th className="ui-th">Fecha</th><th className="ui-th" style={{ width: 36 }}></th></tr>
+                        <tr>
+                          <th className="ui-th">Empresa</th>
+                          <th className="ui-th">Fichero</th>
+                          <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                          <th className="ui-th">Detalle</th>
+                          <th className="ui-th">Fecha FTP</th>
+                          <th className="ui-th">Descargado</th>
+                          <th className="ui-th" style={{ width: 36 }}></th>
+                        </tr>
                       </thead>
                       <tbody>
                         {loadingLogsAuto ? (
-                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                          <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
                         ) : logsAuto.length === 0 ? (
-                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas automáticas registradas aún</td></tr>
+                          <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas automáticas registradas aún</td></tr>
                         ) : logsAutoPagina.map(log => (
                           <tr key={log.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>{log.estado === "ok" ? "OK" : "Error"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
-                            <td className="ui-td ui-muted">{fmtDate(log.created_at)}</td>
+                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.fecha_ftp ?? "—"}</td>
+                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(log.created_at)}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}>
                               <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} title="Eliminar este registro (el scheduler lo olvidará)" onClick={() => handleDeleteLog(log.id, "auto")}><IconTrash /></button>
                             </td>
@@ -1410,20 +1420,29 @@ export default function ComunicacionesSection({ token }: Props) {
                   <div className="ui-table-wrap">
                     <table className="ui-table text-[11px]">
                       <thead className="ui-thead">
-                        <tr><th className="ui-th">Empresa</th><th className="ui-th">Fichero</th><th className="ui-th" style={{ textAlign: "center" }}>Estado</th><th className="ui-th">Detalle</th><th className="ui-th">Fecha</th><th className="ui-th" style={{ width: 36 }}></th></tr>
+                        <tr>
+                          <th className="ui-th">Empresa</th>
+                          <th className="ui-th">Fichero</th>
+                          <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                          <th className="ui-th">Detalle</th>
+                          <th className="ui-th">Fecha FTP</th>
+                          <th className="ui-th">Descargado</th>
+                          <th className="ui-th" style={{ width: 36 }}></th>
+                        </tr>
                       </thead>
                       <tbody>
                         {loadingLogsManual ? (
-                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                          <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
                         ) : logsManual.length === 0 ? (
-                          <tr className="ui-tr"><td colSpan={6} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas manuales registradas</td></tr>
+                          <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin descargas manuales registradas</td></tr>
                         ) : logsManualPagina.map(log => (
                           <tr key={log.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{log.empresa_nombre}</td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>{log.estado === "ok" ? "OK" : "Error"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
-                            <td className="ui-td ui-muted">{fmtDate(log.created_at)}</td>
+                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.fecha_ftp ?? "—"}</td>
+                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(log.created_at)}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}>
                               <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} title="Eliminar este registro" onClick={() => handleDeleteLog(log.id, "manual")}><IconTrash /></button>
                             </td>
