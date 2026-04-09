@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -52,34 +52,37 @@ class FtpConfigRead(BaseModel):
 # ── FtpSyncRule ───────────────────────────────────────────────────────────────
 
 class FtpSyncRuleCreate(BaseModel):
-    config_id:       int
-    nombre:          Optional[str] = None
-    directorio:      str  = "/"
-    patron_nombre:   Optional[str] = None   # vacío = todos los ficheros
-    intervalo_horas: int  = 1               # 1, 6, 12, 24
-    activo:          bool = True
+    config_id:        int
+    nombre:           Optional[str]  = None
+    directorio:       str            = "/"
+    patron_nombre:    Optional[str]  = None   # vacío = todos los ficheros
+    intervalo_horas:  int            = 1      # 1, 6, 12, 24
+    activo:           bool           = True
+    descargar_desde:  Optional[date] = None   # solo ficheros publicados desde esta fecha
 
 
 class FtpSyncRuleUpdate(BaseModel):
-    nombre:          Optional[str]  = None
-    directorio:      Optional[str]  = None
-    patron_nombre:   Optional[str]  = None
-    intervalo_horas: Optional[int]  = None
-    activo:          Optional[bool] = None
+    nombre:           Optional[str]  = None
+    directorio:       Optional[str]  = None
+    patron_nombre:    Optional[str]  = None
+    intervalo_horas:  Optional[int]  = None
+    activo:           Optional[bool] = None
+    descargar_desde:  Optional[date] = None   # solo ficheros publicados desde esta fecha
 
 
 class FtpSyncRuleRead(BaseModel):
-    id:               int
-    config_id:        int
-    config_nombre:    Optional[str]   # nombre de la conexión
-    empresa_nombre:   str
-    nombre:           Optional[str]
-    directorio:       str
-    patron_nombre:    Optional[str]
-    intervalo_horas:  int
-    activo:           bool
-    ultima_ejecucion: Optional[datetime]
+    id:                int
+    config_id:         int
+    config_nombre:     Optional[str]      # nombre de la conexión
+    empresa_nombre:    str
+    nombre:            Optional[str]
+    directorio:        str
+    patron_nombre:     Optional[str]
+    intervalo_horas:   int
+    activo:            bool
+    ultima_ejecucion:  Optional[datetime]
     proxima_ejecucion: Optional[datetime]
+    descargar_desde:   Optional[date]     # solo ficheros publicados desde esta fecha
 
     model_config = {"from_attributes": True}
 

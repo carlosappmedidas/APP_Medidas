@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, func
 
 from app.core.models_base import Base
 
@@ -44,6 +44,7 @@ class FtpSyncRule(Base):
     activo              = Column(Boolean, nullable=False, default=True)
     ultima_ejecucion    = Column(DateTime, nullable=True)
     proxima_ejecucion   = Column(DateTime, nullable=True)
+    descargar_desde     = Column(Date, nullable=True)
     created_at          = Column(DateTime, nullable=False, server_default=func.now())
     updated_at          = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 

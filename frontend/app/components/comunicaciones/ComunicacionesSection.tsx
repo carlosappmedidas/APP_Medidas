@@ -44,6 +44,7 @@ interface FtpSyncRule {
   activo: boolean;
   ultima_ejecucion: string | null;
   proxima_ejecucion: string | null;
+  descargar_desde: string | null;
 }
 
 interface FtpSyncRuleForm {
@@ -53,6 +54,7 @@ interface FtpSyncRuleForm {
   patron_nombre: string;
   intervalo_horas: number;
   activo: boolean;
+  descargar_desde: string;
 }
 
 interface FtpCarpeta { nombre: string; path: string; }
@@ -157,7 +159,7 @@ const FORM_CONFIG_VACIO: FtpConfigForm = {
 
 const FORM_RULE_VACIO: FtpSyncRuleForm = {
   config_id: "", nombre: "", directorio: "/01/entradaHistorico",
-  patron_nombre: "", intervalo_horas: 1, activo: true,
+  patron_nombre: "", intervalo_horas: 1, activo: true, descargar_desde: "",
 };
 
 const ANIOS = [2023, 2024, 2025, 2026];
@@ -489,6 +491,7 @@ export default function ComunicacionesSection({ token }: Props) {
           ...ruleForm,
           nombre: ruleForm.nombre || null,
           patron_nombre: ruleForm.patron_nombre || null,
+          descargar_desde: ruleForm.descargar_desde || null,
         }),
       });
       if (!res.ok) {
@@ -636,7 +639,6 @@ export default function ComunicacionesSection({ token }: Props) {
       a.download = fichero;
       a.click();
       URL.revokeObjectURL(url);
-      // El log se registra en el backend (leer_fichero_ftp ya llama a _log)
       if (subHistManualOpen) cargarLogsManual();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error descargando fichero");
@@ -648,7 +650,6 @@ export default function ComunicacionesSection({ token }: Props) {
     if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
     setDescargando(true); setErrorExplorer(null);
     try {
-      // 1. Descargar al servidor + registrar en log
       const res = await fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
         method: "POST",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
@@ -657,7 +658,6 @@ export default function ComunicacionesSection({ token }: Props) {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
 
-      // 2. Descargar también al navegador (uno a uno, sin duplicar log)
       for (const nombre of Array.from(selectedFicheros)) {
         try {
           const params = new URLSearchParams({ path: explorerResult.path_actual, fichero: nombre, registrar: "false" });
@@ -1088,6 +1088,13 @@ export default function ComunicacionesSection({ token }: Props) {
                             <option value={1}>Cada 1 hora</option><option value={2}>Cada 2 horas</option><option value={6}>Cada 6 horas</option><option value={12}>Cada 12 horas</option><option value={24}>Cada 24 horas (diario)</option>
                           </select>
                         </div>
+                        <div>
+                          <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Descargar desde <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                          <input className="ui-input" type="date" style={{ width: "100%", fontSize: 11, height: 30 }}
+                            value={ruleForm.descargar_desde}
+                            onChange={e => setRuleForm(f => ({ ...f, descargar_desde: e.target.value }))} />
+                          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>Solo descargará ficheros publicados desde esta fecha</div>
+                        </div>
                         <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input type="checkbox" id="activo-rule-chk" checked={ruleForm.activo} onChange={e => setRuleForm(f => ({ ...f, activo: e.target.checked }))} />
@@ -1108,15 +1115,16 @@ export default function ComunicacionesSection({ token }: Props) {
                       <thead className="ui-thead">
                         <tr>
                           <th className="ui-th">Nombre</th><th className="ui-th">Conexión</th><th className="ui-th">Directorio</th>
-                          <th className="ui-th">Patrón</th><th className="ui-th">Intervalo</th><th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                          <th className="ui-th">Patrón</th><th className="ui-th">Intervalo</th><th className="ui-th">Desde</th>
+                          <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
                           <th className="ui-th">Última ejec.</th><th className="ui-th">Próxima</th><th className="ui-th">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
                         {loadingRules ? (
-                          <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                          <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
                         ) : rules.length === 0 ? (
-                          <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin reglas · Pulsa &quot;Añadir&quot; para configurar la sync automática</td></tr>
+                          <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin reglas · Pulsa &quot;Añadir&quot; para configurar la sync automática</td></tr>
                         ) : rules.map(r => (
                           <tr key={r.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{r.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}</td>
@@ -1124,6 +1132,7 @@ export default function ComunicacionesSection({ token }: Props) {
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{r.directorio}</td>
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{r.patron_nombre || <span style={{ color: "var(--text-muted)" }}>todos</span>}</td>
                             <td className="ui-td">{r.intervalo_horas}h</td>
+                            <td className="ui-td" style={{ fontSize: 10, color: "var(--text-muted)" }}>{r.descargar_desde ? r.descargar_desde.slice(0, 10) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${r.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>{r.activo ? "Activa" : "Pausada"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.ultima_ejecucion)}</td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.proxima_ejecucion)}</td>
@@ -1133,7 +1142,7 @@ export default function ComunicacionesSection({ token }: Props) {
                                   <IconPlay /> {executingRuleId === r.id ? "..." : "Ejecutar"}
                                 </button>
                                 <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
-                                  onClick={() => { setEditRuleId(r.id); setRuleForm({ config_id: r.config_id, nombre: r.nombre || "", directorio: r.directorio, patron_nombre: r.patron_nombre || "", intervalo_horas: r.intervalo_horas, activo: r.activo }); setShowRuleForm(true); }}>
+                                  onClick={() => { setEditRuleId(r.id); setRuleForm({ config_id: r.config_id, nombre: r.nombre || "", directorio: r.directorio, patron_nombre: r.patron_nombre || "", intervalo_horas: r.intervalo_horas, activo: r.activo, descargar_desde: r.descargar_desde ? r.descargar_desde.slice(0, 10) : "" }); setShowRuleForm(true); }}>
                                   <IconEdit />
                                 </button>
                                 <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} onClick={() => handleDeleteRule(r.id)}><IconTrash /></button>
@@ -1342,7 +1351,6 @@ export default function ComunicacionesSection({ token }: Props) {
                                     </td>
                                     <td className="ui-td ui-muted" style={{ textAlign: "right", fontSize: 10 }}>{fmtSize(f.tamanio)}</td>
                                     <td className="ui-td ui-muted" style={{ textAlign: "right", fontSize: 10 }}>{f.fecha}</td>
-                                    {/* ── Botón descarga individual al PC + registra en log ── */}
                                     <td className="ui-td" style={{ textAlign: "center" }}>
                                       <button
                                         type="button"

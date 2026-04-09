@@ -259,6 +259,7 @@ def create_rule(
             patron_nombre=payload.patron_nombre,
             intervalo_horas=payload.intervalo_horas,
             activo=payload.activo,
+            descargar_desde=payload.descargar_desde,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -282,6 +283,7 @@ def update_rule(
             patron_nombre=payload.patron_nombre,
             intervalo_horas=payload.intervalo_horas,
             activo=payload.activo,
+            descargar_desde=payload.descargar_desde,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

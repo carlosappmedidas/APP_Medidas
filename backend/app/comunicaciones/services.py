@@ -6,7 +6,7 @@ from __future__ import annotations
 import ftplib
 import io
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -96,6 +96,7 @@ def _rule_to_dict(obj: FtpSyncRule, db: Session) -> dict:
         "activo": obj.activo,
         "ultima_ejecucion": obj.ultima_ejecucion,
         "proxima_ejecucion": obj.proxima_ejecucion,
+        "descargar_desde": obj.descargar_desde,
     }
 
 
@@ -228,6 +229,7 @@ def create_rule(
     patron_nombre: Optional[str],
     intervalo_horas: int,
     activo: bool,
+    descargar_desde: Optional[date] = None,
 ) -> dict:
     proxima = datetime.utcnow() + timedelta(hours=intervalo_horas)
     obj = FtpSyncRule(
@@ -239,6 +241,7 @@ def create_rule(
         intervalo_horas=intervalo_horas,
         activo=activo,
         proxima_ejecucion=proxima,
+        descargar_desde=descargar_desde,
     )
     db.add(obj)
     db.commit()
@@ -255,6 +258,7 @@ def update_rule(
     patron_nombre: Optional[str],
     intervalo_horas: Optional[int],
     activo: Optional[bool],
+    descargar_desde: Optional[date] = None,
 ) -> dict:
     obj = db.query(FtpSyncRule).filter(
         FtpSyncRule.id == rule_id,
@@ -273,6 +277,8 @@ def update_rule(
         obj.proxima_ejecucion = datetime.utcnow() + timedelta(hours=intervalo_horas)  # type: ignore
     if activo is not None:
         obj.activo = activo  # type: ignore
+    if descargar_desde is not None:
+        obj.descargar_desde = descargar_desde  # type: ignore
     obj.updated_at = datetime.utcnow()  # type: ignore
     db.commit()
     db.refresh(obj)
@@ -431,10 +437,8 @@ def listar_path(
         try:
             p = filtro_mes.strip().split("-")
             if len(p) == 2:
-                # Formato YYYY-MM → filtro por año y mes
                 mes_key = f"{p[0]}{p[1].zfill(2)}"
             elif len(p) == 1 and p[0].isdigit():
-                # Formato YYYY → filtro solo por año (4 dígitos)
                 mes_key = p[0]
         except Exception:
             pass
@@ -460,10 +464,8 @@ def listar_path(
                     continue
                 if mes_key:
                     if len(mes_key) == 6 and parsed["fecha_mes_key"] != mes_key:
-                        # Filtro exacto año+mes (ej: 202604)
                         continue
                     elif len(mes_key) == 4 and not parsed["fecha_mes_key"].startswith(mes_key):
-                        # Filtro solo año (ej: 2026)
                         continue
                 ficheros.append({
                     "nombre": parsed["nombre"],
@@ -570,12 +572,6 @@ def leer_fichero_ftp(
     fichero: str,
     registrar: bool = True,
 ) -> bytes:
-    """
-    Lee un fichero del FTP en memoria y lo devuelve como bytes.
-    Si registrar=True (por defecto), anota en el historial como descarga manual.
-    Si registrar=False, solo lee sin dejar rastro (usado cuando el log
-    ya fue registrado por descargar_ficheros en la descarga múltiple).
-    """
     config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
     ftp = _conectar_en_path(config, path)
     try:
@@ -608,9 +604,10 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
     """
     Ejecuta una regla de sync automática:
     1. Lista ficheros en el FTP que coinciden con el patrón
-    2. Filtra los que ya están descargados en ftp_sync_log (estado=ok)
-    3. Descarga solo los nuevos
-    4. Actualiza ultima_ejecucion y proxima_ejecucion
+    2. Filtra por fecha de publicación si descargar_desde está configurado
+    3. Filtra los que ya están descargados en ftp_sync_log (estado=ok)
+    4. Descarga solo los nuevos
+    5. Actualiza ultima_ejecucion y proxima_ejecucion
     """
     rule = db.query(FtpSyncRule).filter(FtpSyncRule.id == rule_id).first()
     if rule is None:
@@ -627,6 +624,11 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
     empresa_id = int(config.empresa_id)
     directorio = str(rule.directorio or "/")
     patron = str(rule.patron_nombre or "").lower().strip()
+
+    # Fecha mínima de publicación — formato YYYYMMDD para comparar con fecha_sort
+    fecha_min: Optional[str] = None
+    if rule.descargar_desde:
+        fecha_min = rule.descargar_desde.strftime("%Y%m%d")
 
     ya_descargados = set(
         row.nombre_fichero
@@ -647,6 +649,9 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
                 continue
             nombre = parsed["nombre"]
             if patron and patron not in nombre.lower():
+                continue
+            # Filtro por fecha de publicación en el FTP
+            if fecha_min and parsed["fecha_sort"][:8] < fecha_min:
                 continue
             if nombre in ya_descargados:
                 continue
