@@ -11,6 +11,7 @@ import GraficosSection from "./components/medidas/GraficosSection";
 import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
 import CargaSection from "./components/ingestion/CargaSection";
 import ComunicacionesSection from "./components/comunicaciones/ComunicacionesSection";
+import PerdidasSection from "./components/perdidas/PerdidasSection";
 import UsersSection from "./components/admin/UsersSection";
 import SistemaSection from "./components/settings/SistemaSection";
 import ClientesSection from "./components/admin/ClientesSection";
@@ -34,6 +35,7 @@ type MainTab =
   | "tablas-ps"
   | "carga"
   | "comunicaciones"
+  | "perdidas"
   | "ajustes"
   | "sistema";
 
@@ -50,6 +52,7 @@ const PAGE_TITLES: Record<MainTab, string> = {
   "clientes":         "Clientes",
   "carga":            "Carga de datos",
   "comunicaciones":   "Comunicaciones FTP",
+  "perdidas":         "Pérdidas por transformación",
   "ajustes":          "Configuración",
   "sistema":          "Sistema",
 };
@@ -349,6 +352,14 @@ export default function HomePage() {
               </button>
             )}
 
+            {/* Pérdidas — oculto para viewer */}
+            {!isViewer && (
+              <button onClick={() => setActiveTab("perdidas")}
+                className={["ui-nav-item", activeTab === "perdidas" ? "ui-nav-item--active" : ""].join(" ")}>
+                <span>Pérdidas</span>
+              </button>
+            )}
+
             {canSeeAjustes && (
               <button onClick={() => setActiveTab("ajustes")}
                 className={["ui-nav-item", activeTab === "ajustes" ? "ui-nav-item--active" : ""].join(" ")}>
@@ -457,6 +468,11 @@ export default function HomePage() {
         {/* Comunicaciones — oculto para viewer */}
         {activeTab === "comunicaciones" && !isViewer && (
           <ComunicacionesSection token={token} currentUser={currentUser} />
+        )}
+
+        {/* Pérdidas — oculto para viewer */}
+        {activeTab === "perdidas" && !isViewer && (
+          <PerdidasSection token={token} currentUser={currentUser} />
         )}
 
         {activeTab === "ajustes" && canSeeAjustes && (
