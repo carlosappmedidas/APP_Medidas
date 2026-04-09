@@ -62,4 +62,5 @@ class FtpSyncLog(Base):
     tamanio        = Column(Integer, nullable=True)
     estado         = Column(String(10), nullable=False, default="ok")
     mensaje_error  = Column(Text, nullable=True)
+    fecha_ftp      = Column(String(30), nullable=True)
     created_at     = Column(DateTime, nullable=False, server_default=func.now())
