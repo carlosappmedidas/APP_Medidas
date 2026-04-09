@@ -312,7 +312,7 @@ def _conectar_en_path(config: FtpConfig, path: str):
         ftp = ftplib.FTP()  # type: ignore
         ftp.connect(str(config.host), int(config.puerto), timeout=30)
         ftp.login(str(config.usuario), password)
-        ftp.set_pasv(True)
+        ftp.set_pasv(False)
     if clean_path != "/":
         ftp.cwd(clean_path)
     return ftp
