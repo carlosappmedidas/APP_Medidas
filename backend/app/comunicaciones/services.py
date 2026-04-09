@@ -913,6 +913,18 @@ def _log(
     db.commit()
 
 
+def count_logs(
+    db: Session, *,
+    tenant_id: int,
+    origen: Optional[str] = None,
+) -> int:
+    """Devuelve el total real de registros en BD sin límite."""
+    q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
+    if origen:
+        q = q.filter(FtpSyncLog.origen == origen)
+    return q.count()
+
+
 def list_logs(
     db: Session, *,
     tenant_id: int,

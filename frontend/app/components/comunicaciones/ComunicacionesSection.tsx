@@ -331,6 +331,8 @@ export default function ComunicacionesSection({ token }: Props) {
   const [pageLogsAuto, setPageLogsAuto]       = useState(0);
   const [pageSizeLogsAuto, setPageSizeLogsAuto] = useState(20);
   const [diasBorradoAuto, setDiasBorradoAuto] = useState<string>("todos");
+  const [countLogsAuto, setCountLogsAuto] = useState<number | null>(null);
+  const [countLogsManual, setCountLogsManual] = useState<number | null>(null);
 
   const [explorerConfigId, setExplorerConfigId]   = useState<number | "">("");
   const [explorerResult, setExplorerResult]       = useState<ExplorerResult | null>(null);
@@ -531,6 +533,17 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setExecutingRuleId(null); }
   };
 
+  const cargarCountLogs = useCallback(async (origen: "auto" | "manual") => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/ftp/logs/count?origen=${origen}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (origen === "auto") setCountLogsAuto(data.count);
+      else setCountLogsManual(data.count);
+    } catch { /* silencioso */ }
+  }, [token]);
+
   // ── Logs automáticos ──────────────────────────────────────────────────────────
   const cargarLogsAuto = useCallback(async () => {
     if (!token) return;
@@ -546,8 +559,8 @@ export default function ComunicacionesSection({ token }: Props) {
   }, [token]);
 
   useEffect(() => {
-    if (panelAutoOpen && subHistAutoOpen) cargarLogsAuto();
-  }, [panelAutoOpen, subHistAutoOpen, cargarLogsAuto]);
+    if (panelAutoOpen && subHistAutoOpen) { cargarLogsAuto(); cargarCountLogs("auto"); }
+  }, [panelAutoOpen, subHistAutoOpen, cargarLogsAuto, cargarCountLogs]);
 
   // ── Borrado de logs ───────────────────────────────────────────────────────────
   const handleDeleteLog = async (logId: number, origen: "auto" | "manual") => {
@@ -582,8 +595,8 @@ export default function ComunicacionesSection({ token }: Props) {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       alert(`Borrados ${data.deleted} registros.`);
-      if (origen === "auto") { setLogsAuto([]); setPageLogsAuto(0); }
-      else { setLogsManual([]); setPageLogsManual(0); }
+      if (origen === "auto") { setLogsAuto([]); setPageLogsAuto(0); setCountLogsAuto(0); }
+      else { setLogsManual([]); setPageLogsManual(0); setCountLogsManual(0); }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error limpiando historial");
     }
@@ -721,8 +734,8 @@ export default function ComunicacionesSection({ token }: Props) {
 
   useEffect(() => {
     if (panelManualOpen) cargarConfigs();
-    if (panelManualOpen && subHistManualOpen) cargarLogsManual();
-  }, [panelManualOpen, subHistManualOpen, cargarConfigs, cargarLogsManual]);
+    if (panelManualOpen && subHistManualOpen) { cargarLogsManual(); cargarCountLogs("manual"); }
+  }, [panelManualOpen, subHistManualOpen, cargarConfigs, cargarLogsManual, cargarCountLogs]);
 
   // ── Breadcrumb ────────────────────────────────────────────────────────────────
   const renderBreadcrumb = () => {
@@ -1169,6 +1182,7 @@ export default function ComunicacionesSection({ token }: Props) {
               <div style={subPanelHeaderStyle} onClick={() => setSubHistAutoOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Historial automático</span>
+                  {countLogsAuto !== null && <span className="ui-badge ui-badge--neutral">{countLogsAuto} en BD</span>}
                   {logsAuto.length > 0 && <span className="ui-badge ui-badge--ok">{logsAuto.filter(l => l.estado === "ok").length} OK</span>}
                   {logsAuto.filter(l => l.estado === "error").length > 0 && <span className="ui-badge ui-badge--err">{logsAuto.filter(l => l.estado === "error").length} errores</span>}
                 </div>
@@ -1398,6 +1412,7 @@ export default function ComunicacionesSection({ token }: Props) {
               <div style={subPanelHeaderStyle} onClick={() => setSubHistManualOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Historial manual</span>
+                  {countLogsManual !== null && <span className="ui-badge ui-badge--neutral">{countLogsManual} en BD</span>}
                   {logsManual.length > 0 && <span className="ui-badge ui-badge--ok">{logsManual.filter(l => l.estado === "ok").length} OK</span>}
                   {logsManual.filter(l => l.estado === "error").length > 0 && <span className="ui-badge ui-badge--err">{logsManual.filter(l => l.estado === "error").length} errores</span>}
                 </div>

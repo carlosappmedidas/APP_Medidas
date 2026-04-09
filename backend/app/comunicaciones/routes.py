@@ -322,10 +322,21 @@ def ejecutar_regla_manual(
 
 # ── Historial ─────────────────────────────────────────────────────────────────
 
+@router.get("/logs/count")
+def count_logs(
+    origen: Optional[str] = Query(None, description="'manual' o 'auto'"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Devuelve el total real de registros en BD sin límite de visualización."""
+    _assert_not_viewer(current_user)
+    return {"count": services.count_logs(db, tenant_id=_tenant_id(current_user), origen=origen)}
+
+
 @router.get("/logs", response_model=List[FtpSyncLogRead])
 def get_logs(
     origen: Optional[str] = Query(None, description="'manual' o 'auto'"),
-    limit: int = Query(500, ge=1, le=1000),
+    limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
