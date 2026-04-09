@@ -88,6 +88,7 @@ interface PerdidaMensual {
 interface FtpConfig {
   id: number;
   nombre: string | null;
+  empresa_id: number;
   empresa_nombre: string;
   host: string;
   usar_tls: boolean;
@@ -210,8 +211,15 @@ export default function PerdidasSection({ token }: Props) {
   const [descubriendo,    setDescubriendo]    = useState(false);
   const [descubiertos,    setDescubiertos]    = useState<ConcentradorDescubierto[]>([]);
   const [errorDesc,       setErrorDesc]       = useState<string | null>(null);
-  // Estado de análisis por concentrador: id_concentrador -> "loading" | "ok" | "error"
   const [analizando,      setAnalizando]      = useState<Record<string, string>>({});
+  const [analizandoTodos, setAnalizandoTodos] = useState(false);
+  const [anadiendoTodos,  setAnadiendoTodos]  = useState(false);
+
+  // Empresa inferida de la conexión FTP seleccionada
+  const ftpConfigSeleccionada = ftpConfigs.find(c => c.id === descFtpConfigId);
+  const empresaInferida = ftpConfigSeleccionada
+    ? { id: ftpConfigSeleccionada.empresa_id, nombre: ftpConfigSeleccionada.empresa_nombre }
+    : null;
 
   // ── Procesamiento ─────────────────────────────────────────────────────────
   const [procFechaDesde,      setProcFechaDesde]      = useState("");
@@ -243,6 +251,11 @@ export default function PerdidasSection({ token }: Props) {
   // Derivados
   const perdidasPagina    = perdidas.slice(pageDiarias * pageSizeDiarias, (pageDiarias + 1) * pageSizeDiarias);
   const totalPagesDiarias = Math.ceil(perdidas.length / pageSizeDiarias);
+
+  // Descubiertos analizados (con supervisor o sin error)
+  const descubiertosAnalizados = descubiertos.filter(
+    d => !d.error && analizando[d.id_concentrador] === "ok"
+  );
 
   // ── Carga inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -337,7 +350,7 @@ export default function PerdidasSection({ token }: Props) {
     } finally { setDescubriendo(false); }
   };
 
-  // ── Analizar un S02 concreto para obtener supervisor y num_contadores ─────
+  // ── Analizar un S02 concreto ──────────────────────────────────────────────
   const handleAnalizar = async (d: ConcentradorDescubierto) => {
     if (!token) return;
     setAnalizando(prev => ({ ...prev, [d.id_concentrador]: "loading" }));
@@ -352,22 +365,67 @@ export default function PerdidasSection({ token }: Props) {
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const datos = await res.json() as { id_supervisor: string | null; magn_supervisor: number; num_contadores: number };
-      // Actualizar el concentrador descubierto con los datos del análisis
       setDescubiertos(prev => prev.map(c =>
         c.id_concentrador === d.id_concentrador
           ? { ...c, id_supervisor: datos.id_supervisor, magn_supervisor: datos.magn_supervisor, num_contadores: datos.num_contadores }
           : c
       ));
       setAnalizando(prev => ({ ...prev, [d.id_concentrador]: "ok" }));
-    } catch (e: unknown) {
+    } catch {
       setAnalizando(prev => ({ ...prev, [d.id_concentrador]: "error" }));
     }
   };
 
+  // ── Analizar todos secuencialmente ────────────────────────────────────────
+  const handleAnalizarTodos = async () => {
+    setAnalizandoTodos(true);
+    for (const d of descubiertos) {
+      if (d.error) continue;
+      if (analizando[d.id_concentrador] === "ok") continue;
+      await handleAnalizar(d);
+    }
+    setAnalizandoTodos(false);
+  };
+
+  // ── Añadir todos los analizados con la empresa de la conexión FTP ─────────
+  const handleAnadirTodos = async () => {
+    if (!token || !empresaInferida) return;
+    const candidatos = descubiertos.filter(d => !d.error && analizando[d.id_concentrador] === "ok");
+    if (candidatos.length === 0) {
+      alert("No hay concentradores analizados. Pulsa 'Analizar todos' primero.");
+      return;
+    }
+    if (!confirm(`¿Añadir ${candidatos.length} concentrador(es) a la empresa "${empresaInferida.nombre}"?\nEl nombre CT se establecerá como el ID del concentrador — puedes editarlo después.`)) return;
+    setAnadiendoTodos(true);
+    let ok = 0; let err = 0;
+    for (const d of candidatos) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/perdidas/concentradores`, {
+          method: "POST",
+          headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            empresa_id:      empresaInferida.id,
+            nombre_ct:       d.id_concentrador,  // nombre provisional = ID
+            id_concentrador: d.id_concentrador,
+            id_supervisor:   d.id_supervisor || null,
+            magn_supervisor: d.magn_supervisor,
+            directorio_ftp:  d.directorio_ftp,
+            ftp_config_id:   d.ftp_config_id,
+            activo:          true,
+          }),
+        });
+        if (res.ok) ok++; else err++;
+      } catch { err++; }
+    }
+    setAnadiendoTodos(false);
+    alert(`${ok} añadidos correctamente${err > 0 ? `, ${err} errores` : ""}.`);
+    await cargarConcentradores();
+  };
+
   const handleConfirmarDescubierto = (d: ConcentradorDescubierto) => {
     setForm({
-      empresa_id:      "",
-      nombre_ct:       "",
+      empresa_id:      empresaInferida?.id || "",
+      nombre_ct:       d.id_concentrador,  // nombre provisional = ID
       id_concentrador: d.id_concentrador,
       id_supervisor:   d.id_supervisor || "",
       magn_supervisor: d.magn_supervisor,
@@ -378,7 +436,6 @@ export default function PerdidasSection({ token }: Props) {
     setEditId(null);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    alert(`Concentrador ${d.id_concentrador} listo para configurar.\nRellena el nombre del CT y la empresa antes de guardar.`);
   };
 
   // ── Procesamiento ─────────────────────────────────────────────────────────
@@ -492,7 +549,10 @@ export default function PerdidasSection({ token }: Props) {
                   <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Conexión FTP</label>
                   <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 220 }}
                     value={descFtpConfigId}
-                    onChange={e => setDescFtpConfigId(e.target.value === "" ? "" : Number(e.target.value))}>
+                    onChange={e => {
+                      setDescFtpConfigId(e.target.value === "" ? "" : Number(e.target.value));
+                      setDescubiertos([]); setAnalizando({});
+                    }}>
                     <option value="">Selecciona conexión FTP</option>
                     {ftpConfigs.map(c => (
                       <option key={c.id} value={c.id}>{c.nombre || c.empresa_nombre} — {c.host}</option>
@@ -512,12 +572,50 @@ export default function PerdidasSection({ token }: Props) {
                   <IconSearch /> {descubriendo ? "Escaneando..." : "Descubrir concentradores"}
                 </button>
               </div>
+
+              {/* Empresa inferida de la conexión FTP */}
+              {empresaInferida && (
+                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Empresa:</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--primary, #378ADD)" }}>
+                    {empresaInferida.nombre}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                    (los concentradores se asignarán a esta empresa)
+                  </span>
+                </div>
+              )}
+
               {errorDesc && <div className="ui-alert ui-alert--danger mt-3">{errorDesc}</div>}
+
               {descubiertos.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
-                    {descubiertos.length} concentrador(es) encontrado(s):
+                  {/* Cabecera con conteo y botones de acción masiva */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      {descubiertos.length} concentrador(es) encontrado(s)
+                      {descubiertosAnalizados.length > 0 && (
+                        <span style={{ color: "#1D9E75", marginLeft: 6 }}>
+                          · {descubiertosAnalizados.length} analizados
+                        </span>
+                      )}
+                    </span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
+                        style={{ display: "flex", alignItems: "center", gap: 4 }}
+                        onClick={handleAnalizarTodos}
+                        disabled={analizandoTodos || descubriendo}>
+                        🔬 {analizandoTodos ? "Analizando..." : "Analizar todos"}
+                      </button>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                        style={{ display: "flex", alignItems: "center", gap: 4 }}
+                        onClick={handleAnadirTodos}
+                        disabled={anadiendoTodos || descubiertosAnalizados.length === 0 || !empresaInferida}>
+                        <IconPlus /> {anadiendoTodos ? "Añadiendo..." : `Añadir todos (${descubiertosAnalizados.length})`}
+                      </button>
+                    </div>
                   </div>
+
                   <div className="ui-table-wrap">
                     <table className="ui-table text-[11px]">
                       <thead className="ui-thead">
@@ -537,7 +635,9 @@ export default function PerdidasSection({ token }: Props) {
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>
                               {d.id_supervisor
                                 ? <span style={{ color: "#1D9E75" }}>{d.id_supervisor}</span>
-                                : <span style={{ color: "var(--text-muted)" }}>No analizado</span>
+                                : <span style={{ color: "var(--text-muted)" }}>
+                                    {analizando[d.id_concentrador] === "ok" ? "Sin supervisor (Kaifa)" : "No analizado"}
+                                  </span>
                               }
                             </td>
                             <td className="ui-td" style={{ textAlign: "center" }}>{d.magn_supervisor}</td>
@@ -551,16 +651,16 @@ export default function PerdidasSection({ token }: Props) {
                               ) : (
                                 <div style={{ display: "flex", gap: 4 }}>
                                   <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                                    disabled={analizando[d.id_concentrador] === "loading"}
+                                    disabled={analizando[d.id_concentrador] === "loading" || analizandoTodos}
                                     onClick={() => handleAnalizar(d)}
                                     title="Descargar S02 y detectar supervisor">
                                     {analizando[d.id_concentrador] === "loading"
-                                      ? "Analizando..."
+                                      ? "..."
                                       : analizando[d.id_concentrador] === "error"
-                                      ? "⚠️ Error"
+                                      ? "⚠️"
                                       : analizando[d.id_concentrador] === "ok"
-                                      ? "✅ Analizado"
-                                      : "🔬 Analizar"}
+                                      ? "✅"
+                                      : "🔬"}
                                   </button>
                                   <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                                     onClick={() => handleConfirmarDescubierto(d)}>
@@ -759,7 +859,6 @@ export default function PerdidasSection({ token }: Props) {
         {panelProcesarOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorProc && <div className="ui-alert ui-alert--danger mb-3">{errorProc}</div>}
-
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Fecha desde</label>
@@ -790,12 +889,10 @@ export default function PerdidasSection({ token }: Props) {
                 <IconRefresh /> {procesando ? "Procesando..." : "Procesar S02 pendientes"}
               </button>
             </div>
-
             <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>
               ⚠️ Asegúrate de que los ficheros S02 estén descargados en el servidor antes de procesar.
               Si ya existe un registro para una fecha → se sobreescribe.
             </div>
-
             {procResultado && (
               <div style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                 <div style={{ display: "flex", gap: 20, marginBottom: 10 }}>
@@ -831,7 +928,6 @@ export default function PerdidasSection({ token }: Props) {
         {panelDiariasOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorPerdidas && <div className="ui-alert ui-alert--danger mb-3">{errorPerdidas}</div>}
-
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
@@ -867,12 +963,9 @@ export default function PerdidasSection({ token }: Props) {
                 <IconRefresh /> Buscar
               </button>
             </div>
-
             {datosGraficoDiario.length > 0 && (
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
-                  Evolución de pérdidas diarias (%)
-                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Evolución de pérdidas diarias (%)</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={datosGraficoDiario} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--card-border)" />
@@ -885,7 +978,6 @@ export default function PerdidasSection({ token }: Props) {
                 </ResponsiveContainer>
               </div>
             )}
-
             <div className="ui-table-wrap">
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
@@ -903,24 +995,16 @@ export default function PerdidasSection({ token }: Props) {
                   {loadingPerdidas ? (
                     <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : perdidas.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
-                      Sin datos · Procesa los ficheros S02 primero
-                    </td></tr>
+                    <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Sin datos · Procesa los ficheros S02 primero</td></tr>
                   ) : perdidasPagina.map(p => (
                     <tr key={p.id} className="ui-tr">
                       <td className="ui-td" style={{ fontWeight: 500 }}>{p.nombre_ct}</td>
                       <td className="ui-td">{p.fecha}</td>
                       <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10 }}>{fmtWh(p.energia_neta_wh)}</td>
                       <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10 }}>{fmtWh(p.ai_clientes - p.ae_clientes)}</td>
-                      <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10, color: p.perdida_wh < 0 ? "#E24B4A" : "var(--text)" }}>
-                        {fmtWh(p.perdida_wh)}
-                      </td>
-                      <td className="ui-td" style={{ textAlign: "right", fontWeight: 500, color: p.perdida_pct !== null && Number(p.perdida_pct) > 5 ? "#E24B4A" : "var(--text)" }}>
-                        {fmtPct(p.perdida_pct)}
-                      </td>
-                      <td className="ui-td" style={{ textAlign: "center" }}>
-                        {estadoBadge(p.estado, p.horas_con_datos)}
-                      </td>
+                      <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10, color: p.perdida_wh < 0 ? "#E24B4A" : "var(--text)" }}>{fmtWh(p.perdida_wh)}</td>
+                      <td className="ui-td" style={{ textAlign: "right", fontWeight: 500, color: p.perdida_pct !== null && Number(p.perdida_pct) > 5 ? "#E24B4A" : "var(--text)" }}>{fmtPct(p.perdida_pct)}</td>
+                      <td className="ui-td" style={{ textAlign: "center" }}>{estadoBadge(p.estado, p.horas_con_datos)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -958,7 +1042,6 @@ export default function PerdidasSection({ token }: Props) {
         {panelMensualesOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {errorMensuales && <div className="ui-alert ui-alert--danger mb-3">{errorMensuales}</div>}
-
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
@@ -992,12 +1075,9 @@ export default function PerdidasSection({ token }: Props) {
                 <IconRefresh /> Buscar
               </button>
             </div>
-
             {datosGraficoMensual.length > 0 && (
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
-                  Evolución de pérdidas mensuales (%)
-                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Evolución de pérdidas mensuales (%)</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={datosGraficoMensual} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--card-border)" />
@@ -1010,7 +1090,6 @@ export default function PerdidasSection({ token }: Props) {
                 </ResponsiveContainer>
               </div>
             )}
-
             <div className="ui-table-wrap">
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
@@ -1028,21 +1107,15 @@ export default function PerdidasSection({ token }: Props) {
                   {loadingMensuales ? (
                     <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : mensuales.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
-                      Sin datos mensuales
-                    </td></tr>
+                    <tr className="ui-tr"><td colSpan={7} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Sin datos mensuales</td></tr>
                   ) : mensuales.map((m, i) => (
                     <tr key={i} className="ui-tr">
                       <td className="ui-td" style={{ fontWeight: 500 }}>{m.nombre_ct}</td>
                       <td className="ui-td">{nombreMes(m.mes)} {m.anio}</td>
                       <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10 }}>{fmtWh(m.energia_neta_wh)}</td>
                       <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10 }}>{fmtWh(m.ai_clientes - m.ae_clientes)}</td>
-                      <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10, color: m.perdida_wh < 0 ? "#E24B4A" : "var(--text)" }}>
-                        {fmtWh(m.perdida_wh)}
-                      </td>
-                      <td className="ui-td" style={{ textAlign: "right", fontWeight: 500, color: m.perdida_pct !== null && Number(m.perdida_pct) > 5 ? "#E24B4A" : "var(--text)" }}>
-                        {fmtPct(m.perdida_pct)}
-                      </td>
+                      <td className="ui-td" style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10, color: m.perdida_wh < 0 ? "#E24B4A" : "var(--text)" }}>{fmtWh(m.perdida_wh)}</td>
+                      <td className="ui-td" style={{ textAlign: "right", fontWeight: 500, color: m.perdida_pct !== null && Number(m.perdida_pct) > 5 ? "#E24B4A" : "var(--text)" }}>{fmtPct(m.perdida_pct)}</td>
                       <td className="ui-td" style={{ textAlign: "center" }}>
                         <span style={{ fontSize: 10, color: m.dias_completos < m.dias_procesados ? "#EF9F27" : "#1D9E75" }}>
                           {m.dias_completos} / {m.dias_procesados}
