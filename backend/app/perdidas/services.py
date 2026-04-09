@@ -166,10 +166,9 @@ def _parse_s02(content: bytes) -> dict:
     Parsea un fichero S02 XML y extrae supervisor y clientes.
 
     Reglas de detección del supervisor:
-    - Si algún contador tiene Magn > 1 → ese es el supervisor (mayor Magn gana)
-    - Si todos tienen Magn = 1 → el PRIMER contador del fichero es el supervisor
-      (el formato S02 siempre pone el contador principal en primer lugar,
-       independientemente del prefijo: CIR, SAG, ZIV, ORM, ORB, KFM, etc.)
+    - Magn > 1 → supervisor seguro (gana el de mayor Magn)
+    - Magn = 1 y el ID empieza por el mismo prefijo que el concentrador → supervisor
+    - Resto → clientes
     """
     text = content.decode("latin1", errors="replace")
     # Eliminar namespace XML para compatibilidad versiones 3.x y 4.0
@@ -181,6 +180,7 @@ def _parse_s02(content: bytes) -> dict:
         raise ValueError("Fichero S02 sin elemento <Cnc>")
 
     id_concentrador = cnc.get("Id", "")
+    prefijo_conc = id_concentrador[:3]  # ej: "CIR", "ORM", "ZIV", "SAG"
     contadores = cnc.findall("Cnt")
 
     supervisor = None
@@ -190,21 +190,20 @@ def _parse_s02(content: bytes) -> dict:
         cid  = cnt.get("Id", "")
         magn = int(cnt.get("Magn", 1))
         lecturas = cnt.findall("S02")
-        total_ai = sum(int(s.get("AI", 0)) for s in lecturas) * magn
-        total_ae = sum(int(s.get("AE", 0)) for s in lecturas) * magn
+        total_ai = sum(int(float(s.get("AI", 0))) for s in lecturas) * magn
+        total_ae = sum(int(float(s.get("AE", 0))) for s in lecturas) * magn
         horas = len(lecturas)
 
-        if magn > 1:
-            # Magn > 1 → supervisor seguro. Si hay varios, gana el de mayor Magn.
+        # Es supervisor si: Magn > 1, o el ID empieza por el mismo prefijo que el concentrador
+        es_supervisor = magn > 1 or cid.startswith(prefijo_conc)
+
+        if es_supervisor:
             if supervisor is None or magn > supervisor["magn"]:
                 if supervisor is not None:
                     clientes.append({"id": supervisor["id"], "ai": supervisor["ai"], "ae": supervisor["ae"]})
                 supervisor = {"id": cid, "magn": magn, "ai": total_ai, "ae": total_ae, "horas": horas}
             else:
                 clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
-        elif supervisor is None:
-            # Todos Magn=1 → el primero es el supervisor
-            supervisor = {"id": cid, "magn": magn, "ai": total_ai, "ae": total_ae, "horas": horas}
         else:
             clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
 
@@ -284,14 +283,12 @@ def descubrir_concentradores(
             pass
 
     # Agrupar S02 por concentrador — coger el de MAYOR TAMAÑO (evita ficheros truncados)
-    # s02_por_concentrador[cid] = (nombre, tamanio)
     s02_por_concentrador: dict = {}
     for linea in lineas:
         partes = linea.split()
         if len(partes) < 9:
             continue
         nombre = " ".join(partes[8:])
-        # Detecta cualquier prefijo de 3 letras mayúsculas + dígitos
         m = re.match(r"^([A-Z]{3}\d+)_0_S02_", nombre)
         if m:
             cid = m.group(1)
@@ -302,12 +299,11 @@ def descubrir_concentradores(
             if cid not in s02_por_concentrador or tamanio > s02_por_concentrador[cid][1]:
                 s02_por_concentrador[cid] = (nombre, tamanio)
 
-    # Devolver solo el listado — sin descargar ni parsear nada
     resultado = []
     for id_conc, (fichero, _tamanio) in s02_por_concentrador.items():
         resultado.append({
             "id_concentrador":   id_conc,
-            "id_supervisor":     None,   # se detecta con el botón Analizar
+            "id_supervisor":     None,
             "magn_supervisor":   1000,
             "num_contadores":    0,
             "directorio_ftp":    directorio,
@@ -331,7 +327,6 @@ def analizar_s02_ftp(
     - id_supervisor
     - magn_supervisor
     - num_contadores
-    Se usa desde el botón Analizar en la tabla de concentradores descubiertos.
     """
     config = db.query(FtpConfig).filter(
         FtpConfig.id == ftp_config_id,
@@ -438,7 +433,6 @@ def procesar_s02(
                     magn=conc.magn_supervisor,
                 )
 
-                # Upsert: borrar si existe y crear nuevo
                 existing = db.query(PerdidaDiaria).filter(
                     PerdidaDiaria.concentrador_id == conc.id,
                     PerdidaDiaria.fecha == fecha_f,
