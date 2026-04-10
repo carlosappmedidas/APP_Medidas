@@ -324,6 +324,7 @@ export default function ComunicacionesSection({ token }: Props) {
   const [ruleForm, setRuleForm]         = useState<FtpSyncRuleForm>(FORM_RULE_VACIO);
   const [savingRule, setSavingRule]     = useState(false);
   const [executingRuleId, setExecutingRuleId] = useState<number | null>(null);
+  const [executingCount, setExecutingCount] = useState<number>(0);
 
   const [logsAuto, setLogsAuto]               = useState<FtpLog[]>([]);
   const [loadingLogsAuto, setLoadingLogsAuto] = useState(false);
@@ -331,8 +332,8 @@ export default function ComunicacionesSection({ token }: Props) {
   const [pageLogsAuto, setPageLogsAuto]       = useState(0);
   const [pageSizeLogsAuto, setPageSizeLogsAuto] = useState(20);
   const [diasBorradoAuto, setDiasBorradoAuto] = useState<string>("todos");
-  const [countLogsAuto, setCountLogsAuto] = useState<number | null>(null);
-  const [countLogsManual, setCountLogsManual] = useState<number | null>(null);
+  const [countLogsAuto, setCountLogsAuto] = useState<{ total: number; ok: number; errores: number } | null>(null);
+  const [countLogsManual, setCountLogsManual] = useState<{ total: number; ok: number; errores: number } | null>(null);
   const [filtroMesAuto, setFiltroMesAuto] = useState<string>("");
   const [filtroAnioAuto, setFiltroAnioAuto] = useState<string>("");
   const [filtroMesManual, setFiltroMesManual] = useState<string>("");
@@ -526,15 +527,31 @@ export default function ComunicacionesSection({ token }: Props) {
   const handleExecuteRule = async (id: number) => {
     if (!token) return;
     setExecutingRuleId(id);
+    setExecutingCount(0);
+
+    // Polling del count en BD cada 3 segundos mientras ejecuta
+    const interval = setInterval(async () => {
+      try {
+        const r = await fetch(`${API_BASE_URL}/ftp/logs/count?origen=auto`, { headers: getAuthHeaders(token) });
+        if (r.ok) { const d = await r.json(); setExecutingCount(d.count); }
+      } catch { /* silencioso */ }
+    }, 3000);
+
     try {
       const res = await fetch(`${API_BASE_URL}/ftp/rules/${id}/ejecutar`, { method: "POST", headers: getAuthHeaders(token) });
       const data = await res.json();
+      clearInterval(interval);
       alert(`Ejecutado: ${data.descargados ?? 0} descargados, ${data.errores ?? 0} errores.`);
       await cargarRules();
       cargarLogsAuto();
+      cargarCountLogs("auto");
     } catch (e: unknown) {
+      clearInterval(interval);
       alert(e instanceof Error ? e.message : "Error ejecutando regla");
-    } finally { setExecutingRuleId(null); }
+    } finally {
+      setExecutingRuleId(null);
+      setExecutingCount(0);
+    }
   };
 
   const cargarCountLogs = useCallback(async (origen: "auto" | "manual", mesNum?: string, anioNum?: string) => {
@@ -542,12 +559,12 @@ export default function ComunicacionesSection({ token }: Props) {
     try {
       const params = new URLSearchParams({ origen });
       if (anioNum) params.set("anio", anioNum);
-      if (mesNum) params.set("mes", mesNum);
+      if (mesNum) params.set("mes", String(parseInt(mesNum, 10)));
       const res = await fetch(`${API_BASE_URL}/ftp/logs/count?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) return;
       const data = await res.json();
-      if (origen === "auto") setCountLogsAuto(data.count);
-      else setCountLogsManual(data.count);
+      if (origen === "auto") setCountLogsAuto({ total: data.total, ok: data.ok, errores: data.errores });
+      else setCountLogsManual({ total: data.total, ok: data.ok, errores: data.errores });
     } catch { /* silencioso */ }
   }, [token]);
 
@@ -560,7 +577,7 @@ export default function ComunicacionesSection({ token }: Props) {
       const m = mesNum ?? filtroMesAuto;
       const a = anioNum ?? filtroAnioAuto;
       if (a) params.set("anio", a);
-      if (m) params.set("mes", m);
+      if (m) params.set("mes", String(parseInt(m, 10)));
       const res = await fetch(`${API_BASE_URL}/ftp/logs?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setLogsAuto(await res.json());
@@ -573,6 +590,12 @@ export default function ComunicacionesSection({ token }: Props) {
   useEffect(() => {
     if (panelAutoOpen && subHistAutoOpen) { cargarLogsAuto(); cargarCountLogs("auto"); }
   }, [panelAutoOpen, subHistAutoOpen, cargarLogsAuto, cargarCountLogs]);
+
+  // Actualizar count automáticamente cuando cambia el filtro de mes/año (sin pulsar lupa)
+  useEffect(() => {
+    if (!panelAutoOpen || !subHistAutoOpen) return;
+    cargarCountLogs("auto", filtroMesAuto, filtroAnioAuto);
+  }, [filtroMesAuto, filtroAnioAuto, panelAutoOpen, subHistAutoOpen, cargarCountLogs]);
 
   // ── Borrado de logs ───────────────────────────────────────────────────────────
   const handleDeleteLog = async (logId: number, origen: "auto" | "manual") => {
@@ -607,8 +630,8 @@ export default function ComunicacionesSection({ token }: Props) {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       alert(`Borrados ${data.deleted} registros.`);
-      if (origen === "auto") { setLogsAuto([]); setPageLogsAuto(0); setCountLogsAuto(0); }
-      else { setLogsManual([]); setPageLogsManual(0); setCountLogsManual(0); }
+      if (origen === "auto") { setLogsAuto([]); setPageLogsAuto(0); setCountLogsAuto({ total: 0, ok: 0, errores: 0 }); }
+      else { setLogsManual([]); setPageLogsManual(0); setCountLogsManual({ total: 0, ok: 0, errores: 0 }); }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error limpiando historial");
     }
@@ -739,7 +762,7 @@ export default function ComunicacionesSection({ token }: Props) {
       const m = mesNum ?? filtroMesManual;
       const a = anioNum ?? filtroAnioManual;
       if (a) params.set("anio", a);
-      if (m) params.set("mes", m);
+      if (m) params.set("mes", String(parseInt(m, 10)));
       const res = await fetch(`${API_BASE_URL}/ftp/logs?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setLogsManual(await res.json());
@@ -753,6 +776,12 @@ export default function ComunicacionesSection({ token }: Props) {
     if (panelManualOpen) cargarConfigs();
     if (panelManualOpen && subHistManualOpen) { cargarLogsManual(); cargarCountLogs("manual"); }
   }, [panelManualOpen, subHistManualOpen, cargarConfigs, cargarLogsManual, cargarCountLogs]);
+
+  // Actualizar count automáticamente cuando cambia el filtro de mes/año (sin pulsar lupa)
+  useEffect(() => {
+    if (!panelManualOpen || !subHistManualOpen) return;
+    cargarCountLogs("manual", filtroMesManual, filtroAnioManual);
+  }, [filtroMesManual, filtroAnioManual, panelManualOpen, subHistManualOpen, cargarCountLogs]);
 
   // ── Breadcrumb ────────────────────────────────────────────────────────────────
   const renderBreadcrumb = () => {
@@ -1176,8 +1205,15 @@ export default function ComunicacionesSection({ token }: Props) {
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.proxima_ejecucion)}</td>
                             <td className="ui-td">
                               <div style={{ display: "flex", gap: 4 }}>
-                                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 3, fontSize: 10 }} onClick={() => handleExecuteRule(r.id)} disabled={executingRuleId === r.id}>
-                                  <IconPlay /> {executingRuleId === r.id ? "..." : "Ejecutar"}
+                                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 3, fontSize: 10, minWidth: executingRuleId === r.id ? 110 : undefined }} onClick={() => handleExecuteRule(r.id)} disabled={executingRuleId === r.id}>
+                                  <IconPlay />
+                                  {executingRuleId === r.id
+                                    ? <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                        <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#1D9E75", animation: "pulse 1s infinite" }} />
+                                        {executingCount > 0 ? `${executingCount} ficheros...` : "Ejecutando..."}
+                                      </span>
+                                    : "Ejecutar"
+                                  }
                                 </button>
                                 <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }}
                                   onClick={() => { setEditRuleId(r.id); setRuleForm({ config_id: r.config_id, nombre: r.nombre || "", directorio: r.directorio, patron_nombre: r.patron_nombre || "", intervalo_horas: r.intervalo_horas, activo: r.activo, descargar_desde: r.descargar_desde ? r.descargar_desde.slice(0, 10) : "" }); setShowRuleForm(true); }}>
@@ -1199,9 +1235,9 @@ export default function ComunicacionesSection({ token }: Props) {
               <div style={subPanelHeaderStyle} onClick={() => setSubHistAutoOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Historial automático</span>
-                  {countLogsAuto !== null && <span className="ui-badge ui-badge--neutral">{countLogsAuto} en BD</span>}
-                  {logsAuto.length > 0 && <span className="ui-badge ui-badge--ok">{logsAuto.filter(l => l.estado === "ok").length} OK</span>}
-                  {logsAuto.filter(l => l.estado === "error").length > 0 && <span className="ui-badge ui-badge--err">{logsAuto.filter(l => l.estado === "error").length} errores</span>}
+                  {countLogsAuto !== null && <span className="ui-badge ui-badge--neutral">{countLogsAuto.total} en BD</span>}
+                  {countLogsAuto !== null && countLogsAuto.ok > 0 && <span className="ui-badge ui-badge--ok">{countLogsAuto.ok} OK</span>}
+                  {countLogsAuto !== null && countLogsAuto.errores > 0 && <span className="ui-badge ui-badge--err">{countLogsAuto.errores} errores</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistAutoOpen && (
@@ -1439,9 +1475,9 @@ export default function ComunicacionesSection({ token }: Props) {
               <div style={subPanelHeaderStyle} onClick={() => setSubHistManualOpen(v => !v)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>Historial manual</span>
-                  {countLogsManual !== null && <span className="ui-badge ui-badge--neutral">{countLogsManual} en BD</span>}
-                  {logsManual.length > 0 && <span className="ui-badge ui-badge--ok">{logsManual.filter(l => l.estado === "ok").length} OK</span>}
-                  {logsManual.filter(l => l.estado === "error").length > 0 && <span className="ui-badge ui-badge--err">{logsManual.filter(l => l.estado === "error").length} errores</span>}
+                  {countLogsManual !== null && <span className="ui-badge ui-badge--neutral">{countLogsManual.total} en BD</span>}
+                  {countLogsManual !== null && countLogsManual.ok > 0 && <span className="ui-badge ui-badge--ok">{countLogsManual.ok} OK</span>}
+                  {countLogsManual !== null && countLogsManual.errores > 0 && <span className="ui-badge ui-badge--err">{countLogsManual.errores} errores</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistManualOpen && (

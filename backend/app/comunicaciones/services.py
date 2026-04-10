@@ -729,42 +729,46 @@ def _log(db: Session, *, tenant_id: int, empresa_id: int, config_id: Optional[in
 
 
 def count_logs(db: Session, *, tenant_id: int, origen: Optional[str] = None,
-               anio: Optional[int] = None, mes: Optional[int] = None) -> int:
-    """Devuelve el total real de registros en BD sin límite."""
+               anio: Optional[int] = None, mes: Optional[int] = None) -> dict:
+    """Devuelve total, ok y errores reales en BD.
+    Filtra por YYYYMM en el nombre del fichero cuando se pasa anio+mes.
+    """
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
     if origen:
         q = q.filter(FtpSyncLog.origen == origen)
     if anio and mes:
-        desde = datetime(anio, mes, 1)
-        if mes == 12:
-            hasta = datetime(anio + 1, 1, 1)
-        else:
-            hasta = datetime(anio, mes + 1, 1)
-        q = q.filter(FtpSyncLog.created_at >= desde, FtpSyncLog.created_at < hasta)
+        mes_str = f"{anio}{str(mes).zfill(2)}"
+        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{mes_str}"))
     elif anio:
-        q = q.filter(FtpSyncLog.created_at >= datetime(anio, 1, 1),
-                     FtpSyncLog.created_at < datetime(anio + 1, 1, 1))
-    return q.count()
+        anio_str = str(anio)
+        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{anio_str}"))
+    total = q.count()
+    ok = q.filter(FtpSyncLog.estado == "ok").count()
+    errores = total - ok
+    return {"total": total, "ok": ok, "errores": errores}
 
 
 def list_logs(db: Session, *, tenant_id: int, origen: Optional[str] = None,
               limit: int = 500, anio: Optional[int] = None, mes: Optional[int] = None) -> List[dict]:
     """
     Lista logs con filtros opcionales.
-    Si se pasa anio+mes → filtra por ese mes concreto (sin límite implícito).
-    Sin filtro de fecha → devuelve los últimos N registros (limit).
+    Si se pasa anio+mes → filtra por YYYYMM en el nombre del fichero.
+    Sin filtro → devuelve los últimos N registros (limit).
     """
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
     if origen:
         q = q.filter(FtpSyncLog.origen == origen)
     if anio and mes:
-        desde = datetime(anio, mes, 1)
-        hasta = datetime(anio + 1, 1, 1) if mes == 12 else datetime(anio, mes + 1, 1)
-        q = q.filter(FtpSyncLog.created_at >= desde, FtpSyncLog.created_at < hasta)
+        mes_str = f"{anio}{str(mes).zfill(2)}"
+        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{mes_str}"))
     elif anio:
-        q = q.filter(FtpSyncLog.created_at >= datetime(anio, 1, 1),
-                     FtpSyncLog.created_at < datetime(anio + 1, 1, 1))
-    rows = q.order_by(FtpSyncLog.created_at.desc()).limit(limit).all()
+        anio_str = str(anio)
+        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{anio_str}"))
+    # Con filtro de mes → sin límite para ver todos los ficheros del mes
+    if anio and mes:
+        rows = q.order_by(FtpSyncLog.created_at.desc()).all()
+    else:
+        rows = q.order_by(FtpSyncLog.created_at.desc()).limit(limit).all()
     result = []
     for r in rows:
         result.append({

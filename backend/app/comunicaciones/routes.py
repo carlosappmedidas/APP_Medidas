@@ -213,10 +213,10 @@ def count_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Devuelve el total real de registros en BD sin límite de visualización."""
+    """Devuelve total, ok y errores reales en BD sin límite de visualización."""
     _assert_not_viewer(current_user)
-    return {"count": services.count_logs(db, tenant_id=_tenant_id(current_user),
-                                          origen=origen, anio=anio, mes=mes)}
+    return services.count_logs(db, tenant_id=_tenant_id(current_user),
+                                origen=origen, anio=anio, mes=mes)
 
 
 @router.get("/logs", response_model=List[FtpSyncLogRead])
