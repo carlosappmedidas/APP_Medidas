@@ -285,6 +285,21 @@ const subPanelHeaderStyle: React.CSSProperties = {
   background: "var(--field-bg-soft)",
 };
 
+// ─── Helper modo de ejecución de regla ───────────────────────────────────────
+
+function modoRegla(r: FtpSyncRule): { label: string; color: string; title: string } {
+  const esMensual = r.directorio.includes("{mes_actual}");
+  const esPrimera = r.ultima_ejecucion === null;
+  if (esMensual && r.descargar_desde && esPrimera) {
+    const desde = r.descargar_desde.slice(0, 7); // YYYY-MM
+    return { label: "🕐 Histórico", color: "#F59E0B", title: `1ª ejecución — descargará desde ${desde} hasta hoy` };
+  }
+  if (esMensual) {
+    return { label: "✅ Normal", color: "#1D9E75", title: "Descarga solo el mes actual" };
+  }
+  return { label: "📁 Fijo", color: "#378ADD", title: `Directorio fijo: ${r.directorio}` };
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function ComunicacionesSection({ token }: Props) {
@@ -533,7 +548,7 @@ export default function ComunicacionesSection({ token }: Props) {
     const interval = setInterval(async () => {
       try {
         const r = await fetch(`${API_BASE_URL}/ftp/logs/count?origen=auto`, { headers: getAuthHeaders(token) });
-        if (r.ok) { const d = await r.json(); setExecutingCount(d.count); }
+        if (r.ok) { const d = await r.json(); setExecutingCount(d.total ?? d.count ?? 0); }
       } catch { /* silencioso */ }
     }, 3000);
 
@@ -1174,14 +1189,15 @@ export default function ComunicacionesSection({ token }: Props) {
                           <th className="ui-th">Nombre</th><th className="ui-th">Conexión</th><th className="ui-th">Directorio</th>
                           <th className="ui-th">Patrón</th><th className="ui-th">Intervalo</th><th className="ui-th">Desde</th>
                           <th className="ui-th" style={{ textAlign: "center" }}>Estado</th>
+                          <th className="ui-th">Modo</th>
                           <th className="ui-th">Última ejec.</th><th className="ui-th">Próxima</th><th className="ui-th">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
                         {loadingRules ? (
-                          <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
+                          <tr className="ui-tr"><td colSpan={11} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Cargando...</td></tr>
                         ) : rules.length === 0 ? (
-                          <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin reglas · Pulsa &quot;Añadir&quot; para configurar la sync automática</td></tr>
+                          <tr className="ui-tr"><td colSpan={11} className="ui-td text-center ui-muted" style={{ padding: "24px 16px" }}>Sin reglas · Pulsa &quot;Añadir&quot; para configurar la sync automática</td></tr>
                         ) : rules.map(r => (
                           <tr key={r.id} className="ui-tr">
                             <td className="ui-td" style={{ fontWeight: 500 }}>{r.nombre || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Sin nombre</span>}</td>
@@ -1191,6 +1207,9 @@ export default function ComunicacionesSection({ token }: Props) {
                             <td className="ui-td">{r.intervalo_horas}h</td>
                             <td className="ui-td" style={{ fontSize: 10, color: "var(--text-muted)" }}>{r.descargar_desde ? r.descargar_desde.slice(0, 10) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${r.activo ? "ui-badge--ok" : "ui-badge--neutral"}`}>{r.activo ? "Activa" : "Pausada"}</span></td>
+                            <td className="ui-td" style={{ fontSize: 10 }}>
+                              {(() => { const m = modoRegla(r); return <span style={{ color: m.color, fontWeight: 500 }} title={m.title}>{m.label}</span>; })()}
+                            </td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.ultima_ejecucion)}</td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(r.proxima_ejecucion)}</td>
                             <td className="ui-td">
