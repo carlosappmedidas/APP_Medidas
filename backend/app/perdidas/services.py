@@ -426,10 +426,18 @@ def procesar_s02(
             try:
                 content = fichero_path.read_bytes()
                 datos   = _parse_s02(content)
-                sup     = datos.get("supervisor")
 
-                if sup is None:
-                    detalle.append(f"AVISO: {conc.nombre_ct} {fecha_f} — supervisor no detectado en S02")
+                # Usar siempre el supervisor definido en la ficha del concentrador
+                # Buscarlo entre los contadores del fichero para obtener su energía real
+                sup = next(
+                    (c for c in datos["clientes"] if c["id"] == conc.id_supervisor),
+                    None
+                )
+                if sup:
+                    sup["magn"] = conc.magn_supervisor
+                    datos["clientes"] = [c for c in datos["clientes"] if c["id"] != conc.id_supervisor]
+                else:
+                    detalle.append(f"AVISO: {conc.nombre_ct} {fecha_f} — supervisor {conc.id_supervisor} no encontrado en S02")
 
                 calculo = _calcular_perdida(
                     supervisor=sup or {

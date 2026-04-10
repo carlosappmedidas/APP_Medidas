@@ -252,6 +252,10 @@ export default function PerdidasSection({ token }: Props) {
   const perdidasPagina    = perdidas.slice(pageDiarias * pageSizeDiarias, (pageDiarias + 1) * pageSizeDiarias);
   const totalPagesDiarias = Math.ceil(perdidas.length / pageSizeDiarias);
 
+  // CTs filtrados por empresa en cada panel
+  const ctsFiltradosD = concentradores.filter(c => !filtroEmpresaD || c.empresa_id === Number(filtroEmpresaD));
+  const ctsFiltradosM = concentradores.filter(c => !filtroEmpresaM || c.empresa_id === Number(filtroEmpresaM));
+
   // Descubiertos analizados (con supervisor o sin error)
   const descubiertosAnalizados = descubiertos.filter(
     d => !d.error && analizando[d.id_concentrador] === "ok"
@@ -282,8 +286,8 @@ export default function PerdidasSection({ token }: Props) {
   }, [token]);
 
   useEffect(() => {
-    if (panelConfigOpen) cargarConcentradores();
-  }, [panelConfigOpen, cargarConcentradores]);
+    if (panelConfigOpen || panelDiariasOpen || panelMensualesOpen || panelProcesarOpen) cargarConcentradores();
+  }, [panelConfigOpen, panelDiariasOpen, panelMensualesOpen, panelProcesarOpen, cargarConcentradores]);
 
   const handleSave = async () => {
     if (!token || !form.empresa_id || !form.nombre_ct || !form.id_concentrador) return;
@@ -405,7 +409,7 @@ export default function PerdidasSection({ token }: Props) {
           headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
           body: JSON.stringify({
             empresa_id:      empresaInferida.id,
-            nombre_ct:       d.id_concentrador,  // nombre provisional = ID
+            nombre_ct:       d.id_concentrador,
             id_concentrador: d.id_concentrador,
             id_supervisor:   d.id_supervisor || null,
             magn_supervisor: d.magn_supervisor,
@@ -425,7 +429,7 @@ export default function PerdidasSection({ token }: Props) {
   const handleConfirmarDescubierto = (d: ConcentradorDescubierto) => {
     setForm({
       empresa_id:      empresaInferida?.id || "",
-      nombre_ct:       d.id_concentrador,  // nombre provisional = ID
+      nombre_ct:       d.id_concentrador,
       id_concentrador: d.id_concentrador,
       id_supervisor:   d.id_supervisor || "",
       magn_supervisor: d.magn_supervisor,
@@ -573,7 +577,6 @@ export default function PerdidasSection({ token }: Props) {
                 </button>
               </div>
 
-              {/* Empresa inferida de la conexión FTP */}
               {empresaInferida && (
                 <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Empresa:</span>
@@ -590,7 +593,6 @@ export default function PerdidasSection({ token }: Props) {
 
               {descubiertos.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  {/* Cabecera con conteo y botones de acción masiva */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {descubiertos.length} concentrador(es) encontrado(s)
@@ -678,7 +680,6 @@ export default function PerdidasSection({ token }: Props) {
               )}
             </div>
 
-            {/* Botón añadir manual */}
             {!showForm && (
               <div style={{ marginBottom: 14 }}>
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
@@ -689,7 +690,6 @@ export default function PerdidasSection({ token }: Props) {
               </div>
             )}
 
-            {/* Formulario */}
             {showForm && (
               <div style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "14px 16px", marginBottom: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -769,7 +769,6 @@ export default function PerdidasSection({ token }: Props) {
               </div>
             )}
 
-            {/* Tabla de concentradores configurados */}
             <div className="ui-table-wrap">
               <table className="ui-table text-[11px]">
                 <thead className="ui-thead">
@@ -933,7 +932,10 @@ export default function PerdidasSection({ token }: Props) {
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
                 <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 160 }}
                   value={filtroEmpresaD}
-                  onChange={e => setFiltroEmpresaD(e.target.value === "" ? "" : Number(e.target.value))}>
+                  onChange={e => {
+                    setFiltroEmpresaD(e.target.value === "" ? "" : Number(e.target.value));
+                    setFiltroConcentradorD(""); // reset CT al cambiar empresa
+                  }}>
                   <option value="">Todas</option>
                   {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                 </select>
@@ -944,7 +946,7 @@ export default function PerdidasSection({ token }: Props) {
                   value={filtroConcentradorD}
                   onChange={e => setFiltroConcentradorD(e.target.value === "" ? "" : Number(e.target.value))}>
                   <option value="">Todos</option>
-                  {concentradores.map(c => <option key={c.id} value={c.id}>{c.nombre_ct}</option>)}
+                  {ctsFiltradosD.map(c => <option key={c.id} value={c.id}>{c.nombre_ct}</option>)}
                 </select>
               </div>
               <div>
@@ -1047,7 +1049,10 @@ export default function PerdidasSection({ token }: Props) {
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
                 <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 160 }}
                   value={filtroEmpresaM}
-                  onChange={e => setFiltroEmpresaM(e.target.value === "" ? "" : Number(e.target.value))}>
+                  onChange={e => {
+                    setFiltroEmpresaM(e.target.value === "" ? "" : Number(e.target.value));
+                    setFiltroConcentradorM(""); // reset CT al cambiar empresa
+                  }}>
                   <option value="">Todas</option>
                   {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                 </select>
@@ -1058,7 +1063,7 @@ export default function PerdidasSection({ token }: Props) {
                   value={filtroConcentradorM}
                   onChange={e => setFiltroConcentradorM(e.target.value === "" ? "" : Number(e.target.value))}>
                   <option value="">Todos</option>
-                  {concentradores.map(c => <option key={c.id} value={c.id}>{c.nombre_ct}</option>)}
+                  {ctsFiltradosM.map(c => <option key={c.id} value={c.id}>{c.nombre_ct}</option>)}
                 </select>
               </div>
               <div>
