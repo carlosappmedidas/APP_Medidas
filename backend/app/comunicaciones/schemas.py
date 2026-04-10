@@ -100,6 +100,7 @@ class FtpSyncLogRead(BaseModel):
     tamanio:        Optional[int] = None
     estado:         str
     mensaje_error:  Optional[str] = None
+    fecha_ftp:      Optional[str] = None
     created_at:     datetime
 
     model_config = {"from_attributes": True}
