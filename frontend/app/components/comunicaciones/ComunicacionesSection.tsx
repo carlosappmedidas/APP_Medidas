@@ -333,6 +333,10 @@ export default function ComunicacionesSection({ token }: Props) {
   const [diasBorradoAuto, setDiasBorradoAuto] = useState<string>("todos");
   const [countLogsAuto, setCountLogsAuto] = useState<number | null>(null);
   const [countLogsManual, setCountLogsManual] = useState<number | null>(null);
+  const [filtroMesAuto, setFiltroMesAuto] = useState<string>("");
+  const [filtroAnioAuto, setFiltroAnioAuto] = useState<string>("");
+  const [filtroMesManual, setFiltroMesManual] = useState<string>("");
+  const [filtroAnioManual, setFiltroAnioManual] = useState<string>("");
 
   const [explorerConfigId, setExplorerConfigId]   = useState<number | "">("");
   const [explorerResult, setExplorerResult]       = useState<ExplorerResult | null>(null);
@@ -533,10 +537,13 @@ export default function ComunicacionesSection({ token }: Props) {
     } finally { setExecutingRuleId(null); }
   };
 
-  const cargarCountLogs = useCallback(async (origen: "auto" | "manual") => {
+  const cargarCountLogs = useCallback(async (origen: "auto" | "manual", mesNum?: string, anioNum?: string) => {
     if (!token) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/ftp/logs/count?origen=${origen}`, { headers: getAuthHeaders(token) });
+      const params = new URLSearchParams({ origen });
+      if (anioNum) params.set("anio", anioNum);
+      if (mesNum) params.set("mes", mesNum);
+      const res = await fetch(`${API_BASE_URL}/ftp/logs/count?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) return;
       const data = await res.json();
       if (origen === "auto") setCountLogsAuto(data.count);
@@ -545,18 +552,23 @@ export default function ComunicacionesSection({ token }: Props) {
   }, [token]);
 
   // ── Logs automáticos ──────────────────────────────────────────────────────────
-  const cargarLogsAuto = useCallback(async () => {
+  const cargarLogsAuto = useCallback(async (mesNum?: string, anioNum?: string) => {
     if (!token) return;
     setLoadingLogsAuto(true); setErrorLogsAuto(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/ftp/logs?origen=auto&limit=500`, { headers: getAuthHeaders(token) });
+      const params = new URLSearchParams({ origen: "auto", limit: "500" });
+      const m = mesNum ?? filtroMesAuto;
+      const a = anioNum ?? filtroAnioAuto;
+      if (a) params.set("anio", a);
+      if (m) params.set("mes", m);
+      const res = await fetch(`${API_BASE_URL}/ftp/logs?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setLogsAuto(await res.json());
       setPageLogsAuto(0);
     } catch (e: unknown) {
       setErrorLogsAuto(e instanceof Error ? e.message : "Error");
     } finally { setLoadingLogsAuto(false); }
-  }, [token]);
+  }, [token, filtroMesAuto, filtroAnioAuto]);
 
   useEffect(() => {
     if (panelAutoOpen && subHistAutoOpen) { cargarLogsAuto(); cargarCountLogs("auto"); }
@@ -719,18 +731,23 @@ export default function ComunicacionesSection({ token }: Props) {
   };
 
   // ── Logs manuales ─────────────────────────────────────────────────────────────
-  const cargarLogsManual = useCallback(async () => {
+  const cargarLogsManual = useCallback(async (mesNum?: string, anioNum?: string) => {
     if (!token) return;
     setLoadingLogsManual(true); setErrorLogsManual(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/ftp/logs?origen=manual&limit=500`, { headers: getAuthHeaders(token) });
+      const params = new URLSearchParams({ origen: "manual", limit: "500" });
+      const m = mesNum ?? filtroMesManual;
+      const a = anioNum ?? filtroAnioManual;
+      if (a) params.set("anio", a);
+      if (m) params.set("mes", m);
+      const res = await fetch(`${API_BASE_URL}/ftp/logs?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setLogsManual(await res.json());
       setPageLogsManual(0);
     } catch (e: unknown) {
       setErrorLogsManual(e instanceof Error ? e.message : "Error");
     } finally { setLoadingLogsManual(false); }
-  }, [token]);
+  }, [token, filtroMesManual, filtroAnioManual]);
 
   useEffect(() => {
     if (panelManualOpen) cargarConfigs();
@@ -1189,11 +1206,21 @@ export default function ComunicacionesSection({ token }: Props) {
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistAutoOpen && (
                     <>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 80 }} value={filtroMesAuto} onChange={e => setFiltroMesAuto(e.target.value)} onClick={e => e.stopPropagation()}>
+                        <option value="">Mes</option>
+                        {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                      </select>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 58 }} value={filtroAnioAuto} onChange={e => setFiltroAnioAuto(e.target.value)} onClick={e => e.stopPropagation()}>
+                        <option value="">Año</option>
+                        {ANIOS.map(a => <option key={a} value={String(a)}>{a}</option>)}
+                      </select>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsAuto(filtroMesAuto, filtroAnioAuto); cargarCountLogs("auto", filtroMesAuto, filtroAnioAuto); }}><IconSearch /></button>
+                      {(filtroMesAuto || filtroAnioAuto) && <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 26 }} onClick={e => { e.stopPropagation(); setFiltroMesAuto(""); setFiltroAnioAuto(""); cargarLogsAuto("", ""); cargarCountLogs("auto", "", ""); }}>✕</button>}
                       <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }} value={diasBorradoAuto} onChange={e => setDiasBorradoAuto(e.target.value)} onClick={e => e.stopPropagation()}>
                         <option value="todos">Todos los registros</option><option value="7">Más de 7 días</option><option value="30">Más de 30 días</option><option value="90">Más de 90 días</option>
                       </select>
                       <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); handleLimpiarHistorial("auto"); }}><IconTrash /> Limpiar</button>
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsAuto(); }}><IconRefresh /> Actualizar</button>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsAuto(); cargarCountLogs("auto"); }}><IconRefresh /> Actualizar</button>
                     </>
                   )}
                   <span style={{ color: "var(--text-muted)" }}>{subHistAutoOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
@@ -1419,11 +1446,21 @@ export default function ComunicacionesSection({ token }: Props) {
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {subHistManualOpen && (
                     <>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 80 }} value={filtroMesManual} onChange={e => setFiltroMesManual(e.target.value)} onClick={e => e.stopPropagation()}>
+                        <option value="">Mes</option>
+                        {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                      </select>
+                      <select className="ui-select" style={{ fontSize: 10, height: 26, width: 58 }} value={filtroAnioManual} onChange={e => setFiltroAnioManual(e.target.value)} onClick={e => e.stopPropagation()}>
+                        <option value="">Año</option>
+                        {ANIOS.map(a => <option key={a} value={String(a)}>{a}</option>)}
+                      </select>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsManual(filtroMesManual, filtroAnioManual); cargarCountLogs("manual", filtroMesManual, filtroAnioManual); }}><IconSearch /></button>
+                      {(filtroMesManual || filtroAnioManual) && <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 26 }} onClick={e => { e.stopPropagation(); setFiltroMesManual(""); setFiltroAnioManual(""); cargarLogsManual("", ""); cargarCountLogs("manual", "", ""); }}>✕</button>}
                       <select className="ui-select" style={{ fontSize: 10, height: 26, width: 140 }} value={diasBorradoManual} onChange={e => setDiasBorradoManual(e.target.value)} onClick={e => e.stopPropagation()}>
                         <option value="todos">Todos los registros</option><option value="7">Más de 7 días</option><option value="30">Más de 30 días</option><option value="90">Más de 90 días</option>
                       </select>
                       <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); handleLimpiarHistorial("manual"); }}><IconTrash /> Limpiar</button>
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsManual(); }}><IconRefresh /> Actualizar</button>
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); cargarLogsManual(); cargarCountLogs("manual"); }}><IconRefresh /> Actualizar</button>
                     </>
                   )}
                   <span style={{ color: "var(--text-muted)" }}>{subHistManualOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
