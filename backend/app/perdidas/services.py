@@ -165,10 +165,10 @@ def _parse_s02(content: bytes) -> dict:
     """
     Parsea un fichero S02 XML y extrae supervisor y clientes.
 
-    Reglas de detección del supervisor:
-    - Magn > 1 → supervisor seguro (gana el de mayor Magn)
-    - Magn = 1 y el ID empieza por el mismo prefijo que el concentrador → supervisor
-    - Resto → clientes
+    Reglas de detección del supervisor (por orden de prioridad):
+    1. Magn > 1  → supervisor seguro (gana el de mayor Magn)
+    2. ID tiene 'S' en posición 3 (ej: ZIVS, SAGS, ORBS...) → supervisor
+    3. Si ninguno cumple → id_supervisor=None (requiere asignación manual)
     """
     text = content.decode("latin1", errors="replace")
     # Eliminar namespace XML para compatibilidad versiones 3.x y 4.0
@@ -180,12 +180,10 @@ def _parse_s02(content: bytes) -> dict:
         raise ValueError("Fichero S02 sin elemento <Cnc>")
 
     id_concentrador = cnc.get("Id", "")
-    prefijo_conc = id_concentrador[:3]  # ej: "CIR", "ORM", "ZIV", "SAG"
     contadores = cnc.findall("Cnt")
 
-    supervisor = None
-    clientes = []
-
+    # Recopilar datos de todos los contadores
+    datos_cnt = []
     for cnt in contadores:
         cid  = cnt.get("Id", "")
         magn = int(cnt.get("Magn", 1))
@@ -193,19 +191,28 @@ def _parse_s02(content: bytes) -> dict:
         total_ai = sum(int(float(s.get("AI", 0))) for s in lecturas) * magn
         total_ae = sum(int(float(s.get("AE", 0))) for s in lecturas) * magn
         horas = len(lecturas)
+        datos_cnt.append({"id": cid, "magn": magn, "ai": total_ai, "ae": total_ae, "horas": horas})
 
-        # Es supervisor si: Magn > 1, o el ID empieza por el mismo prefijo que el concentrador
-        es_supervisor = magn > 1 or cid.startswith(prefijo_conc)
+    # Capa 1: buscar supervisor por 'S' en posición 3 (ZIVS, SAGS, ORBS, CURS...)
+    supervisor = None
+    for d in datos_cnt:
+        if len(d["id"]) > 3 and d["id"][3] == "S":
+            if supervisor is None or d["magn"] > supervisor["magn"]:
+                supervisor = d
 
-        if es_supervisor:
-            if supervisor is None or magn > supervisor["magn"]:
-                if supervisor is not None:
-                    clientes.append({"id": supervisor["id"], "ai": supervisor["ai"], "ae": supervisor["ae"]})
-                supervisor = {"id": cid, "magn": magn, "ai": total_ai, "ae": total_ae, "horas": horas}
-            else:
-                clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
-        else:
-            clientes.append({"id": cid, "ai": total_ai, "ae": total_ae})
+    # Capa 2: si no se encontró con S, buscar por Magn > 1
+    if supervisor is None:
+        for d in datos_cnt:
+            if d["magn"] > 1:
+                if supervisor is None or d["magn"] > supervisor["magn"]:
+                    supervisor = d
+
+    # El resto son clientes
+    clientes = [
+        {"id": d["id"], "ai": d["ai"], "ae": d["ae"]}
+        for d in datos_cnt
+        if supervisor is None or d["id"] != supervisor["id"]
+    ]
 
     return {
         "id_concentrador": id_concentrador,

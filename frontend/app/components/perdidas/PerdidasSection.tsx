@@ -636,7 +636,7 @@ export default function PerdidasSection({ token }: Props) {
                               {d.id_supervisor
                                 ? <span style={{ color: "#1D9E75" }}>{d.id_supervisor}</span>
                                 : <span style={{ color: "var(--text-muted)" }}>
-                                    {analizando[d.id_concentrador] === "ok" ? "Sin supervisor (Kaifa)" : "No analizado"}
+                                    {analizando[d.id_concentrador] === "ok" ? "No encontrado" : "No analizado"}
                                   </span>
                               }
                             </td>
