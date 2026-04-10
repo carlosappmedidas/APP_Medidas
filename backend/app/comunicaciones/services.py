@@ -728,20 +728,28 @@ def _log(db: Session, *, tenant_id: int, empresa_id: int, config_id: Optional[in
     db.commit()
 
 
+_MESES_EN = {
+    1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr",
+    5: "May", 6: "Jun", 7: "Jul", 8: "Aug",
+    9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
+}
+
+
 def count_logs(db: Session, *, tenant_id: int, origen: Optional[str] = None,
                anio: Optional[int] = None, mes: Optional[int] = None) -> dict:
     """Devuelve total, ok y errores reales en BD.
-    Filtra por YYYYMM en el nombre del fichero cuando se pasa anio+mes.
+    Filtra por fecha_ftp (mes en inglés) y/o por YYYYMM en nombre del fichero (año).
     """
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
     if origen:
         q = q.filter(FtpSyncLog.origen == origen)
-    if anio and mes:
-        mes_str = f"{anio}{str(mes).zfill(2)}"
-        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{mes_str}"))
-    elif anio:
+    if mes:
+        mes_en = _MESES_EN.get(mes, "")
+        if mes_en:
+            q = q.filter(FtpSyncLog.fecha_ftp.like(f"{mes_en} %"))
+    if anio:
         anio_str = str(anio)
-        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{anio_str}"))
+        q = q.filter(FtpSyncLog.nombre_fichero.op("~")(f"_{anio_str}" + r"\d{10}$"))
     total = q.count()
     ok = q.filter(FtpSyncLog.estado == "ok").count()
     errores = total - ok
@@ -752,20 +760,21 @@ def list_logs(db: Session, *, tenant_id: int, origen: Optional[str] = None,
               limit: int = 500, anio: Optional[int] = None, mes: Optional[int] = None) -> List[dict]:
     """
     Lista logs con filtros opcionales.
-    Si se pasa anio+mes → filtra por YYYYMM en el nombre del fichero.
-    Sin filtro → devuelve los últimos N registros (limit).
+    Filtra por fecha_ftp (mes en inglés) y/o por YYYYMM en nombre del fichero (año).
+    Con filtro → sin límite. Sin filtro → últimos N (limit).
     """
     q = db.query(FtpSyncLog).filter(FtpSyncLog.tenant_id == tenant_id)
     if origen:
         q = q.filter(FtpSyncLog.origen == origen)
-    if anio and mes:
-        mes_str = f"{anio}{str(mes).zfill(2)}"
-        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{mes_str}"))
-    elif anio:
+    if mes:
+        mes_en = _MESES_EN.get(mes, "")
+        if mes_en:
+            q = q.filter(FtpSyncLog.fecha_ftp.like(f"{mes_en} %"))
+    if anio:
         anio_str = str(anio)
-        q = q.filter(FtpSyncLog.nombre_fichero.contains(f"_{anio_str}"))
-    # Con filtro de mes → sin límite para ver todos los ficheros del mes
-    if anio and mes:
+        q = q.filter(FtpSyncLog.nombre_fichero.op("~")(f"_{anio_str}" + r"\d{10}$"))
+    # Con filtro → sin límite
+    if mes or anio:
         rows = q.order_by(FtpSyncLog.created_at.desc()).all()
     else:
         rows = q.order_by(FtpSyncLog.created_at.desc()).limit(limit).all()

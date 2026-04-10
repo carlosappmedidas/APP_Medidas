@@ -136,6 +136,16 @@ function fmtDate(s: string | null): string {
   } catch { return s; }
 }
 
+function fmtFechaFtp(s: string | null): string {
+  if (!s) return "—";
+  const meses: Record<string, string> = {
+    "Jan": "Ene", "Feb": "Feb", "Mar": "Mar", "Apr": "Abr",
+    "May": "May", "Jun": "Jun", "Jul": "Jul", "Aug": "Ago",
+    "Sep": "Sep", "Oct": "Oct", "Nov": "Nov", "Dec": "Dic",
+  };
+  return s.replace(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/, m => meses[m] || m);
+}
+
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -1298,7 +1308,7 @@ export default function ComunicacionesSection({ token }: Props) {
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>{log.estado === "ok" ? "OK" : "Error"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
-                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.fecha_ftp ?? "—"}</td>
+                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtFechaFtp(log.fecha_ftp)}</td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(log.created_at)}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}>
                               <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} title="Eliminar este registro (el scheduler lo olvidará)" onClick={() => handleDeleteLog(log.id, "auto")}><IconTrash /></button>
@@ -1538,7 +1548,7 @@ export default function ComunicacionesSection({ token }: Props) {
                             <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{log.nombre_fichero}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}><span className={`ui-badge ${log.estado === "ok" ? "ui-badge--ok" : "ui-badge--err"}`}>{log.estado === "ok" ? "OK" : "Error"}</span></td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.mensaje_error ?? "—"}</td>
-                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{log.fecha_ftp ?? "—"}</td>
+                            <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtFechaFtp(log.fecha_ftp)}</td>
                             <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(log.created_at)}</td>
                             <td className="ui-td" style={{ textAlign: "center" }}>
                               <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "3px 5px", display: "flex", alignItems: "center" }} title="Eliminar este registro" onClick={() => handleDeleteLog(log.id, "manual")}><IconTrash /></button>
