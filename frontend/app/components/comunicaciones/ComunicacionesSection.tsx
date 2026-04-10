@@ -585,17 +585,12 @@ export default function ComunicacionesSection({ token }: Props) {
     } catch (e: unknown) {
       setErrorLogsAuto(e instanceof Error ? e.message : "Error");
     } finally { setLoadingLogsAuto(false); }
-  }, [token, filtroMesAuto, filtroAnioAuto]);
+  }, [token]);
 
   useEffect(() => {
     if (panelAutoOpen && subHistAutoOpen) { cargarLogsAuto(); cargarCountLogs("auto"); }
   }, [panelAutoOpen, subHistAutoOpen, cargarLogsAuto, cargarCountLogs]);
 
-  // Actualizar count automáticamente cuando cambia el filtro de mes/año (sin pulsar lupa)
-  useEffect(() => {
-    if (!panelAutoOpen || !subHistAutoOpen) return;
-    cargarCountLogs("auto", filtroMesAuto, filtroAnioAuto);
-  }, [filtroMesAuto, filtroAnioAuto, panelAutoOpen, subHistAutoOpen, cargarCountLogs]);
 
   // ── Borrado de logs ───────────────────────────────────────────────────────────
   const handleDeleteLog = async (logId: number, origen: "auto" | "manual") => {
@@ -770,18 +765,13 @@ export default function ComunicacionesSection({ token }: Props) {
     } catch (e: unknown) {
       setErrorLogsManual(e instanceof Error ? e.message : "Error");
     } finally { setLoadingLogsManual(false); }
-  }, [token, filtroMesManual, filtroAnioManual]);
+  }, [token]);
 
   useEffect(() => {
     if (panelManualOpen) cargarConfigs();
     if (panelManualOpen && subHistManualOpen) { cargarLogsManual(); cargarCountLogs("manual"); }
   }, [panelManualOpen, subHistManualOpen, cargarConfigs, cargarLogsManual, cargarCountLogs]);
 
-  // Actualizar count automáticamente cuando cambia el filtro de mes/año (sin pulsar lupa)
-  useEffect(() => {
-    if (!panelManualOpen || !subHistManualOpen) return;
-    cargarCountLogs("manual", filtroMesManual, filtroAnioManual);
-  }, [filtroMesManual, filtroAnioManual, panelManualOpen, subHistManualOpen, cargarCountLogs]);
 
   // ── Breadcrumb ────────────────────────────────────────────────────────────────
   const renderBreadcrumb = () => {
