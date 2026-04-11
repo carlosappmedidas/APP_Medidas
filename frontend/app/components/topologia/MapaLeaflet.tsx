@@ -119,6 +119,9 @@ export interface TramoMapa {
   cuenta:                  string | null;
   avifauna:                number | null;
   identificador_baja:      string | null;
+  // CT asignado
+  id_ct:                string | null;
+  metodo_asignacion_ct: string | null;
 }
 
 // ─── Interfaces de configuración ──────────────────────────────────────────────
@@ -342,7 +345,8 @@ export const DEFAULT_TOOLTIP_CUPS: TooltipCupsConfig = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  cts:               CtMapa[];
+  cts:               CtMapa[];   // CTs a pintar en el mapa (puede estar filtrado por ctSeleccionado)
+  ctsTodos:          CtMapa[];   // TODOS los CTs — para el selector del popup de línea
   cups:              CupsMapa[];
   tramos:            TramoMapa[];
   mostrarCts:        boolean;
@@ -354,6 +358,7 @@ interface Props {
   tooltipCts:        TooltipCtsConfig;
   tooltipCups:       TooltipCupsConfig;
   onLineaClick:      (id_linea: string | null) => void;
+  onReasignarCt:     (id_tramo: string, id_ct: string | null) => void;
 }
 
 // ─── Color y nivel ────────────────────────────────────────────────────────────
@@ -375,11 +380,6 @@ function nivelLinea(id: string | null, tension_kv?: number | null): string {
 }
 
 // ─── Detección aéreo/subterráneo — Anexo I Orden IET/2660/2015 ───────────────
-//
-//   TI-1  a TI-12  → AÉREO   (LAT aéreo + LBT aéreo sobre postes/fachada)
-//   TI-14 a TI-21  → SUBTERRÁNEO (LAT subterráneo + LBT subterráneo)
-//   Fuera de rango → sin clasificar → línea continua por defecto
-//
 function esLineaSubterranea(codigo_ccuu: string | null): boolean {
   if (!codigo_ccuu) return false;
   const m = codigo_ccuu.match(/^TI-(\d+)/);
@@ -413,7 +413,38 @@ function fila(label: string, valor: string | number): string {
 
 const DIVISOR = `<div style="margin:6px 0;border-top:1px solid #e5e7eb;"></div>`;
 
-// ─── Tooltip línea (B11 + B1) ─────────────────────────────────────────────────
+// ─── Selector CT en popup ─────────────────────────────────────────────────────
+//
+// Leaflet usa HTML estático — la interacción se gestiona via window.__reasignarCt
+// que se registra al montar el mapa y apunta al callback React onReasignarCt.
+// ctsTodos contiene TODOS los CTs de la empresa (no filtrado por ctSeleccionado).
+//
+function buildSelectorCt(idTramo: string, idCtActual: string | null, ctsTodos: CtMapa[]): string {
+  const ctActualNombre = ctsTodos.find(c => c.id_ct === idCtActual)?.nombre ?? idCtActual ?? "Sin CT";
+
+  const opciones = ctsTodos.map(ct =>
+    `<option value="${ct.id_ct}" ${ct.id_ct === idCtActual ? "selected" : ""}>${ct.nombre}</option>`
+  ).join("");
+
+  return `
+    ${DIVISOR}
+    <div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:6px;letter-spacing:0.06em">Asignar CT</div>
+    <div style="font-size:10px;color:#999;margin-bottom:4px">Actual: <strong style="color:#555">${ctActualNombre}</strong></div>
+    <div style="display:flex;gap:4px;align-items:center">
+      <select id="ct-select-${idTramo}" style="flex:1;font-size:10px;padding:2px 4px;border:1px solid #ccc;border-radius:4px;background:#fff;color:#333;height:24px">
+        <option value="">— Sin CT —</option>
+        ${opciones}
+      </select>
+      <button
+        onclick="window.__reasignarCt('${idTramo}', document.getElementById('ct-select-${idTramo}').value || null)"
+        style="font-size:10px;padding:2px 8px;background:#1D9E75;color:#fff;border:none;border-radius:4px;cursor:pointer;height:24px;white-space:nowrap">
+        ✓ Guardar
+      </button>
+    </div>
+  `;
+}
+
+// ─── Tooltip línea (B11 + B1 + selector CT) ───────────────────────────────────
 
 function buildTooltipLinea(
   t: TramoMapa,
@@ -421,6 +452,7 @@ function buildTooltipLinea(
   cfgT: TooltipTramosConfig,
   color: string,
   nivel: string,
+  ctsTodos: CtMapa[],
 ): string {
   const longSegM =
     t.lat_ini !== null && t.lon_ini !== null && t.lat_fin !== null && t.lon_fin !== null
@@ -480,8 +512,10 @@ function buildTooltipLinea(
     ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:3px;letter-spacing:0.06em">Línea (B1)</div>${b1.join("")}`
     : "";
 
-  return `<div style="font-size:11px;line-height:1.7;min-width:190px;max-width:270px">
-    ${cabecera}${secB11}${sep}${secB1}
+  const selectorCt = buildSelectorCt(t.id_tramo, t.id_ct ?? null, ctsTodos);
+
+  return `<div style="font-size:11px;line-height:1.7;min-width:220px;max-width:300px">
+    ${cabecera}${secB11}${sep}${secB1}${selectorCt}
   </div>`;
 }
 
@@ -564,11 +598,12 @@ function buildTooltipCups(c: CupsMapa, cfg: TooltipCupsConfig): string {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function MapaLeaflet({
-  cts, cups, tramos,
+  cts, ctsTodos, cups, tramos,
   mostrarCts, mostrarCups, mostrarLineas,
   lineaSeleccionada,
   tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
   onLineaClick,
+  onReasignarCt,
 }: Props) {
   const mapRef             = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -582,9 +617,18 @@ export default function MapaLeaflet({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresLayerRef = useRef<any>(null);
 
+  const onReasignarCtRef = useRef(onReasignarCt);
+  useEffect(() => { onReasignarCtRef.current = onReasignarCt; }, [onReasignarCt]);
+
   // ── Inicializar mapa ──────────────────────────────────────────────────────
   useEffect(() => {
     if (mapaInstancia.current || !mapRef.current) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__reasignarCt = (idTramo: string, idCt: string | null) => {
+      onReasignarCtRef.current(idTramo, idCt || null);
+    };
+
     import("leaflet").then(L => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -604,62 +648,28 @@ export default function MapaLeaflet({
         doubleClickZoom: true, zoomControl: true, touchZoom: false,
       });
 
-      // ── Capas base ─────────────────────────────────────────────────────────
-      //
-      //   OSM      → OpenStreetMap (por defecto)
-      //   PNOA     → Ortofoto aérea IGN — WMTS IDEE
-      //   IGN Base → Cartografía topográfica IGN — WMTS IDEE
-      //   Catastro → Parcelas catastrales DGCT — WMS
-      //
       const capaOSM = L.tileLayer(
         "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        {
-          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-          maxZoom: 19,
-        }
+        { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 }
       );
-
       const capaPNOA = L.tileLayer(
         "https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
-        {
-          attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA máxima actualidad',
-          maxZoom: 19,
-        }
+        { attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA máxima actualidad', maxZoom: 19 }
       );
-
       const capaIGNBase = L.tileLayer(
         "https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
-        {
-          attribution: '© <a href="https://www.ign.es">IGN</a> — Base cartográfica',
-          maxZoom: 17,
-        }
+        { attribution: '© <a href="https://www.ign.es">IGN</a> — Base cartográfica', maxZoom: 17 }
       );
-
       const capaCatastro = L.tileLayer.wms(
         "https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx",
-        {
-          layers:      "Catastro",
-          format:      "image/png",
-          transparent: true,
-          attribution: '© <a href="https://www.catastro.meh.es">Catastro</a> — DGCT',
-          maxZoom:     19,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { layers: "Catastro", format: "image/png", transparent: true, attribution: '© <a href="https://www.catastro.meh.es">Catastro</a> — DGCT', maxZoom: 19 } as any
       );
 
-      // OSM activa por defecto
       capaOSM.addTo(map);
-
-      // Control de capas base nativo Leaflet — esquina superior derecha
       L.control.layers(
-        {
-          "OpenStreetMap": capaOSM,
-          "PNOA (Ortofoto IGN)": capaPNOA,
-          "IGN Base": capaIGNBase,
-          "Catastro": capaCatastro,
-        },
-        {},
-        { position: "topright", collapsed: true }
+        { "OpenStreetMap": capaOSM, "PNOA (Ortofoto IGN)": capaPNOA, "IGN Base": capaIGNBase, "Catastro": capaCatastro },
+        {}, { position: "topright", collapsed: true }
       ).addTo(map);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -714,10 +724,12 @@ export default function MapaLeaflet({
         lineasLayerRef.current     = null;
         marcadoresLayerRef.current = null;
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__reasignarCt;
     };
   }, []);
 
-  // ── Pintar líneas: no-seleccionadas primero, seleccionada encima ──────────
+  // ── Pintar líneas ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!lineasLayerRef.current || !marcadoresLayerRef.current) return;
     import("leaflet").then(L => {
@@ -744,46 +756,32 @@ export default function MapaLeaflet({
         const peso       = esSeleccionada ? (nivel === "MT" ? 5 : 4) : (nivel === "MT" ? 2.5 : 1.5);
         const opacity    = haySeleccion   ? (esSeleccionada ? 1 : 0.15) : 0.85;
         const colorFinal = esSeleccionada ? (nivel === "MT" ? "#7C3AED" : "#D97706") : color;
-
-        // ── Detección subterráneo — Anexo I Orden IET/2660/2015 ──────────────
-        // TI-1..12 = aéreo (continua) | TI-14..21 = subterráneo (discontinua)
         const subterranea = esLineaSubterranea(t.codigo_ccuu);
 
         const poly = L.polyline(
           [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
-          {
-            color:     colorFinal,
-            weight:    peso,
-            opacity,
-            dashArray: subterranea ? "8 5" : undefined,
-          }
+          { color: colorFinal, weight: peso, opacity, dashArray: subterranea ? "8 5" : undefined }
         );
         poly.on("click", () => { onLineaClick(t.id_linea); });
-        poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, colorFinal, nivel));
+        // ctsTodos = todos los CTs de la empresa, para que el selector tenga las 46 opciones
+        poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, colorFinal, nivel, ctsTodos), {
+          maxWidth: 320,
+        });
         poly.addTo(lineasLayerRef.current);
 
-        if (esSeleccionada) {
-          puntosUnion.push([t.lat_fin, t.lon_fin]);
-        }
+        if (esSeleccionada) puntosUnion.push([t.lat_fin, t.lon_fin]);
       };
 
-      // No seleccionadas primero → seleccionada encima
       tramos.filter(t => t.id_linea !== lineaSeleccionada).forEach(pintarTramo);
       tramos.filter(t => t.id_linea === lineaSeleccionada).forEach(pintarTramo);
 
-      // Puntos de unión encima de todo
       puntosUnion.forEach(([lat, lon]) => {
         L.circleMarker([lat, lon], {
-          radius:      3,
-          color:       "#000000",
-          weight:      1,
-          fillColor:   "#000000",
-          fillOpacity: 1,
+          radius: 3, color: "#000000", weight: 1, fillColor: "#000000", fillOpacity: 1,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any).addTo(marcadoresLayerRef.current);
       });
 
-      // Marcadores ▶ inicio / ■ fin
       if (lineaSeleccionada && marcadoresLayerRef.current) {
         const segmentos = (porLinea.get(lineaSeleccionada) ?? [])
           .filter(t => t.lat_ini !== null)
@@ -818,7 +816,7 @@ export default function MapaLeaflet({
         }
       }
     });
-  }, [tramos, mostrarLineas, tooltipLineas, tooltipTramos, lineaSeleccionada, onLineaClick]);
+  }, [tramos, mostrarLineas, tooltipLineas, tooltipTramos, lineaSeleccionada, onLineaClick, ctsTodos]);
 
   // ── Pintar CTs ────────────────────────────────────────────────────────────
   useEffect(() => {

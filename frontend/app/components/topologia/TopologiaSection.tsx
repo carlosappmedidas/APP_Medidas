@@ -138,7 +138,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [pageCups,       setPageCups]       = useState(0);
   const [pageSizeCups,   setPageSizeCups]   = useState(50);
 
-  // Edición inline
+  // Edición inline tabla
   const [editandoLinea, setEditandoLinea] = useState<string | null>(null);
   const [editandoCups,  setEditandoCups]  = useState<string | null>(null);
   const [editValor,     setEditValor]     = useState<string>("");
@@ -229,7 +229,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId]);
 
-  // Recarga tramos y cups cuando cambia CT
+  // Recarga tramos y cups cuando cambia CT seleccionado
   useEffect(() => {
     if (empresaId) { cargarCups(); cargarTramos(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -279,16 +279,20 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     finally { setCalcCt(false); }
   };
 
-  const handleGuardarLinea = async (id_tramo: string) => {
+  const handleGuardarLinea = async (id_tramo: string, id_ct_nuevo?: string | null) => {
     if (!token || !empresaId) return;
     setGuardando(true);
+    const valor = id_ct_nuevo !== undefined ? id_ct_nuevo : (editValor || null);
     try {
       const res = await fetch(`${API_BASE_URL}/topologia/lineas/${encodeURIComponent(id_tramo)}/ct?empresa_id=${empresaId}`, {
         method: "PATCH", headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ id_ct: editValor || null }),
+        body: JSON.stringify({ id_ct: valor }),
       });
       if (!res.ok) throw new Error();
-      setEditandoLinea(null); cargarTablaLineas();
+      setEditandoLinea(null);
+      // Recargar tramos del mapa y tabla si está abierta
+      cargarTramos();
+      if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas();
     } catch { } finally { setGuardando(false); }
   };
 
@@ -304,6 +308,27 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setEditandoCups(null); cargarTablaCups();
     } catch { } finally { setGuardando(false); }
   };
+
+  // ── Reasignación CT desde popup del mapa ─────────────────────────────────
+  const handleReasignarCtMapa = useCallback(async (id_tramo: string, id_ct: string | null) => {
+    if (!token || !empresaId) return;
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/topologia/lineas/${encodeURIComponent(id_tramo)}/ct?empresa_id=${empresaId}`,
+        {
+          method: "PATCH",
+          headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+          body: JSON.stringify({ id_ct }),
+        }
+      );
+      if (!res.ok) throw new Error();
+      // Recargar tramos para actualizar colores/popup y tabla si está abierta
+      cargarTramos();
+      if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas();
+    } catch {
+      console.error("Error reasignando CT desde mapa");
+    }
+  }, [token, empresaId, cargarTramos, panelTablasOpen, tablaActiva, cargarTablaLineas]);
 
   const handleImportar = async () => {
     if (!token || !empresaId || !hayAlgunFichero) return;
@@ -530,10 +555,10 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
                   {[
-                    { color: "#A855F7", w: 16, h: 3, label: "Línea MT", radius: 2 },
-                    { color: "#F59E0B", w: 16, h: 3, label: "Línea BT", radius: 2 },
-                    { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
-                    { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",      radius: "50%" as const },
+                    { color: "#A855F7", w: 16, h: 3,  label: "Línea MT",                   radius: 2 },
+                    { color: "#F59E0B", w: 16, h: 3,  label: "Línea BT",                   radius: 2 },
+                    { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación",    radius: "50%" as const, border: "2px solid #fff" },
+                    { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",         radius: "50%" as const },
                   ].map(({ color, w, h, label, radius, border }) => (
                     <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
                       <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
@@ -549,12 +574,23 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     Selecciona una empresa para cargar el mapa
                   </div>
                 )}
-                <MapaLeaflet cts={ctSeleccionado ? cts.filter(ct => ct.id_ct === ctSeleccionado) : cts} cups={cups} tramos={tramosFiltrados}
-                  mostrarCts={mostrarCts} mostrarCups={mostrarCups} mostrarLineas={mostrarLineas}
+                <MapaLeaflet
+                  cts={ctSeleccionado ? cts.filter(ct => ct.id_ct === ctSeleccionado) : cts}
+                  cups={cups}
+                  tramos={tramosFiltrados}
+                  mostrarCts={mostrarCts}
+                  mostrarCups={mostrarCups}
+                  mostrarLineas={mostrarLineas}
                   lineaSeleccionada={lineaSeleccionada}
-                  tooltipLineas={tooltipLineas} tooltipTramos={tooltipTramos}
-                  tooltipCts={tooltipCts} tooltipCups={tooltipCups}
-                  onLineaClick={handleLineaClick} />
+                  tooltipLineas={tooltipLineas}
+                  tooltipTramos={tooltipTramos}
+                  tooltipCts={tooltipCts}
+                  tooltipCups={tooltipCups}
+                  onLineaClick={handleLineaClick}
+                  onReasignarCt={handleReasignarCtMapa}
+                  ctsTodos={cts}
+
+                />
               </div>
             </div>
           </div>
