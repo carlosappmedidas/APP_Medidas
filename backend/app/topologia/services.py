@@ -58,19 +58,59 @@ def _upsert_ct(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    obj.id_ct         = registro["id_ct"]
-    obj.cini          = registro.get("cini")
-    obj.nombre        = registro.get("nombre") or registro["id_ct"]
-    obj.codigo_ti     = registro.get("codigo_ti")
-    obj.tension_kv    = registro.get("tension_kv")
-    obj.potencia_kva  = registro.get("potencia_kva")
-    obj.utm_x         = registro.get("utm_x")
-    obj.utm_y         = registro.get("utm_y")
-    obj.lat           = registro.get("lat")
-    obj.lon           = registro.get("lon")
+    # Identificación
+    obj.id_ct       = registro["id_ct"]
+    obj.cini        = registro.get("cini")
+    obj.nombre      = registro.get("nombre") or registro["id_ct"]
+    obj.codigo_ccuu = registro.get("codigo_ccuu")
+
+    # Topología
+    obj.nudo_alta = registro.get("nudo_alta")
+    obj.nudo_baja = registro.get("nudo_baja")
+
+    # Características eléctricas
+    obj.tension_kv              = registro.get("tension_kv")
+    obj.tension_construccion_kv = registro.get("tension_construccion_kv")
+    obj.potencia_kva            = registro.get("potencia_kva")
+
+    # Coordenadas
+    obj.utm_x = registro.get("utm_x")
+    obj.utm_y = registro.get("utm_y")
+    obj.lat   = registro.get("lat")
+    obj.lon   = registro.get("lon")
+
+    # Ubicación
     obj.municipio_ine = registro.get("municipio_ine")
-    obj.propiedad     = registro.get("propiedad")
-    obj.fecha_aps     = registro.get("fecha_aps")
+    obj.provincia     = registro.get("provincia")
+    obj.ccaa          = registro.get("ccaa")
+    obj.zona          = registro.get("zona")
+
+    # Estado
+    obj.estado         = registro.get("estado")
+    obj.modelo         = registro.get("modelo")
+    obj.punto_frontera = registro.get("punto_frontera")
+
+    # Fechas
+    obj.fecha_aps  = registro.get("fecha_aps")
+    obj.causa_baja = registro.get("causa_baja")
+    obj.fecha_baja = registro.get("fecha_baja")
+    obj.fecha_ip   = registro.get("fecha_ip")
+
+    # Inversión
+    obj.tipo_inversion          = registro.get("tipo_inversion")
+    obj.financiado              = registro.get("financiado")
+    obj.im_tramites             = registro.get("im_tramites")
+    obj.im_construccion         = registro.get("im_construccion")
+    obj.im_trabajos             = registro.get("im_trabajos")
+    obj.subvenciones_europeas   = registro.get("subvenciones_europeas")
+    obj.subvenciones_nacionales = registro.get("subvenciones_nacionales")
+    obj.subvenciones_prtr       = registro.get("subvenciones_prtr")
+    obj.valor_auditado          = registro.get("valor_auditado")
+    obj.cuenta                  = registro.get("cuenta")
+    obj.motivacion              = registro.get("motivacion")
+    obj.avifauna                = registro.get("avifauna")
+    obj.identificador_baja      = registro.get("identificador_baja")
+
     return accion
 
 
@@ -147,20 +187,55 @@ def _upsert_cups(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    obj.cups                   = registro["cups"]
-    obj.id_ct                  = registro.get("id_ct")
-    obj.id_salida              = registro.get("id_salida")
-    obj.tarifa                 = registro.get("tarifa")
-    obj.tension_kv             = registro.get("tension_kv")
-    obj.potencia_contratada_kw = registro.get("potencia_contratada_kw")
-    obj.autoconsumo            = registro.get("autoconsumo")
-    obj.telegestado            = registro.get("telegestado")
-    obj.cini_contador          = registro.get("cini_contador")
-    obj.fecha_alta             = registro.get("fecha_alta")
-    obj.utm_x                  = registro.get("utm_x")
-    obj.utm_y                  = registro.get("utm_y")
-    obj.lat                    = registro.get("lat")
-    obj.lon                    = registro.get("lon")
+    # Identificación
+    obj.cups      = registro["cups"]
+    obj.id_ct     = registro.get("id_ct")
+    obj.id_salida = registro.get("id_salida")
+
+    # Clasificación
+    obj.cnae   = registro.get("cnae")
+    obj.tarifa = registro.get("tarifa")
+
+    # Coordenadas
+    obj.utm_x = registro.get("utm_x")
+    obj.utm_y = registro.get("utm_y")
+    obj.lat   = registro.get("lat")
+    obj.lon   = registro.get("lon")
+
+    # Ubicación
+    obj.municipio = registro.get("municipio")
+    obj.provincia = registro.get("provincia")
+    obj.zona      = registro.get("zona")
+    obj.conexion  = registro.get("conexion")
+
+    # Características eléctricas
+    obj.tension_kv              = registro.get("tension_kv")
+    obj.estado_contrato         = registro.get("estado_contrato")
+    obj.potencia_contratada_kw  = registro.get("potencia_contratada_kw")
+    obj.potencia_adscrita_kw    = registro.get("potencia_adscrita_kw")
+    obj.energia_activa_kwh      = registro.get("energia_activa_kwh")
+    obj.energia_reactiva_kvarh  = registro.get("energia_reactiva_kvarh")
+
+    # Autoconsumo y medida
+    obj.autoconsumo   = registro.get("autoconsumo")
+    obj.cini_contador = registro.get("cini_contador")
+    obj.fecha_alta    = registro.get("fecha_alta")
+
+    # Gestión
+    obj.lecturas           = registro.get("lecturas")
+    obj.baja_suministro    = registro.get("baja_suministro")
+    obj.cambio_titularidad = registro.get("cambio_titularidad")
+    obj.facturas_estimadas = registro.get("facturas_estimadas")
+    obj.facturas_total     = registro.get("facturas_total")
+
+    # Autoconsumo detalle
+    obj.cau                     = registro.get("cau")
+    obj.cod_auto                = registro.get("cod_auto")
+    obj.cod_generacion_auto     = registro.get("cod_generacion_auto")
+    obj.conexion_autoconsumo    = registro.get("conexion_autoconsumo")
+    obj.energia_autoconsumida_kwh = registro.get("energia_autoconsumida_kwh")
+    obj.energia_excedentaria_kwh  = registro.get("energia_excedentaria_kwh")
+
     return accion
 
 
@@ -199,13 +274,18 @@ def _upsert_linea(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    obj.id_tramo                = registro["id_tramo"]
-    obj.cini                    = registro.get("cini")
-    obj.codigo_ccuu             = registro.get("codigo_ccuu")
-    obj.nudo_inicio             = registro.get("nudo_inicio")
-    obj.nudo_fin                = registro.get("nudo_fin")
-    obj.ccaa_1                  = registro.get("ccaa_1")
-    obj.nivel_tension           = registro.get("nivel_tension")
+    # Identificación
+    obj.id_tramo    = registro["id_tramo"]
+    obj.cini        = registro.get("cini")
+    obj.codigo_ccuu = registro.get("codigo_ccuu")
+
+    # Topología
+    obj.nudo_inicio   = registro.get("nudo_inicio")
+    obj.nudo_fin      = registro.get("nudo_fin")
+    obj.ccaa_1        = registro.get("ccaa_1")
+    obj.nivel_tension = registro.get("nivel_tension")
+
+    # Características eléctricas
     obj.propiedad               = registro.get("propiedad")
     obj.tension_kv              = registro.get("tension_kv")
     obj.tension_construccion_kv = registro.get("tension_construccion_kv")
@@ -213,12 +293,34 @@ def _upsert_linea(
     obj.resistencia_ohm         = registro.get("resistencia_ohm")
     obj.reactancia_ohm          = registro.get("reactancia_ohm")
     obj.intensidad_a            = registro.get("intensidad_a")
-    obj.punto_frontera          = registro.get("punto_frontera")
-    obj.modelo                  = registro.get("modelo")
-    obj.operacion               = registro.get("operacion")
-    obj.fecha_aps               = registro.get("fecha_aps")
-    obj.causa_baja              = registro.get("causa_baja")
-    obj.fecha_baja              = registro.get("fecha_baja")
+
+    # Estado
+    obj.estado         = registro.get("estado")
+    obj.punto_frontera = registro.get("punto_frontera")
+    obj.modelo         = registro.get("modelo")
+    obj.operacion      = registro.get("operacion")
+
+    # Fechas
+    obj.fecha_aps  = registro.get("fecha_aps")
+    obj.causa_baja = registro.get("causa_baja")
+    obj.fecha_baja = registro.get("fecha_baja")
+    obj.fecha_ip   = registro.get("fecha_ip")
+
+    # Inversión
+    obj.tipo_inversion          = registro.get("tipo_inversion")
+    obj.motivacion              = registro.get("motivacion")
+    obj.im_tramites             = registro.get("im_tramites")
+    obj.im_construccion         = registro.get("im_construccion")
+    obj.im_trabajos             = registro.get("im_trabajos")
+    obj.valor_auditado          = registro.get("valor_auditado")
+    obj.financiado              = registro.get("financiado")
+    obj.subvenciones_europeas   = registro.get("subvenciones_europeas")
+    obj.subvenciones_nacionales = registro.get("subvenciones_nacionales")
+    obj.subvenciones_prtr       = registro.get("subvenciones_prtr")
+    obj.cuenta                  = registro.get("cuenta")
+    obj.avifauna                = registro.get("avifauna")
+    obj.identificador_baja      = registro.get("identificador_baja")
+
     return accion
 
 

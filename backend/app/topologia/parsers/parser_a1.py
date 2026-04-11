@@ -1,36 +1,43 @@
 # app/topologia/parsers/parser_a1.py
 # pyright: reportMissingImports=false
 """
-Parser del fichero A1 de la Circular CNMC 8/2021.
+Parser del fichero A1 de la Circular CNMC 8/2021 (BOE-A-2021-21003).
 Formato: texto plano separado por ';', sin cabecera.
 
-Mapa de campos (índice 0-based):
-  0  → ID_CONTADOR_INTERNO  (no se almacena)
-  1  → UTM_X                (coma decimal)
-  2  → UTM_Y                (coma decimal)
-  3  → UTM_Z                (no se almacena)
-  4  → NUDO_MT              (no se almacena — no cruza con id_ct del B2)
-  5  → ID_SALIDA_BT
-  6  → CUPS
-  7  → MUNICIPIO_INE
-  8  → PROVINCIA            (no se almacena)
-  9  → TARIFA               (RC, RD, ...)
-  10 → TIPO_CLIENTE         (no se almacena)
-  11 → TENSION_KV           (coma decimal)
-  12 → AUTOCONSUMO          (0/1)
-  13 → POTENCIA_P1_KW       (coma decimal — potencia contratada)
-  14 → POTENCIA_P2_KW       (no se almacena)
-  15 → ENERGIA_ACTIVA_KWH   (no se almacena)
-  16 → ENERGIA_REACTIVA_KWH (no se almacena)
-  17 → TELEGESTADO          (0/1)
-  18 → CINI_CONTADOR
-  19 → FECHA_ALTA           (dd/mm/yyyy)
-  20 → NUM_PERIODOS         (no se almacena)
-  ...resto → datos autoconsumo / periodos, no se almacenan
+Mapa de campos (índice 0-based, según Formulario A1 del BOE):
+  0    NUDO                       (id nudo — se usa como id_ct provisional)
+  1    COORDENADAS X              (UTM, coma decimal)
+  2    COORDENADAS Y              (UTM, coma decimal)
+  3    COORDENADAS Z              (ignorado)
+  4    CNAE                       (CNAE-2009)
+  5    COD_TFA                    (código tarifa)
+  6    CUPS
+  7    MUNICIPIO                  (INE C4)
+  8    PROVINCIA                  (INE C2)
+  9    ZONA                       (U/SU/RC/RD)
+  10   CONEXION                   (A=aérea, S=subterránea)
+  11   TENSION                    (kV, coma decimal)
+  12   ESTADO_CONTRATO            (0=vigente, 1=sin contrato)
+  13   POTENCIA_CONTRATADA        (kW, coma decimal)
+  14   POTENCIA_ADSCRITA          (kW, coma decimal)
+  15   ENERGIA_ACTIVA_CONSUMIDA   (kWh, coma decimal)
+  16   ENERGIA_REACTIVA_CONSUMIDA (kVArh, coma decimal)
+  17   AUTOCONSUMO                (0/1)
+  18   CINI_EQUIPO_MEDIDA
+  19   FECHA_INSTALACION          (dd/mm/aaaa)
+  20   LECTURAS
+  21   BAJA_SUMINISTRO            (0/1)
+  22   CAMBIO_TITULARIDAD         (0/1)
+  23   FACTURAS_ESTIMADAS
+  24   FACTURAS_TOTAL
+  25   CAU
+  26   COD_AUTO
+  27   COD_GENERACION_AUTO        (entero)
+  28   CONEXION_AUTOCONSUMO       (0/1/2)
+  29   ENERGIA_AUTOCONSUMIDA      (kWh, coma decimal)
+  30   ENERGIA_EXCEDENTARIA       (kWh, coma decimal)
 
-Nota: el campo id_ct se deja vacío (None) en esta fase.
-El cruce CUPS → CT se realizará cuando esté disponible la fuente
-adecuada (PRIMER o GIS completo).
+Nota: id_ct se deja None — el cruce CUPS→CT requiere GIS o PRIMER.
 """
 from __future__ import annotations
 
@@ -39,8 +46,7 @@ from datetime import date
 from typing import Any, Dict, List, Tuple
 
 
-# ── Conversión UTM ETRS89 → WGS84 ────────────────────────────────────────────
-# Sin dependencias externas. Error < 1 m en España peninsular huso 30.
+# ── Conversión UTM ETRS89 huso 30 → WGS84 ────────────────────────────────────
 
 _A  = 6_378_137.0
 _F  = 1 / 298.257_223_563
@@ -109,7 +115,6 @@ def _int(valor: str) -> int | None:
 
 
 def _date(valor: str) -> date | None:
-    """Parsea dd/mm/yyyy."""
     v = valor.strip()
     if len(v) != 10:
         return None
@@ -124,6 +129,10 @@ def _str(valor: str) -> str | None:
     return v if v else None
 
 
+def _get(campos: list, idx: int) -> str:
+    return campos[idx] if len(campos) > idx else ""
+
+
 # ── Parser principal ──────────────────────────────────────────────────────────
 
 def parsear_a1(
@@ -133,10 +142,7 @@ def parsear_a1(
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """
     Parsea el contenido binario del fichero A1 (puntos de suministro).
-
-    Devuelve:
-        registros : lista de dicts listos para insertar en cups_topologia
-        errores   : lista de mensajes de líneas con problema
+    Almacena todos los campos definidos en el Formulario A1 del BOE.
     """
     registros: List[Dict[str, Any]] = []
     errores:   List[str]            = []
@@ -155,13 +161,13 @@ def parsear_a1(
             continue
 
         try:
-            cups = _str(campos[6])
+            cups = _str(_get(campos, 6))
             if not cups:
                 errores.append(f"Línea {num}: CUPS vacío")
                 continue
 
-            utm_x = _float(campos[1])
-            utm_y = _float(campos[2])
+            utm_x = _float(_get(campos, 1))
+            utm_y = _float(_get(campos, 2))
 
             lat, lon = None, None
             if utm_x is not None and utm_y is not None:
@@ -171,20 +177,54 @@ def parsear_a1(
                     errores.append(f"Línea {num} ({cups}): error convirtiendo coordenadas UTM")
 
             registros.append({
-                "cups":                   cups,
-                "id_ct":                  None,      # pendiente — sin cruce directo en A1
-                "id_salida":              _str(campos[5]),
-                "tarifa":                 _str(campos[9])   if len(campos) > 9  else None,
-                "tension_kv":             _float(campos[11]) if len(campos) > 11 else None,
-                "potencia_contratada_kw": _float(campos[13]) if len(campos) > 13 else None,
-                "autoconsumo":            _int(campos[12])   if len(campos) > 12 else None,
-                "telegestado":            _int(campos[17])   if len(campos) > 17 else None,
-                "cini_contador":          _str(campos[18])   if len(campos) > 18 else None,
-                "fecha_alta":             _date(campos[19])  if len(campos) > 19 else None,
-                "utm_x":                  utm_x,
-                "utm_y":                  utm_y,
-                "lat":                    lat,
-                "lon":                    lon,
+                # Identificación
+                "cups":     cups,
+                "id_ct":    None,   # sin cruce directo en A1 — requiere GIS o PRIMER
+                "id_salida": None,  # no existe en A1
+
+                # Clasificación
+                "cnae":   _str(_get(campos, 4)),
+                "tarifa": _str(_get(campos, 5)),   # COD_TFA
+
+                # Coordenadas
+                "utm_x": utm_x,
+                "utm_y": utm_y,
+                "lat":   lat,
+                "lon":   lon,
+
+                # Ubicación
+                "municipio": _str(_get(campos, 7)),
+                "provincia": _str(_get(campos, 8)),
+                "zona":      _str(_get(campos, 9)),
+                "conexion":  _str(_get(campos, 10)),  # A=aérea, S=subterránea
+
+                # Características eléctricas
+                "tension_kv":             _float(_get(campos, 11)),
+                "estado_contrato":        _int(_get(campos, 12)),
+                "potencia_contratada_kw": _float(_get(campos, 13)),
+                "potencia_adscrita_kw":   _float(_get(campos, 14)),
+                "energia_activa_kwh":     _float(_get(campos, 15)),
+                "energia_reactiva_kvarh": _float(_get(campos, 16)),
+
+                # Autoconsumo y medida
+                "autoconsumo":    _int(_get(campos, 17)),
+                "cini_contador":  _str(_get(campos, 18)),   # CINI_EQUIPO_MEDIDA
+                "fecha_alta":     _date(_get(campos, 19)),  # FECHA_INSTALACION
+
+                # Gestión
+                "lecturas":           _int(_get(campos, 20)),
+                "baja_suministro":    _int(_get(campos, 21)),
+                "cambio_titularidad": _int(_get(campos, 22)),
+                "facturas_estimadas": _int(_get(campos, 23)),
+                "facturas_total":     _int(_get(campos, 24)),
+
+                # Autoconsumo detalle
+                "cau":                    _str(_get(campos, 25)),
+                "cod_auto":               _str(_get(campos, 26)),
+                "cod_generacion_auto":    _int(_get(campos, 27)),
+                "conexion_autoconsumo":   _int(_get(campos, 28)),
+                "energia_autoconsumida_kwh": _float(_get(campos, 29)),
+                "energia_excedentaria_kwh":  _float(_get(campos, 30)),
             })
 
         except Exception as exc:

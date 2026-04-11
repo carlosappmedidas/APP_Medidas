@@ -21,46 +21,25 @@ import AppearanceSettingsSection from "./components/settings/AppearanceSettingsS
 import TableSettingsSection from "./components/settings/TableSettingsSection";
 import TopologiaSettingsSection from "./components/settings/TopologiaSettingsSection";
 import { useTableSettings } from "./components/settings/hooks/useTableSettings";
-import type { TooltipLineasConfig } from "./components/topologia/MapaLeaflet";
-import { DEFAULT_TOOLTIP_LINEAS } from "./components/topologia/MapaLeaflet";
+import type { TooltipLineasConfig, TooltipCtsConfig, TooltipCupsConfig } from "./components/topologia/MapaLeaflet";
+import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./components/topologia/MapaLeaflet";
 import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
 type MainTab =
-  | "dashboard"
-  | "medidas"
-  | "objeciones"
-  | "calendario-ree"
-  | "graficos"
-  | "alertas"
-  | "usuarios"
-  | "clientes"
-  | "tablas-general"
-  | "tablas-ps"
-  | "carga"
-  | "comunicaciones"
-  | "perdidas"
-  | "topologia"
-  | "ajustes"
-  | "sistema";
+  | "dashboard" | "medidas" | "objeciones" | "calendario-ree" | "graficos"
+  | "alertas" | "usuarios" | "clientes" | "tablas-general" | "tablas-ps"
+  | "carga" | "comunicaciones" | "perdidas" | "topologia" | "ajustes" | "sistema";
 
 const PAGE_TITLES: Record<MainTab, string> = {
-  "dashboard":        "Dashboard",
-  "medidas":          "Medidas",
-  "tablas-general":   "Medidas (General)",
-  "tablas-ps":        "Medidas (PS)",
-  "objeciones":       "Objeciones",
-  "calendario-ree":   "Calendario REE",
-  "graficos":         "Gráficos",
-  "alertas":          "Alertas",
-  "usuarios":         "Usuarios",
-  "clientes":         "Clientes",
-  "carga":            "Carga de datos",
-  "comunicaciones":   "Comunicaciones FTP",
-  "perdidas":         "Pérdidas por transformación",
-  "topologia":        "Topología de red",
-  "ajustes":          "Configuración",
-  "sistema":          "Sistema",
+  "dashboard": "Dashboard", "medidas": "Medidas",
+  "tablas-general": "Medidas (General)", "tablas-ps": "Medidas (PS)",
+  "objeciones": "Objeciones", "calendario-ree": "Calendario REE",
+  "graficos": "Gráficos", "alertas": "Alertas", "usuarios": "Usuarios",
+  "clientes": "Clientes", "carga": "Carga de datos",
+  "comunicaciones": "Comunicaciones FTP",
+  "perdidas": "Pérdidas por transformación",
+  "topologia": "Topología de red", "ajustes": "Configuración", "sistema": "Sistema",
 };
 
 const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
@@ -114,12 +93,14 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
 const DEFAULT_GENERAL_ORDER = ALL_COLUMNS_META.map((c) => c.id);
 const DEFAULT_PS_ORDER = COLUMNS_PS_META.map((c) => c.id);
 
-const SIDEBAR_STORAGE_KEY         = "ui_sidebar_collapsed";
-const AUTH_TOKEN_STORAGE_KEY      = "auth_token";
-const MEDIDAS_OPEN_STORAGE_KEY    = "ui_medidas_open";
-const TABLAS_OPEN_STORAGE_KEY     = "ui_tablas_open";
-const PERDIDAS_OPEN_STORAGE_KEY   = "ui_perdidas_open";
-const TOPOLOGIA_TOOLTIP_STORAGE_KEY = "ui_topologia_tooltip";
+const SIDEBAR_STORAGE_KEY           = "ui_sidebar_collapsed";
+const AUTH_TOKEN_STORAGE_KEY        = "auth_token";
+const MEDIDAS_OPEN_STORAGE_KEY      = "ui_medidas_open";
+const TABLAS_OPEN_STORAGE_KEY       = "ui_tablas_open";
+const PERDIDAS_OPEN_STORAGE_KEY     = "ui_perdidas_open";
+const TOOLTIP_LINEAS_STORAGE_KEY    = "ui_topologia_tooltip_lineas";
+const TOOLTIP_CTS_STORAGE_KEY       = "ui_topologia_tooltip_cts";
+const TOOLTIP_CUPS_STORAGE_KEY      = "ui_topologia_tooltip_cups";
 
 const PERDIDAS_TABS: MainTab[] = ["perdidas", "topologia"];
 
@@ -146,8 +127,10 @@ export default function HomePage() {
   // ── Collapsibles alertas ───────────────────────────────────────────────
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
 
-  // ── Tooltip topología ──────────────────────────────────────────────────
+  // ── Configuración tooltip topología ───────────────────────────────────
   const [tooltipLineas, setTooltipLineas] = useState<TooltipLineasConfig>(DEFAULT_TOOLTIP_LINEAS);
+  const [tooltipCts,    setTooltipCts]    = useState<TooltipCtsConfig>(DEFAULT_TOOLTIP_CTS);
+  const [tooltipCups,   setTooltipCups]   = useState<TooltipCupsConfig>(DEFAULT_TOOLTIP_CUPS);
 
   // ── Hook configuración de tablas ───────────────────────────────────────
   const {
@@ -166,10 +149,12 @@ export default function HomePage() {
       if (localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1") setMedidasOpen(true);
       if (localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1") setTablasOpen(true);
       if (localStorage.getItem(PERDIDAS_OPEN_STORAGE_KEY) === "1") setPerdidasOpen(true);
-      const savedTooltip = localStorage.getItem(TOPOLOGIA_TOOLTIP_STORAGE_KEY);
-      if (savedTooltip) {
-        try { setTooltipLineas({ ...DEFAULT_TOOLTIP_LINEAS, ...JSON.parse(savedTooltip) }); } catch { /* */ }
-      }
+      const sl = localStorage.getItem(TOOLTIP_LINEAS_STORAGE_KEY);
+      if (sl) { try { setTooltipLineas({ ...DEFAULT_TOOLTIP_LINEAS, ...JSON.parse(sl) }); } catch { /* */ } }
+      const sc = localStorage.getItem(TOOLTIP_CTS_STORAGE_KEY);
+      if (sc) { try { setTooltipCts({ ...DEFAULT_TOOLTIP_CTS, ...JSON.parse(sc) }); } catch { /* */ } }
+      const su = localStorage.getItem(TOOLTIP_CUPS_STORAGE_KEY);
+      if (su) { try { setTooltipCups({ ...DEFAULT_TOOLTIP_CUPS, ...JSON.parse(su) }); } catch { /* */ } }
     } catch { /* ignore */ }
     finally { setAuthReady(true); }
   }, []);
@@ -180,7 +165,9 @@ export default function HomePage() {
   useEffect(() => { try { localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0"); } catch { /* */ } }, [tablasOpen]);
   useEffect(() => { try { localStorage.setItem(PERDIDAS_OPEN_STORAGE_KEY, perdidasOpen ? "1" : "0"); } catch { /* */ } }, [perdidasOpen]);
   useEffect(() => { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0"); } catch { /* */ } }, [sidebarCollapsed]);
-  useEffect(() => { try { localStorage.setItem(TOPOLOGIA_TOOLTIP_STORAGE_KEY, JSON.stringify(tooltipLineas)); } catch { /* */ } }, [tooltipLineas]);
+  useEffect(() => { try { localStorage.setItem(TOOLTIP_LINEAS_STORAGE_KEY, JSON.stringify(tooltipLineas)); } catch { /* */ } }, [tooltipLineas]);
+  useEffect(() => { try { localStorage.setItem(TOOLTIP_CTS_STORAGE_KEY,    JSON.stringify(tooltipCts));    } catch { /* */ } }, [tooltipCts]);
+  useEffect(() => { try { localStorage.setItem(TOOLTIP_CUPS_STORAGE_KEY,   JSON.stringify(tooltipCups));   } catch { /* */ } }, [tooltipCups]);
 
   // ── Cargar usuario ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -227,15 +214,12 @@ export default function HomePage() {
 
   const handlePerdidasClick = () => {
     setPerdidasOpen((prev) => !prev);
-    if (!PERDIDAS_TABS.includes(activeTab)) {
-      setActiveTab("perdidas");
-    }
+    if (!PERDIDAS_TABS.includes(activeTab)) setActiveTab("perdidas");
   };
 
   const handleGoToTableSettings = () => { setActiveTab("ajustes"); setShowTablas(true); };
   const handleGoToAlertConfig   = () => { setActiveTab("ajustes"); setShowAlertConfig(true); };
 
-  // ── Loading / Login ────────────────────────────────────────────────────
   if (!authReady) {
     return (
       <div className="ui-login-shell">
@@ -286,13 +270,10 @@ export default function HomePage() {
         {!sidebarCollapsed && (
           <nav className="ui-nav">
             <div className="ui-nav-section-title">Menú</div>
-
             <button onClick={() => setActiveTab("dashboard")}
               className={["ui-nav-item", activeTab === "dashboard" ? "ui-nav-item--active" : ""].join(" ")}>
               <span>Dashboard</span>
             </button>
-
-            {/* Medidas */}
             <div>
               <button onClick={handleMedidasClick}
                 className={["ui-nav-item", ["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
@@ -337,41 +318,34 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-
             <button onClick={() => setActiveTab("alertas")}
               className={["ui-nav-item", activeTab === "alertas" ? "ui-nav-item--active" : ""].join(" ")}>
               <span>Alertas</span>
             </button>
-
             {canManageUsers && (
               <button onClick={() => setActiveTab("usuarios")}
                 className={["ui-nav-item", activeTab === "usuarios" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Usuarios</span>
               </button>
             )}
-
             {isSuperuser && (
               <button onClick={() => setActiveTab("clientes")}
                 className={["ui-nav-item", activeTab === "clientes" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Clientes</span>
               </button>
             )}
-
             {!isViewer && (
               <button onClick={() => setActiveTab("carga")}
                 className={["ui-nav-item", activeTab === "carga" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Carga de datos</span>
               </button>
             )}
-
             {!isViewer && (
               <button onClick={() => setActiveTab("comunicaciones")}
                 className={["ui-nav-item", activeTab === "comunicaciones" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Comunicaciones</span>
               </button>
             )}
-
-            {/* Pérdidas — con submenú */}
             {!isViewer && (
               <div>
                 <button onClick={handlePerdidasClick}
@@ -393,14 +367,12 @@ export default function HomePage() {
                 )}
               </div>
             )}
-
             {canSeeAjustes && (
               <button onClick={() => setActiveTab("ajustes")}
                 className={["ui-nav-item", activeTab === "ajustes" ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Configuración</span>
               </button>
             )}
-
             {isSuperuser && (
               <button onClick={() => setActiveTab("sistema")}
                 className={["ui-nav-item", activeTab === "sistema" ? "ui-nav-item--active" : ""].join(" ")}>
@@ -486,18 +458,18 @@ export default function HomePage() {
             appearance={appearance} />
         )}
 
-        {activeTab === "carga" && !isViewer && <CargaSection token={token} />}
-
-        {activeTab === "comunicaciones" && !isViewer && (
-          <ComunicacionesSection token={token} currentUser={currentUser} />
-        )}
-
-        {activeTab === "perdidas" && !isViewer && (
-          <PerdidasSection token={token} currentUser={currentUser} />
-        )}
+        {activeTab === "carga"          && !isViewer && <CargaSection token={token} />}
+        {activeTab === "comunicaciones" && !isViewer && <ComunicacionesSection token={token} currentUser={currentUser} />}
+        {activeTab === "perdidas"       && !isViewer && <PerdidasSection token={token} currentUser={currentUser} />}
 
         {activeTab === "topologia" && !isViewer && (
-          <TopologiaSection token={token} currentUser={currentUser} tooltipLineas={tooltipLineas} />
+          <TopologiaSection
+            token={token}
+            currentUser={currentUser}
+            tooltipLineas={tooltipLineas}
+            tooltipCts={tooltipCts}
+            tooltipCups={tooltipCups}
+          />
         )}
 
         {activeTab === "ajustes" && canSeeAjustes && (
@@ -522,7 +494,6 @@ export default function HomePage() {
                 )}
               </div>
             )}
-
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowTablas((v) => !v)}>
                 <div>
@@ -545,7 +516,6 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowAlertConfig((v) => !v)}>
                 <div>
@@ -560,18 +530,24 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowTopologia((v) => !v)}>
                 <div>
                   <div className="ui-collapsible-card__title">CONFIGURACIÓN TOPOLOGÍA</div>
-                  <p className="ui-collapsible-card__subtitle">Campos que se muestran en el tooltip del mapa al hacer clic en una línea.</p>
+                  <p className="ui-collapsible-card__subtitle">Campos que se muestran en el tooltip del mapa al hacer clic en líneas, CTs y CUPS.</p>
                 </div>
                 <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showTopologia ? "Ocultar" : "Mostrar"}</span>
               </button>
               {showTopologia && (
                 <div className="ui-collapsible-card__body">
-                  <TopologiaSettingsSection config={tooltipLineas} onChange={setTooltipLineas} />
+                  <TopologiaSettingsSection
+                    tooltipLineas={tooltipLineas}
+                    tooltipCts={tooltipCts}
+                    tooltipCups={tooltipCups}
+                    onChangeLineas={setTooltipLineas}
+                    onChangeCts={setTooltipCts}
+                    onChangeCups={setTooltipCups}
+                  />
                 </div>
               )}
             </div>

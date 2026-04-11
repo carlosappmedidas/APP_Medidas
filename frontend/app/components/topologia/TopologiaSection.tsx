@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
-import type { CtMapa, CupsMapa, TramoMapa, TooltipLineasConfig } from "./MapaLeaflet";
-import { DEFAULT_TOOLTIP_LINEAS } from "./MapaLeaflet";
+import type { CtMapa, CupsMapa, TramoMapa, TooltipLineasConfig, TooltipCtsConfig, TooltipCupsConfig } from "./MapaLeaflet";
+import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./MapaLeaflet";
 
 const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
   ssr: false,
@@ -43,6 +43,8 @@ interface Props {
   token:         string | null;
   currentUser:   User | null;
   tooltipLineas: TooltipLineasConfig;
+  tooltipCts:    TooltipCtsConfig;
+  tooltipCups:   TooltipCupsConfig;
 }
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
@@ -81,7 +83,7 @@ type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function TopologiaSection({ token, tooltipLineas }: Props) {
+export default function TopologiaSection({ token, tooltipLineas, tooltipCts, tooltipCups }: Props) {
 
   const [panelImportOpen, setPanelImportOpen] = useState(false);
   const [panelMapaOpen,   setPanelMapaOpen]   = useState(true);
@@ -90,13 +92,11 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
   const [empresaId, setEmpresaId] = useState<number | "">("");
   const [anioDecl,  setAnioDecl]  = useState<string>(String(new Date().getFullYear()));
 
-  // ── Importación ───────────────────────────────────────────────────────────
   const [ficheros,     setFicheros]     = useState<Record<FicheroKey, File | null>>({ b2: null, b21: null, a1: null, b1: null, b11: null });
   const [importing,    setImporting]    = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError,  setImportError]  = useState<string | null>(null);
 
-  // ── Mapa ──────────────────────────────────────────────────────────────────
   const [cts,            setCts]            = useState<CtMapa[]>([]);
   const [cups,           setCups]           = useState<CupsMapa[]>([]);
   const [tramos,         setTramos]         = useState<TramoMapa[]>([]);
@@ -111,7 +111,6 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
-  // ── Carga inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) return;
     fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) })
@@ -120,7 +119,6 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
       .catch(() => {});
   }, [token]);
 
-  // ── Cargar CTs ────────────────────────────────────────────────────────────
   const cargarCts = useCallback(async () => {
     if (!token || !empresaId) return;
     setLoadingCts(true);
@@ -132,7 +130,6 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
     finally { setLoadingCts(false); }
   }, [token, empresaId]);
 
-  // ── Cargar CUPS ───────────────────────────────────────────────────────────
   const cargarCups = useCallback(async () => {
     if (!token || !empresaId) return;
     setLoadingCups(true);
@@ -146,7 +143,6 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
     finally { setLoadingCups(false); }
   }, [token, empresaId, ctSeleccionado]);
 
-  // ── Cargar Tramos ─────────────────────────────────────────────────────────
   const cargarTramos = useCallback(async () => {
     if (!token || !empresaId) return;
     setLoadingTramos(true);
@@ -166,27 +162,23 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
     if (empresaId) cargarCups();
   }, [ctSeleccionado, empresaId, cargarCups]);
 
-  // ── Filtrar tramos por nivel ───────────────────────────────────────────────
   const tramosFiltrados = tramos.filter(t => {
     const esBT = (t.id_linea ?? "").toUpperCase().includes("BT");
     if (esBT) return mostrarBT;
     return mostrarMT;
   });
 
-  // ── Importación ───────────────────────────────────────────────────────────
   const hayAlgunFichero = Object.values(ficheros).some(f => f !== null);
 
   const handleImportar = async () => {
     if (!token || !empresaId || !hayAlgunFichero) return;
     setImporting(true); setImportError(null); setImportResult(null);
-
     const fd = new FormData();
-    fd.append("empresa_id",       String(empresaId));
+    fd.append("empresa_id", String(empresaId));
     fd.append("anio_declaracion", anioDecl);
     (Object.entries(ficheros) as [FicheroKey, File | null][]).forEach(([key, file]) => {
       if (file) fd.append(key, file);
     });
-
     try {
       const res = await fetch(`${API_BASE_URL}/topologia/importar`, {
         method: "POST", headers: getAuthHeaders(token), body: fd,
@@ -205,8 +197,6 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
   const numBT = tramos.filter(t =>  (t.id_linea ?? "").toUpperCase().includes("BT")).length;
   const numMT = tramos.filter(t => !(t.id_linea ?? "").toUpperCase().includes("BT")).length;
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
   return (
     <div className="text-sm">
 
@@ -222,17 +212,14 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
             {panelImportOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
-
         {panelImportOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
             {importError && <div className="ui-alert ui-alert--danger mb-3">{importError}</div>}
-
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
                 <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 200 }}
-                  value={empresaId}
-                  onChange={e => setEmpresaId(e.target.value === "" ? "" : Number(e.target.value))}>
+                  value={empresaId} onChange={e => setEmpresaId(e.target.value === "" ? "" : Number(e.target.value))}>
                   <option value="">Selecciona empresa</option>
                   {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                 </select>
@@ -243,7 +230,6 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
                   value={anioDecl} onChange={e => setAnioDecl(e.target.value)} />
               </div>
             </div>
-
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
               {FICHEROS_CONFIG.slice(0, 3).map(({ key, label, desc }) => (
                 <div key={key} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
@@ -267,13 +253,10 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
               ))}
               <div />
             </div>
-
             <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-              onClick={handleImportar}
-              disabled={importing || !empresaId || !hayAlgunFichero}>
+              onClick={handleImportar} disabled={importing || !empresaId || !hayAlgunFichero}>
               {importing ? "Importando..." : "Importar ficheros"}
             </button>
-
             {importResult && (
               <div style={{ marginTop: 16, background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
@@ -281,11 +264,11 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   {[
-                    { label: "CTs (B2)",              ins: importResult.cts_insertados,      act: importResult.cts_actualizados,      err: importResult.cts_errores },
-                    { label: "Transformadores (B21)", ins: importResult.trfs_insertados,     act: importResult.trfs_actualizados,     err: importResult.trfs_errores },
-                    { label: "CUPS (A1)",             ins: importResult.cups_insertados,     act: importResult.cups_actualizados,     err: importResult.cups_errores },
-                    { label: "Líneas (B1)",           ins: importResult.lineas_insertadas,   act: importResult.lineas_actualizadas,   err: importResult.lineas_errores },
-                    { label: "Tramos GIS (B11)",      ins: importResult.tramos_insertados,   act: importResult.tramos_actualizados,   err: importResult.tramos_errores },
+                    { label: "CTs (B2)",              ins: importResult.cts_insertados,    act: importResult.cts_actualizados,    err: importResult.cts_errores },
+                    { label: "Transformadores (B21)", ins: importResult.trfs_insertados,   act: importResult.trfs_actualizados,   err: importResult.trfs_errores },
+                    { label: "CUPS (A1)",             ins: importResult.cups_insertados,   act: importResult.cups_actualizados,   err: importResult.cups_errores },
+                    { label: "Líneas (B1)",           ins: importResult.lineas_insertadas, act: importResult.lineas_actualizadas, err: importResult.lineas_errores },
+                    { label: "Tramos GIS (B11)",      ins: importResult.tramos_insertados, act: importResult.tramos_actualizados, err: importResult.tramos_errores },
                   ].map(({ label, ins, act, err }) => (
                     <div key={label}>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
@@ -317,33 +300,20 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
             {panelMapaOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
-
         {panelMapaOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)" }}>
             <div style={{ display: "flex", height: 580 }}>
-
-              {/* ── Columna lateral izquierda ── */}
-              <div style={{
-                width: 220, flexShrink: 0, borderRight: "1px solid var(--card-border)",
-                padding: "14px", overflowY: "auto",
-                display: "flex", flexDirection: "column", gap: 14,
-              }}>
-
-                {/* Empresa */}
+              {/* ── Columna lateral ── */}
+              <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid var(--card-border)", padding: "14px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
                 <div>
                   <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
                   <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
                     value={empresaId}
-                    onChange={e => {
-                      setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
-                      setCtSeleccionado(""); setCts([]); setCups([]); setTramos([]);
-                    }}>
+                    onChange={e => { setEmpresaId(e.target.value === "" ? "" : Number(e.target.value)); setCtSeleccionado(""); setCts([]); setCups([]); setTramos([]); }}>
                     <option value="">Selecciona empresa</option>
                     {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                   </select>
                 </div>
-
-                {/* Capas */}
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Capas</div>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
@@ -367,58 +337,40 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
                     CUPS {loadingCups ? "…" : `(${cups.length})`}
                   </label>
                 </div>
-
-                {/* Filtro por CT */}
                 {cts.length > 0 && (
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Filtrar CUPS por CT</div>
                     <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={ctSeleccionado}
-                      onChange={e => setCtSeleccionado(e.target.value)}>
+                      value={ctSeleccionado} onChange={e => setCtSeleccionado(e.target.value)}>
                       <option value="">Todos los CTs</option>
                       {cts.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
                     </select>
                     {ctSeleccionado && (
-                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                        style={{ marginTop: 6, fontSize: 10 }}
-                        onClick={() => setCtSeleccionado("")}>
-                        ✕ Quitar filtro
-                      </button>
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }}
+                        onClick={() => setCtSeleccionado("")}>✕ Quitar filtro</button>
                     )}
                   </div>
                 )}
-
-                {/* Leyenda */}
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                    <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />
-                    Línea MT
+                    <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />Línea MT
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                    <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />
-                    Línea BT
+                    <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />Línea BT
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", display: "inline-block" }} />
-                    Centro de transformación
+                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", display: "inline-block" }} />Centro de transformación
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)" }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#378ADD", display: "inline-block" }} />
-                    Punto de suministro
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#378ADD", display: "inline-block" }} />Punto de suministro
                   </div>
                 </div>
               </div>
-
               {/* ── Mapa ── */}
               <div style={{ flex: 1, position: "relative", minHeight: 580 }}>
                 {!empresaId && (
-                  <div style={{
-                    position: "absolute", inset: 0, zIndex: 10,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(255,255,255,0.85)", fontSize: 12, color: "var(--text-muted)",
-                    borderRadius: "0 10px 10px 0",
-                  }}>
+                  <div style={{ position: "absolute", inset: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.85)", fontSize: 12, color: "var(--text-muted)", borderRadius: "0 10px 10px 0" }}>
                     Selecciona una empresa para cargar el mapa
                   </div>
                 )}
@@ -430,17 +382,17 @@ export default function TopologiaSection({ token, tooltipLineas }: Props) {
                   mostrarCups={mostrarCups}
                   mostrarLineas={mostrarLineas}
                   tooltipLineas={tooltipLineas}
+                  tooltipCts={tooltipCts}
+                  tooltipCups={tooltipCups}
                 />
               </div>
-
             </div>
           </div>
         )}
       </div>
-
     </div>
   );
 }
 
-export { DEFAULT_TOOLTIP_LINEAS };
-export type { TooltipLineasConfig };
+export { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS };
+export type { TooltipLineasConfig, TooltipCtsConfig, TooltipCupsConfig };
