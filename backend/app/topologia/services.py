@@ -7,12 +7,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.topologia.models import CtInventario, CtTransformador, CupsTopologia
+from app.topologia.models import (
+    CtInventario,
+    CtTransformador,
+    CupsTopologia,
+    LineaInventario,
+    LineaTramo,
+)
 from app.topologia.parsers.parser_b2 import parsear_b2
 from app.topologia.parsers.parser_a1 import parsear_a1
+from app.topologia.parsers.parser_b1_b11 import parsear_b1, parsear_b11
 
 
-# ── Helpers internos ──────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _now() -> datetime:
     return datetime.utcnow()
@@ -27,10 +34,6 @@ def _upsert_ct(
     anio_declaracion: int,
     registro: Dict[str, Any],
 ) -> str:
-    """
-    Inserta o actualiza un CT en ct_inventario.
-    Devuelve 'insertado' | 'actualizado' | 'error'.
-    """
     obj = (
         db.query(CtInventario)
         .filter(
@@ -40,7 +43,6 @@ def _upsert_ct(
         )
         .first()
     )
-
     if obj is None:
         obj = CtInventario(
             tenant_id        = tenant_id,
@@ -69,7 +71,6 @@ def _upsert_ct(
     obj.municipio_ine = registro.get("municipio_ine")
     obj.propiedad     = registro.get("propiedad")
     obj.fecha_aps     = registro.get("fecha_aps")
-
     return accion
 
 
@@ -91,13 +92,12 @@ def _upsert_transformador(
         )
         .first()
     )
-
     if obj is None:
         obj = CtTransformador(
-            tenant_id        = tenant_id,
-            empresa_id       = empresa_id,
-            created_at       = _now(),
-            updated_at       = _now(),
+            tenant_id  = tenant_id,
+            empresa_id = empresa_id,
+            created_at = _now(),
+            updated_at = _now(),
         )
         db.add(obj)
         accion = "insertado"
@@ -111,11 +111,10 @@ def _upsert_transformador(
     obj.potencia_kva     = registro.get("potencia_kva")
     obj.anio_fabricacion = registro.get("anio_fabricacion")
     obj.en_operacion     = registro.get("en_operacion")
-
     return accion
 
 
-# ── Upsert CUPS topología (A1) ────────────────────────────────────────────────
+# ── Upsert CUPS (A1) ──────────────────────────────────────────────────────────
 
 def _upsert_cups(
     db: Session,
@@ -133,7 +132,6 @@ def _upsert_cups(
         )
         .first()
     )
-
     if obj is None:
         obj = CupsTopologia(
             tenant_id        = tenant_id,
@@ -150,7 +148,7 @@ def _upsert_cups(
         accion = "actualizado"
 
     obj.cups                   = registro["cups"]
-    obj.id_ct                  = registro.get("id_ct")       # None en fase 1
+    obj.id_ct                  = registro.get("id_ct")
     obj.id_salida              = registro.get("id_salida")
     obj.tarifa                 = registro.get("tarifa")
     obj.tension_kv             = registro.get("tension_kv")
@@ -163,41 +161,125 @@ def _upsert_cups(
     obj.utm_y                  = registro.get("utm_y")
     obj.lat                    = registro.get("lat")
     obj.lon                    = registro.get("lon")
-
     return accion
 
 
-# ── Parsers B21 (inline — fichero pequeño sin parser dedicado) ────────────────
+# ── Upsert linea inventario (B1) ──────────────────────────────────────────────
 
-def _parsear_b21(contenido: bytes, encoding: str = "latin-1") -> Tuple[List[Dict[str, Any]], List[str]]:
-    """
-    Parsea el fichero B21 (máquinas en CT).
+def _upsert_linea(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    anio_declaracion: int,
+    registro: Dict[str, Any],
+) -> str:
+    if not registro.get("id_tramo"):
+        return "error"
+    obj = (
+        db.query(LineaInventario)
+        .filter(
+            LineaInventario.tenant_id  == tenant_id,
+            LineaInventario.empresa_id == empresa_id,
+            LineaInventario.id_tramo   == registro["id_tramo"],
+        )
+        .first()
+    )
+    if obj is None:
+        obj = LineaInventario(
+            tenant_id        = tenant_id,
+            empresa_id       = empresa_id,
+            anio_declaracion = anio_declaracion,
+            created_at       = _now(),
+            updated_at       = _now(),
+        )
+        db.add(obj)
+        accion = "insertado"
+    else:
+        obj.updated_at       = _now()
+        obj.anio_declaracion = anio_declaracion
+        accion = "actualizado"
 
-    Campos (índice 0-based):
-      0 → ID_CT
-      1 → ID_TRANSFORMADOR
-      2 → CINI
-      3 → POTENCIA_KVA   (coma decimal)
-      4 → ANIO_FABRICACION
-      5 → EN_OPERACION   (1=servicio, 0=reserva)
-    """
+    obj.id_tramo      = registro["id_tramo"]
+    obj.cini          = registro.get("cini")
+    obj.codigo_ccuu   = registro.get("codigo_ccuu")
+    obj.nudo_inicio   = registro.get("nudo_inicio")
+    obj.nudo_fin      = registro.get("nudo_fin")
+    obj.nivel_tension = registro.get("nivel_tension")
+    obj.tension_kv    = registro.get("tension_kv")
+    obj.longitud_km   = registro.get("longitud_km")
+    return accion
+
+
+# ── Upsert tramo GIS (B11) ────────────────────────────────────────────────────
+
+def _upsert_tramo(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    anio_declaracion: int,
+    registro: Dict[str, Any],
+) -> str:
+    if not registro.get("id_tramo"):
+        return "error"
+    obj = (
+        db.query(LineaTramo)
+        .filter(
+            LineaTramo.tenant_id  == tenant_id,
+            LineaTramo.empresa_id == empresa_id,
+            LineaTramo.id_tramo   == registro["id_tramo"],
+        )
+        .first()
+    )
+    if obj is None:
+        obj = LineaTramo(
+            tenant_id        = tenant_id,
+            empresa_id       = empresa_id,
+            anio_declaracion = anio_declaracion,
+            created_at       = _now(),
+            updated_at       = _now(),
+        )
+        db.add(obj)
+        accion = "insertado"
+    else:
+        obj.updated_at       = _now()
+        obj.anio_declaracion = anio_declaracion
+        accion = "actualizado"
+
+    obj.id_tramo   = registro["id_tramo"]
+    obj.id_linea   = registro.get("id_linea") or ""
+    obj.orden      = registro.get("orden")
+    obj.num_tramo  = registro.get("num_tramo")
+    obj.utm_x_ini  = registro.get("utm_x_ini")
+    obj.utm_y_ini  = registro.get("utm_y_ini")
+    obj.utm_x_fin  = registro.get("utm_x_fin")
+    obj.utm_y_fin  = registro.get("utm_y_fin")
+    obj.lat_ini    = registro.get("lat_ini")
+    obj.lon_ini    = registro.get("lon_ini")
+    obj.lat_fin    = registro.get("lat_fin")
+    obj.lon_fin    = registro.get("lon_fin")
+    return accion
+
+
+# ── Parser B21 inline ─────────────────────────────────────────────────────────
+
+def _parsear_b21(
+    contenido: bytes,
+    encoding: str = "latin-1",
+) -> Tuple[List[Dict[str, Any]], List[str]]:
     registros: List[Dict[str, Any]] = []
     errores:   List[str]            = []
-
     texto = contenido.decode(encoding, errors="replace")
 
     for num, linea in enumerate(texto.splitlines(), start=1):
         linea = linea.strip()
         if not linea:
             continue
-
         campos = linea.split(";")
         if len(campos) < 4:
             errores.append(f"Línea {num}: insuficientes campos ({len(campos)})")
             continue
-
         try:
-            id_ct = campos[0].strip()
+            id_ct  = campos[0].strip()
             id_trf = campos[1].strip()
             if not id_ct or not id_trf:
                 errores.append(f"Línea {num}: id_ct o id_transformador vacío")
@@ -229,7 +311,6 @@ def _parsear_b21(contenido: bytes, encoding: str = "latin-1") -> Tuple[List[Dict
                 "anio_fabricacion": anio,
                 "en_operacion":     operacion,
             })
-
         except Exception as exc:
             errores.append(f"Línea {num}: error inesperado — {exc}")
 
@@ -239,23 +320,19 @@ def _parsear_b21(contenido: bytes, encoding: str = "latin-1") -> Tuple[List[Dict
 # ── Servicio principal de importación ─────────────────────────────────────────
 
 def importar_topologia(
-    db: Session,
-    tenant_id: int,
-    empresa_id: int,
+    db:               Session,
+    tenant_id:        int,
+    empresa_id:       int,
     anio_declaracion: int,
-    contenido_b2:  Optional[bytes],
-    contenido_b21: Optional[bytes],
-    contenido_a1:  Optional[bytes],
-    encoding: str = "latin-1",
-    utm_zone: int = 30,
+    contenido_b2:     Optional[bytes] = None,
+    contenido_b21:    Optional[bytes] = None,
+    contenido_a1:     Optional[bytes] = None,
+    contenido_b1:     Optional[bytes] = None,
+    contenido_b11:    Optional[bytes] = None,
+    encoding:         str = "latin-1",
+    utm_zone:         int = 30,
 ) -> Dict[str, Any]:
-    """
-    Importa los ficheros CNMC 8/2021 (B2, B21, A1) para una empresa.
-    Actualiza registro a registro sin borrar datos existentes.
 
-    Devuelve un dict con contadores de insertados / actualizados / errores
-    por cada fichero, listo para serializar como ImportarTopologiaResponse.
-    """
     resultado: Dict[str, Any] = {
         "cts_insertados":    0,
         "cts_actualizados":  0,
@@ -266,14 +343,19 @@ def importar_topologia(
         "cups_insertados":   0,
         "cups_actualizados": 0,
         "cups_errores":      0,
-        "ficheros":          [],
+        "lineas_insertadas":   0,
+        "lineas_actualizadas": 0,
+        "lineas_errores":      0,
+        "tramos_insertados":   0,
+        "tramos_actualizados": 0,
+        "tramos_errores":      0,
+        "ficheros": [],
     }
 
     # ── B2 — CTs ──────────────────────────────────────────────────────────────
     if contenido_b2:
         registros, errores = parsear_b2(contenido_b2, encoding=encoding, utm_zone=utm_zone)
         resultado["cts_errores"] += len(errores)
-
         for reg in registros:
             try:
                 accion = _upsert_ct(db, tenant_id, empresa_id, anio_declaracion, reg)
@@ -284,7 +366,6 @@ def importar_topologia(
             except Exception:
                 db.rollback()
                 resultado["cts_errores"] += 1
-
         db.commit()
         resultado["ficheros"].append("B2")
 
@@ -292,7 +373,6 @@ def importar_topologia(
     if contenido_b21:
         registros, errores = _parsear_b21(contenido_b21, encoding=encoding)
         resultado["trfs_errores"] += len(errores)
-
         for reg in registros:
             try:
                 accion = _upsert_transformador(db, tenant_id, empresa_id, reg)
@@ -303,7 +383,6 @@ def importar_topologia(
             except Exception:
                 db.rollback()
                 resultado["trfs_errores"] += 1
-
         db.commit()
         resultado["ficheros"].append("B21")
 
@@ -311,7 +390,6 @@ def importar_topologia(
     if contenido_a1:
         registros, errores = parsear_a1(contenido_a1, encoding=encoding, utm_zone=utm_zone)
         resultado["cups_errores"] += len(errores)
-
         for reg in registros:
             try:
                 accion = _upsert_cups(db, tenant_id, empresa_id, anio_declaracion, reg)
@@ -322,9 +400,44 @@ def importar_topologia(
             except Exception:
                 db.rollback()
                 resultado["cups_errores"] += 1
-
         db.commit()
         resultado["ficheros"].append("A1")
+
+    # ── B1 — Líneas ───────────────────────────────────────────────────────────
+    if contenido_b1:
+        texto = contenido_b1.decode(encoding, errors="replace")
+        for reg in parsear_b1(texto):
+            try:
+                accion = _upsert_linea(db, tenant_id, empresa_id, anio_declaracion, reg)
+                if accion == "insertado":
+                    resultado["lineas_insertadas"] += 1
+                elif accion == "actualizado":
+                    resultado["lineas_actualizadas"] += 1
+                else:
+                    resultado["lineas_errores"] += 1
+            except Exception:
+                db.rollback()
+                resultado["lineas_errores"] += 1
+        db.commit()
+        resultado["ficheros"].append("B1")
+
+    # ── B11 — Tramos GIS ──────────────────────────────────────────────────────
+    if contenido_b11:
+        texto = contenido_b11.decode(encoding, errors="replace")
+        for reg in parsear_b11(texto):
+            try:
+                accion = _upsert_tramo(db, tenant_id, empresa_id, anio_declaracion, reg)
+                if accion == "insertado":
+                    resultado["tramos_insertados"] += 1
+                elif accion == "actualizado":
+                    resultado["tramos_actualizados"] += 1
+                else:
+                    resultado["tramos_errores"] += 1
+            except Exception:
+                db.rollback()
+                resultado["tramos_errores"] += 1
+        db.commit()
+        resultado["ficheros"].append("B11")
 
     return resultado
 
@@ -336,7 +449,6 @@ def list_cts_mapa(
     tenant_id: int,
     empresa_id: int,
 ) -> List[CtInventario]:
-    """Devuelve todos los CTs con coordenadas válidas para pintar en el mapa."""
     return (
         db.query(CtInventario)
         .filter(
@@ -356,10 +468,6 @@ def list_cups_mapa(
     empresa_id: int,
     id_ct: Optional[str] = None,
 ) -> List[CupsTopologia]:
-    """
-    Devuelve CUPS con coordenadas válidas.
-    Si se pasa id_ct filtra por ese CT. Si no, devuelve todos.
-    """
     q = (
         db.query(CupsTopologia)
         .filter(
@@ -371,7 +479,6 @@ def list_cups_mapa(
     )
     if id_ct is not None:
         q = q.filter(CupsTopologia.id_ct == id_ct)
-
     return q.order_by(CupsTopologia.cups).all()
 
 
@@ -380,7 +487,6 @@ def list_cts(
     tenant_id: int,
     empresa_id: int,
 ) -> List[CtInventario]:
-    """Devuelve todos los CTs de una empresa (para listados y filtros)."""
     return (
         db.query(CtInventario)
         .filter(
@@ -390,3 +496,26 @@ def list_cts(
         .order_by(CtInventario.nombre)
         .all()
     )
+
+
+def list_tramos_mapa(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    id_linea: Optional[str] = None,
+) -> List[LineaTramo]:
+    """Devuelve segmentos GIS con coordenadas válidas para pintar la red en el mapa."""
+    q = (
+        db.query(LineaTramo)
+        .filter(
+            LineaTramo.tenant_id  == tenant_id,
+            LineaTramo.empresa_id == empresa_id,
+            LineaTramo.lat_ini.isnot(None),
+            LineaTramo.lon_ini.isnot(None),
+            LineaTramo.lat_fin.isnot(None),
+            LineaTramo.lon_fin.isnot(None),
+        )
+    )
+    if id_linea is not None:
+        q = q.filter(LineaTramo.id_linea == id_linea)
+    return q.order_by(LineaTramo.id_linea, LineaTramo.orden).all()

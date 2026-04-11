@@ -4,17 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
-import type { CtMapa, CupsMapa } from "./MapaLeaflet";
+import type { CtMapa, CupsMapa, TramoMapa } from "./MapaLeaflet";
 
-// Importación dinámica — evita SSR de Leaflet (que necesita window)
 const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
   ssr: false,
   loading: () => (
-    <div style={{
-      width: "100%", height: "100%",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      color: "var(--text-muted)", fontSize: 12,
-    }}>
+    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
       Cargando mapa...
     </div>
   ),
@@ -25,34 +20,36 @@ const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
 interface EmpresaOption { id: number; nombre: string; }
 
 interface ImportResult {
-  cts_insertados:    number;
-  cts_actualizados:  number;
-  cts_errores:       number;
-  trfs_insertados:   number;
-  trfs_actualizados: number;
-  trfs_errores:      number;
-  cups_insertados:   number;
-  cups_actualizados: number;
-  cups_errores:      number;
-  ficheros:          string[];
+  cts_insertados:      number;
+  cts_actualizados:    number;
+  cts_errores:         number;
+  trfs_insertados:     number;
+  trfs_actualizados:   number;
+  trfs_errores:        number;
+  cups_insertados:     number;
+  cups_actualizados:   number;
+  cups_errores:        number;
+  lineas_insertadas:   number;
+  lineas_actualizadas: number;
+  lineas_errores:      number;
+  tramos_insertados:   number;
+  tramos_actualizados: number;
+  tramos_errores:      number;
+  ficheros:            string[];
 }
 
 interface Props { token: string | null; currentUser: User | null; }
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
-// Panel estándar — con overflow:hidden para que las esquinas redondeadas recorten el contenido
 const panelStyle: React.CSSProperties = {
   background: "var(--card-bg)", border: "1px solid var(--card-border)",
   borderRadius: "10px", overflow: "hidden", marginBottom: "10px",
 };
-
-// Panel del mapa — SIN overflow:hidden para que Leaflet capture eventos de drag fuera del contenedor
 const mapaPanelStyle: React.CSSProperties = {
   background: "var(--card-bg)", border: "1px solid var(--card-border)",
   borderRadius: "10px", overflow: "visible", marginBottom: "10px",
 };
-
 const panelHeaderStyle: React.CSSProperties = {
   display: "flex", alignItems: "center", justifyContent: "space-between",
   padding: "14px 20px", cursor: "pointer", userSelect: "none",
@@ -64,6 +61,18 @@ const panelTitleStyle: React.CSSProperties = {
 const panelDescStyle: React.CSSProperties = {
   fontSize: "11px", color: "var(--text-muted)", marginTop: 3,
 };
+
+// ─── Ficheros de importación ──────────────────────────────────────────────────
+
+const FICHEROS_CONFIG = [
+  { key: "b2",  label: "B2 — Centros de transformación", desc: "CIR8_2021_B2_R1-XXX_AAAA.txt" },
+  { key: "b21", label: "B21 — Transformadores en CT",    desc: "CIR8_2021_B21_R1-XXX_AAAA.txt" },
+  { key: "a1",  label: "A1 — Puntos de suministro",      desc: "CIR8_2021_A1_R1-XXX_AAAA.txt" },
+  { key: "b1",  label: "B1 — Líneas eléctricas",         desc: "CIR8_2021_B1_R1-XXX_AAAA.txt" },
+  { key: "b11", label: "B11 — Tramos GIS de líneas",     desc: "CIR8_2021_B11_R1-XXX_AAAA.txt" },
+] as const;
+
+type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -77,9 +86,7 @@ export default function TopologiaSection({ token }: Props) {
   const [anioDecl,  setAnioDecl]  = useState<string>(String(new Date().getFullYear()));
 
   // ── Importación ───────────────────────────────────────────────────────────
-  const [fileB2,       setFileB2]       = useState<File | null>(null);
-  const [fileB21,      setFileB21]      = useState<File | null>(null);
-  const [fileA1,       setFileA1]       = useState<File | null>(null);
+  const [ficheros,     setFicheros]     = useState<Record<FicheroKey, File | null>>({ b2: null, b21: null, a1: null, b1: null, b11: null });
   const [importing,    setImporting]    = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError,  setImportError]  = useState<string | null>(null);
@@ -87,11 +94,18 @@ export default function TopologiaSection({ token }: Props) {
   // ── Mapa ──────────────────────────────────────────────────────────────────
   const [cts,            setCts]            = useState<CtMapa[]>([]);
   const [cups,           setCups]           = useState<CupsMapa[]>([]);
+  const [tramos,         setTramos]         = useState<TramoMapa[]>([]);
   const [loadingCts,     setLoadingCts]     = useState(false);
   const [loadingCups,    setLoadingCups]    = useState(false);
+  const [loadingTramos,  setLoadingTramos]  = useState(false);
   const [mostrarCts,     setMostrarCts]     = useState(true);
   const [mostrarCups,    setMostrarCups]    = useState(true);
+  const [mostrarBT,      setMostrarBT]      = useState(true);
+  const [mostrarMT,      setMostrarMT]      = useState(true);
   const [ctSeleccionado, setCtSeleccionado] = useState<string>("");
+
+  // mostrarLineas = cualquiera de BT o MT activo
+  const mostrarLineas = mostrarBT || mostrarMT;
 
   // ── Carga inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -107,11 +121,8 @@ export default function TopologiaSection({ token }: Props) {
     if (!token || !empresaId) return;
     setLoadingCts(true);
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/topologia/mapa/cts?empresa_id=${empresaId}`,
-        { headers: getAuthHeaders(token) }
-      );
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const res = await fetch(`${API_BASE_URL}/topologia/mapa/cts?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
       setCts(await res.json());
     } catch { setCts([]); }
     finally { setLoadingCts(false); }
@@ -124,35 +135,53 @@ export default function TopologiaSection({ token }: Props) {
     try {
       const params = new URLSearchParams({ empresa_id: String(empresaId) });
       if (ctSeleccionado) params.set("id_ct", ctSeleccionado);
-      const res = await fetch(
-        `${API_BASE_URL}/topologia/mapa/cups?${params}`,
-        { headers: getAuthHeaders(token) }
-      );
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const res = await fetch(`${API_BASE_URL}/topologia/mapa/cups?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
       setCups(await res.json());
     } catch { setCups([]); }
     finally { setLoadingCups(false); }
   }, [token, empresaId, ctSeleccionado]);
 
+  // ── Cargar Tramos ─────────────────────────────────────────────────────────
+  const cargarTramos = useCallback(async () => {
+    if (!token || !empresaId) return;
+    setLoadingTramos(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/topologia/mapa/tramos?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      setTramos(await res.json());
+    } catch { setTramos([]); }
+    finally { setLoadingTramos(false); }
+  }, [token, empresaId]);
+
   useEffect(() => {
-    if (empresaId) { cargarCts(); cargarCups(); }
-  }, [empresaId, cargarCts, cargarCups]);
+    if (empresaId) { cargarCts(); cargarCups(); cargarTramos(); }
+  }, [empresaId, cargarCts, cargarCups, cargarTramos]);
 
   useEffect(() => {
     if (empresaId) cargarCups();
   }, [ctSeleccionado, empresaId, cargarCups]);
 
+  // ── Filtrar tramos por nivel — misma lógica que colorLinea ──────────────────
+  const tramosFiltrados = tramos.filter(t => {
+    const esBT = (t.id_linea ?? "").toUpperCase().includes("BT");
+    if (esBT) return mostrarBT;
+    return mostrarMT;
+  });
+
   // ── Importación ───────────────────────────────────────────────────────────
+  const hayAlgunFichero = Object.values(ficheros).some(f => f !== null);
+
   const handleImportar = async () => {
-    if (!token || !empresaId || (!fileB2 && !fileB21 && !fileA1)) return;
+    if (!token || !empresaId || !hayAlgunFichero) return;
     setImporting(true); setImportError(null); setImportResult(null);
 
     const fd = new FormData();
     fd.append("empresa_id",       String(empresaId));
     fd.append("anio_declaracion", anioDecl);
-    if (fileB2)  fd.append("b2",  fileB2);
-    if (fileB21) fd.append("b21", fileB21);
-    if (fileA1)  fd.append("a1",  fileA1);
+    (Object.entries(ficheros) as [FicheroKey, File | null][]).forEach(([key, file]) => {
+      if (file) fd.append(key, file);
+    });
 
     try {
       const res = await fetch(`${API_BASE_URL}/topologia/importar`, {
@@ -163,11 +192,15 @@ export default function TopologiaSection({ token }: Props) {
         throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
       }
       setImportResult(await res.json() as ImportResult);
-      cargarCts(); cargarCups();
+      cargarCts(); cargarCups(); cargarTramos();
     } catch (e: unknown) {
       setImportError(e instanceof Error ? e.message : "Error importando");
     } finally { setImporting(false); }
   };
+
+  // Contadores por nivel — misma lógica que colorLinea en MapaLeaflet
+  const numBT = tramos.filter(t =>  (t.id_linea ?? "").toUpperCase().includes("BT")).length;
+  const numMT = tramos.filter(t => !(t.id_linea ?? "").toUpperCase().includes("BT")).length;
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -179,7 +212,7 @@ export default function TopologiaSection({ token }: Props) {
         <div style={panelHeaderStyle} onClick={() => setPanelImportOpen(v => !v)}>
           <div>
             <div style={panelTitleStyle}>📥 Importar inventario CNMC 8/2021</div>
-            <div style={panelDescStyle}>Carga los ficheros B2, B21 y A1 para poblar el mapa topológico</div>
+            <div style={panelDescStyle}>Carga los ficheros B2, B21, A1, B1 y B11 para poblar el mapa topológico</div>
           </div>
           <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
             onClick={e => { e.stopPropagation(); setPanelImportOpen(v => !v); }}>
@@ -208,25 +241,33 @@ export default function TopologiaSection({ token }: Props) {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
-              {[
-                { label: "B2 — Centros de transformación", desc: "CIR8_2021_B2_R1-XXX_AAAA.txt",  file: fileB2,  set: setFileB2 },
-                { label: "B21 — Transformadores en CT",    desc: "CIR8_2021_B21_R1-XXX_AAAA.txt", file: fileB21, set: setFileB21 },
-                { label: "A1 — Puntos de suministro",      desc: "CIR8_2021_A1_R1-XXX_AAAA.txt",  file: fileA1,  set: setFileA1 },
-              ].map(({ label, desc, file, set }) => (
-                <div key={label} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+              {FICHEROS_CONFIG.slice(0, 3).map(({ key, label, desc }) => (
+                <div key={key} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{desc}</div>
                   <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }}
-                    onChange={e => set(e.target.files?.[0] ?? null)} />
-                  {file && <div style={{ fontSize: 10, color: "#1D9E75", marginTop: 4 }}>✓ {file.name}</div>}
+                    onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
+                  {ficheros[key] && <div style={{ fontSize: 10, color: "#1D9E75", marginTop: 4 }}>✓ {ficheros[key]!.name}</div>}
                 </div>
               ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+              {FICHEROS_CONFIG.slice(3).map(({ key, label, desc }) => (
+                <div key={key} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{desc}</div>
+                  <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }}
+                    onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
+                  {ficheros[key] && <div style={{ fontSize: 10, color: "#1D9E75", marginTop: 4 }}>✓ {ficheros[key]!.name}</div>}
+                </div>
+              ))}
+              <div />
             </div>
 
             <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
               onClick={handleImportar}
-              disabled={importing || !empresaId || (!fileB2 && !fileB21 && !fileA1)}>
+              disabled={importing || !empresaId || !hayAlgunFichero}>
               {importing ? "Importando..." : "Importar ficheros"}
             </button>
 
@@ -237,9 +278,11 @@ export default function TopologiaSection({ token }: Props) {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   {[
-                    { label: "CTs (B2)",              ins: importResult.cts_insertados,  act: importResult.cts_actualizados,  err: importResult.cts_errores },
-                    { label: "Transformadores (B21)", ins: importResult.trfs_insertados, act: importResult.trfs_actualizados, err: importResult.trfs_errores },
-                    { label: "CUPS (A1)",             ins: importResult.cups_insertados, act: importResult.cups_actualizados, err: importResult.cups_errores },
+                    { label: "CTs (B2)",              ins: importResult.cts_insertados,      act: importResult.cts_actualizados,      err: importResult.cts_errores },
+                    { label: "Transformadores (B21)", ins: importResult.trfs_insertados,     act: importResult.trfs_actualizados,     err: importResult.trfs_errores },
+                    { label: "CUPS (A1)",             ins: importResult.cups_insertados,     act: importResult.cups_actualizados,     err: importResult.cups_errores },
+                    { label: "Líneas (B1)",           ins: importResult.lineas_insertadas,   act: importResult.lineas_actualizadas,   err: importResult.lineas_errores },
+                    { label: "Tramos GIS (B11)",      ins: importResult.tramos_insertados,   act: importResult.tramos_actualizados,   err: importResult.tramos_errores },
                   ].map(({ label, ins, act, err }) => (
                     <div key={label}>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
@@ -256,14 +299,13 @@ export default function TopologiaSection({ token }: Props) {
       </div>
 
       {/* ══ PANEL 2 — MAPA ══ */}
-      {/* overflow:visible es crítico — overflow:hidden bloquea el drag de Leaflet */}
       <div style={mapaPanelStyle}>
         <div style={panelHeaderStyle} onClick={() => setPanelMapaOpen(v => !v)}>
           <div>
             <div style={panelTitleStyle}>🗺️ Mapa topológico</div>
             <div style={panelDescStyle}>
-              {cts.length > 0 || cups.length > 0
-                ? `${cts.length} CTs · ${cups.length} CUPS`
+              {cts.length > 0 || cups.length > 0 || tramos.length > 0
+                ? `${cts.length} CTs · ${cups.length} CUPS · ${numBT} seg. BT · ${numMT} seg. MT`
                 : "Selecciona una empresa para cargar el mapa"}
             </div>
           </div>
@@ -279,8 +321,7 @@ export default function TopologiaSection({ token }: Props) {
 
               {/* ── Columna lateral izquierda ── */}
               <div style={{
-                width: 220, flexShrink: 0,
-                borderRight: "1px solid var(--card-border)",
+                width: 220, flexShrink: 0, borderRight: "1px solid var(--card-border)",
                 padding: "14px", overflowY: "auto",
                 display: "flex", flexDirection: "column", gap: 14,
               }}>
@@ -292,7 +333,7 @@ export default function TopologiaSection({ token }: Props) {
                     value={empresaId}
                     onChange={e => {
                       setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
-                      setCtSeleccionado(""); setCts([]); setCups([]);
+                      setCtSeleccionado(""); setCts([]); setCups([]); setTramos([]);
                     }}>
                     <option value="">Selecciona empresa</option>
                     {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
@@ -301,14 +342,30 @@ export default function TopologiaSection({ token }: Props) {
 
                 {/* Capas */}
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Capas
-                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Capas</div>
+
+                  {/* Red MT */}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
+                    <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} />
+                    <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />
+                    Red MT {loadingTramos ? "…" : `(${numMT})`}
+                  </label>
+
+                  {/* Red BT */}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
+                    <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} />
+                    <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />
+                    Red BT {loadingTramos ? "…" : `(${numBT})`}
+                  </label>
+
+                  {/* CTs */}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
                     <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} />
                     <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", display: "inline-block" }} />
                     CTs {loadingCts ? "…" : `(${cts.length})`}
                   </label>
+
+                  {/* CUPS */}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
                     <input type="checkbox" checked={mostrarCups} onChange={e => setMostrarCups(e.target.checked)} />
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#378ADD", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
@@ -319,9 +376,7 @@ export default function TopologiaSection({ token }: Props) {
                 {/* Filtro por CT */}
                 {cts.length > 0 && (
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Filtrar CUPS por CT
-                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Filtrar CUPS por CT</div>
                     <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
                       value={ctSeleccionado}
                       onChange={e => setCtSeleccionado(e.target.value)}>
@@ -342,7 +397,15 @@ export default function TopologiaSection({ token }: Props) {
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", boxShadow: "0 1px 2px rgba(0,0,0,0.3)", display: "inline-block" }} />
+                    <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />
+                    Línea MT
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                    <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />
+                    Línea BT
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", display: "inline-block" }} />
                     Centro de transformación
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)" }}>
@@ -358,8 +421,7 @@ export default function TopologiaSection({ token }: Props) {
                   <div style={{
                     position: "absolute", inset: 0, zIndex: 10,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(255,255,255,0.85)",
-                    fontSize: 12, color: "var(--text-muted)",
+                    background: "rgba(255,255,255,0.85)", fontSize: 12, color: "var(--text-muted)",
                     borderRadius: "0 10px 10px 0",
                   }}>
                     Selecciona una empresa para cargar el mapa
@@ -368,8 +430,10 @@ export default function TopologiaSection({ token }: Props) {
                 <MapaLeaflet
                   cts={cts}
                   cups={cups}
+                  tramos={tramosFiltrados}
                   mostrarCts={mostrarCts}
                   mostrarCups={mostrarCups}
+                  mostrarLineas={mostrarLineas}
                 />
               </div>
 

@@ -8,7 +8,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 
-# ── CT Inventario ────────────────────────────────────────────────────────────
+# ── CT Inventario ─────────────────────────────────────────────────────────────
 
 class CtInventarioRead(BaseModel):
     id:               int
@@ -32,7 +32,7 @@ class CtInventarioRead(BaseModel):
         from_attributes = True
 
 
-# ── CT Transformador ─────────────────────────────────────────────────────────
+# ── CT Transformador ──────────────────────────────────────────────────────────
 
 class CtTransformadorRead(BaseModel):
     id:               int
@@ -50,63 +50,71 @@ class CtTransformadorRead(BaseModel):
         from_attributes = True
 
 
-# ── CUPS Topología ───────────────────────────────────────────────────────────
+# ── CUPS Topología ────────────────────────────────────────────────────────────
 
 class CupsTopologiaRead(BaseModel):
-    id:                      int
-    empresa_id:              int
-    cups:                    str
-    id_ct:                   Optional[str]
-    id_salida:               Optional[str]
-    tarifa:                  Optional[str]
-    tension_kv:              Optional[float]
-    potencia_contratada_kw:  Optional[float]
-    autoconsumo:             Optional[int]
-    telegestado:             Optional[int]
-    cini_contador:           Optional[str]
-    lat:                     Optional[float]
-    lon:                     Optional[float]
-    fecha_alta:              Optional[date]
-    anio_declaracion:        Optional[int]
-    created_at:              datetime
-    updated_at:              datetime
+    id:                     int
+    empresa_id:             int
+    cups:                   str
+    id_ct:                  Optional[str]
+    id_salida:              Optional[str]
+    tarifa:                 Optional[str]
+    tension_kv:             Optional[float]
+    potencia_contratada_kw: Optional[float]
+    autoconsumo:            Optional[int]
+    telegestado:            Optional[int]
+    cini_contador:          Optional[str]
+    lat:                    Optional[float]
+    lon:                    Optional[float]
+    fecha_alta:             Optional[date]
+    anio_declaracion:       Optional[int]
+    created_at:             datetime
+    updated_at:             datetime
 
     class Config:
         from_attributes = True
 
 
-# ── Importación ──────────────────────────────────────────────────────────────
+# ── Importación ───────────────────────────────────────────────────────────────
 
 class ImportarTopologiaResponse(BaseModel):
     """Respuesta del endpoint de importación de ficheros CNMC."""
 
     # B2 — CTs
-    cts_insertados:     int
-    cts_actualizados:   int
-    cts_errores:        int
+    cts_insertados:    int
+    cts_actualizados:  int
+    cts_errores:       int
 
     # B21 — Transformadores
-    trfs_insertados:    int
-    trfs_actualizados:  int
-    trfs_errores:       int
+    trfs_insertados:   int
+    trfs_actualizados: int
+    trfs_errores:      int
 
     # A1 — CUPS
-    cups_insertados:    int
-    cups_actualizados:  int
-    cups_errores:       int
+    cups_insertados:   int
+    cups_actualizados: int
+    cups_errores:      int
+
+    # B1 — Líneas
+    lineas_insertadas:   int = 0
+    lineas_actualizadas: int = 0
+    lineas_errores:      int = 0
+
+    # B11 — Tramos GIS
+    tramos_insertados:   int = 0
+    tramos_actualizados: int = 0
+    tramos_errores:      int = 0
 
     # Ficheros procesados
-    ficheros:           List[str]
+    ficheros: List[str]
 
 
-# ── Mapa — respuesta compacta para el frontend ───────────────────────────────
+# ── Mapa — respuestas compactas para el frontend ──────────────────────────────
 
 class CtMapaRead(BaseModel):
-    """CT con su potencia total real (suma de transformadores en servicio)."""
-
     id_ct:        str
     nombre:       str
-    potencia_kva: Optional[int]       # potencia nominal del CT (B2)
+    potencia_kva: Optional[int]
     lat:          Optional[float]
     lon:          Optional[float]
     propiedad:    Optional[str]
@@ -116,14 +124,26 @@ class CtMapaRead(BaseModel):
 
 
 class CupsMapaRead(BaseModel):
-    """CUPS con los datos mínimos para el popup del mapa."""
-
-    cups:      str
-    id_ct:     Optional[str]
-    tarifa:    Optional[str]
+    cups:       str
+    id_ct:      Optional[str]
+    tarifa:     Optional[str]
     tension_kv: Optional[float]
-    lat:       Optional[float]
-    lon:       Optional[float]
+    lat:        Optional[float]
+    lon:        Optional[float]
+
+    class Config:
+        from_attributes = True
+
+
+class TramoMapaRead(BaseModel):
+    """Tramo GIS para pintar la red eléctrica en el mapa."""
+
+    id_tramo:  str
+    id_linea:  Optional[str]
+    lat_ini:   Optional[float]
+    lon_ini:   Optional[float]
+    lat_fin:   Optional[float]
+    lon_fin:   Optional[float]
 
     class Config:
         from_attributes = True

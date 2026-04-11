@@ -20,22 +20,52 @@ export interface CupsMapa {
   lon:        number | null;
 }
 
-interface Props {
-  cts:         CtMapa[];
-  cups:        CupsMapa[];
-  mostrarCts:  boolean;
-  mostrarCups: boolean;
+export interface TramoMapa {
+  id_tramo: string;
+  id_linea: string | null;
+  lat_ini:  number | null;
+  lon_ini:  number | null;
+  lat_fin:  number | null;
+  lon_fin:  number | null;
 }
 
-export default function MapaLeaflet({ cts, cups, mostrarCts, mostrarCups }: Props) {
-  const mapRef        = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapaInstancia = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctLayerRef    = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cupsLayerRef  = useRef<any>(null);
+interface Props {
+  cts:           CtMapa[];
+  cups:          CupsMapa[];
+  tramos:        TramoMapa[];
+  mostrarCts:    boolean;
+  mostrarCups:   boolean;
+  mostrarLineas: boolean;
+}
 
+// ─── Color de línea según nivel de tensión ────────────────────────────────────
+// Los identificadores del B11 contienen el tipo de conductor en el nombre:
+//   *BT* → Baja Tensión (< 1 kV)  → amarillo
+//   resto → Media/Alta Tensión (≥ 1 kV) → morado
+function colorLinea(id: string | null): string {
+  if (!id) return "#F59E0B";
+  if (id.toUpperCase().includes("BT")) return "#F59E0B";  // amarillo — BT < 1 kV
+  return "#A855F7";                                        // morado   — MT/AT ≥ 1 kV
+}
+
+function nivelLinea(id: string | null): string {
+  if (!id) return "BT";
+  if (id.toUpperCase().includes("BT")) return "BT";
+  return "MT";
+}
+
+export default function MapaLeaflet({ cts, cups, tramos, mostrarCts, mostrarCups, mostrarLineas }: Props) {
+  const mapRef         = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapaInstancia  = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctLayerRef     = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cupsLayerRef   = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lineasLayerRef = useRef<any>(null);
+
+  // ── Inicializar mapa ──────────────────────────────────────────────────────
   useEffect(() => {
     if (mapaInstancia.current || !mapRef.current) return;
 
@@ -54,13 +84,9 @@ export default function MapaLeaflet({ cts, cups, mostrarCts, mostrarCups }: Prop
       (L.Browser as any).pointer = false;
 
       const map = L.map(mapRef.current!, {
-        center:          [40.0, -3.7],
-        zoom:            7,
-        dragging:        true,
-        scrollWheelZoom: true,
-        doubleClickZoom: true,
-        zoomControl:     true,
-        touchZoom:       false,
+        center: [40.0, -3.7], zoom: 7,
+        dragging: true, scrollWheelZoom: true,
+        doubleClickZoom: true, zoomControl: true, touchZoom: false,
       });
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -72,41 +98,30 @@ export default function MapaLeaflet({ cts, cups, mostrarCts, mostrarCups }: Prop
       const mapAny = map as any;
       if (mapAny.touchZoom) mapAny.touchZoom.disable();
       if (mapAny.tap)       mapAny.tap.disable();
-
       map.dragging.enable();
 
-      ctLayerRef.current    = L.layerGroup().addTo(map);
-      cupsLayerRef.current  = L.layerGroup().addTo(map);
-      mapaInstancia.current = map;
+      // Líneas debajo de los marcadores
+      lineasLayerRef.current = L.layerGroup().addTo(map);
+      ctLayerRef.current     = L.layerGroup().addTo(map);
+      cupsLayerRef.current   = L.layerGroup().addTo(map);
+      mapaInstancia.current  = map;
 
       setTimeout(() => map.invalidateSize(), 200);
 
       const container = mapRef.current!;
-
-      // ── Drag manual ───────────────────────────────────────────────────────
-      let dragging = false;
-      let lastX = 0;
-      let lastY = 0;
+      let dragging = false, lastX = 0, lastY = 0;
 
       const onMouseDown = (e: MouseEvent) => {
         if (e.button !== 0) return;
-        dragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
+        dragging = true; lastX = e.clientX; lastY = e.clientY;
       };
       const onMouseMove = (e: MouseEvent) => {
         if (!dragging || !mapaInstancia.current) return;
-        const dx = e.clientX - lastX;
-        const dy = e.clientY - lastY;
-        if (dx !== 0 || dy !== 0) {
-          mapaInstancia.current.panBy([-dx, -dy], { animate: false });
-        }
-        lastX = e.clientX;
-        lastY = e.clientY;
+        const dx = e.clientX - lastX, dy = e.clientY - lastY;
+        if (dx !== 0 || dy !== 0) mapaInstancia.current.panBy([-dx, -dy], { animate: false });
+        lastX = e.clientX; lastY = e.clientY;
       };
       const onMouseUp = () => { dragging = false; };
-
-      // ── Wheel zoom manual ─────────────────────────────────────────────────
       const onWheel = (e: WheelEvent) => {
         e.preventDefault();
         if (!mapaInstancia.current) return;
@@ -133,26 +148,49 @@ export default function MapaLeaflet({ cts, cups, mostrarCts, mostrarCups }: Prop
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mapaInstancia as any)._cleanup?.();
         mapaInstancia.current.remove();
-        mapaInstancia.current = null;
-        ctLayerRef.current    = null;
-        cupsLayerRef.current  = null;
+        mapaInstancia.current  = null;
+        ctLayerRef.current     = null;
+        cupsLayerRef.current   = null;
+        lineasLayerRef.current = null;
       }
     };
   }, []);
 
+  // ── Pintar líneas/tramos ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!lineasLayerRef.current) return;
+    import("leaflet").then(L => {
+      lineasLayerRef.current.clearLayers();
+      if (!mostrarLineas) return;
+      tramos.forEach(t => {
+        if (t.lat_ini === null || t.lon_ini === null || t.lat_fin === null || t.lon_fin === null) return;
+        const nivel = nivelLinea(t.id_linea);
+        const color = colorLinea(t.id_linea);
+        L.polyline(
+          [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
+          { color, weight: nivel === "MT" ? 2.5 : 1.5, opacity: 0.85 }
+        ).bindPopup(`
+          <div style="font-size:11px;line-height:1.5">
+            <div style="font-weight:600;margin-bottom:2px;color:${color}">${nivel}</div>
+            <div style="margin-bottom:2px">${t.id_linea ?? "—"}</div>
+            <div style="color:#888;font-size:10px;font-family:monospace">${t.id_tramo}</div>
+          </div>`)
+          .addTo(lineasLayerRef.current);
+      });
+    });
+  }, [tramos, mostrarLineas]);
+
+  // ── Pintar CTs ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!ctLayerRef.current) return;
     import("leaflet").then(L => {
       ctLayerRef.current.clearLayers();
       if (!mostrarCts) return;
-
       const iconCt = L.divIcon({
         className: "",
         html: `<div style="width:14px;height:14px;border-radius:50%;background:#E24B4A;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
-        iconSize:   [14, 14],
-        iconAnchor: [7, 7],
+        iconSize: [14, 14], iconAnchor: [7, 7],
       });
-
       cts.forEach(ct => {
         if (ct.lat === null || ct.lon === null) return;
         L.marker([ct.lat, ct.lon], { icon: iconCt })
@@ -168,19 +206,17 @@ export default function MapaLeaflet({ cts, cups, mostrarCts, mostrarCups }: Prop
     });
   }, [cts, mostrarCts]);
 
+  // ── Pintar CUPS ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!cupsLayerRef.current) return;
     import("leaflet").then(L => {
       cupsLayerRef.current.clearLayers();
       if (!mostrarCups) return;
-
       const iconCups = L.divIcon({
         className: "",
         html: `<div style="width:7px;height:7px;border-radius:50%;background:#378ADD;border:1px solid rgba(255,255,255,0.9);box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`,
-        iconSize:   [7, 7],
-        iconAnchor: [3, 3],
+        iconSize: [7, 7], iconAnchor: [3, 3],
       });
-
       cups.forEach(c => {
         if (c.lat === null || c.lon === null) return;
         L.marker([c.lat, c.lon], { icon: iconCups })
@@ -193,7 +229,6 @@ export default function MapaLeaflet({ cts, cups, mostrarCts, mostrarCups }: Prop
             </div>`)
           .addTo(cupsLayerRef.current);
       });
-
       const validos = cups.filter(c => c.lat !== null && c.lon !== null);
       if (validos.length > 0 && mapaInstancia.current) {
         const bounds = L.latLngBounds(validos.map(c => [c.lat!, c.lon!] as [number, number]));
