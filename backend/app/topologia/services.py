@@ -1,7 +1,10 @@
 # app/topologia/services.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
+
 from __future__ import annotations
 
+import collections
+import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -58,45 +61,30 @@ def _upsert_ct(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    # Identificación
     obj.id_ct       = registro["id_ct"]
     obj.cini        = registro.get("cini")
     obj.nombre      = registro.get("nombre") or registro["id_ct"]
     obj.codigo_ccuu = registro.get("codigo_ccuu")
-
-    # Topología
-    obj.nudo_alta = registro.get("nudo_alta")
-    obj.nudo_baja = registro.get("nudo_baja")
-
-    # Características eléctricas
+    obj.nudo_alta   = registro.get("nudo_alta")
+    obj.nudo_baja   = registro.get("nudo_baja")
     obj.tension_kv              = registro.get("tension_kv")
     obj.tension_construccion_kv = registro.get("tension_construccion_kv")
     obj.potencia_kva            = registro.get("potencia_kva")
-
-    # Coordenadas
-    obj.utm_x = registro.get("utm_x")
-    obj.utm_y = registro.get("utm_y")
-    obj.lat   = registro.get("lat")
-    obj.lon   = registro.get("lon")
-
-    # Ubicación
+    obj.utm_x         = registro.get("utm_x")
+    obj.utm_y         = registro.get("utm_y")
+    obj.lat           = registro.get("lat")
+    obj.lon           = registro.get("lon")
     obj.municipio_ine = registro.get("municipio_ine")
     obj.provincia     = registro.get("provincia")
     obj.ccaa          = registro.get("ccaa")
     obj.zona          = registro.get("zona")
-
-    # Estado
     obj.estado         = registro.get("estado")
     obj.modelo         = registro.get("modelo")
     obj.punto_frontera = registro.get("punto_frontera")
-
-    # Fechas
     obj.fecha_aps  = registro.get("fecha_aps")
     obj.causa_baja = registro.get("causa_baja")
     obj.fecha_baja = registro.get("fecha_baja")
     obj.fecha_ip   = registro.get("fecha_ip")
-
-    # Inversión
     obj.tipo_inversion          = registro.get("tipo_inversion")
     obj.financiado              = registro.get("financiado")
     obj.im_tramites             = registro.get("im_tramites")
@@ -110,7 +98,6 @@ def _upsert_ct(
     obj.motivacion              = registro.get("motivacion")
     obj.avifauna                = registro.get("avifauna")
     obj.identificador_baja      = registro.get("identificador_baja")
-
     return accion
 
 
@@ -187,55 +174,39 @@ def _upsert_cups(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    # Identificación
     obj.cups      = registro["cups"]
-    obj.id_ct     = registro.get("id_ct")
+    obj.id_ct     = registro.get("id_ct")       # NUDO de conexión del A1
     obj.id_salida = registro.get("id_salida")
-
-    # Clasificación
-    obj.cnae   = registro.get("cnae")
-    obj.tarifa = registro.get("tarifa")
-
-    # Coordenadas
-    obj.utm_x = registro.get("utm_x")
-    obj.utm_y = registro.get("utm_y")
-    obj.lat   = registro.get("lat")
-    obj.lon   = registro.get("lon")
-
-    # Ubicación
+    obj.cnae      = registro.get("cnae")
+    obj.tarifa    = registro.get("tarifa")
+    obj.utm_x     = registro.get("utm_x")
+    obj.utm_y     = registro.get("utm_y")
+    obj.lat       = registro.get("lat")
+    obj.lon       = registro.get("lon")
     obj.municipio = registro.get("municipio")
     obj.provincia = registro.get("provincia")
     obj.zona      = registro.get("zona")
     obj.conexion  = registro.get("conexion")
-
-    # Características eléctricas
     obj.tension_kv              = registro.get("tension_kv")
     obj.estado_contrato         = registro.get("estado_contrato")
     obj.potencia_contratada_kw  = registro.get("potencia_contratada_kw")
     obj.potencia_adscrita_kw    = registro.get("potencia_adscrita_kw")
     obj.energia_activa_kwh      = registro.get("energia_activa_kwh")
     obj.energia_reactiva_kvarh  = registro.get("energia_reactiva_kvarh")
-
-    # Autoconsumo y medida
-    obj.autoconsumo   = registro.get("autoconsumo")
-    obj.cini_contador = registro.get("cini_contador")
-    obj.fecha_alta    = registro.get("fecha_alta")
-
-    # Gestión
-    obj.lecturas           = registro.get("lecturas")
-    obj.baja_suministro    = registro.get("baja_suministro")
-    obj.cambio_titularidad = registro.get("cambio_titularidad")
-    obj.facturas_estimadas = registro.get("facturas_estimadas")
-    obj.facturas_total     = registro.get("facturas_total")
-
-    # Autoconsumo detalle
+    obj.autoconsumo             = registro.get("autoconsumo")
+    obj.cini_contador           = registro.get("cini_contador")
+    obj.fecha_alta              = registro.get("fecha_alta")
+    obj.lecturas                = registro.get("lecturas")
+    obj.baja_suministro         = registro.get("baja_suministro")
+    obj.cambio_titularidad      = registro.get("cambio_titularidad")
+    obj.facturas_estimadas      = registro.get("facturas_estimadas")
+    obj.facturas_total          = registro.get("facturas_total")
     obj.cau                     = registro.get("cau")
     obj.cod_auto                = registro.get("cod_auto")
     obj.cod_generacion_auto     = registro.get("cod_generacion_auto")
     obj.conexion_autoconsumo    = registro.get("conexion_autoconsumo")
     obj.energia_autoconsumida_kwh = registro.get("energia_autoconsumida_kwh")
     obj.energia_excedentaria_kwh  = registro.get("energia_excedentaria_kwh")
-
     return accion
 
 
@@ -274,18 +245,13 @@ def _upsert_linea(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    # Identificación
     obj.id_tramo    = registro["id_tramo"]
     obj.cini        = registro.get("cini")
     obj.codigo_ccuu = registro.get("codigo_ccuu")
-
-    # Topología
     obj.nudo_inicio   = registro.get("nudo_inicio")
     obj.nudo_fin      = registro.get("nudo_fin")
     obj.ccaa_1        = registro.get("ccaa_1")
     obj.nivel_tension = registro.get("nivel_tension")
-
-    # Características eléctricas
     obj.propiedad               = registro.get("propiedad")
     obj.tension_kv              = registro.get("tension_kv")
     obj.tension_construccion_kv = registro.get("tension_construccion_kv")
@@ -293,20 +259,14 @@ def _upsert_linea(
     obj.resistencia_ohm         = registro.get("resistencia_ohm")
     obj.reactancia_ohm          = registro.get("reactancia_ohm")
     obj.intensidad_a            = registro.get("intensidad_a")
-
-    # Estado
     obj.estado         = registro.get("estado")
     obj.punto_frontera = registro.get("punto_frontera")
     obj.modelo         = registro.get("modelo")
     obj.operacion      = registro.get("operacion")
-
-    # Fechas
     obj.fecha_aps  = registro.get("fecha_aps")
     obj.causa_baja = registro.get("causa_baja")
     obj.fecha_baja = registro.get("fecha_baja")
     obj.fecha_ip   = registro.get("fecha_ip")
-
-    # Inversión
     obj.tipo_inversion          = registro.get("tipo_inversion")
     obj.motivacion              = registro.get("motivacion")
     obj.im_tramites             = registro.get("im_tramites")
@@ -320,7 +280,7 @@ def _upsert_linea(
     obj.cuenta                  = registro.get("cuenta")
     obj.avifauna                = registro.get("avifauna")
     obj.identificador_baja      = registro.get("identificador_baja")
-
+    # No tocar id_ct ni metodo_asignacion_ct al importar — se calculan por separado
     return accion
 
 
@@ -398,25 +358,21 @@ def _parsear_b21(
             if not id_ct or not id_trf:
                 errores.append(f"Línea {num}: id_ct o id_transformador vacío")
                 continue
-
             potencia = None
             try:
                 potencia = float(campos[3].strip().replace(",", "."))
             except (ValueError, IndexError):
                 pass
-
             anio = None
             try:
                 anio = int(campos[4].strip()) if len(campos) > 4 else None
             except ValueError:
                 pass
-
             operacion = None
             try:
                 operacion = int(campos[5].strip()) if len(campos) > 5 else None
             except ValueError:
                 pass
-
             registros.append({
                 "id_ct":            id_ct,
                 "id_transformador": id_trf,
@@ -429,6 +385,284 @@ def _parsear_b21(
             errores.append(f"Línea {num}: error inesperado — {exc}")
 
     return registros, errores
+
+
+# ── Algoritmo BFS + proximidad geográfica ─────────────────────────────────────
+#
+# PASO 1 — BFS bidireccional (topológico):
+#   MT: líneas cuyo nudo_fin = nudo_alta del CT
+#   BT: BFS desde nudo_baja del CT recorriendo nudo_inicio de líneas BT
+#
+# PASO 2 — Proximidad geográfica (líneas BT sin asociar):
+#   Calcula centroide UTM del CT con sus líneas ya asociadas.
+#   Asigna la línea BT huérfana al CT más cercano dentro de MAX_DIST_M.
+#
+# PASO 3 — CUPS→CT via nudo:
+#   CUPS.id_ct (campo NUDO del A1) = nudo_fin de alguna línea BT
+#   La línea hereda el id_ct calculado en PASO 1/2.
+
+MAX_DIST_M = 500  # metros — umbral máximo para asignación por proximidad
+
+
+def calcular_asociacion_ct(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+) -> Dict[str, Any]:
+    """
+    Calcula y persiste la asociación CT para todas las líneas y CUPS
+    de una empresa. No sobreescribe asignaciones manuales (metodo='manual').
+    Devuelve un resumen con contadores.
+    """
+
+    # ── Cargar CTs ────────────────────────────────────────────────────────────
+    cts = (
+        db.query(CtInventario)
+        .filter(
+            CtInventario.tenant_id  == tenant_id,
+            CtInventario.empresa_id == empresa_id,
+        )
+        .all()
+    )
+
+    # ── Cargar líneas ─────────────────────────────────────────────────────────
+    lineas = (
+        db.query(LineaInventario)
+        .filter(
+            LineaInventario.tenant_id  == tenant_id,
+            LineaInventario.empresa_id == empresa_id,
+        )
+        .all()
+    )
+
+    # ── Cargar coordenadas UTM del primer segmento de cada línea (B11) ────────
+    # Usamos utm_x_ini / utm_y_ini del segmento orden=1
+    tramos_primeros = (
+        db.query(LineaTramo.id_linea, LineaTramo.utm_x_ini, LineaTramo.utm_y_ini)
+        .filter(
+            LineaTramo.tenant_id  == tenant_id,
+            LineaTramo.empresa_id == empresa_id,
+            LineaTramo.orden      == 1,
+            LineaTramo.utm_x_ini.isnot(None),
+            LineaTramo.utm_y_ini.isnot(None),
+        )
+        .all()
+    )
+    linea_coords: Dict[str, Tuple[float, float]] = {
+        r.id_linea: (r.utm_x_ini, r.utm_y_ini)
+        for r in tramos_primeros
+    }
+
+    # ── Índices nudo → líneas ─────────────────────────────────────────────────
+    nudo_a_lineas_ini: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
+    nudo_a_lineas_fin: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
+    for linea in lineas:
+        if linea.nudo_inicio:
+            nudo_a_lineas_ini[linea.nudo_inicio].append(linea)
+        if linea.nudo_fin:
+            nudo_a_lineas_fin[linea.nudo_fin].append(linea)
+
+    # ── PASO 1: BFS bidireccional ─────────────────────────────────────────────
+    linea_a_ct: Dict[str, str] = {}   # id_tramo → id_ct
+    metodo:     Dict[str, str] = {}   # id_tramo → 'bfs'
+
+    for ct in cts:
+        # MT: nudo_fin de la línea = nudo_alta del CT
+        for linea in nudo_a_lineas_fin.get(ct.nudo_alta or "", []):
+            if linea.id_tramo not in linea_a_ct:
+                linea_a_ct[linea.id_tramo] = ct.id_ct
+                metodo[linea.id_tramo]     = "bfs"
+
+        # BT: BFS desde nudo_baja
+        if not ct.nudo_baja:
+            continue
+        visitados: set = set()
+        cola = [ct.nudo_baja]
+        while cola:
+            nudo = cola.pop(0)
+            if nudo in visitados:
+                continue
+            visitados.add(nudo)
+            for linea in nudo_a_lineas_ini.get(nudo, []):
+                if linea.id_tramo not in linea_a_ct:
+                    linea_a_ct[linea.id_tramo] = ct.id_ct
+                    metodo[linea.id_tramo]     = "bfs"
+                    if linea.nudo_fin and linea.nudo_fin not in visitados:
+                        cola.append(linea.nudo_fin)
+
+    # ── PASO 2: Proximidad geográfica para BT sin asociar ─────────────────────
+    # Calcular centroide UTM de cada CT usando sus líneas ya asociadas
+    ct_coords: Dict[str, Tuple[float, float]] = {}
+    for ct in cts:
+        lineas_ct = [
+            linea_coords[l_id]
+            for l_id, ct_id in linea_a_ct.items()
+            if ct_id == ct.id_ct and l_id in linea_coords
+        ]
+        if lineas_ct:
+            ct_coords[ct.id_ct] = (
+                sum(c[0] for c in lineas_ct) / len(lineas_ct),
+                sum(c[1] for c in lineas_ct) / len(lineas_ct),
+            )
+
+    bt_sin = [
+        linea for linea in lineas
+        if linea.id_tramo not in linea_a_ct
+        and ("BTV" in linea.id_tramo or "LBT" in linea.id_tramo)
+        and linea.id_tramo in linea_coords
+    ]
+
+    for linea in bt_sin:
+        lx, ly = linea_coords[linea.id_tramo]
+        mejor_ct:   Optional[str]   = None
+        mejor_dist: float           = MAX_DIST_M
+        for id_ct, (cx, cy) in ct_coords.items():
+            dist = math.sqrt((lx - cx) ** 2 + (ly - cy) ** 2)
+            if dist < mejor_dist:
+                mejor_dist = dist
+                mejor_ct   = id_ct
+        if mejor_ct:
+            linea_a_ct[linea.id_tramo] = mejor_ct
+            metodo[linea.id_tramo]     = "proximidad"
+
+    # ── Persistir asociación en linea_inventario ──────────────────────────────
+    # No sobreescribir asignaciones manuales
+    lineas_bfs       = 0
+    lineas_prox      = 0
+    lineas_sin_asoc  = 0
+
+    for linea in lineas:
+        if linea.metodo_asignacion_ct == "manual":
+            continue  # respetar correcciones manuales
+        id_ct_calc = linea_a_ct.get(linea.id_tramo)
+        metodo_calc = metodo.get(linea.id_tramo)
+        if id_ct_calc:
+            linea.id_ct                = id_ct_calc
+            linea.metodo_asignacion_ct = metodo_calc
+            linea.updated_at           = _now()
+            if metodo_calc == "bfs":
+                lineas_bfs += 1
+            else:
+                lineas_prox += 1
+        else:
+            lineas_sin_asoc += 1
+
+    db.flush()
+
+    # ── PASO 3: CUPS → CT via nudo → línea ───────────────────────────────────
+    # CUPS.id_ct = NUDO del A1 → buscar línea cuyo nudo_fin = ese nudo
+    # La línea tiene id_ct calculado → el CUPS hereda ese id_ct
+    cups_lista = (
+        db.query(CupsTopologia)
+        .filter(
+            CupsTopologia.tenant_id  == tenant_id,
+            CupsTopologia.empresa_id == empresa_id,
+        )
+        .all()
+    )
+
+    cups_asignados   = 0
+    cups_sin_asoc    = 0
+
+    for cups in cups_lista:
+        if cups.metodo_asignacion_ct == "manual":
+            continue  # respetar correcciones manuales
+        nudo = cups.id_ct  # campo NUDO del A1
+        if not nudo:
+            cups_sin_asoc += 1
+            continue
+        # Buscar línea cuyo nudo_fin = nudo del CUPS
+        lineas_del_nudo = nudo_a_lineas_fin.get(nudo, [])
+        id_ct_cups = None
+        for linea in lineas_del_nudo:
+            id_ct_cups = linea_a_ct.get(linea.id_tramo)
+            if id_ct_cups:
+                break
+        if id_ct_cups:
+            cups.id_ct_asignado       = id_ct_cups
+            cups.metodo_asignacion_ct = "nudo_linea"
+            cups.updated_at           = _now()
+            cups_asignados += 1
+        else:
+            cups_sin_asoc += 1
+
+    db.commit()
+
+    return {
+        "lineas_bfs":       lineas_bfs,
+        "lineas_proximidad": lineas_prox,
+        "lineas_sin_asoc":  lineas_sin_asoc,
+        "lineas_total":     len(lineas),
+        "cups_asignados":   cups_asignados,
+        "cups_sin_asoc":    cups_sin_asoc,
+        "cups_total":       len(cups_lista),
+    }
+
+
+# ── Reasignación manual — línea ───────────────────────────────────────────────
+
+def reasignar_ct_linea(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    id_tramo: str,
+    id_ct_nuevo: Optional[str],
+) -> LineaInventario:
+    """
+    Reasigna manualmente el CT de una línea.
+    Si id_ct_nuevo es None o vacío, limpia la asignación.
+    """
+    linea = (
+        db.query(LineaInventario)
+        .filter(
+            LineaInventario.tenant_id  == tenant_id,
+            LineaInventario.empresa_id == empresa_id,
+            LineaInventario.id_tramo   == id_tramo,
+        )
+        .first()
+    )
+    if linea is None:
+        raise ValueError(f"Línea {id_tramo} no encontrada")
+
+    linea.id_ct                = id_ct_nuevo or None
+    linea.metodo_asignacion_ct = "manual" if id_ct_nuevo else None
+    linea.updated_at           = _now()
+    db.commit()
+    db.refresh(linea)
+    return linea
+
+
+# ── Reasignación manual — CUPS ────────────────────────────────────────────────
+
+def reasignar_ct_cups(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    cups: str,
+    id_ct_nuevo: Optional[str],
+) -> CupsTopologia:
+    """
+    Reasigna manualmente el CT de un CUPS.
+    Si id_ct_nuevo es None o vacío, limpia la asignación.
+    """
+    obj = (
+        db.query(CupsTopologia)
+        .filter(
+            CupsTopologia.tenant_id  == tenant_id,
+            CupsTopologia.empresa_id == empresa_id,
+            CupsTopologia.cups       == cups,
+        )
+        .first()
+    )
+    if obj is None:
+        raise ValueError(f"CUPS {cups} no encontrado")
+
+    obj.id_ct_asignado       = id_ct_nuevo or None
+    obj.metodo_asignacion_ct = "manual" if id_ct_nuevo else None
+    obj.updated_at           = _now()
+    db.commit()
+    db.refresh(obj)
+    return obj
 
 
 # ── Servicio principal de importación ─────────────────────────────────────────
@@ -553,6 +787,14 @@ def importar_topologia(
         db.commit()
         resultado["ficheros"].append("B11")
 
+    # ── Calcular asociación CT automáticamente si hay datos suficientes ────────
+    # Solo lanza el cálculo si se importaron B1 o B2 (cambió la topología)
+    if contenido_b1 or contenido_b2 or contenido_b11:
+        try:
+            calcular_asociacion_ct(db, tenant_id, empresa_id)
+        except Exception:
+            pass  # No bloquear la importación si falla el cálculo
+
     return resultado
 
 
@@ -592,7 +834,7 @@ def list_cups_mapa(
         )
     )
     if id_ct is not None:
-        q = q.filter(CupsTopologia.id_ct == id_ct)
+        q = q.filter(CupsTopologia.id_ct_asignado == id_ct)
     return q.order_by(CupsTopologia.cups).all()
 
 
@@ -618,7 +860,6 @@ def list_tramos_mapa(
     empresa_id: int,
     id_linea: Optional[str] = None,
 ) -> List[LineaTramo]:
-    """Devuelve segmentos GIS con coordenadas válidas para pintar la red en el mapa."""
     q = (
         db.query(LineaTramo)
         .filter(
@@ -633,3 +874,63 @@ def list_tramos_mapa(
     if id_linea is not None:
         q = q.filter(LineaTramo.id_linea == id_linea)
     return q.order_by(LineaTramo.id_linea, LineaTramo.orden).all()
+
+
+# ── Tabla líneas — para la vista de gestión ───────────────────────────────────
+
+def list_lineas_tabla(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    id_ct: Optional[str] = None,
+    sin_ct: bool = False,
+    metodo: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> Tuple[List[LineaInventario], int]:
+    q = (
+        db.query(LineaInventario)
+        .filter(
+            LineaInventario.tenant_id  == tenant_id,
+            LineaInventario.empresa_id == empresa_id,
+        )
+    )
+    if id_ct:
+        q = q.filter(LineaInventario.id_ct == id_ct)
+    if sin_ct:
+        q = q.filter(LineaInventario.id_ct.is_(None))
+    if metodo:
+        q = q.filter(LineaInventario.metodo_asignacion_ct == metodo)
+    total = q.count()
+    lineas = q.order_by(LineaInventario.id_tramo).offset(offset).limit(limit).all()
+    return lineas, total
+
+
+# ── Tabla CUPS — para la vista de gestión ─────────────────────────────────────
+
+def list_cups_tabla(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    id_ct: Optional[str] = None,
+    sin_ct: bool = False,
+    metodo: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> Tuple[List[CupsTopologia], int]:
+    q = (
+        db.query(CupsTopologia)
+        .filter(
+            CupsTopologia.tenant_id  == tenant_id,
+            CupsTopologia.empresa_id == empresa_id,
+        )
+    )
+    if id_ct:
+        q = q.filter(CupsTopologia.id_ct_asignado == id_ct)
+    if sin_ct:
+        q = q.filter(CupsTopologia.id_ct_asignado.is_(None))
+    if metodo:
+        q = q.filter(CupsTopologia.metodo_asignacion_ct == metodo)
+    total = q.count()
+    cups = q.order_by(CupsTopologia.cups).offset(offset).limit(limit).all()
+    return cups, total

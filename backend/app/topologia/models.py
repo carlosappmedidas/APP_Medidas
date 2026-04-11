@@ -196,6 +196,10 @@ class CupsTopologia(TenantMixin, TimestampMixin, Base):
     id_ct     = Column(String, nullable=True,  index=True)    # NUDO (nudo al que pertenece)
     id_salida = Column(String, nullable=True)
 
+    # ── Asociación CT (calculada por nudo→línea→CT, editable manualmente) ──
+    id_ct_asignado       = Column(String, nullable=True, index=True)  # CT real del CUPS
+    metodo_asignacion_ct = Column(String, nullable=True)              # 'nudo_linea'/'manual'
+
     # Clasificación
     cnae    = Column(String(5), nullable=True)
     tarifa  = Column(String,    nullable=True)                # COD_TFA
@@ -336,6 +340,10 @@ class LineaInventario(TenantMixin, TimestampMixin, Base):
     cuenta                  = Column(String,    nullable=True)
     avifauna                = Column(Integer,   nullable=True)    # 0/1
     identificador_baja      = Column(String,    nullable=True)
+
+    # ── Asociación CT (calculada por BFS/proximidad, editable manualmente) ──
+    id_ct                = Column(String, nullable=True, index=True)
+    metodo_asignacion_ct = Column(String, nullable=True)          # 'bfs'/'proximidad'/'manual'
 
 
 class LineaTramo(TenantMixin, TimestampMixin, Base):

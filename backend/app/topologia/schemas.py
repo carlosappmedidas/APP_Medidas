@@ -109,6 +109,8 @@ class CupsTopologiaRead(BaseModel):
     conexion_autoconsumo:     Optional[int]
     energia_autoconsumida_kwh: Optional[float]
     energia_excedentaria_kwh:  Optional[float]
+    id_ct_asignado:           Optional[str]
+    metodo_asignacion_ct:     Optional[str]
     anio_declaracion:         Optional[int]
     created_at:               datetime
     updated_at:               datetime
@@ -136,6 +138,67 @@ class ImportarTopologiaResponse(BaseModel):
     tramos_actualizados: int = 0
     tramos_errores:      int = 0
     ficheros:            List[str]
+
+
+# ── Asociación CT — request y response ───────────────────────────────────────
+
+class AsignacionCtRequest(BaseModel):
+    """Payload para reasignación manual de CT en línea o CUPS."""
+    id_ct: Optional[str] = None  # None o "" para limpiar la asignación
+
+
+class CalcAsignacionCtResponse(BaseModel):
+    """Resultado del cálculo automático de asociación CT."""
+    lineas_bfs:        int
+    lineas_proximidad: int
+    lineas_sin_asoc:   int
+    lineas_total:      int
+    cups_asignados:    int
+    cups_sin_asoc:     int
+    cups_total:        int
+
+
+# ── Tabla líneas — para la vista de gestión ───────────────────────────────────
+
+class LineaTablaRead(BaseModel):
+    """
+    Línea con su CT asignado para la tabla de gestión.
+    Incluye solo los campos relevantes para revisión y corrección.
+    """
+    id_tramo:             str
+    nudo_inicio:          Optional[str]
+    nudo_fin:             Optional[str]
+    tension_kv:           Optional[float]
+    longitud_km:          Optional[float]
+    codigo_ccuu:          Optional[str]
+    operacion:            Optional[int]
+    fecha_aps:            Optional[date]
+    id_ct:                Optional[str]
+    metodo_asignacion_ct: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+# ── Tabla CUPS — para la vista de gestión ─────────────────────────────────────
+
+class CupsTablaRead(BaseModel):
+    """
+    CUPS con su CT asignado para la tabla de gestión.
+    Incluye solo los campos relevantes para revisión y corrección.
+    """
+    cups:                 str
+    id_ct:                Optional[str]   # NUDO del A1
+    tarifa:               Optional[str]
+    tension_kv:           Optional[float]
+    potencia_contratada_kw: Optional[float]
+    municipio:            Optional[str]
+    conexion:             Optional[str]
+    id_ct_asignado:       Optional[str]
+    metodo_asignacion_ct: Optional[str]
+
+    class Config:
+        from_attributes = True
 
 
 # ── Mapa — CT ─────────────────────────────────────────────────────────────────
@@ -186,7 +249,9 @@ class CtMapaRead(BaseModel):
 
 class CupsMapaRead(BaseModel):
     cups:                   str
-    id_ct:                  Optional[str]
+    id_ct:                  Optional[str]   # NUDO del A1
+    id_ct_asignado:         Optional[str]   # CT calculado
+    metodo_asignacion_ct:   Optional[str]
     cnae:                   Optional[str]
     tarifa:                 Optional[str]
     lat:                    Optional[float]
@@ -230,8 +295,8 @@ class TramoMapaRead(BaseModel):
     # B11 — segmento GIS
     id_tramo:  str
     id_linea:  Optional[str]
-    orden:     Optional[int]   # ORDEN_SEGMENTO — posición del segmento en la línea
-    num_tramo: Optional[int]   # N_SEGMENTOS — total de segmentos de la línea
+    orden:     Optional[int]
+    num_tramo: Optional[int]
     lat_ini:   Optional[float]
     lon_ini:   Optional[float]
     lat_fin:   Optional[float]
@@ -271,6 +336,10 @@ class TramoMapaRead(BaseModel):
     cuenta:                  Optional[str]
     avifauna:                Optional[int]
     identificador_baja:      Optional[str]
+
+    # CT asignado
+    id_ct:                Optional[str]
+    metodo_asignacion_ct: Optional[str]
 
     class Config:
         from_attributes = True

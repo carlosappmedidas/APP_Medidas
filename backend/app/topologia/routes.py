@@ -1,5 +1,5 @@
 # app/topologia/routes.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
 from __future__ import annotations
 
 from typing import List, Optional
@@ -13,10 +13,14 @@ from app.tenants.models import User
 from app.topologia import services
 from app.topologia.models import LineaInventario, LineaTramo
 from app.topologia.schemas import (
+    AsignacionCtRequest,
+    CalcAsignacionCtResponse,
     CtInventarioRead,
     CtMapaRead,
     CupsMapaRead,
+    CupsTablaRead,
     ImportarTopologiaResponse,
+    LineaTablaRead,
     TramoMapaRead,
 )
 
@@ -52,6 +56,7 @@ async def importar_topologia(
     Importa los ficheros CNMC 8/2021 para una empresa.
     Se pueden subir todos o solo algunos ficheros a la vez.
     La reimportación actualiza registro a registro sin borrar datos.
+    Al finalizar lanza automáticamente el cálculo de asociación CT.
     """
     _assert_not_viewer(current_user)
 
@@ -86,6 +91,151 @@ async def importar_topologia(
         ) from exc
 
     return ImportarTopologiaResponse(**resultado)
+
+
+# ── Cálculo de asociación CT ──────────────────────────────────────────────────
+
+@router.post("/calcular-ct", response_model=CalcAsignacionCtResponse, status_code=status.HTTP_200_OK)
+def calcular_ct(
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> CalcAsignacionCtResponse:
+    """
+    Lanza el algoritmo BFS + proximidad geográfica para asociar líneas y CUPS
+    a sus CTs. No sobreescribe asignaciones manuales (metodo='manual').
+    """
+    _assert_not_viewer(current_user)
+    try:
+        resultado = services.calcular_asociacion_ct(
+            db         = db,
+            tenant_id  = _tenant_id(current_user),
+            empresa_id = empresa_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculando asociación CT: {str(exc)[:300]}",
+        ) from exc
+    return CalcAsignacionCtResponse(**resultado)
+
+
+# ── Reasignación manual — línea ───────────────────────────────────────────────
+
+@router.patch("/lineas/{id_tramo}/ct", status_code=status.HTTP_200_OK)
+def reasignar_ct_linea(
+    id_tramo:     str,
+    payload:      AsignacionCtRequest,
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> dict:
+    """
+    Reasigna manualmente el CT de una línea.
+    Enviar id_ct=null o id_ct="" para limpiar la asignación.
+    """
+    _assert_not_viewer(current_user)
+    try:
+        services.reasignar_ct_linea(
+            db           = db,
+            tenant_id    = _tenant_id(current_user),
+            empresa_id   = empresa_id,
+            id_tramo     = id_tramo,
+            id_ct_nuevo  = payload.id_ct or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {"ok": True, "id_tramo": id_tramo, "id_ct": payload.id_ct}
+
+
+# ── Reasignación manual — CUPS ────────────────────────────────────────────────
+
+@router.patch("/cups/{cups}/ct", status_code=status.HTTP_200_OK)
+def reasignar_ct_cups(
+    cups:         str,
+    payload:      AsignacionCtRequest,
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> dict:
+    """
+    Reasigna manualmente el CT de un CUPS.
+    Enviar id_ct=null o id_ct="" para limpiar la asignación.
+    """
+    _assert_not_viewer(current_user)
+    try:
+        services.reasignar_ct_cups(
+            db           = db,
+            tenant_id    = _tenant_id(current_user),
+            empresa_id   = empresa_id,
+            cups         = cups,
+            id_ct_nuevo  = payload.id_ct or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {"ok": True, "cups": cups, "id_ct": payload.id_ct}
+
+
+# ── Tabla de líneas con CT ────────────────────────────────────────────────────
+
+@router.get("/tabla/lineas", response_model=List[LineaTablaRead])
+def get_tabla_lineas(
+    empresa_id:   int           = Query(...),
+    id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
+    sin_ct:       bool          = Query(False, description="Mostrar solo líneas sin CT"),
+    metodo:       Optional[str] = Query(None, description="Filtrar por método: bfs/proximidad/manual"),
+    limit:        int           = Query(500, ge=1, le=2000),
+    offset:       int           = Query(0, ge=0),
+    db:           Session       = Depends(get_db),
+    current_user: User          = Depends(get_current_user),
+) -> List[LineaTablaRead]:
+    """
+    Tabla de líneas con su CT asignado. Filtrable por CT, sin CT o método.
+    Útil para revisión y corrección manual de asociaciones.
+    """
+    _assert_not_viewer(current_user)
+    lineas, _ = services.list_lineas_tabla(
+        db         = db,
+        tenant_id  = _tenant_id(current_user),
+        empresa_id = empresa_id,
+        id_ct      = id_ct,
+        sin_ct     = sin_ct,
+        metodo     = metodo,
+        limit      = limit,
+        offset     = offset,
+    )
+    return lineas  # type: ignore[return-value]
+
+
+# ── Tabla de CUPS con CT ──────────────────────────────────────────────────────
+
+@router.get("/tabla/cups", response_model=List[CupsTablaRead])
+def get_tabla_cups(
+    empresa_id:   int           = Query(...),
+    id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
+    sin_ct:       bool          = Query(False, description="Mostrar solo CUPS sin CT"),
+    metodo:       Optional[str] = Query(None, description="Filtrar por método: nudo_linea/manual"),
+    limit:        int           = Query(500, ge=1, le=2000),
+    offset:       int           = Query(0, ge=0),
+    db:           Session       = Depends(get_db),
+    current_user: User          = Depends(get_current_user),
+) -> List[CupsTablaRead]:
+    """
+    Tabla de CUPS con su CT asignado. Filtrable por CT, sin CT o método.
+    Útil para revisión y corrección manual de asociaciones.
+    """
+    _assert_not_viewer(current_user)
+    cups, _ = services.list_cups_tabla(
+        db         = db,
+        tenant_id  = _tenant_id(current_user),
+        empresa_id = empresa_id,
+        id_ct      = id_ct,
+        sin_ct     = sin_ct,
+        metodo     = metodo,
+        limit      = limit,
+        offset     = offset,
+    )
+    return cups  # type: ignore[return-value]
 
 
 # ── Mapa — CTs ────────────────────────────────────────────────────────────────
@@ -204,6 +354,9 @@ def get_tramos_mapa(
             cuenta                  = linea.cuenta                  if linea else None,
             avifauna                = linea.avifauna                if linea else None,
             identificador_baja      = linea.identificador_baja      if linea else None,
+            # CT asignado
+            id_ct                = linea.id_ct                if linea else None,
+            metodo_asignacion_ct = linea.metodo_asignacion_ct if linea else None,
         ))
 
     return resultado
