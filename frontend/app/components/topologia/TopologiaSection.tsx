@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
-import type { CtMapa, CupsMapa, TramoMapa } from "./MapaLeaflet";
+import type { CtMapa, CupsMapa, TramoMapa, TooltipLineasConfig } from "./MapaLeaflet";
+import { DEFAULT_TOOLTIP_LINEAS } from "./MapaLeaflet";
 
 const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
   ssr: false,
@@ -38,7 +39,11 @@ interface ImportResult {
   ficheros:            string[];
 }
 
-interface Props { token: string | null; currentUser: User | null; }
+interface Props {
+  token:         string | null;
+  currentUser:   User | null;
+  tooltipLineas: TooltipLineasConfig;
+}
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +81,7 @@ type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function TopologiaSection({ token }: Props) {
+export default function TopologiaSection({ token, tooltipLineas }: Props) {
 
   const [panelImportOpen, setPanelImportOpen] = useState(false);
   const [panelMapaOpen,   setPanelMapaOpen]   = useState(true);
@@ -104,7 +109,6 @@ export default function TopologiaSection({ token }: Props) {
   const [mostrarMT,      setMostrarMT]      = useState(true);
   const [ctSeleccionado, setCtSeleccionado] = useState<string>("");
 
-  // mostrarLineas = cualquiera de BT o MT activo
   const mostrarLineas = mostrarBT || mostrarMT;
 
   // ── Carga inicial ─────────────────────────────────────────────────────────
@@ -162,7 +166,7 @@ export default function TopologiaSection({ token }: Props) {
     if (empresaId) cargarCups();
   }, [ctSeleccionado, empresaId, cargarCups]);
 
-  // ── Filtrar tramos por nivel — misma lógica que colorLinea ──────────────────
+  // ── Filtrar tramos por nivel ───────────────────────────────────────────────
   const tramosFiltrados = tramos.filter(t => {
     const esBT = (t.id_linea ?? "").toUpperCase().includes("BT");
     if (esBT) return mostrarBT;
@@ -198,7 +202,6 @@ export default function TopologiaSection({ token }: Props) {
     } finally { setImporting(false); }
   };
 
-  // Contadores por nivel — misma lógica que colorLinea en MapaLeaflet
   const numBT = tramos.filter(t =>  (t.id_linea ?? "").toUpperCase().includes("BT")).length;
   const numMT = tramos.filter(t => !(t.id_linea ?? "").toUpperCase().includes("BT")).length;
 
@@ -343,29 +346,21 @@ export default function TopologiaSection({ token }: Props) {
                 {/* Capas */}
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Capas</div>
-
-                  {/* Red MT */}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
                     <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} />
                     <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />
                     Red MT {loadingTramos ? "…" : `(${numMT})`}
                   </label>
-
-                  {/* Red BT */}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
                     <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} />
                     <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />
                     Red BT {loadingTramos ? "…" : `(${numBT})`}
                   </label>
-
-                  {/* CTs */}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
                     <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} />
                     <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", display: "inline-block" }} />
                     CTs {loadingCts ? "…" : `(${cts.length})`}
                   </label>
-
-                  {/* CUPS */}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
                     <input type="checkbox" checked={mostrarCups} onChange={e => setMostrarCups(e.target.checked)} />
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#378ADD", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
@@ -434,6 +429,7 @@ export default function TopologiaSection({ token }: Props) {
                   mostrarCts={mostrarCts}
                   mostrarCups={mostrarCups}
                   mostrarLineas={mostrarLineas}
+                  tooltipLineas={tooltipLineas}
                 />
               </div>
 
@@ -445,3 +441,6 @@ export default function TopologiaSection({ token }: Props) {
     </div>
   );
 }
+
+export { DEFAULT_TOOLTIP_LINEAS };
+export type { TooltipLineasConfig };

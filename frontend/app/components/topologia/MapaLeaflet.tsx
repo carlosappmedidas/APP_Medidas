@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
+// ─── Tipos exportados ─────────────────────────────────────────────────────────
+
 export interface CtMapa {
   id_ct:        string;
   nombre:       string;
@@ -21,27 +23,67 @@ export interface CupsMapa {
 }
 
 export interface TramoMapa {
+  // B11 — coordenadas
   id_tramo: string;
   id_linea: string | null;
   lat_ini:  number | null;
   lon_ini:  number | null;
   lat_fin:  number | null;
   lon_fin:  number | null;
+  // B1 — campos opcionales para el tooltip
+  cini:                    string | null;
+  codigo_ccuu:             string | null;
+  tension_kv:              number | null;
+  tension_construccion_kv: number | null;
+  longitud_km:             number | null;
+  resistencia_ohm:         number | null;
+  reactancia_ohm:          number | null;
+  intensidad_a:            number | null;
+  propiedad:               number | null;  // 0=terceros, 1=propia
+  operacion:               number | null;  // 0=abierto, 1=activo
+  causa_baja:              number | null;  // 0=activo, 1/2/3=baja
+  fecha_aps:               string | null;
+  fecha_baja:              string | null;
 }
+
+// ─── Config tooltip de líneas ─────────────────────────────────────────────────
+
+export interface TooltipLineasConfig {
+  mostrar_tension:     boolean;
+  mostrar_longitud:    boolean;
+  mostrar_intensidad:  boolean;
+  mostrar_resistencia: boolean;
+  mostrar_reactancia:  boolean;
+  mostrar_fecha_aps:   boolean;
+  mostrar_operacion:   boolean;
+  mostrar_cini:        boolean;
+}
+
+export const DEFAULT_TOOLTIP_LINEAS: TooltipLineasConfig = {
+  mostrar_tension:     true,
+  mostrar_longitud:    true,
+  mostrar_intensidad:  false,
+  mostrar_resistencia: false,
+  mostrar_reactancia:  false,
+  mostrar_fecha_aps:   true,
+  mostrar_operacion:   true,
+  mostrar_cini:        false,
+};
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  cts:           CtMapa[];
-  cups:          CupsMapa[];
-  tramos:        TramoMapa[];
-  mostrarCts:    boolean;
-  mostrarCups:   boolean;
-  mostrarLineas: boolean;
+  cts:              CtMapa[];
+  cups:             CupsMapa[];
+  tramos:           TramoMapa[];
+  mostrarCts:       boolean;
+  mostrarCups:      boolean;
+  mostrarLineas:    boolean;
+  tooltipLineas:    TooltipLineasConfig;
 }
 
-// ─── Color de línea según nivel de tensión ────────────────────────────────────
-// Los identificadores del B11 contienen el tipo de conductor en el nombre:
-//   *BT* → Baja Tensión (< 1 kV)  → amarillo
-//   resto → Media/Alta Tensión (≥ 1 kV) → morado
+// ─── Color y nivel de línea ───────────────────────────────────────────────────
+
 function colorLinea(id: string | null): string {
   if (!id) return "#F59E0B";
   if (id.toUpperCase().includes("BT")) return "#F59E0B";  // amarillo — BT < 1 kV
@@ -54,7 +96,52 @@ function nivelLinea(id: string | null): string {
   return "MT";
 }
 
-export default function MapaLeaflet({ cts, cups, tramos, mostrarCts, mostrarCups, mostrarLineas }: Props) {
+// ─── Construcción del HTML del tooltip de línea ───────────────────────────────
+
+function buildTooltipLinea(t: TramoMapa, config: TooltipLineasConfig, color: string, nivel: string): string {
+  const filas: string[] = [];
+
+  if (config.mostrar_tension && t.tension_kv !== null) {
+    filas.push(`<div>Tensión: <strong>${t.tension_kv} kV</strong></div>`);
+  }
+  if (config.mostrar_longitud && t.longitud_km !== null) {
+    filas.push(`<div>Longitud: <strong>${t.longitud_km.toFixed(3)} km</strong></div>`);
+  }
+  if (config.mostrar_intensidad && t.intensidad_a !== null) {
+    filas.push(`<div>Intensidad: <strong>${t.intensidad_a} A</strong></div>`);
+  }
+  if (config.mostrar_resistencia && t.resistencia_ohm !== null) {
+    filas.push(`<div>Resistencia: <strong>${t.resistencia_ohm} Ω</strong></div>`);
+  }
+  if (config.mostrar_reactancia && t.reactancia_ohm !== null) {
+    filas.push(`<div>Reactancia: <strong>${t.reactancia_ohm} Ω</strong></div>`);
+  }
+  if (config.mostrar_fecha_aps && t.fecha_aps) {
+    filas.push(`<div>APS: <strong>${t.fecha_aps}</strong></div>`);
+  }
+  if (config.mostrar_operacion && t.operacion !== null) {
+    const est = t.operacion === 1 ? "✅ Activo" : "⚠️ Abierto";
+    filas.push(`<div>Estado: <strong>${est}</strong></div>`);
+  }
+  if (config.mostrar_cini && t.cini) {
+    filas.push(`<div>CINI: <strong>${t.cini}</strong></div>`);
+  }
+
+  return `
+    <div style="font-size:11px;line-height:1.6;min-width:160px">
+      <div style="font-weight:600;margin-bottom:3px;color:${color}">${nivel}</div>
+      <div style="color:#888;margin-bottom:4px;font-size:10px">${t.id_linea ?? "—"}</div>
+      ${filas.join("")}
+    </div>`;
+}
+
+// ─── Componente ───────────────────────────────────────────────────────────────
+
+export default function MapaLeaflet({
+  cts, cups, tramos,
+  mostrarCts, mostrarCups, mostrarLineas,
+  tooltipLineas,
+}: Props) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapaInstancia  = useRef<any>(null);
@@ -100,7 +187,6 @@ export default function MapaLeaflet({ cts, cups, tramos, mostrarCts, mostrarCups
       if (mapAny.tap)       mapAny.tap.disable();
       map.dragging.enable();
 
-      // Líneas debajo de los marcadores
       lineasLayerRef.current = L.layerGroup().addTo(map);
       ctLayerRef.current     = L.layerGroup().addTo(map);
       cupsLayerRef.current   = L.layerGroup().addTo(map);
@@ -169,16 +255,11 @@ export default function MapaLeaflet({ cts, cups, tramos, mostrarCts, mostrarCups
         L.polyline(
           [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
           { color, weight: nivel === "MT" ? 2.5 : 1.5, opacity: 0.85 }
-        ).bindPopup(`
-          <div style="font-size:11px;line-height:1.5">
-            <div style="font-weight:600;margin-bottom:2px;color:${color}">${nivel}</div>
-            <div style="margin-bottom:2px">${t.id_linea ?? "—"}</div>
-            <div style="color:#888;font-size:10px;font-family:monospace">${t.id_tramo}</div>
-          </div>`)
+        ).bindPopup(buildTooltipLinea(t, tooltipLineas, color, nivel))
           .addTo(lineasLayerRef.current);
       });
     });
-  }, [tramos, mostrarLineas]);
+  }, [tramos, mostrarLineas, tooltipLineas]);
 
   // ── Pintar CTs ────────────────────────────────────────────────────────────
   useEffect(() => {

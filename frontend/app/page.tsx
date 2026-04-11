@@ -19,7 +19,10 @@ import ClientesSection from "./components/admin/ClientesSection";
 import MedidasPsSection, { COLUMNS_PS_META } from "./components/medidas/MedidasPsSection";
 import AppearanceSettingsSection from "./components/settings/AppearanceSettingsSection";
 import TableSettingsSection from "./components/settings/TableSettingsSection";
+import TopologiaSettingsSection from "./components/settings/TopologiaSettingsSection";
 import { useTableSettings } from "./components/settings/hooks/useTableSettings";
+import type { TooltipLineasConfig } from "./components/topologia/MapaLeaflet";
+import { DEFAULT_TOOLTIP_LINEAS } from "./components/topologia/MapaLeaflet";
 import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
@@ -111,11 +114,12 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
 const DEFAULT_GENERAL_ORDER = ALL_COLUMNS_META.map((c) => c.id);
 const DEFAULT_PS_ORDER = COLUMNS_PS_META.map((c) => c.id);
 
-const SIDEBAR_STORAGE_KEY      = "ui_sidebar_collapsed";
-const AUTH_TOKEN_STORAGE_KEY   = "auth_token";
-const MEDIDAS_OPEN_STORAGE_KEY = "ui_medidas_open";
-const TABLAS_OPEN_STORAGE_KEY  = "ui_tablas_open";
-const PERDIDAS_OPEN_STORAGE_KEY = "ui_perdidas_open";
+const SIDEBAR_STORAGE_KEY         = "ui_sidebar_collapsed";
+const AUTH_TOKEN_STORAGE_KEY      = "auth_token";
+const MEDIDAS_OPEN_STORAGE_KEY    = "ui_medidas_open";
+const TABLAS_OPEN_STORAGE_KEY     = "ui_tablas_open";
+const PERDIDAS_OPEN_STORAGE_KEY   = "ui_perdidas_open";
+const TOPOLOGIA_TOOLTIP_STORAGE_KEY = "ui_topologia_tooltip";
 
 const PERDIDAS_TABS: MainTab[] = ["perdidas", "topologia"];
 
@@ -137,9 +141,13 @@ export default function HomePage() {
   const [showApariencia,  setShowApariencia]  = useState(false);
   const [showTablas,      setShowTablas]      = useState(false);
   const [showAlertConfig, setShowAlertConfig] = useState(false);
+  const [showTopologia,   setShowTopologia]   = useState(false);
 
   // ── Collapsibles alertas ───────────────────────────────────────────────
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
+
+  // ── Tooltip topología ──────────────────────────────────────────────────
+  const [tooltipLineas, setTooltipLineas] = useState<TooltipLineasConfig>(DEFAULT_TOOLTIP_LINEAS);
 
   // ── Hook configuración de tablas ───────────────────────────────────────
   const {
@@ -158,6 +166,10 @@ export default function HomePage() {
       if (localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1") setMedidasOpen(true);
       if (localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1") setTablasOpen(true);
       if (localStorage.getItem(PERDIDAS_OPEN_STORAGE_KEY) === "1") setPerdidasOpen(true);
+      const savedTooltip = localStorage.getItem(TOPOLOGIA_TOOLTIP_STORAGE_KEY);
+      if (savedTooltip) {
+        try { setTooltipLineas({ ...DEFAULT_TOOLTIP_LINEAS, ...JSON.parse(savedTooltip) }); } catch { /* */ }
+      }
     } catch { /* ignore */ }
     finally { setAuthReady(true); }
   }, []);
@@ -168,6 +180,7 @@ export default function HomePage() {
   useEffect(() => { try { localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0"); } catch { /* */ } }, [tablasOpen]);
   useEffect(() => { try { localStorage.setItem(PERDIDAS_OPEN_STORAGE_KEY, perdidasOpen ? "1" : "0"); } catch { /* */ } }, [perdidasOpen]);
   useEffect(() => { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0"); } catch { /* */ } }, [sidebarCollapsed]);
+  useEffect(() => { try { localStorage.setItem(TOPOLOGIA_TOOLTIP_STORAGE_KEY, JSON.stringify(tooltipLineas)); } catch { /* */ } }, [tooltipLineas]);
 
   // ── Cargar usuario ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -484,7 +497,7 @@ export default function HomePage() {
         )}
 
         {activeTab === "topologia" && !isViewer && (
-          <TopologiaSection token={token} currentUser={currentUser} />
+          <TopologiaSection token={token} currentUser={currentUser} tooltipLineas={tooltipLineas} />
         )}
 
         {activeTab === "ajustes" && canSeeAjustes && (
@@ -544,6 +557,21 @@ export default function HomePage() {
               {showAlertConfig && (
                 <div className="ui-collapsible-card__body">
                   <AlertConfigSection token={token} canManage={canManageAlerts} />
+                </div>
+              )}
+            </div>
+
+            <div className="ui-collapsible-card">
+              <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowTopologia((v) => !v)}>
+                <div>
+                  <div className="ui-collapsible-card__title">CONFIGURACIÓN TOPOLOGÍA</div>
+                  <p className="ui-collapsible-card__subtitle">Campos que se muestran en el tooltip del mapa al hacer clic en una línea.</p>
+                </div>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showTopologia ? "Ocultar" : "Mostrar"}</span>
+              </button>
+              {showTopologia && (
+                <div className="ui-collapsible-card__body">
+                  <TopologiaSettingsSection config={tooltipLineas} onChange={setTooltipLineas} />
                 </div>
               )}
             </div>
