@@ -74,6 +74,27 @@ function generarColoresCt(ids: string[]): Record<string, string> {
   return mapa;
 }
 
+// Skeleton row component used to avoid flicker when loading paginated tables.
+// It renders a table row with a set of placeholder cells that match the
+// structure of the actual data tables. The number of columns can be
+// customized via the `columns` prop.
+const SkeletonRow = ({ columns }: { columns: number }) => (
+  <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
+    {Array.from({ length: columns }).map((_, idx) => (
+      <td key={idx} style={{ padding: "5px 8px" }}>
+        <div
+          style={{
+            height: 10,
+            width: "80%",
+            background: "var(--field-bg-soft)",
+            borderRadius: 4,
+          }}
+        />
+      </td>
+    ))}
+  </tr>
+);
+
 const panelStyle: React.CSSProperties = { background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "10px", overflow: "hidden", marginBottom: "10px" };
 const mapaPanelStyle: React.CSSProperties = { background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "10px", overflow: "visible", marginBottom: "10px" };
 const panelHeaderStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", cursor: "pointer", userSelect: "none" };
@@ -818,7 +839,41 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             {tablaActiva === "lineas" && (
               <div style={{ overflowX: "auto" }}>
                 {loadingTabla ? (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
+                        {[
+                          "ID Tramo",
+                          "Tensión",
+                          "Long.",
+                          "Op.",
+                          "APS",
+                          "CT asignado",
+                          "Método",
+                          "",
+                        ].map(h => (
+                          <th
+                            key={h}
+                            style={{
+                              padding: "6px 8px",
+                              textAlign: "left",
+                              fontSize: 10,
+                              color: "var(--text-muted)",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: pageSizeLineas }).map((_, i) => (
+                        <SkeletonRow key={i} columns={8} />
+                      ))}
+                    </tbody>
+                  </table>
                 ) : lineasTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : lineasTabla.length > 0 ? (
@@ -883,7 +938,41 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             {tablaActiva === "cups" && (
               <div style={{ overflowX: "auto" }}>
                 {loadingTabla ? (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
+                        {[
+                          "CUPS",
+                          "Tarifa",
+                          "Tensión",
+                          "Potencia",
+                          "Municipio",
+                          "CT asignado",
+                          "Método",
+                          "",
+                        ].map(h => (
+                          <th
+                            key={h}
+                            style={{
+                              padding: "6px 8px",
+                              textAlign: "left",
+                              fontSize: 10,
+                              color: "var(--text-muted)",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: pageSizeCups }).map((_, i) => (
+                        <SkeletonRow key={i} columns={8} />
+                      ))}
+                    </tbody>
+                  </table>
                 ) : cupsTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : cupsTabla.length > 0 ? (
