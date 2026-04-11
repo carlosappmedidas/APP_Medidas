@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
@@ -41,6 +41,16 @@ interface Props {
   tooltipCups:   TooltipCupsConfig;
 }
 
+// ─── Clasificación BT/MT por tensión de explotación ──────────────────────────
+// Fuente de verdad: tension_kv del B1. Fallback por prefijo si no hay dato.
+
+function esBTTramo(t: TramoMapa): boolean {
+  if (t.tension_kv !== null && t.tension_kv !== undefined)
+    return t.tension_kv <= 1;
+  const id = t.id_linea ?? "";
+  return id.includes("BTV") || id.includes("LBT");
+}
+
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
@@ -79,6 +89,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
 
   const [panelImportOpen, setPanelImportOpen] = useState(false);
   const [panelMapaOpen,   setPanelMapaOpen]   = useState(true);
+  const [capasOpen,       setCapasOpen]       = useState(true);
 
   const [empresas,  setEmpresas]  = useState<EmpresaOption[]>([]);
   const [empresaId, setEmpresaId] = useState<number | "">("");
@@ -92,7 +103,10 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [cts,    setCts]    = useState<CtMapa[]>([]);
   const [cups,   setCups]   = useState<CupsMapa[]>([]);
   const [tramos, setTramos] = useState<TramoMapa[]>([]);
-  const [lineas, setLineas] = useState<string[]>([]);
+
+  // Mapa id_linea → tension_kv para clasificar el selector de líneas
+  const [tensionPorLinea, setTensionPorLinea] = useState<Map<string, number | null>>(new Map());
+  const [lineas,          setLineas]          = useState<string[]>([]);
 
   const [loadingCts,    setLoadingCts]    = useState(false);
   const [loadingCups,   setLoadingCups]   = useState(false);
@@ -105,6 +119,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
 
   const [ctSeleccionado,    setCtSeleccionado]    = useState<string>("");
   const [lineaSeleccionada, setLineaSeleccionada] = useState<string | null>(null);
+
+  // ── Búsqueda de línea ──────────────────────────────────────────────────────
+  const [busquedaLinea,          setBusquedaLinea]          = useState<string>("");
+  const [busquedaLineaPendiente, setBusquedaLineaPendiente] = useState<string>("");
+  const inputBusquedaLineaRef = useRef<HTMLInputElement>(null);
+
+  // ── Búsqueda de CT ────────────────────────────────────────────────────────
+  const [busquedaCt,          setBusquedaCt]          = useState<string>("");
+  const [busquedaCtPendiente, setBusquedaCtPendiente] = useState<string>("");
+  const inputBusquedaCtRef = useRef<HTMLInputElement>(null);
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
@@ -148,10 +172,19 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       if (!res.ok) throw new Error();
       const data: TramoMapa[] = await res.json();
       setTramos(data);
-      // Extraer líneas únicas ordenadas desde los propios tramos
+
+      // Construir mapa id_linea → tension_kv (primer tramo con dato gana)
+      const mapa = new Map<string, number | null>();
+      data.forEach(t => {
+        if (t.id_linea && !mapa.has(t.id_linea)) {
+          mapa.set(t.id_linea, t.tension_kv);
+        }
+      });
+      setTensionPorLinea(mapa);
+
       const lineasUnicas = Array.from(new Set(data.map(t => t.id_linea).filter(Boolean) as string[])).sort();
       setLineas(lineasUnicas);
-    } catch { setTramos([]); setLineas([]); }
+    } catch { setTramos([]); setLineas([]); setTensionPorLinea(new Map()); }
     finally { setLoadingTramos(false); }
   }, [token, empresaId]);
 
@@ -163,9 +196,24 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     if (empresaId) cargarCups();
   }, [ctSeleccionado, empresaId, cargarCups]);
 
+  // ── Filtrado por capa — usa tension_kv como fuente de verdad ──────────────
   const tramosFiltrados = tramos.filter(t => {
-    const esBT = (t.id_linea ?? "").toUpperCase().includes("BT");
-    if (esBT) return mostrarBT;
+    if (esBTTramo(t)) return mostrarBT;
+    return mostrarMT;
+  });
+
+  const numBT = tramos.filter(t =>  esBTTramo(t)).length;
+  const numMT = tramos.filter(t => !esBTTramo(t)).length;
+
+  // Clasificar líneas usando el mapa tension_kv acumulado en cargarTramos
+  const esBTLinea = (id: string): boolean => {
+    const tension = tensionPorLinea.get(id);
+    if (tension !== null && tension !== undefined) return tension <= 1;
+    return id.includes("BTV") || id.includes("LBT");
+  };
+
+  const lineasFiltradas = lineas.filter(id => {
+    if (esBTLinea(id)) return mostrarBT;
     return mostrarMT;
   });
 
@@ -195,17 +243,72 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     } finally { setImporting(false); }
   };
 
-  const numBT = tramos.filter(t =>  (t.id_linea ?? "").toUpperCase().includes("BT")).length;
-  const numMT = tramos.filter(t => !(t.id_linea ?? "").toUpperCase().includes("BT")).length;
+  // Líneas filtradas por búsqueda activa
+  const lineasEnSelect = busquedaLinea
+    ? lineasFiltradas.filter(id => id.toUpperCase().includes(busquedaLinea.toUpperCase()))
+    : lineasFiltradas;
 
-  // Líneas filtradas (solo BT o MT según capas activas)
-  const lineasFiltradas = lineas.filter(id => {
-    const esBT = id.toUpperCase().includes("BT");
-    if (esBT) return mostrarBT;
-    return mostrarMT;
-  });
+  // CTs filtrados por búsqueda activa
+  const ctsFiltrados = busquedaCt
+    ? cts.filter(ct =>
+        ct.id_ct.toUpperCase().includes(busquedaCt.toUpperCase()) ||
+        ct.nombre.toUpperCase().includes(busquedaCt.toUpperCase())
+      )
+    : cts;
 
-  const handleLineaClick = (id: string | null) => setLineaSeleccionada(id);
+  // ── Handlers búsqueda línea ───────────────────────────────────────────────
+  const handleBuscarLinea = () => {
+    const q = busquedaLineaPendiente.trim();
+    setBusquedaLinea(q);
+    const coincidencias = lineasFiltradas.filter(id => id.toUpperCase().includes(q.toUpperCase()));
+    if (coincidencias.length === 1) setLineaSeleccionada(coincidencias[0]);
+    else setLineaSeleccionada(null);
+  };
+  const handleBusquedaLineaKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleBuscarLinea(); };
+  const handleLimpiarLinea = () => {
+    setBusquedaLinea(""); setBusquedaLineaPendiente(""); setLineaSeleccionada(null);
+    inputBusquedaLineaRef.current?.focus();
+  };
+
+  // ── Handlers búsqueda CT ──────────────────────────────────────────────────
+  const handleBuscarCt = () => {
+    const q = busquedaCtPendiente.trim();
+    setBusquedaCt(q);
+    const coincidencias = cts.filter(ct =>
+      ct.id_ct.toUpperCase().includes(q.toUpperCase()) ||
+      ct.nombre.toUpperCase().includes(q.toUpperCase())
+    );
+    if (coincidencias.length === 1) setCtSeleccionado(coincidencias[0].id_ct);
+    else setCtSeleccionado("");
+  };
+  const handleBusquedaCtKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleBuscarCt(); };
+  const handleLimpiarCt = () => {
+    setBusquedaCt(""); setBusquedaCtPendiente(""); setCtSeleccionado("");
+    inputBusquedaCtRef.current?.focus();
+  };
+
+  const handleLineaClick = (id: string | null) => {
+    setLineaSeleccionada(id);
+    if (id) { setBusquedaLineaPendiente(""); setBusquedaLinea(""); }
+  };
+
+  // ── Subcomponente desplegable ─────────────────────────────────────────────
+  const SeccionLabel = ({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        width: "100%", background: "none", border: "none", cursor: "pointer",
+        padding: 0, marginBottom: open ? 8 : 0,
+      }}
+    >
+      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{open ? "▾" : "▸"}</span>
+    </button>
+  );
 
   return (
     <div className="text-sm">
@@ -326,86 +429,145 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     onChange={e => {
                       setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
                       setCtSeleccionado(""); setLineaSeleccionada(null);
+                      setBusquedaLinea(""); setBusquedaLineaPendiente("");
+                      setBusquedaCt(""); setBusquedaCtPendiente("");
                       setCts([]); setCups([]); setTramos([]); setLineas([]);
+                      setTensionPorLinea(new Map());
                     }}>
                     <option value="">Selecciona empresa</option>
                     {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                   </select>
                 </div>
 
-                {/* Capas */}
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Capas</div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
-                    <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} />
-                    <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />
-                    Red MT {loadingTramos ? "…" : `(${numMT})`}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
-                    <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} />
-                    <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />
-                    Red BT {loadingTramos ? "…" : `(${numBT})`}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
-                    <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} />
-                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", display: "inline-block" }} />
-                    CTs {loadingCts ? "…" : `(${cts.length})`}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-                    <input type="checkbox" checked={mostrarCups} onChange={e => setMostrarCups(e.target.checked)} />
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#378ADD", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
-                    CUPS {loadingCups ? "…" : `(${cups.length})`}
-                  </label>
+                {/* ── Capas — desplegable ── */}
+                <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
+                  <SeccionLabel label="Capas" open={capasOpen} onToggle={() => setCapasOpen(v => !v)} />
+                  {capasOpen && (
+                    <>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
+                        <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} />
+                        <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />
+                        Red MT {loadingTramos ? "…" : `(${numMT})`}
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
+                        <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} />
+                        <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />
+                        Red BT {loadingTramos ? "…" : `(${numBT})`}
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
+                        <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} />
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", display: "inline-block" }} />
+                        CTs {loadingCts ? "…" : `(${cts.length})`}
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+                        <input type="checkbox" checked={mostrarCups} onChange={e => setMostrarCups(e.target.checked)} />
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#378ADD", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
+                        CUPS {loadingCups ? "…" : `(${cups.length})`}
+                      </label>
+                    </>
+                  )}
                 </div>
 
-                {/* Selector de línea */}
+                {/* ── Selector de línea ── */}
                 {lineasFiltradas.length > 0 && (
-                  <div>
+                  <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
                     <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Seleccionar línea
                     </div>
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                      <input
+                        ref={inputBusquedaLineaRef}
+                        className="ui-input"
+                        style={{ flex: 1, fontSize: 11, height: 28, fontFamily: "monospace" }}
+                        placeholder="Buscar ID..."
+                        value={busquedaLineaPendiente}
+                        onChange={e => setBusquedaLineaPendiente(e.target.value)}
+                        onKeyDown={handleBusquedaLineaKeyDown}
+                      />
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                        style={{ height: 28, padding: "0 8px", fontSize: 13, flexShrink: 0 }}
+                        onClick={handleBuscarLinea} title="Buscar (Enter)">
+                        🔍
+                      </button>
+                    </div>
+                    {busquedaLinea && (
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                        {lineasEnSelect.length} resultado{lineasEnSelect.length !== 1 ? "s" : ""}
+                        {lineasEnSelect.length === 0 && " — no encontrada"}
+                      </div>
+                    )}
                     <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
                       value={lineaSeleccionada ?? ""}
                       onChange={e => setLineaSeleccionada(e.target.value || null)}>
                       <option value="">Todas las líneas</option>
-                      {lineasFiltradas.map(id => (
+                      {lineasEnSelect.map(id => (
                         <option key={id} value={id}>{id}</option>
                       ))}
                     </select>
-                    {lineaSeleccionada && (
+                    {(lineaSeleccionada || busquedaLinea) && (
                       <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
                         style={{ marginTop: 6, fontSize: 10 }}
-                        onClick={() => setLineaSeleccionada(null)}>
-                        ✕ Quitar selección
+                        onClick={handleLimpiarLinea}>
+                        ✕ Limpiar
                       </button>
                     )}
                     {lineaSeleccionada && (
                       <div style={{ marginTop: 8, fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5 }}>
                         <div>▶ = inicio del tramo</div>
                         <div>■ = fin del tramo</div>
-                        <div style={{ marginTop: 4 }}>Clic en línea para seleccionar/deseleccionar</div>
+                        <div style={{ marginTop: 4 }}>Clic en línea para seleccionar</div>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Filtro por CT */}
+                {/* ── Filtro CUPS por CT ── */}
                 {cts.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Filtrar CUPS por CT</div>
+                  <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Filtrar CUPS por CT
+                    </div>
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                      <input
+                        ref={inputBusquedaCtRef}
+                        className="ui-input"
+                        style={{ flex: 1, fontSize: 11, height: 28 }}
+                        placeholder="Buscar CT..."
+                        value={busquedaCtPendiente}
+                        onChange={e => setBusquedaCtPendiente(e.target.value)}
+                        onKeyDown={handleBusquedaCtKeyDown}
+                      />
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                        style={{ height: 28, padding: "0 8px", fontSize: 13, flexShrink: 0 }}
+                        onClick={handleBuscarCt} title="Buscar (Enter)">
+                        🔍
+                      </button>
+                    </div>
+                    {busquedaCt && (
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                        {ctsFiltrados.length} resultado{ctsFiltrados.length !== 1 ? "s" : ""}
+                        {ctsFiltrados.length === 0 && " — no encontrado"}
+                      </div>
+                    )}
                     <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={ctSeleccionado} onChange={e => setCtSeleccionado(e.target.value)}>
+                      value={ctSeleccionado}
+                      onChange={e => setCtSeleccionado(e.target.value)}>
                       <option value="">Todos los CTs</option>
-                      {cts.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
+                      {ctsFiltrados.map(ct => (
+                        <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>
+                      ))}
                     </select>
-                    {ctSeleccionado && (
-                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }}
-                        onClick={() => setCtSeleccionado("")}>✕ Quitar filtro</button>
+                    {(ctSeleccionado || busquedaCt) && (
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
+                        style={{ marginTop: 6, fontSize: 10 }}
+                        onClick={handleLimpiarCt}>
+                        ✕ Limpiar
+                      </button>
                     )}
                   </div>
                 )}
 
-                {/* Leyenda */}
+                {/* ── Leyenda ── */}
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>

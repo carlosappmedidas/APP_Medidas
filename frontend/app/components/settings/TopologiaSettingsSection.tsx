@@ -13,12 +13,12 @@ interface Props {
   onChangeCups:   (config: TooltipCupsConfig)   => void;
 }
 
-// ── Campos B1 — Líneas (33 campos) ────────────────────────────────────────────
+// ── Campos B1 — Líneas ────────────────────────────────────────────────────────
 
 const CAMPOS_LINEAS: { key: keyof TooltipLineasConfig; label: string; desc: string }[] = [
   { key: "mostrar_tension",              label: "Tensión explotación (kV)",    desc: "TENSION_EXPLOTACION" },
   { key: "mostrar_tension_construccion", label: "Tensión construcción (kV)",   desc: "TENSION_CONSTRUCCION" },
-  { key: "mostrar_longitud",             label: "Longitud (km)",               desc: "LONGITUD" },
+  { key: "mostrar_longitud",             label: "Longitud total línea (km)",   desc: "LONGITUD — longitud total de la línea según B1" },
   { key: "mostrar_intensidad",           label: "Intensidad máx. (A)",         desc: "INTENSIDAD" },
   { key: "mostrar_resistencia",          label: "Resistencia (Ω)",             desc: "RESISTENCIA" },
   { key: "mostrar_reactancia",           label: "Reactancia (Ω)",              desc: "REACTANCIA" },
@@ -51,16 +51,17 @@ const CAMPOS_LINEAS: { key: keyof TooltipLineasConfig; label: string; desc: stri
   { key: "mostrar_identificador_baja",   label: "Identificador baja",          desc: "IDENTIFICADOR_BAJA" },
 ];
 
-// ── Campos B11 — Tramos (4 campos) ───────────────────────────────────────────
+// ── Campos B11 — Tramos ───────────────────────────────────────────────────────
 
 const CAMPOS_TRAMOS: { key: keyof TooltipTramosConfig; label: string; desc: string }[] = [
-  { key: "mostrar_id_tramo",  label: "ID Segmento",          desc: "SEGMENTO — identificador único del segmento" },
-  { key: "mostrar_id_linea",  label: "ID Línea",             desc: "IDENTIFICADOR_TRAMO — línea a la que pertenece" },
-  { key: "mostrar_orden",     label: "Posición en la línea", desc: "ORDEN_SEGMENTO / N_SEGMENTOS" },
-  { key: "mostrar_num_tramo", label: "Total segmentos",      desc: "N_SEGMENTOS — total de segmentos de la línea" },
+  { key: "mostrar_id_tramo",          label: "ID Segmento",             desc: "SEGMENTO — identificador único del segmento" },
+  { key: "mostrar_id_linea",          label: "ID Línea",                desc: "IDENTIFICADOR_TRAMO — línea a la que pertenece" },
+  { key: "mostrar_orden",             label: "Posición en la línea",    desc: "ORDEN_SEGMENTO / N_SEGMENTOS" },
+  { key: "mostrar_num_tramo",         label: "Total segmentos",         desc: "N_SEGMENTOS — total de segmentos de la línea" },
+  { key: "mostrar_longitud_segmento", label: "Longitud segmento (m/km)", desc: "Calculada por Haversine a partir de las coordenadas WGS84 del segmento" },
 ];
 
-// ── Campos B2 — CTs (31 campos) ───────────────────────────────────────────────
+// ── Campos B2 — CTs ───────────────────────────────────────────────────────────
 
 const CAMPOS_CTS: { key: keyof TooltipCtsConfig; label: string; desc: string }[] = [
   { key: "mostrar_potencia",             label: "Potencia (kVA)",              desc: "POTENCIA" },
@@ -96,7 +97,7 @@ const CAMPOS_CTS: { key: keyof TooltipCtsConfig; label: string; desc: string }[]
   { key: "mostrar_identificador_baja",   label: "Identificador baja",          desc: "IDENTIFICADOR_BAJA" },
 ];
 
-// ── Campos A1 — CUPS (26 campos) ─────────────────────────────────────────────
+// ── Campos A1 — CUPS ──────────────────────────────────────────────────────────
 
 const CAMPOS_CUPS: { key: keyof TooltipCupsConfig; label: string; desc: string }[] = [
   { key: "mostrar_tarifa",               label: "Tarifa",                      desc: "COD_TFA" },
@@ -127,7 +128,7 @@ const CAMPOS_CUPS: { key: keyof TooltipCupsConfig; label: string; desc: string }
   { key: "mostrar_energia_excedentaria", label: "E. excedentaria (kWh)",       desc: "ENERGIA_EXCEDENTARIA" },
 ];
 
-// ── Estilos compartidos ───────────────────────────────────────────────────────
+// ── Estilos ───────────────────────────────────────────────────────────────────
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: 10, fontWeight: 600, letterSpacing: "0.08em",
@@ -140,7 +141,7 @@ const cardStyle: React.CSSProperties = {
   borderRadius: 8, padding: "10px 12px",
 };
 
-// ── Grupos tipados por separado ───────────────────────────────────────────────
+// ── Grupos ────────────────────────────────────────────────────────────────────
 
 function GrupoLineas({ config, onChange }: { config: TooltipLineasConfig; onChange: (c: TooltipLineasConfig) => void }) {
   return (

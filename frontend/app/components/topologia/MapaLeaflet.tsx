@@ -160,10 +160,11 @@ export interface TooltipLineasConfig {
 }
 
 export interface TooltipTramosConfig {
-  mostrar_id_tramo:  boolean;
-  mostrar_id_linea:  boolean;
-  mostrar_orden:     boolean;
-  mostrar_num_tramo: boolean;
+  mostrar_id_tramo:          boolean;
+  mostrar_id_linea:          boolean;
+  mostrar_orden:             boolean;
+  mostrar_num_tramo:         boolean;
+  mostrar_longitud_segmento: boolean;
 }
 
 export interface TooltipCtsConfig {
@@ -268,10 +269,11 @@ export const DEFAULT_TOOLTIP_LINEAS: TooltipLineasConfig = {
 };
 
 export const DEFAULT_TOOLTIP_TRAMOS: TooltipTramosConfig = {
-  mostrar_id_tramo:  false,
-  mostrar_id_linea:  true,
-  mostrar_orden:     true,
-  mostrar_num_tramo: true,
+  mostrar_id_tramo:          true,
+  mostrar_id_linea:          true,
+  mostrar_orden:             true,
+  mostrar_num_tramo:         false,
+  mostrar_longitud_segmento: true,
 };
 
 export const DEFAULT_TOOLTIP_CTS: TooltipCtsConfig = {
@@ -340,41 +342,65 @@ export const DEFAULT_TOOLTIP_CUPS: TooltipCupsConfig = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  cts:              CtMapa[];
-  cups:             CupsMapa[];
-  tramos:           TramoMapa[];
-  mostrarCts:       boolean;
-  mostrarCups:      boolean;
-  mostrarLineas:    boolean;
+  cts:               CtMapa[];
+  cups:              CupsMapa[];
+  tramos:            TramoMapa[];
+  mostrarCts:        boolean;
+  mostrarCups:       boolean;
+  mostrarLineas:     boolean;
   lineaSeleccionada: string | null;
-  tooltipLineas:    TooltipLineasConfig;
-  tooltipTramos:    TooltipTramosConfig;
-  tooltipCts:       TooltipCtsConfig;
-  tooltipCups:      TooltipCupsConfig;
-  onLineaClick:     (id_linea: string | null) => void;
+  tooltipLineas:     TooltipLineasConfig;
+  tooltipTramos:     TooltipTramosConfig;
+  tooltipCts:        TooltipCtsConfig;
+  tooltipCups:       TooltipCupsConfig;
+  onLineaClick:      (id_linea: string | null) => void;
 }
 
-// ─── Color de línea ───────────────────────────────────────────────────────────
+// ─── Color y nivel ────────────────────────────────────────────────────────────
 
-function colorLinea(id: string | null): string {
+function colorLinea(id: string | null, tension_kv?: number | null): string {
+  if (tension_kv !== null && tension_kv !== undefined)
+    return tension_kv <= 1 ? "#F59E0B" : "#A855F7";
+  // Fallback por prefijo si no hay tensión de explotación
   if (!id) return "#F59E0B";
-  if (id.toUpperCase().includes("BT")) return "#F59E0B";
+  if (id.includes("BTV") || id.includes("LBT")) return "#F59E0B";
   return "#A855F7";
 }
 
-function nivelLinea(id: string | null): string {
+function nivelLinea(id: string | null, tension_kv?: number | null): string {
+  if (tension_kv !== null && tension_kv !== undefined)
+    return tension_kv <= 1 ? "BT" : "MT";
   if (!id) return "BT";
-  if (id.toUpperCase().includes("BT")) return "BT";
+  if (id.includes("BTV") || id.includes("LBT")) return "BT";
   return "MT";
 }
 
-// ─── Helper fila tooltip ──────────────────────────────────────────────────────
+// ─── Haversine ────────────────────────────────────────────────────────────────
+
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatearLongitud(m: number): string {
+  return `${(m / 1000).toFixed(3)} km`;
+}
+
+// ─── Helpers tooltip ──────────────────────────────────────────────────────────
 
 function fila(label: string, valor: string | number): string {
   return `<div style="margin-bottom:1px"><span style="color:#999">${label}:</span> <strong>${valor}</strong></div>`;
 }
 
-// ─── Constructores de tooltip ─────────────────────────────────────────────────
+const DIVISOR = `<div style="margin:6px 0;border-top:1px solid #e5e7eb;"></div>`;
+
+// ─── Tooltip línea (B11 + B1) ─────────────────────────────────────────────────
 
 function buildTooltipLinea(
   t: TramoMapa,
@@ -383,51 +409,66 @@ function buildTooltipLinea(
   color: string,
   nivel: string,
 ): string {
-  const f: string[] = [];
-  // B11
-  if (cfgT.mostrar_id_tramo  && t.id_tramo)              f.push(fila("Segmento",       t.id_tramo));
-  if (cfgT.mostrar_id_linea  && t.id_linea)              f.push(fila("Línea",          t.id_linea));
-  if (cfgT.mostrar_orden     && t.orden     !== null)    f.push(fila("Segmento nº",    `${t.orden} / ${t.num_tramo ?? "?"}`));
-  if (cfgT.mostrar_num_tramo && t.num_tramo !== null && !cfgT.mostrar_orden) f.push(fila("Total segmentos", t.num_tramo));
-  // B1
-  if (cfgL.mostrar_tension              && t.tension_kv              !== null) f.push(fila("Tensión",          `${t.tension_kv} kV`));
-  if (cfgL.mostrar_tension_construccion && t.tension_construccion_kv !== null) f.push(fila("T. construcción",  `${t.tension_construccion_kv} kV`));
-  if (cfgL.mostrar_longitud             && t.longitud_km             !== null) f.push(fila("Longitud",         `${t.longitud_km.toFixed(3)} km`));
-  if (cfgL.mostrar_intensidad           && t.intensidad_a            !== null) f.push(fila("Intensidad",       `${t.intensidad_a} A`));
-  if (cfgL.mostrar_resistencia          && t.resistencia_ohm         !== null) f.push(fila("Resistencia",      `${t.resistencia_ohm} Ω`));
-  if (cfgL.mostrar_reactancia           && t.reactancia_ohm          !== null) f.push(fila("Reactancia",       `${t.reactancia_ohm} Ω`));
-  if (cfgL.mostrar_propiedad            && t.propiedad               !== null) f.push(fila("Propiedad",        t.propiedad === 1 ? "Propia" : "Terceros"));
-  if (cfgL.mostrar_estado               && t.estado                  !== null) f.push(fila("Estado",           ["Sin cambios","Modificado","Alta"][t.estado] ?? t.estado));
-  if (cfgL.mostrar_operacion            && t.operacion               !== null) f.push(fila("Operación",        t.operacion === 1 ? "✅ Activo" : "⚠️ Abierto"));
-  if (cfgL.mostrar_punto_frontera       && t.punto_frontera          !== null) f.push(fila("Pto. frontera",    t.punto_frontera === 1 ? "Sí" : "No"));
-  if (cfgL.mostrar_modelo               && t.modelo)                           f.push(fila("Modelo",           t.modelo));
-  if (cfgL.mostrar_fecha_aps            && t.fecha_aps)                        f.push(fila("APS",              t.fecha_aps));
-  if (cfgL.mostrar_causa_baja           && t.causa_baja              !== null) f.push(fila("Causa baja",       t.causa_baja));
-  if (cfgL.mostrar_fecha_baja           && t.fecha_baja)                       f.push(fila("Fecha baja",       t.fecha_baja));
-  if (cfgL.mostrar_fecha_ip             && t.fecha_ip)                         f.push(fila("Fecha inv.parc.",  t.fecha_ip));
-  if (cfgL.mostrar_cini                 && t.cini)                             f.push(fila("CINI",             t.cini));
-  if (cfgL.mostrar_codigo_ccuu          && t.codigo_ccuu)                      f.push(fila("Cód. CCUU",        t.codigo_ccuu));
-  if (cfgL.mostrar_nudo_inicio          && t.nudo_inicio)                      f.push(fila("Nudo inicio",      t.nudo_inicio));
-  if (cfgL.mostrar_nudo_fin             && t.nudo_fin)                         f.push(fila("Nudo fin",         t.nudo_fin));
-  if (cfgL.mostrar_ccaa                 && t.ccaa_1)                           f.push(fila("CCAA",             t.ccaa_1));
-  if (cfgL.mostrar_tipo_inversion       && t.tipo_inversion          !== null) f.push(fila("Tipo inv.",        t.tipo_inversion));
-  if (cfgL.mostrar_motivacion           && t.motivacion)                       f.push(fila("Motivación",       t.motivacion));
-  if (cfgL.mostrar_im_tramites          && t.im_tramites             !== null) f.push(fila("IM trámites",      `${t.im_tramites.toLocaleString()} €`));
-  if (cfgL.mostrar_im_construccion      && t.im_construccion         !== null) f.push(fila("IM construcción",  `${t.im_construccion.toLocaleString()} €`));
-  if (cfgL.mostrar_im_trabajos          && t.im_trabajos             !== null) f.push(fila("IM trabajos",      `${t.im_trabajos.toLocaleString()} €`));
-  if (cfgL.mostrar_valor_auditado       && t.valor_auditado          !== null) f.push(fila("Valor auditado",   `${t.valor_auditado.toLocaleString()} €`));
-  if (cfgL.mostrar_financiado           && t.financiado              !== null) f.push(fila("Financiado",       `${t.financiado} %`));
-  if (cfgL.mostrar_subv_europeas        && t.subvenciones_europeas   !== null) f.push(fila("Subv. europeas",   `${t.subvenciones_europeas.toLocaleString()} €`));
-  if (cfgL.mostrar_subv_nacionales      && t.subvenciones_nacionales !== null) f.push(fila("Subv. nac.",       `${t.subvenciones_nacionales.toLocaleString()} €`));
-  if (cfgL.mostrar_subv_prtr            && t.subvenciones_prtr       !== null) f.push(fila("Subv. PRTR",       `${t.subvenciones_prtr.toLocaleString()} €`));
-  if (cfgL.mostrar_cuenta               && t.cuenta)                           f.push(fila("Cuenta",           t.cuenta));
-  if (cfgL.mostrar_avifauna             && t.avifauna                !== null) f.push(fila("Avifauna",         t.avifauna === 1 ? "Sí" : "No"));
-  if (cfgL.mostrar_identificador_baja   && t.identificador_baja)               f.push(fila("Id. baja",         t.identificador_baja));
+  const longSegM =
+    t.lat_ini !== null && t.lon_ini !== null && t.lat_fin !== null && t.lon_fin !== null
+      ? haversineM(t.lat_ini, t.lon_ini, t.lat_fin, t.lon_fin)
+      : null;
 
-  return `<div style="font-size:11px;line-height:1.6;min-width:180px;max-width:260px">
-    <div style="font-weight:600;margin-bottom:2px;color:${color}">${nivel}</div>
-    <div style="color:#888;margin-bottom:5px;font-size:10px;font-family:monospace">${t.id_linea ?? "—"}</div>
-    ${f.join("")}
+  const b11: string[] = [];
+  if (cfgT.mostrar_id_tramo         && t.id_tramo)         b11.push(fila("ID segmento",    t.id_tramo));
+  if (cfgT.mostrar_id_linea         && t.id_linea)         b11.push(fila("Línea",          t.id_linea));
+  if (cfgT.mostrar_orden            && t.orden !== null)   b11.push(fila("Segmento",       `${t.orden} de ${t.num_tramo ?? "?"}`));
+  if (cfgT.mostrar_num_tramo        && t.num_tramo !== null && !cfgT.mostrar_orden) b11.push(fila("Total seg.", t.num_tramo));
+  if (cfgT.mostrar_longitud_segmento && longSegM !== null)  b11.push(fila("Long. segmento", formatearLongitud(longSegM)));
+
+  const b1: string[] = [];
+  if (cfgL.mostrar_tension              && t.tension_kv              !== null) b1.push(fila("Tensión",         `${t.tension_kv} kV`));
+  if (cfgL.mostrar_tension_construccion && t.tension_construccion_kv !== null) b1.push(fila("T. construcción", `${t.tension_construccion_kv} kV`));
+  if (cfgL.mostrar_longitud             && t.longitud_km             !== null) b1.push(fila("Long. línea",     `${t.longitud_km.toFixed(3)} km`));
+  if (cfgL.mostrar_intensidad           && t.intensidad_a            !== null) b1.push(fila("Intensidad",      `${t.intensidad_a} A`));
+  if (cfgL.mostrar_resistencia          && t.resistencia_ohm         !== null) b1.push(fila("Resistencia",     `${t.resistencia_ohm} Ω`));
+  if (cfgL.mostrar_reactancia           && t.reactancia_ohm          !== null) b1.push(fila("Reactancia",      `${t.reactancia_ohm} Ω`));
+  if (cfgL.mostrar_propiedad            && t.propiedad               !== null) b1.push(fila("Propiedad",       t.propiedad === 1 ? "Propia" : "Terceros"));
+  if (cfgL.mostrar_estado               && t.estado                  !== null) b1.push(fila("Estado",          ["Sin cambios","Modificado","Alta"][t.estado] ?? t.estado));
+  if (cfgL.mostrar_operacion            && t.operacion               !== null) b1.push(fila("Operación",       t.operacion === 1 ? "✅ Activo" : "⚠️ Abierto"));
+  if (cfgL.mostrar_punto_frontera       && t.punto_frontera          !== null) b1.push(fila("Pto. frontera",   t.punto_frontera === 1 ? "Sí" : "No"));
+  if (cfgL.mostrar_modelo               && t.modelo)                           b1.push(fila("Modelo",          t.modelo));
+  if (cfgL.mostrar_fecha_aps            && t.fecha_aps)                        b1.push(fila("APS",             t.fecha_aps));
+  if (cfgL.mostrar_causa_baja           && t.causa_baja              !== null) b1.push(fila("Causa baja",      t.causa_baja));
+  if (cfgL.mostrar_fecha_baja           && t.fecha_baja)                       b1.push(fila("Fecha baja",      t.fecha_baja));
+  if (cfgL.mostrar_fecha_ip             && t.fecha_ip)                         b1.push(fila("Fecha inv.parc.", t.fecha_ip));
+  if (cfgL.mostrar_cini                 && t.cini)                             b1.push(fila("CINI",            t.cini));
+  if (cfgL.mostrar_codigo_ccuu          && t.codigo_ccuu)                      b1.push(fila("Cód. CCUU",       t.codigo_ccuu));
+  if (cfgL.mostrar_nudo_inicio          && t.nudo_inicio)                      b1.push(fila("Nudo inicio",     t.nudo_inicio));
+  if (cfgL.mostrar_nudo_fin             && t.nudo_fin)                         b1.push(fila("Nudo fin",        t.nudo_fin));
+  if (cfgL.mostrar_ccaa                 && t.ccaa_1)                           b1.push(fila("CCAA",            t.ccaa_1));
+  if (cfgL.mostrar_tipo_inversion       && t.tipo_inversion          !== null) b1.push(fila("Tipo inv.",       t.tipo_inversion));
+  if (cfgL.mostrar_motivacion           && t.motivacion)                       b1.push(fila("Motivación",      t.motivacion));
+  if (cfgL.mostrar_im_tramites          && t.im_tramites             !== null) b1.push(fila("IM trámites",     `${t.im_tramites.toLocaleString()} €`));
+  if (cfgL.mostrar_im_construccion      && t.im_construccion         !== null) b1.push(fila("IM construcción", `${t.im_construccion.toLocaleString()} €`));
+  if (cfgL.mostrar_im_trabajos          && t.im_trabajos             !== null) b1.push(fila("IM trabajos",     `${t.im_trabajos.toLocaleString()} €`));
+  if (cfgL.mostrar_valor_auditado       && t.valor_auditado          !== null) b1.push(fila("Valor auditado",  `${t.valor_auditado.toLocaleString()} €`));
+  if (cfgL.mostrar_financiado           && t.financiado              !== null) b1.push(fila("Financiado",      `${t.financiado} %`));
+  if (cfgL.mostrar_subv_europeas        && t.subvenciones_europeas   !== null) b1.push(fila("Subv. europeas",  `${t.subvenciones_europeas.toLocaleString()} €`));
+  if (cfgL.mostrar_subv_nacionales      && t.subvenciones_nacionales !== null) b1.push(fila("Subv. nac.",      `${t.subvenciones_nacionales.toLocaleString()} €`));
+  if (cfgL.mostrar_subv_prtr            && t.subvenciones_prtr       !== null) b1.push(fila("Subv. PRTR",      `${t.subvenciones_prtr.toLocaleString()} €`));
+  if (cfgL.mostrar_cuenta               && t.cuenta)                           b1.push(fila("Cuenta",          t.cuenta));
+  if (cfgL.mostrar_avifauna             && t.avifauna                !== null) b1.push(fila("Avifauna",        t.avifauna === 1 ? "Sí" : "No"));
+  if (cfgL.mostrar_identificador_baja   && t.identificador_baja)               b1.push(fila("Id. baja",        t.identificador_baja));
+
+  const cabecera = `
+    <div style="font-weight:700;font-size:12px;color:${color};margin-bottom:1px">${nivel}</div>
+    <div style="color:#888;font-size:10px;font-family:monospace;margin-bottom:4px">${t.id_linea ?? "—"}</div>`;
+  const secB11 = b11.length > 0
+    ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:3px;letter-spacing:0.06em">Segmento (B11)</div>${b11.join("")}`
+    : "";
+  const sep   = b11.length > 0 && b1.length > 0 ? DIVISOR : "";
+  const secB1 = b1.length > 0
+    ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:3px;letter-spacing:0.06em">Línea (B1)</div>${b1.join("")}`
+    : "";
+
+  return `<div style="font-size:11px;line-height:1.7;min-width:190px;max-width:270px">
+    ${cabecera}${secB11}${sep}${secB1}
   </div>`;
 }
 
@@ -464,9 +505,9 @@ function buildTooltipCt(ct: CtMapa, cfg: TooltipCtsConfig): string {
   if (cfg.mostrar_motivacion           && ct.motivacion)                         f.push(fila("Motivación",        ct.motivacion));
   if (cfg.mostrar_avifauna             && ct.avifauna                  !== null) f.push(fila("Avifauna",          ct.avifauna === 1 ? "Sí" : "No"));
   if (cfg.mostrar_identificador_baja   && ct.identificador_baja)                 f.push(fila("Id. baja",          ct.identificador_baja));
-  return `<div style="font-size:11px;min-width:180px;max-width:260px;line-height:1.6">
-    <div style="font-weight:600;margin-bottom:2px">${ct.nombre}</div>
-    <div style="color:#888;font-size:10px;font-family:monospace;margin-bottom:5px">${ct.id_ct}</div>
+  return `<div style="font-size:11px;min-width:180px;max-width:260px;line-height:1.7">
+    <div style="font-weight:700;font-size:12px;margin-bottom:1px">${ct.nombre}</div>
+    <div style="color:#888;font-size:10px;font-family:monospace;margin-bottom:4px">${ct.id_ct}</div>
     ${f.join("")}
     ${ct.propiedad === "E" ? `<div style="margin-top:4px;color:#EF9F27;font-size:10px">⚠️ Cedido por tercero</div>` : ""}
   </div>`;
@@ -500,9 +541,9 @@ function buildTooltipCups(c: CupsMapa, cfg: TooltipCupsConfig): string {
   if (cfg.mostrar_conexion_autoconsumo && c.conexion_autoconsumo    !== null)    f.push(fila("Conex. autocons.",  ["Red interior","Red dist.","Mixta"][c.conexion_autoconsumo] ?? c.conexion_autoconsumo));
   if (cfg.mostrar_energia_autoconsumida && c.energia_autoconsumida_kwh !== null) f.push(fila("E. autoconsumida", `${c.energia_autoconsumida_kwh?.toLocaleString()} kWh`));
   if (cfg.mostrar_energia_excedentaria  && c.energia_excedentaria_kwh  !== null) f.push(fila("E. excedentaria",  `${c.energia_excedentaria_kwh?.toLocaleString()} kWh`));
-  return `<div style="font-size:11px;min-width:200px;max-width:280px;line-height:1.6">
-    <div style="font-weight:600;margin-bottom:2px;font-family:monospace;font-size:10px">${c.cups}</div>
-    <div style="color:#888;font-size:10px;margin-bottom:5px">CT: ${c.id_ct ?? "No asignado"}</div>
+  return `<div style="font-size:11px;min-width:200px;max-width:280px;line-height:1.7">
+    <div style="font-weight:700;font-size:11px;font-family:monospace;margin-bottom:1px">${c.cups}</div>
+    <div style="color:#888;font-size:10px;margin-bottom:4px">CT: ${c.id_ct ?? "No asignado"}</div>
     ${f.join("")}
   </div>`;
 }
@@ -516,15 +557,15 @@ export default function MapaLeaflet({
   tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
   onLineaClick,
 }: Props) {
-  const mapRef         = useRef<HTMLDivElement>(null);
+  const mapRef             = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapaInstancia  = useRef<any>(null);
+  const mapaInstancia      = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctLayerRef     = useRef<any>(null);
+  const ctLayerRef         = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cupsLayerRef   = useRef<any>(null);
+  const cupsLayerRef       = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lineasLayerRef = useRef<any>(null);
+  const lineasLayerRef     = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresLayerRef = useRef<any>(null);
 
@@ -540,7 +581,7 @@ export default function MapaLeaflet({
         shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (L.Browser as any).touch = false;
+      (L.Browser as any).touch   = false;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (L.Browser as any).pointer = false;
 
@@ -609,7 +650,7 @@ export default function MapaLeaflet({
     };
   }, []);
 
-  // ── Pintar líneas/tramos con resaltado ────────────────────────────────────
+  // ── Pintar líneas: no-seleccionadas primero, seleccionada encima ──────────
   useEffect(() => {
     if (!lineasLayerRef.current || !marcadoresLayerRef.current) return;
     import("leaflet").then(L => {
@@ -617,7 +658,6 @@ export default function MapaLeaflet({
       marcadoresLayerRef.current.clearLayers();
       if (!mostrarLineas) return;
 
-      // Agrupar tramos por id_linea para detectar inicio/fin
       const porLinea = new Map<string, TramoMapa[]>();
       tramos.forEach(t => {
         const key = t.id_linea ?? "__sin_linea__";
@@ -625,31 +665,51 @@ export default function MapaLeaflet({
         porLinea.get(key)!.push(t);
       });
 
-      tramos.forEach(t => {
+      // Acumular puntos de unión de la línea seleccionada para pintarlos después
+      const puntosUnion: [number, number][] = [];
+
+      const pintarTramo = (t: TramoMapa) => {
         if (t.lat_ini === null || t.lon_ini === null || t.lat_fin === null || t.lon_fin === null) return;
-        const nivel = nivelLinea(t.id_linea);
-        const color = colorLinea(t.id_linea);
+        const nivel          = nivelLinea(t.id_linea, t.tension_kv);
+        const color          = colorLinea(t.id_linea, t.tension_kv);
         const esSeleccionada = lineaSeleccionada !== null && t.id_linea === lineaSeleccionada;
         const haySeleccion   = lineaSeleccionada !== null;
 
-        const peso    = esSeleccionada ? (nivel === "MT" ? 5 : 4) : (nivel === "MT" ? 2.5 : 1.5);
-        const opacity = haySeleccion   ? (esSeleccionada ? 1 : 0.15) : 0.85;
+        const peso       = esSeleccionada ? (nivel === "MT" ? 5 : 4) : (nivel === "MT" ? 2.5 : 1.5);
+        const opacity    = haySeleccion   ? (esSeleccionada ? 1 : 0.15) : 0.85;
         const colorFinal = esSeleccionada ? (nivel === "MT" ? "#7C3AED" : "#D97706") : color;
 
         const poly = L.polyline(
           [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
           { color: colorFinal, weight: peso, opacity }
         );
-
-        poly.on("click", () => {
-          onLineaClick(t.id_linea === lineaSeleccionada ? null : t.id_linea);
-        });
-
+        poly.on("click", () => { onLineaClick(t.id_linea); });
         poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, colorFinal, nivel));
         poly.addTo(lineasLayerRef.current);
+
+        // Acumular el punto de unión (lat_fin de cada segmento seleccionado)
+        if (esSeleccionada) {
+          puntosUnion.push([t.lat_fin, t.lon_fin]);
+        }
+      };
+
+      // No seleccionadas primero → seleccionada encima (evita solapamiento)
+      tramos.filter(t => t.id_linea !== lineaSeleccionada).forEach(pintarTramo);
+      tramos.filter(t => t.id_linea === lineaSeleccionada).forEach(pintarTramo);
+
+      // Pintar puntos de unión en marcadoresLayerRef — quedan encima de todo
+      puntosUnion.forEach(([lat, lon]) => {
+        L.circleMarker([lat, lon], {
+          radius:      3,
+          color:       "#000000",
+          weight:      1,
+          fillColor:   "#000000",
+          fillOpacity: 1,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any).addTo(marcadoresLayerRef.current);
       });
 
-      // Marcadores inicio (▶) y fin (■) para la línea seleccionada
+      // Marcadores ▶ inicio / ■ fin
       if (lineaSeleccionada && marcadoresLayerRef.current) {
         const segmentos = (porLinea.get(lineaSeleccionada) ?? [])
           .filter(t => t.lat_ini !== null)
@@ -660,7 +720,6 @@ export default function MapaLeaflet({
           const ultimo  = segmentos[segmentos.length - 1];
           const color   = colorLinea(lineaSeleccionada);
 
-          // Marcador inicio
           if (primero.lat_ini !== null && primero.lon_ini !== null) {
             L.marker([primero.lat_ini, primero.lon_ini], {
               icon: L.divIcon({
@@ -668,11 +727,10 @@ export default function MapaLeaflet({
                 html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">▶</div>`,
                 iconSize: [14, 14], iconAnchor: [7, 7],
               }),
-            }).bindPopup(`<div style="font-size:11px"><strong>Inicio de línea</strong><br><span style="color:#888;font-size:10px">${lineaSeleccionada}</span><br>Segmento 1 de ${primero.num_tramo ?? "?"}</div>`)
+            }).bindPopup(`<div style="font-size:11px"><strong>Inicio de línea</strong><br><span style="color:#888;font-size:10px;font-family:monospace">${lineaSeleccionada}</span><br>Segmento 1 de ${primero.num_tramo ?? "?"}</div>`)
               .addTo(marcadoresLayerRef.current);
           }
 
-          // Marcador fin — siempre que tenga coordenadas (incluso en líneas de 1 segmento)
           if (ultimo.lat_fin !== null && ultimo.lon_fin !== null) {
             L.marker([ultimo.lat_fin, ultimo.lon_fin], {
               icon: L.divIcon({
@@ -680,7 +738,7 @@ export default function MapaLeaflet({
                 html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">■</div>`,
                 iconSize: [14, 14], iconAnchor: [7, 7],
               }),
-            }).bindPopup(`<div style="font-size:11px"><strong>Fin de línea</strong><br><span style="color:#888;font-size:10px">${lineaSeleccionada}</span><br>Segmento ${ultimo.orden ?? "?"} de ${ultimo.num_tramo ?? "?"}</div>`)
+            }).bindPopup(`<div style="font-size:11px"><strong>Fin de línea</strong><br><span style="color:#888;font-size:10px;font-family:monospace">${lineaSeleccionada}</span><br>Segmento ${ultimo.orden ?? "?"} de ${ultimo.num_tramo ?? "?"}</div>`)
               .addTo(marcadoresLayerRef.current);
           }
         }
