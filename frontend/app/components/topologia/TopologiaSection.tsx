@@ -4,8 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
-import type { CtMapa, CupsMapa, TramoMapa, TooltipLineasConfig, TooltipCtsConfig, TooltipCupsConfig } from "./MapaLeaflet";
-import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./MapaLeaflet";
+import type {
+  CtMapa, CupsMapa, TramoMapa,
+  TooltipLineasConfig, TooltipTramosConfig, TooltipCtsConfig, TooltipCupsConfig,
+} from "./MapaLeaflet";
+import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./MapaLeaflet";
 
 const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
   ssr: false,
@@ -21,28 +24,19 @@ const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
 interface EmpresaOption { id: number; nombre: string; }
 
 interface ImportResult {
-  cts_insertados:      number;
-  cts_actualizados:    number;
-  cts_errores:         number;
-  trfs_insertados:     number;
-  trfs_actualizados:   number;
-  trfs_errores:        number;
-  cups_insertados:     number;
-  cups_actualizados:   number;
-  cups_errores:        number;
-  lineas_insertadas:   number;
-  lineas_actualizadas: number;
-  lineas_errores:      number;
-  tramos_insertados:   number;
-  tramos_actualizados: number;
-  tramos_errores:      number;
-  ficheros:            string[];
+  cts_insertados: number; cts_actualizados: number; cts_errores: number;
+  trfs_insertados: number; trfs_actualizados: number; trfs_errores: number;
+  cups_insertados: number; cups_actualizados: number; cups_errores: number;
+  lineas_insertadas: number; lineas_actualizadas: number; lineas_errores: number;
+  tramos_insertados: number; tramos_actualizados: number; tramos_errores: number;
+  ficheros: string[];
 }
 
 interface Props {
   token:         string | null;
   currentUser:   User | null;
   tooltipLineas: TooltipLineasConfig;
+  tooltipTramos: TooltipTramosConfig;
   tooltipCts:    TooltipCtsConfig;
   tooltipCups:   TooltipCupsConfig;
 }
@@ -69,8 +63,6 @@ const panelDescStyle: React.CSSProperties = {
   fontSize: "11px", color: "var(--text-muted)", marginTop: 3,
 };
 
-// ─── Ficheros de importación ──────────────────────────────────────────────────
-
 const FICHEROS_CONFIG = [
   { key: "b2",  label: "B2 — Centros de transformación", desc: "CIR8_2021_B2_R1-XXX_AAAA.txt" },
   { key: "b21", label: "B21 — Transformadores en CT",    desc: "CIR8_2021_B21_R1-XXX_AAAA.txt" },
@@ -83,7 +75,7 @@ type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function TopologiaSection({ token, tooltipLineas, tooltipCts, tooltipCups }: Props) {
+export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, tooltipCts, tooltipCups }: Props) {
 
   const [panelImportOpen, setPanelImportOpen] = useState(false);
   const [panelMapaOpen,   setPanelMapaOpen]   = useState(true);
@@ -97,17 +89,22 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError,  setImportError]  = useState<string | null>(null);
 
-  const [cts,            setCts]            = useState<CtMapa[]>([]);
-  const [cups,           setCups]           = useState<CupsMapa[]>([]);
-  const [tramos,         setTramos]         = useState<TramoMapa[]>([]);
-  const [loadingCts,     setLoadingCts]     = useState(false);
-  const [loadingCups,    setLoadingCups]    = useState(false);
-  const [loadingTramos,  setLoadingTramos]  = useState(false);
-  const [mostrarCts,     setMostrarCts]     = useState(true);
-  const [mostrarCups,    setMostrarCups]    = useState(true);
-  const [mostrarBT,      setMostrarBT]      = useState(true);
-  const [mostrarMT,      setMostrarMT]      = useState(true);
-  const [ctSeleccionado, setCtSeleccionado] = useState<string>("");
+  const [cts,    setCts]    = useState<CtMapa[]>([]);
+  const [cups,   setCups]   = useState<CupsMapa[]>([]);
+  const [tramos, setTramos] = useState<TramoMapa[]>([]);
+  const [lineas, setLineas] = useState<string[]>([]);
+
+  const [loadingCts,    setLoadingCts]    = useState(false);
+  const [loadingCups,   setLoadingCups]   = useState(false);
+  const [loadingTramos, setLoadingTramos] = useState(false);
+
+  const [mostrarCts,  setMostrarCts]  = useState(true);
+  const [mostrarCups, setMostrarCups] = useState(true);
+  const [mostrarBT,   setMostrarBT]   = useState(true);
+  const [mostrarMT,   setMostrarMT]   = useState(true);
+
+  const [ctSeleccionado,    setCtSeleccionado]    = useState<string>("");
+  const [lineaSeleccionada, setLineaSeleccionada] = useState<string | null>(null);
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
@@ -149,8 +146,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
     try {
       const res = await fetch(`${API_BASE_URL}/topologia/mapa/tramos?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
-      setTramos(await res.json());
-    } catch { setTramos([]); }
+      const data: TramoMapa[] = await res.json();
+      setTramos(data);
+      // Extraer líneas únicas ordenadas desde los propios tramos
+      const lineasUnicas = Array.from(new Set(data.map(t => t.id_linea).filter(Boolean) as string[])).sort();
+      setLineas(lineasUnicas);
+    } catch { setTramos([]); setLineas([]); }
     finally { setLoadingTramos(false); }
   }, [token, empresaId]);
 
@@ -196,6 +197,15 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
 
   const numBT = tramos.filter(t =>  (t.id_linea ?? "").toUpperCase().includes("BT")).length;
   const numMT = tramos.filter(t => !(t.id_linea ?? "").toUpperCase().includes("BT")).length;
+
+  // Líneas filtradas (solo BT o MT según capas activas)
+  const lineasFiltradas = lineas.filter(id => {
+    const esBT = id.toUpperCase().includes("BT");
+    if (esBT) return mostrarBT;
+    return mostrarMT;
+  });
+
+  const handleLineaClick = (id: string | null) => setLineaSeleccionada(id);
 
   return (
     <div className="text-sm">
@@ -291,7 +301,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
             <div style={panelTitleStyle}>🗺️ Mapa topológico</div>
             <div style={panelDescStyle}>
               {cts.length > 0 || cups.length > 0 || tramos.length > 0
-                ? `${cts.length} CTs · ${cups.length} CUPS · ${numBT} seg. BT · ${numMT} seg. MT`
+                ? `${cts.length} CTs · ${cups.length} CUPS · ${numBT} seg. BT · ${numMT} seg. MT · ${lineas.length} líneas`
                 : "Selecciona una empresa para cargar el mapa"}
             </div>
           </div>
@@ -300,20 +310,30 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
             {panelMapaOpen ? "Ocultar" : "Mostrar"}
           </button>
         </div>
+
         {panelMapaOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)" }}>
             <div style={{ display: "flex", height: 580 }}>
-              {/* ── Columna lateral ── */}
+
+              {/* ── Panel lateral ── */}
               <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid var(--card-border)", padding: "14px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+
+                {/* Empresa */}
                 <div>
                   <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
                   <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
                     value={empresaId}
-                    onChange={e => { setEmpresaId(e.target.value === "" ? "" : Number(e.target.value)); setCtSeleccionado(""); setCts([]); setCups([]); setTramos([]); }}>
+                    onChange={e => {
+                      setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
+                      setCtSeleccionado(""); setLineaSeleccionada(null);
+                      setCts([]); setCups([]); setTramos([]); setLineas([]);
+                    }}>
                     <option value="">Selecciona empresa</option>
                     {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                   </select>
                 </div>
+
+                {/* Capas */}
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Capas</div>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
@@ -337,6 +357,39 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
                     CUPS {loadingCups ? "…" : `(${cups.length})`}
                   </label>
                 </div>
+
+                {/* Selector de línea */}
+                {lineasFiltradas.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Seleccionar línea
+                    </div>
+                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
+                      value={lineaSeleccionada ?? ""}
+                      onChange={e => setLineaSeleccionada(e.target.value || null)}>
+                      <option value="">Todas las líneas</option>
+                      {lineasFiltradas.map(id => (
+                        <option key={id} value={id}>{id}</option>
+                      ))}
+                    </select>
+                    {lineaSeleccionada && (
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
+                        style={{ marginTop: 6, fontSize: 10 }}
+                        onClick={() => setLineaSeleccionada(null)}>
+                        ✕ Quitar selección
+                      </button>
+                    )}
+                    {lineaSeleccionada && (
+                      <div style={{ marginTop: 8, fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                        <div>▶ = inicio del tramo</div>
+                        <div>■ = fin del tramo</div>
+                        <div style={{ marginTop: 4 }}>Clic en línea para seleccionar/deseleccionar</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Filtro por CT */}
                 {cts.length > 0 && (
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Filtrar CUPS por CT</div>
@@ -351,6 +404,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
                     )}
                   </div>
                 )}
+
+                {/* Leyenda */}
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
@@ -367,6 +422,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
                   </div>
                 </div>
               </div>
+
               {/* ── Mapa ── */}
               <div style={{ flex: 1, position: "relative", minHeight: 580 }}>
                 {!empresaId && (
@@ -381,9 +437,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
                   mostrarCts={mostrarCts}
                   mostrarCups={mostrarCups}
                   mostrarLineas={mostrarLineas}
+                  lineaSeleccionada={lineaSeleccionada}
                   tooltipLineas={tooltipLineas}
+                  tooltipTramos={tooltipTramos}
                   tooltipCts={tooltipCts}
                   tooltipCups={tooltipCups}
+                  onLineaClick={handleLineaClick}
                 />
               </div>
             </div>
@@ -394,5 +453,5 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipCts, too
   );
 }
 
-export { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS };
-export type { TooltipLineasConfig, TooltipCtsConfig, TooltipCupsConfig };
+export { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS };
+export type { TooltipLineasConfig, TooltipTramosConfig, TooltipCtsConfig, TooltipCupsConfig };

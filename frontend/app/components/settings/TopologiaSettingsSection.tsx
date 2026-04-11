@@ -1,12 +1,14 @@
 "use client";
 
-import type { TooltipLineasConfig, TooltipCtsConfig, TooltipCupsConfig } from "../topologia/MapaLeaflet";
+import type { TooltipLineasConfig, TooltipTramosConfig, TooltipCtsConfig, TooltipCupsConfig } from "../topologia/MapaLeaflet";
 
 interface Props {
   tooltipLineas:  TooltipLineasConfig;
+  tooltipTramos:  TooltipTramosConfig;
   tooltipCts:     TooltipCtsConfig;
   tooltipCups:    TooltipCupsConfig;
   onChangeLineas: (config: TooltipLineasConfig) => void;
+  onChangeTramos: (config: TooltipTramosConfig) => void;
   onChangeCts:    (config: TooltipCtsConfig)    => void;
   onChangeCups:   (config: TooltipCupsConfig)   => void;
 }
@@ -47,6 +49,15 @@ const CAMPOS_LINEAS: { key: keyof TooltipLineasConfig; label: string; desc: stri
   { key: "mostrar_cuenta",               label: "Cuenta contable",             desc: "CUENTA" },
   { key: "mostrar_avifauna",             label: "Avifauna",                    desc: "0=no, 1=sí" },
   { key: "mostrar_identificador_baja",   label: "Identificador baja",          desc: "IDENTIFICADOR_BAJA" },
+];
+
+// ── Campos B11 — Tramos (4 campos) ───────────────────────────────────────────
+
+const CAMPOS_TRAMOS: { key: keyof TooltipTramosConfig; label: string; desc: string }[] = [
+  { key: "mostrar_id_tramo",  label: "ID Segmento",          desc: "SEGMENTO — identificador único del segmento" },
+  { key: "mostrar_id_linea",  label: "ID Línea",             desc: "IDENTIFICADOR_TRAMO — línea a la que pertenece" },
+  { key: "mostrar_orden",     label: "Posición en la línea", desc: "ORDEN_SEGMENTO / N_SEGMENTOS" },
+  { key: "mostrar_num_tramo", label: "Total segmentos",      desc: "N_SEGMENTOS — total de segmentos de la línea" },
 ];
 
 // ── Campos B2 — CTs (31 campos) ───────────────────────────────────────────────
@@ -129,16 +140,33 @@ const cardStyle: React.CSSProperties = {
   borderRadius: 8, padding: "10px 12px",
 };
 
-// ── Grupos tipados por separado (evita errores TS con genéricos) ──────────────
+// ── Grupos tipados por separado ───────────────────────────────────────────────
 
 function GrupoLineas({ config, onChange }: { config: TooltipLineasConfig; onChange: (c: TooltipLineasConfig) => void }) {
   return (
     <div style={{ marginBottom: 28 }}>
-      <div style={sectionTitleStyle}>
-        Tooltip — Líneas eléctricas (B1) · {CAMPOS_LINEAS.length} campos
-      </div>
+      <div style={sectionTitleStyle}>Tooltip — Líneas eléctricas (B1) · {CAMPOS_LINEAS.length} campos</div>
       <div style={gridStyle}>
         {CAMPOS_LINEAS.map(({ key, label, desc }) => (
+          <label key={key} style={cardStyle}>
+            <input type="checkbox" checked={config[key]} onChange={() => onChange({ ...config, [key]: !config[key] })} style={{ marginTop: 2, flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>{label}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{desc}</div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GrupoTramos({ config, onChange }: { config: TooltipTramosConfig; onChange: (c: TooltipTramosConfig) => void }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={sectionTitleStyle}>Tooltip — Identificación de tramos (B11) · {CAMPOS_TRAMOS.length} campos</div>
+      <div style={gridStyle}>
+        {CAMPOS_TRAMOS.map(({ key, label, desc }) => (
           <label key={key} style={cardStyle}>
             <input type="checkbox" checked={config[key]} onChange={() => onChange({ ...config, [key]: !config[key] })} style={{ marginTop: 2, flexShrink: 0 }} />
             <div>
@@ -155,9 +183,7 @@ function GrupoLineas({ config, onChange }: { config: TooltipLineasConfig; onChan
 function GrupoCts({ config, onChange }: { config: TooltipCtsConfig; onChange: (c: TooltipCtsConfig) => void }) {
   return (
     <div style={{ marginBottom: 28 }}>
-      <div style={sectionTitleStyle}>
-        Tooltip — Centros de transformación (B2) · {CAMPOS_CTS.length} campos
-      </div>
+      <div style={sectionTitleStyle}>Tooltip — Centros de transformación (B2) · {CAMPOS_CTS.length} campos</div>
       <div style={gridStyle}>
         {CAMPOS_CTS.map(({ key, label, desc }) => (
           <label key={key} style={cardStyle}>
@@ -176,9 +202,7 @@ function GrupoCts({ config, onChange }: { config: TooltipCtsConfig; onChange: (c
 function GrupoCups({ config, onChange }: { config: TooltipCupsConfig; onChange: (c: TooltipCupsConfig) => void }) {
   return (
     <div style={{ marginBottom: 28 }}>
-      <div style={sectionTitleStyle}>
-        Tooltip — Puntos de suministro CUPS (A1) · {CAMPOS_CUPS.length} campos
-      </div>
+      <div style={sectionTitleStyle}>Tooltip — Puntos de suministro CUPS (A1) · {CAMPOS_CUPS.length} campos</div>
       <div style={gridStyle}>
         {CAMPOS_CUPS.map(({ key, label, desc }) => (
           <label key={key} style={cardStyle}>
@@ -197,8 +221,8 @@ function GrupoCups({ config, onChange }: { config: TooltipCupsConfig; onChange: 
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function TopologiaSettingsSection({
-  tooltipLineas, tooltipCts, tooltipCups,
-  onChangeLineas, onChangeCts, onChangeCups,
+  tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
+  onChangeLineas, onChangeTramos, onChangeCts, onChangeCups,
 }: Props) {
   return (
     <div>
@@ -207,6 +231,7 @@ export default function TopologiaSettingsSection({
         Los cambios se aplican de inmediato y se guardan automáticamente.
       </div>
       <GrupoLineas config={tooltipLineas} onChange={onChangeLineas} />
+      <GrupoTramos config={tooltipTramos} onChange={onChangeTramos} />
       <GrupoCts    config={tooltipCts}    onChange={onChangeCts} />
       <GrupoCups   config={tooltipCups}   onChange={onChangeCups} />
     </div>

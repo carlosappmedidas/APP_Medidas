@@ -21,8 +21,8 @@ import AppearanceSettingsSection from "./components/settings/AppearanceSettingsS
 import TableSettingsSection from "./components/settings/TableSettingsSection";
 import TopologiaSettingsSection from "./components/settings/TopologiaSettingsSection";
 import { useTableSettings } from "./components/settings/hooks/useTableSettings";
-import type { TooltipLineasConfig, TooltipCtsConfig, TooltipCupsConfig } from "./components/topologia/MapaLeaflet";
-import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./components/topologia/MapaLeaflet";
+import type { TooltipLineasConfig, TooltipTramosConfig, TooltipCtsConfig, TooltipCupsConfig } from "./components/topologia/MapaLeaflet";
+import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./components/topologia/MapaLeaflet";
 import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
@@ -93,14 +93,15 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
 const DEFAULT_GENERAL_ORDER = ALL_COLUMNS_META.map((c) => c.id);
 const DEFAULT_PS_ORDER = COLUMNS_PS_META.map((c) => c.id);
 
-const SIDEBAR_STORAGE_KEY           = "ui_sidebar_collapsed";
-const AUTH_TOKEN_STORAGE_KEY        = "auth_token";
-const MEDIDAS_OPEN_STORAGE_KEY      = "ui_medidas_open";
-const TABLAS_OPEN_STORAGE_KEY       = "ui_tablas_open";
-const PERDIDAS_OPEN_STORAGE_KEY     = "ui_perdidas_open";
-const TOOLTIP_LINEAS_STORAGE_KEY    = "ui_topologia_tooltip_lineas";
-const TOOLTIP_CTS_STORAGE_KEY       = "ui_topologia_tooltip_cts";
-const TOOLTIP_CUPS_STORAGE_KEY      = "ui_topologia_tooltip_cups";
+const SIDEBAR_STORAGE_KEY            = "ui_sidebar_collapsed";
+const AUTH_TOKEN_STORAGE_KEY         = "auth_token";
+const MEDIDAS_OPEN_STORAGE_KEY       = "ui_medidas_open";
+const TABLAS_OPEN_STORAGE_KEY        = "ui_tablas_open";
+const PERDIDAS_OPEN_STORAGE_KEY      = "ui_perdidas_open";
+const TOOLTIP_LINEAS_STORAGE_KEY     = "ui_topologia_tooltip_lineas";
+const TOOLTIP_TRAMOS_STORAGE_KEY     = "ui_topologia_tooltip_tramos";
+const TOOLTIP_CTS_STORAGE_KEY        = "ui_topologia_tooltip_cts";
+const TOOLTIP_CUPS_STORAGE_KEY       = "ui_topologia_tooltip_cups";
 
 const PERDIDAS_TABS: MainTab[] = ["perdidas", "topologia"];
 
@@ -118,21 +119,18 @@ export default function HomePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [homeMenuOpen, setHomeMenuOpen]         = useState(false);
 
-  // ── Collapsibles ajustes ───────────────────────────────────────────────
   const [showApariencia,  setShowApariencia]  = useState(false);
   const [showTablas,      setShowTablas]      = useState(false);
   const [showAlertConfig, setShowAlertConfig] = useState(false);
   const [showTopologia,   setShowTopologia]   = useState(false);
-
-  // ── Collapsibles alertas ───────────────────────────────────────────────
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
 
-  // ── Configuración tooltip topología ───────────────────────────────────
+  // ── Tooltips topología ─────────────────────────────────────────────────
   const [tooltipLineas, setTooltipLineas] = useState<TooltipLineasConfig>(DEFAULT_TOOLTIP_LINEAS);
+  const [tooltipTramos, setTooltipTramos] = useState<TooltipTramosConfig>(DEFAULT_TOOLTIP_TRAMOS);
   const [tooltipCts,    setTooltipCts]    = useState<TooltipCtsConfig>(DEFAULT_TOOLTIP_CTS);
   const [tooltipCups,   setTooltipCups]   = useState<TooltipCupsConfig>(DEFAULT_TOOLTIP_CUPS);
 
-  // ── Hook configuración de tablas ───────────────────────────────────────
   const {
     appearance, setAppearance,
     generalColumnOrder, generalHiddenColumns, setGeneralColumnOrder, setGeneralHiddenColumns,
@@ -140,7 +138,6 @@ export default function HomePage() {
     resetAll: resetTableSettings,
   } = useTableSettings({ token, defaultGeneralOrder: DEFAULT_GENERAL_ORDER, defaultPsOrder: DEFAULT_PS_ORDER });
 
-  // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => {
     try {
       const savedTab = localStorage.getItem("ui_active_tab");
@@ -151,6 +148,8 @@ export default function HomePage() {
       if (localStorage.getItem(PERDIDAS_OPEN_STORAGE_KEY) === "1") setPerdidasOpen(true);
       const sl = localStorage.getItem(TOOLTIP_LINEAS_STORAGE_KEY);
       if (sl) { try { setTooltipLineas({ ...DEFAULT_TOOLTIP_LINEAS, ...JSON.parse(sl) }); } catch { /* */ } }
+      const st = localStorage.getItem(TOOLTIP_TRAMOS_STORAGE_KEY);
+      if (st) { try { setTooltipTramos({ ...DEFAULT_TOOLTIP_TRAMOS, ...JSON.parse(st) }); } catch { /* */ } }
       const sc = localStorage.getItem(TOOLTIP_CTS_STORAGE_KEY);
       if (sc) { try { setTooltipCts({ ...DEFAULT_TOOLTIP_CTS, ...JSON.parse(sc) }); } catch { /* */ } }
       const su = localStorage.getItem(TOOLTIP_CUPS_STORAGE_KEY);
@@ -159,17 +158,16 @@ export default function HomePage() {
     finally { setAuthReady(true); }
   }, []);
 
-  // ── Persistencia ───────────────────────────────────────────────────────
   useEffect(() => { try { localStorage.setItem("ui_active_tab", activeTab); } catch { /* */ } }, [activeTab]);
   useEffect(() => { try { localStorage.setItem(MEDIDAS_OPEN_STORAGE_KEY, medidasOpen ? "1" : "0"); } catch { /* */ } }, [medidasOpen]);
   useEffect(() => { try { localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0"); } catch { /* */ } }, [tablasOpen]);
   useEffect(() => { try { localStorage.setItem(PERDIDAS_OPEN_STORAGE_KEY, perdidasOpen ? "1" : "0"); } catch { /* */ } }, [perdidasOpen]);
   useEffect(() => { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0"); } catch { /* */ } }, [sidebarCollapsed]);
   useEffect(() => { try { localStorage.setItem(TOOLTIP_LINEAS_STORAGE_KEY, JSON.stringify(tooltipLineas)); } catch { /* */ } }, [tooltipLineas]);
+  useEffect(() => { try { localStorage.setItem(TOOLTIP_TRAMOS_STORAGE_KEY, JSON.stringify(tooltipTramos)); } catch { /* */ } }, [tooltipTramos]);
   useEffect(() => { try { localStorage.setItem(TOOLTIP_CTS_STORAGE_KEY,    JSON.stringify(tooltipCts));    } catch { /* */ } }, [tooltipCts]);
   useEffect(() => { try { localStorage.setItem(TOOLTIP_CUPS_STORAGE_KEY,   JSON.stringify(tooltipCups));   } catch { /* */ } }, [tooltipCups]);
 
-  // ── Cargar usuario ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) { setCurrentUser(null); return; }
     const load = async () => {
@@ -188,7 +186,6 @@ export default function HomePage() {
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
   useEffect(() => { if (activeTab === "alertas") setShowAlertasGeneral(false); }, [activeTab]);
 
-  // ── Permisos ───────────────────────────────────────────────────────────
   const isViewer         = currentUser?.rol === "viewer";
   const canManageUsers   = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
   const isSuperuser      = !!currentUser?.is_superuser;
@@ -467,6 +464,7 @@ export default function HomePage() {
             token={token}
             currentUser={currentUser}
             tooltipLineas={tooltipLineas}
+            tooltipTramos={tooltipTramos}
             tooltipCts={tooltipCts}
             tooltipCups={tooltipCups}
           />
@@ -476,8 +474,7 @@ export default function HomePage() {
           <section className="settings-page" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {canSeeApariencia && (
               <div className="ui-collapsible-card">
-                <button type="button" className="ui-collapsible-card__trigger"
-                  onClick={() => setShowApariencia((v) => !v)}>
+                <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowApariencia((v) => !v)}>
                   <div>
                     <div className="ui-collapsible-card__title">APARIENCIA DEL PANEL</div>
                     <p className="ui-collapsible-card__subtitle">Cambia los colores del panel. Se aplica al momento en todas las secciones.</p>
@@ -542,9 +539,11 @@ export default function HomePage() {
                 <div className="ui-collapsible-card__body">
                   <TopologiaSettingsSection
                     tooltipLineas={tooltipLineas}
+                    tooltipTramos={tooltipTramos}
                     tooltipCts={tooltipCts}
                     tooltipCups={tooltipCups}
                     onChangeLineas={setTooltipLineas}
+                    onChangeTramos={setTooltipTramos}
                     onChangeCts={setTooltipCts}
                     onChangeCups={setTooltipCups}
                   />

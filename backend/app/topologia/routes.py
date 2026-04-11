@@ -52,12 +52,6 @@ async def importar_topologia(
     Importa los ficheros CNMC 8/2021 para una empresa.
     Se pueden subir todos o solo algunos ficheros a la vez.
     La reimportación actualiza registro a registro sin borrar datos.
-
-    - b2  → Centros de transformación (ct_inventario)
-    - b21 → Máquinas en CT (ct_transformador)
-    - a1  → Puntos de suministro (cups_topologia)
-    - b1  → Líneas eléctricas (linea_inventario)
-    - b11 → Tramos GIS de líneas (linea_tramo)
     """
     _assert_not_viewer(current_user)
 
@@ -104,9 +98,7 @@ def get_cts_mapa(
 ) -> List[CtMapaRead]:
     _assert_not_viewer(current_user)
     return services.list_cts_mapa(  # type: ignore[return-value]
-        db         = db,
-        tenant_id  = _tenant_id(current_user),
-        empresa_id = empresa_id,
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
     )
 
 
@@ -121,10 +113,7 @@ def get_cups_mapa(
 ) -> List[CupsMapaRead]:
     _assert_not_viewer(current_user)
     return services.list_cups_mapa(  # type: ignore[return-value]
-        db         = db,
-        tenant_id  = _tenant_id(current_user),
-        empresa_id = empresa_id,
-        id_ct      = id_ct,
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id, id_ct=id_ct,
     )
 
 
@@ -133,19 +122,18 @@ def get_cups_mapa(
 @router.get("/mapa/tramos", response_model=List[TramoMapaRead])
 def get_tramos_mapa(
     empresa_id:   int           = Query(...),
-    id_linea:     Optional[str] = Query(None, description="Filtrar por línea"),
+    id_linea:     Optional[str] = Query(None, description="Filtrar por id_linea (IDENTIFICADOR_TRAMO del B1)"),
     db:           Session       = Depends(get_db),
     current_user: User          = Depends(get_current_user),
 ) -> List[TramoMapaRead]:
     """
-    Devuelve tramos GIS con coordenadas válidas para pintar la red en el mapa.
-    Hace JOIN con linea_inventario para incluir los campos del B1 en el tooltip.
-    Si se pasa id_linea filtra solo los tramos de esa línea.
+    Devuelve segmentos GIS (B11) con coordenadas válidas.
+    Hace LEFT JOIN con linea_inventario (B1) por id_linea = id_tramo.
+    Incluye orden y num_tramo para identificar inicio/fin de cada línea.
     """
     _assert_not_viewer(current_user)
     tid = _tenant_id(current_user)
 
-    # JOIN: linea_tramo (B11) + linea_inventario (B1) por id_linea = id_tramo
     q = (
         db.query(LineaTramo, LineaInventario)
         .outerjoin(
@@ -174,15 +162,20 @@ def get_tramos_mapa(
     for tramo, linea in filas:
         resultado.append(TramoMapaRead(
             # B11
-            id_tramo = tramo.id_tramo,
-            id_linea = tramo.id_linea,
-            lat_ini  = tramo.lat_ini,
-            lon_ini  = tramo.lon_ini,
-            lat_fin  = tramo.lat_fin,
-            lon_fin  = tramo.lon_fin,
+            id_tramo  = tramo.id_tramo,
+            id_linea  = tramo.id_linea,
+            orden     = tramo.orden,
+            num_tramo = tramo.num_tramo,
+            lat_ini   = tramo.lat_ini,
+            lon_ini   = tramo.lon_ini,
+            lat_fin   = tramo.lat_fin,
+            lon_fin   = tramo.lon_fin,
             # B1 — None si no se importó el B1
             cini                    = linea.cini                    if linea else None,
             codigo_ccuu             = linea.codigo_ccuu             if linea else None,
+            nudo_inicio             = linea.nudo_inicio             if linea else None,
+            nudo_fin                = linea.nudo_fin                if linea else None,
+            ccaa_1                  = linea.ccaa_1                  if linea else None,
             tension_kv              = linea.tension_kv              if linea else None,
             tension_construccion_kv = linea.tension_construccion_kv if linea else None,
             longitud_km             = linea.longitud_km             if linea else None,
@@ -190,16 +183,62 @@ def get_tramos_mapa(
             reactancia_ohm          = linea.reactancia_ohm          if linea else None,
             intensidad_a            = linea.intensidad_a            if linea else None,
             propiedad               = linea.propiedad               if linea else None,
+            estado                  = linea.estado                  if linea else None,
             operacion               = linea.operacion               if linea else None,
+            punto_frontera          = linea.punto_frontera          if linea else None,
+            modelo                  = linea.modelo                  if linea else None,
             causa_baja              = linea.causa_baja              if linea else None,
             fecha_aps               = linea.fecha_aps               if linea else None,
             fecha_baja              = linea.fecha_baja              if linea else None,
+            fecha_ip                = linea.fecha_ip                if linea else None,
+            tipo_inversion          = linea.tipo_inversion          if linea else None,
+            motivacion              = linea.motivacion              if linea else None,
+            im_tramites             = linea.im_tramites             if linea else None,
+            im_construccion         = linea.im_construccion         if linea else None,
+            im_trabajos             = linea.im_trabajos             if linea else None,
+            valor_auditado          = linea.valor_auditado          if linea else None,
+            financiado              = linea.financiado              if linea else None,
+            subvenciones_europeas   = linea.subvenciones_europeas   if linea else None,
+            subvenciones_nacionales = linea.subvenciones_nacionales if linea else None,
+            subvenciones_prtr       = linea.subvenciones_prtr       if linea else None,
+            cuenta                  = linea.cuenta                  if linea else None,
+            avifauna                = linea.avifauna                if linea else None,
+            identificador_baja      = linea.identificador_baja      if linea else None,
         ))
 
     return resultado
 
 
-# ── Listado de CTs (para filtros y selectores) ────────────────────────────────
+# ── Listado de líneas disponibles (para el selector del mapa) ─────────────────
+
+@router.get("/mapa/lineas", response_model=List[str])
+def get_lineas_disponibles(
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> List[str]:
+    """
+    Devuelve los identificadores únicos de línea (id_linea / IDENTIFICADOR_TRAMO del B1)
+    que tienen segmentos GIS en BD. Usado para el selector de línea en el mapa.
+    """
+    _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+
+    filas = (
+        db.query(LineaTramo.id_linea)
+        .filter(
+            LineaTramo.tenant_id  == tid,
+            LineaTramo.empresa_id == empresa_id,
+            LineaTramo.id_linea.isnot(None),
+        )
+        .distinct()
+        .order_by(LineaTramo.id_linea)
+        .all()
+    )
+    return [f[0] for f in filas if f[0]]
+
+
+# ── Listado de CTs ────────────────────────────────────────────────────────────
 
 @router.get("/cts", response_model=List[CtInventarioRead])
 def get_cts(
@@ -209,7 +248,5 @@ def get_cts(
 ) -> List[CtInventarioRead]:
     _assert_not_viewer(current_user)
     return services.list_cts(  # type: ignore[return-value]
-        db         = db,
-        tenant_id  = _tenant_id(current_user),
-        empresa_id = empresa_id,
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
     )

@@ -77,12 +77,14 @@ export interface CupsMapa {
 }
 
 export interface TramoMapa {
-  id_tramo: string;
-  id_linea: string | null;
-  lat_ini:  number | null;
-  lon_ini:  number | null;
-  lat_fin:  number | null;
-  lon_fin:  number | null;
+  id_tramo:  string;
+  id_linea:  string | null;
+  orden:     number | null;
+  num_tramo: number | null;
+  lat_ini:   number | null;
+  lon_ini:   number | null;
+  lat_fin:   number | null;
+  lon_fin:   number | null;
   // B1
   cini:                    string | null;
   codigo_ccuu:             string | null;
@@ -119,7 +121,7 @@ export interface TramoMapa {
   identificador_baja:      string | null;
 }
 
-// ─── Interfaces de configuración de tooltip ───────────────────────────────────
+// ─── Interfaces de configuración ──────────────────────────────────────────────
 
 export interface TooltipLineasConfig {
   mostrar_tension:              boolean;
@@ -155,6 +157,13 @@ export interface TooltipLineasConfig {
   mostrar_cuenta:               boolean;
   mostrar_avifauna:             boolean;
   mostrar_identificador_baja:   boolean;
+}
+
+export interface TooltipTramosConfig {
+  mostrar_id_tramo:  boolean;
+  mostrar_id_linea:  boolean;
+  mostrar_orden:     boolean;
+  mostrar_num_tramo: boolean;
 }
 
 export interface TooltipCtsConfig {
@@ -258,6 +267,13 @@ export const DEFAULT_TOOLTIP_LINEAS: TooltipLineasConfig = {
   mostrar_identificador_baja:   false,
 };
 
+export const DEFAULT_TOOLTIP_TRAMOS: TooltipTramosConfig = {
+  mostrar_id_tramo:  false,
+  mostrar_id_linea:  true,
+  mostrar_orden:     true,
+  mostrar_num_tramo: true,
+};
+
 export const DEFAULT_TOOLTIP_CTS: TooltipCtsConfig = {
   mostrar_potencia:             true,
   mostrar_tension:              true,
@@ -324,18 +340,21 @@ export const DEFAULT_TOOLTIP_CUPS: TooltipCupsConfig = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  cts:           CtMapa[];
-  cups:          CupsMapa[];
-  tramos:        TramoMapa[];
-  mostrarCts:    boolean;
-  mostrarCups:   boolean;
-  mostrarLineas: boolean;
-  tooltipLineas: TooltipLineasConfig;
-  tooltipCts:    TooltipCtsConfig;
-  tooltipCups:   TooltipCupsConfig;
+  cts:              CtMapa[];
+  cups:             CupsMapa[];
+  tramos:           TramoMapa[];
+  mostrarCts:       boolean;
+  mostrarCups:      boolean;
+  mostrarLineas:    boolean;
+  lineaSeleccionada: string | null;
+  tooltipLineas:    TooltipLineasConfig;
+  tooltipTramos:    TooltipTramosConfig;
+  tooltipCts:       TooltipCtsConfig;
+  tooltipCups:      TooltipCupsConfig;
+  onLineaClick:     (id_linea: string | null) => void;
 }
 
-// ─── Helpers de color ─────────────────────────────────────────────────────────
+// ─── Color de línea ───────────────────────────────────────────────────────────
 
 function colorLinea(id: string | null): string {
   if (!id) return "#F59E0B";
@@ -349,7 +368,7 @@ function nivelLinea(id: string | null): string {
   return "MT";
 }
 
-// ─── Helpers de formato ───────────────────────────────────────────────────────
+// ─── Helper fila tooltip ──────────────────────────────────────────────────────
 
 function fila(label: string, valor: string | number): string {
   return `<div style="margin-bottom:1px"><span style="color:#999">${label}:</span> <strong>${valor}</strong></div>`;
@@ -357,41 +376,54 @@ function fila(label: string, valor: string | number): string {
 
 // ─── Constructores de tooltip ─────────────────────────────────────────────────
 
-function buildTooltipLinea(t: TramoMapa, cfg: TooltipLineasConfig, color: string, nivel: string): string {
+function buildTooltipLinea(
+  t: TramoMapa,
+  cfgL: TooltipLineasConfig,
+  cfgT: TooltipTramosConfig,
+  color: string,
+  nivel: string,
+): string {
   const f: string[] = [];
-  if (cfg.mostrar_tension              && t.tension_kv              !== null) f.push(fila("Tensión",          `${t.tension_kv} kV`));
-  if (cfg.mostrar_tension_construccion && t.tension_construccion_kv !== null) f.push(fila("T. construcción",  `${t.tension_construccion_kv} kV`));
-  if (cfg.mostrar_longitud             && t.longitud_km             !== null) f.push(fila("Longitud",         `${t.longitud_km.toFixed(3)} km`));
-  if (cfg.mostrar_intensidad           && t.intensidad_a            !== null) f.push(fila("Intensidad",       `${t.intensidad_a} A`));
-  if (cfg.mostrar_resistencia          && t.resistencia_ohm         !== null) f.push(fila("Resistencia",      `${t.resistencia_ohm} Ω`));
-  if (cfg.mostrar_reactancia           && t.reactancia_ohm          !== null) f.push(fila("Reactancia",       `${t.reactancia_ohm} Ω`));
-  if (cfg.mostrar_propiedad            && t.propiedad               !== null) f.push(fila("Propiedad",        t.propiedad === 1 ? "Propia" : "Terceros"));
-  if (cfg.mostrar_estado               && t.estado                  !== null) f.push(fila("Estado",           ["Sin cambios","Modificado","Alta"][t.estado] ?? t.estado));
-  if (cfg.mostrar_operacion            && t.operacion               !== null) f.push(fila("Operación",        t.operacion === 1 ? "✅ Activo" : "⚠️ Abierto"));
-  if (cfg.mostrar_punto_frontera       && t.punto_frontera          !== null) f.push(fila("Pto. frontera",    t.punto_frontera === 1 ? "Sí" : "No"));
-  if (cfg.mostrar_modelo               && t.modelo)                           f.push(fila("Modelo",           t.modelo));
-  if (cfg.mostrar_fecha_aps            && t.fecha_aps)                        f.push(fila("APS",              t.fecha_aps));
-  if (cfg.mostrar_causa_baja           && t.causa_baja              !== null) f.push(fila("Causa baja",       t.causa_baja));
-  if (cfg.mostrar_fecha_baja           && t.fecha_baja)                       f.push(fila("Fecha baja",       t.fecha_baja));
-  if (cfg.mostrar_fecha_ip             && t.fecha_ip)                         f.push(fila("Fecha inv.parc.",  t.fecha_ip));
-  if (cfg.mostrar_cini                 && t.cini)                             f.push(fila("CINI",             t.cini));
-  if (cfg.mostrar_codigo_ccuu          && t.codigo_ccuu)                      f.push(fila("Cód. CCUU",        t.codigo_ccuu));
-  if (cfg.mostrar_nudo_inicio          && t.nudo_inicio)                      f.push(fila("Nudo inicio",      t.nudo_inicio));
-  if (cfg.mostrar_nudo_fin             && t.nudo_fin)                         f.push(fila("Nudo fin",         t.nudo_fin));
-  if (cfg.mostrar_ccaa                 && t.ccaa_1)                           f.push(fila("CCAA",             t.ccaa_1));
-  if (cfg.mostrar_tipo_inversion       && t.tipo_inversion          !== null) f.push(fila("Tipo inv.",        t.tipo_inversion));
-  if (cfg.mostrar_motivacion           && t.motivacion)                       f.push(fila("Motivación",       t.motivacion));
-  if (cfg.mostrar_im_tramites          && t.im_tramites             !== null) f.push(fila("IM trámites",      `${t.im_tramites.toLocaleString()} €`));
-  if (cfg.mostrar_im_construccion      && t.im_construccion         !== null) f.push(fila("IM construcción",  `${t.im_construccion.toLocaleString()} €`));
-  if (cfg.mostrar_im_trabajos          && t.im_trabajos             !== null) f.push(fila("IM trabajos",      `${t.im_trabajos.toLocaleString()} €`));
-  if (cfg.mostrar_valor_auditado       && t.valor_auditado          !== null) f.push(fila("Valor auditado",   `${t.valor_auditado.toLocaleString()} €`));
-  if (cfg.mostrar_financiado           && t.financiado              !== null) f.push(fila("Financiado",       `${t.financiado} %`));
-  if (cfg.mostrar_subv_europeas        && t.subvenciones_europeas   !== null) f.push(fila("Subv. europeas",   `${t.subvenciones_europeas.toLocaleString()} €`));
-  if (cfg.mostrar_subv_nacionales      && t.subvenciones_nacionales !== null) f.push(fila("Subv. nac.",       `${t.subvenciones_nacionales.toLocaleString()} €`));
-  if (cfg.mostrar_subv_prtr            && t.subvenciones_prtr       !== null) f.push(fila("Subv. PRTR",       `${t.subvenciones_prtr.toLocaleString()} €`));
-  if (cfg.mostrar_cuenta               && t.cuenta)                           f.push(fila("Cuenta",           t.cuenta));
-  if (cfg.mostrar_avifauna             && t.avifauna                !== null) f.push(fila("Avifauna",         t.avifauna === 1 ? "Sí" : "No"));
-  if (cfg.mostrar_identificador_baja   && t.identificador_baja)               f.push(fila("Id. baja",         t.identificador_baja));
+  // B11
+  if (cfgT.mostrar_id_tramo  && t.id_tramo)              f.push(fila("Segmento",       t.id_tramo));
+  if (cfgT.mostrar_id_linea  && t.id_linea)              f.push(fila("Línea",          t.id_linea));
+  if (cfgT.mostrar_orden     && t.orden     !== null)    f.push(fila("Segmento nº",    `${t.orden} / ${t.num_tramo ?? "?"}`));
+  if (cfgT.mostrar_num_tramo && t.num_tramo !== null && !cfgT.mostrar_orden) f.push(fila("Total segmentos", t.num_tramo));
+  // B1
+  if (cfgL.mostrar_tension              && t.tension_kv              !== null) f.push(fila("Tensión",          `${t.tension_kv} kV`));
+  if (cfgL.mostrar_tension_construccion && t.tension_construccion_kv !== null) f.push(fila("T. construcción",  `${t.tension_construccion_kv} kV`));
+  if (cfgL.mostrar_longitud             && t.longitud_km             !== null) f.push(fila("Longitud",         `${t.longitud_km.toFixed(3)} km`));
+  if (cfgL.mostrar_intensidad           && t.intensidad_a            !== null) f.push(fila("Intensidad",       `${t.intensidad_a} A`));
+  if (cfgL.mostrar_resistencia          && t.resistencia_ohm         !== null) f.push(fila("Resistencia",      `${t.resistencia_ohm} Ω`));
+  if (cfgL.mostrar_reactancia           && t.reactancia_ohm          !== null) f.push(fila("Reactancia",       `${t.reactancia_ohm} Ω`));
+  if (cfgL.mostrar_propiedad            && t.propiedad               !== null) f.push(fila("Propiedad",        t.propiedad === 1 ? "Propia" : "Terceros"));
+  if (cfgL.mostrar_estado               && t.estado                  !== null) f.push(fila("Estado",           ["Sin cambios","Modificado","Alta"][t.estado] ?? t.estado));
+  if (cfgL.mostrar_operacion            && t.operacion               !== null) f.push(fila("Operación",        t.operacion === 1 ? "✅ Activo" : "⚠️ Abierto"));
+  if (cfgL.mostrar_punto_frontera       && t.punto_frontera          !== null) f.push(fila("Pto. frontera",    t.punto_frontera === 1 ? "Sí" : "No"));
+  if (cfgL.mostrar_modelo               && t.modelo)                           f.push(fila("Modelo",           t.modelo));
+  if (cfgL.mostrar_fecha_aps            && t.fecha_aps)                        f.push(fila("APS",              t.fecha_aps));
+  if (cfgL.mostrar_causa_baja           && t.causa_baja              !== null) f.push(fila("Causa baja",       t.causa_baja));
+  if (cfgL.mostrar_fecha_baja           && t.fecha_baja)                       f.push(fila("Fecha baja",       t.fecha_baja));
+  if (cfgL.mostrar_fecha_ip             && t.fecha_ip)                         f.push(fila("Fecha inv.parc.",  t.fecha_ip));
+  if (cfgL.mostrar_cini                 && t.cini)                             f.push(fila("CINI",             t.cini));
+  if (cfgL.mostrar_codigo_ccuu          && t.codigo_ccuu)                      f.push(fila("Cód. CCUU",        t.codigo_ccuu));
+  if (cfgL.mostrar_nudo_inicio          && t.nudo_inicio)                      f.push(fila("Nudo inicio",      t.nudo_inicio));
+  if (cfgL.mostrar_nudo_fin             && t.nudo_fin)                         f.push(fila("Nudo fin",         t.nudo_fin));
+  if (cfgL.mostrar_ccaa                 && t.ccaa_1)                           f.push(fila("CCAA",             t.ccaa_1));
+  if (cfgL.mostrar_tipo_inversion       && t.tipo_inversion          !== null) f.push(fila("Tipo inv.",        t.tipo_inversion));
+  if (cfgL.mostrar_motivacion           && t.motivacion)                       f.push(fila("Motivación",       t.motivacion));
+  if (cfgL.mostrar_im_tramites          && t.im_tramites             !== null) f.push(fila("IM trámites",      `${t.im_tramites.toLocaleString()} €`));
+  if (cfgL.mostrar_im_construccion      && t.im_construccion         !== null) f.push(fila("IM construcción",  `${t.im_construccion.toLocaleString()} €`));
+  if (cfgL.mostrar_im_trabajos          && t.im_trabajos             !== null) f.push(fila("IM trabajos",      `${t.im_trabajos.toLocaleString()} €`));
+  if (cfgL.mostrar_valor_auditado       && t.valor_auditado          !== null) f.push(fila("Valor auditado",   `${t.valor_auditado.toLocaleString()} €`));
+  if (cfgL.mostrar_financiado           && t.financiado              !== null) f.push(fila("Financiado",       `${t.financiado} %`));
+  if (cfgL.mostrar_subv_europeas        && t.subvenciones_europeas   !== null) f.push(fila("Subv. europeas",   `${t.subvenciones_europeas.toLocaleString()} €`));
+  if (cfgL.mostrar_subv_nacionales      && t.subvenciones_nacionales !== null) f.push(fila("Subv. nac.",       `${t.subvenciones_nacionales.toLocaleString()} €`));
+  if (cfgL.mostrar_subv_prtr            && t.subvenciones_prtr       !== null) f.push(fila("Subv. PRTR",       `${t.subvenciones_prtr.toLocaleString()} €`));
+  if (cfgL.mostrar_cuenta               && t.cuenta)                           f.push(fila("Cuenta",           t.cuenta));
+  if (cfgL.mostrar_avifauna             && t.avifauna                !== null) f.push(fila("Avifauna",         t.avifauna === 1 ? "Sí" : "No"));
+  if (cfgL.mostrar_identificador_baja   && t.identificador_baja)               f.push(fila("Id. baja",         t.identificador_baja));
+
   return `<div style="font-size:11px;line-height:1.6;min-width:180px;max-width:260px">
     <div style="font-weight:600;margin-bottom:2px;color:${color}">${nivel}</div>
     <div style="color:#888;margin-bottom:5px;font-size:10px;font-family:monospace">${t.id_linea ?? "—"}</div>
@@ -480,7 +512,9 @@ function buildTooltipCups(c: CupsMapa, cfg: TooltipCupsConfig): string {
 export default function MapaLeaflet({
   cts, cups, tramos,
   mostrarCts, mostrarCups, mostrarLineas,
-  tooltipLineas, tooltipCts, tooltipCups,
+  lineaSeleccionada,
+  tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
+  onLineaClick,
 }: Props) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -491,7 +525,10 @@ export default function MapaLeaflet({
   const cupsLayerRef   = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lineasLayerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const marcadoresLayerRef = useRef<any>(null);
 
+  // ── Inicializar mapa ──────────────────────────────────────────────────────
   useEffect(() => {
     if (mapaInstancia.current || !mapRef.current) return;
     import("leaflet").then(L => {
@@ -503,7 +540,7 @@ export default function MapaLeaflet({
         shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (L.Browser as any).touch   = false;
+      (L.Browser as any).touch = false;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (L.Browser as any).pointer = false;
 
@@ -523,10 +560,11 @@ export default function MapaLeaflet({
       if (mapAny.tap)       mapAny.tap.disable();
       map.dragging.enable();
 
-      lineasLayerRef.current = L.layerGroup().addTo(map);
-      ctLayerRef.current     = L.layerGroup().addTo(map);
-      cupsLayerRef.current   = L.layerGroup().addTo(map);
-      mapaInstancia.current  = map;
+      lineasLayerRef.current     = L.layerGroup().addTo(map);
+      marcadoresLayerRef.current = L.layerGroup().addTo(map);
+      ctLayerRef.current         = L.layerGroup().addTo(map);
+      cupsLayerRef.current       = L.layerGroup().addTo(map);
+      mapaInstancia.current      = map;
       setTimeout(() => map.invalidateSize(), 200);
 
       const container = mapRef.current!;
@@ -562,32 +600,95 @@ export default function MapaLeaflet({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mapaInstancia as any)._cleanup?.();
         mapaInstancia.current.remove();
-        mapaInstancia.current  = null;
-        ctLayerRef.current     = null;
-        cupsLayerRef.current   = null;
-        lineasLayerRef.current = null;
+        mapaInstancia.current      = null;
+        ctLayerRef.current         = null;
+        cupsLayerRef.current       = null;
+        lineasLayerRef.current     = null;
+        marcadoresLayerRef.current = null;
       }
     };
   }, []);
 
+  // ── Pintar líneas/tramos con resaltado ────────────────────────────────────
   useEffect(() => {
-    if (!lineasLayerRef.current) return;
+    if (!lineasLayerRef.current || !marcadoresLayerRef.current) return;
     import("leaflet").then(L => {
       lineasLayerRef.current.clearLayers();
+      marcadoresLayerRef.current.clearLayers();
       if (!mostrarLineas) return;
+
+      // Agrupar tramos por id_linea para detectar inicio/fin
+      const porLinea = new Map<string, TramoMapa[]>();
+      tramos.forEach(t => {
+        const key = t.id_linea ?? "__sin_linea__";
+        if (!porLinea.has(key)) porLinea.set(key, []);
+        porLinea.get(key)!.push(t);
+      });
+
       tramos.forEach(t => {
         if (t.lat_ini === null || t.lon_ini === null || t.lat_fin === null || t.lon_fin === null) return;
         const nivel = nivelLinea(t.id_linea);
         const color = colorLinea(t.id_linea);
-        L.polyline(
-          [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
-          { color, weight: nivel === "MT" ? 2.5 : 1.5, opacity: 0.85 }
-        ).bindPopup(buildTooltipLinea(t, tooltipLineas, color, nivel))
-          .addTo(lineasLayerRef.current);
-      });
-    });
-  }, [tramos, mostrarLineas, tooltipLineas]);
+        const esSeleccionada = lineaSeleccionada !== null && t.id_linea === lineaSeleccionada;
+        const haySeleccion   = lineaSeleccionada !== null;
 
+        const peso    = esSeleccionada ? (nivel === "MT" ? 5 : 4) : (nivel === "MT" ? 2.5 : 1.5);
+        const opacity = haySeleccion   ? (esSeleccionada ? 1 : 0.15) : 0.85;
+        const colorFinal = esSeleccionada ? (nivel === "MT" ? "#7C3AED" : "#D97706") : color;
+
+        const poly = L.polyline(
+          [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
+          { color: colorFinal, weight: peso, opacity }
+        );
+
+        poly.on("click", () => {
+          onLineaClick(t.id_linea === lineaSeleccionada ? null : t.id_linea);
+        });
+
+        poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, colorFinal, nivel));
+        poly.addTo(lineasLayerRef.current);
+      });
+
+      // Marcadores inicio (▶) y fin (■) para la línea seleccionada
+      if (lineaSeleccionada && marcadoresLayerRef.current) {
+        const segmentos = (porLinea.get(lineaSeleccionada) ?? [])
+          .filter(t => t.lat_ini !== null)
+          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+
+        if (segmentos.length > 0) {
+          const primero = segmentos[0];
+          const ultimo  = segmentos[segmentos.length - 1];
+          const color   = colorLinea(lineaSeleccionada);
+
+          // Marcador inicio
+          if (primero.lat_ini !== null && primero.lon_ini !== null) {
+            L.marker([primero.lat_ini, primero.lon_ini], {
+              icon: L.divIcon({
+                className: "",
+                html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">▶</div>`,
+                iconSize: [14, 14], iconAnchor: [7, 7],
+              }),
+            }).bindPopup(`<div style="font-size:11px"><strong>Inicio de línea</strong><br><span style="color:#888;font-size:10px">${lineaSeleccionada}</span><br>Segmento 1 de ${primero.num_tramo ?? "?"}</div>`)
+              .addTo(marcadoresLayerRef.current);
+          }
+
+          // Marcador fin — siempre que tenga coordenadas (incluso en líneas de 1 segmento)
+          if (ultimo.lat_fin !== null && ultimo.lon_fin !== null) {
+            L.marker([ultimo.lat_fin, ultimo.lon_fin], {
+              icon: L.divIcon({
+                className: "",
+                html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">■</div>`,
+                iconSize: [14, 14], iconAnchor: [7, 7],
+              }),
+            }).bindPopup(`<div style="font-size:11px"><strong>Fin de línea</strong><br><span style="color:#888;font-size:10px">${lineaSeleccionada}</span><br>Segmento ${ultimo.orden ?? "?"} de ${ultimo.num_tramo ?? "?"}</div>`)
+              .addTo(marcadoresLayerRef.current);
+          }
+        }
+      }
+    });
+  }, [tramos, mostrarLineas, tooltipLineas, tooltipTramos, lineaSeleccionada, onLineaClick]);
+
+  // ── Pintar CTs ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!ctLayerRef.current) return;
     import("leaflet").then(L => {
@@ -607,6 +708,7 @@ export default function MapaLeaflet({
     });
   }, [cts, mostrarCts, tooltipCts]);
 
+  // ── Pintar CUPS ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!cupsLayerRef.current) return;
     import("leaflet").then(L => {
