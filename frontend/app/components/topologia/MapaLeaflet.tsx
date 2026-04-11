@@ -361,7 +361,6 @@ interface Props {
 function colorLinea(id: string | null, tension_kv?: number | null): string {
   if (tension_kv !== null && tension_kv !== undefined)
     return tension_kv <= 1 ? "#F59E0B" : "#A855F7";
-  // Fallback por prefijo si no hay tensión de explotación
   if (!id) return "#F59E0B";
   if (id.includes("BTV") || id.includes("LBT")) return "#F59E0B";
   return "#A855F7";
@@ -373,6 +372,20 @@ function nivelLinea(id: string | null, tension_kv?: number | null): string {
   if (!id) return "BT";
   if (id.includes("BTV") || id.includes("LBT")) return "BT";
   return "MT";
+}
+
+// ─── Detección aéreo/subterráneo — Anexo I Orden IET/2660/2015 ───────────────
+//
+//   TI-1  a TI-12  → AÉREO   (LAT aéreo + LBT aéreo sobre postes/fachada)
+//   TI-14 a TI-21  → SUBTERRÁNEO (LAT subterráneo + LBT subterráneo)
+//   Fuera de rango → sin clasificar → línea continua por defecto
+//
+function esLineaSubterranea(codigo_ccuu: string | null): boolean {
+  if (!codigo_ccuu) return false;
+  const m = codigo_ccuu.match(/^TI-(\d+)/);
+  if (!m) return false;
+  const n = parseInt(m[1]);
+  return n >= 14 && n <= 21;
 }
 
 // ─── Haversine ────────────────────────────────────────────────────────────────
@@ -665,7 +678,6 @@ export default function MapaLeaflet({
         porLinea.get(key)!.push(t);
       });
 
-      // Acumular puntos de unión de la línea seleccionada para pintarlos después
       const puntosUnion: [number, number][] = [];
 
       const pintarTramo = (t: TramoMapa) => {
@@ -679,25 +691,33 @@ export default function MapaLeaflet({
         const opacity    = haySeleccion   ? (esSeleccionada ? 1 : 0.15) : 0.85;
         const colorFinal = esSeleccionada ? (nivel === "MT" ? "#7C3AED" : "#D97706") : color;
 
+        // ── Detección subterráneo — Anexo I Orden IET/2660/2015 ──────────────
+        // TI-1..12 = aéreo (continua) | TI-14..21 = subterráneo (discontinua)
+        const subterranea = esLineaSubterranea(t.codigo_ccuu);
+
         const poly = L.polyline(
           [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
-          { color: colorFinal, weight: peso, opacity }
+          {
+            color:     colorFinal,
+            weight:    peso,
+            opacity,
+            dashArray: subterranea ? "8 5" : undefined,
+          }
         );
         poly.on("click", () => { onLineaClick(t.id_linea); });
         poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, colorFinal, nivel));
         poly.addTo(lineasLayerRef.current);
 
-        // Acumular el punto de unión (lat_fin de cada segmento seleccionado)
         if (esSeleccionada) {
           puntosUnion.push([t.lat_fin, t.lon_fin]);
         }
       };
 
-      // No seleccionadas primero → seleccionada encima (evita solapamiento)
+      // No seleccionadas primero → seleccionada encima
       tramos.filter(t => t.id_linea !== lineaSeleccionada).forEach(pintarTramo);
       tramos.filter(t => t.id_linea === lineaSeleccionada).forEach(pintarTramo);
 
-      // Pintar puntos de unión en marcadoresLayerRef — quedan encima de todo
+      // Puntos de unión encima de todo
       puntosUnion.forEach(([lat, lon]) => {
         L.circleMarker([lat, lon], {
           radius:      3,
