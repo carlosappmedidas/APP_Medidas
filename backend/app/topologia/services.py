@@ -199,14 +199,26 @@ def _upsert_linea(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    obj.id_tramo      = registro["id_tramo"]
-    obj.cini          = registro.get("cini")
-    obj.codigo_ccuu   = registro.get("codigo_ccuu")
-    obj.nudo_inicio   = registro.get("nudo_inicio")
-    obj.nudo_fin      = registro.get("nudo_fin")
-    obj.nivel_tension = registro.get("nivel_tension")
-    obj.tension_kv    = registro.get("tension_kv")
-    obj.longitud_km   = registro.get("longitud_km")
+    obj.id_tramo                = registro["id_tramo"]
+    obj.cini                    = registro.get("cini")
+    obj.codigo_ccuu             = registro.get("codigo_ccuu")
+    obj.nudo_inicio             = registro.get("nudo_inicio")
+    obj.nudo_fin                = registro.get("nudo_fin")
+    obj.ccaa_1                  = registro.get("ccaa_1")
+    obj.nivel_tension           = registro.get("nivel_tension")
+    obj.propiedad               = registro.get("propiedad")
+    obj.tension_kv              = registro.get("tension_kv")
+    obj.tension_construccion_kv = registro.get("tension_construccion_kv")
+    obj.longitud_km             = registro.get("longitud_km")
+    obj.resistencia_ohm         = registro.get("resistencia_ohm")
+    obj.reactancia_ohm          = registro.get("reactancia_ohm")
+    obj.intensidad_a            = registro.get("intensidad_a")
+    obj.punto_frontera          = registro.get("punto_frontera")
+    obj.modelo                  = registro.get("modelo")
+    obj.operacion               = registro.get("operacion")
+    obj.fecha_aps               = registro.get("fecha_aps")
+    obj.causa_baja              = registro.get("causa_baja")
+    obj.fecha_baja              = registro.get("fecha_baja")
     return accion
 
 

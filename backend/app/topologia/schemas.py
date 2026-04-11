@@ -136,14 +136,34 @@ class CupsMapaRead(BaseModel):
 
 
 class TramoMapaRead(BaseModel):
-    """Tramo GIS para pintar la red eléctrica en el mapa."""
+    """
+    Tramo GIS para pintar la red eléctrica en el mapa.
+    Incluye campos del B1 (linea_inventario) para el tooltip configurable.
+    """
+    # Identificación (B11)
+    id_tramo: str
+    id_linea: Optional[str]
 
-    id_tramo:  str
-    id_linea:  Optional[str]
-    lat_ini:   Optional[float]
-    lon_ini:   Optional[float]
-    lat_fin:   Optional[float]
-    lon_fin:   Optional[float]
+    # Coordenadas (B11)
+    lat_ini: Optional[float]
+    lon_ini: Optional[float]
+    lat_fin: Optional[float]
+    lon_fin: Optional[float]
+
+    # Campos del B1 para el tooltip — pueden ser None si el B1 no se importó
+    cini:                   Optional[str]
+    codigo_ccuu:            Optional[str]
+    tension_kv:             Optional[float]
+    tension_construccion_kv: Optional[float]
+    longitud_km:            Optional[float]
+    resistencia_ohm:        Optional[float]
+    reactancia_ohm:         Optional[float]
+    intensidad_a:           Optional[float]
+    propiedad:              Optional[int]    # 0=terceros, 1=propia
+    operacion:              Optional[int]    # 0=abierto, 1=activo
+    causa_baja:             Optional[int]    # 0=activo, 1/2/3=baja
+    fecha_aps:              Optional[date]
+    fecha_baja:             Optional[date]
 
     class Config:
         from_attributes = True

@@ -5,21 +5,27 @@ Parsers para los ficheros B1 y B11 de la Circular CNMC 8/2021 (BOE-A-2021-21003)
 B1  — Tramos de líneas de distribución.
       Separador: ; | Sin cabecera
       Campos (índice 0-based, según Formulario B1 del BOE):
-        0:  IDENTIFICADOR_TRAMO   C(22) — id único del tramo
-        1:  CINI                  C(8)
-        2:  CODIGO_CCUU           C(6)  — tipología de instalación
-        3:  NUDO_INICIAL          C(22)
-        4:  NUDO_FINAL            C(22)
-        5:  CCAA_1                C(2)
-        6:  CCAA_2                C(2)  — nivel tensión (07=MT, 08=BT, etc.)
-        7:  PROPIEDAD             E(1)
-        8:  TENSION_EXPLOTACION   D(3,3) — kV (coma decimal)
-        9:  TENSION_CONSTRUCCION  D(3,3)
-        10: LONGITUD              D(4,3) — km
-        11: RESISTENCIA
-        12: REACTANCIA
-        13: INTENSIDAD
-        ...
+        0:  IDENTIFICADOR_TRAMO      C(22) — id único del tramo
+        1:  CINI                     C(8)
+        2:  CODIGO_CCUU              C(6)  — tipología de instalación
+        3:  NUDO_INICIAL             C(22)
+        4:  NUDO_FINAL               C(22)
+        5:  CCAA_1                   C(2)
+        6:  CCAA_2 / nivel_tension   C(2)  — 07=MT, 08=BT
+        7:  PROPIEDAD                E(1)  — 0=terceros, 1=propia
+        8:  TENSION_EXPLOTACION      D(3,3) — kV
+        9:  TENSION_CONSTRUCCION     D(3,3) — kV
+        10: LONGITUD                 D(4,3) — km
+        11: RESISTENCIA              D(4,3) — ohmios
+        12: REACTANCIA               D(4,3) — ohmios
+        13: INTENSIDAD               D(4,3) — amperios
+        14: (campo sin uso)
+        15: PUNTO_FRONTERA           E(1)  — 0=no, 1=sí
+        16: MODELO                   C(1)  — I=inventario, M=modelo red
+        17: OPERACION                E(1)  — 0=abierto, 1=activo
+        18: FECHA_APS                dd/mm/aaaa
+        19: CAUSA_BAJA               E(1)  — 0=activo, 1/2/3=baja
+        20: FECHA_BAJA               dd/mm/aaaa
 
 B11 — Segmentos GIS de los tramos (topología real de la red).
       Separador: ; | Sin cabecera
@@ -38,6 +44,7 @@ B11 — Segmentos GIS de los tramos (topología real de la red).
 from __future__ import annotations
 
 import math
+from datetime import date
 from typing import Any
 
 
@@ -100,22 +107,29 @@ def _int(val: str) -> int | None:
         return None
 
 
+def _date(val: str) -> date | None:
+    """Parsea fecha dd/mm/aaaa → date. Devuelve None si vacía o inválida."""
+    v = val.strip()
+    if not v or len(v) != 10:
+        return None
+    try:
+        d, m, y = v.split("/")
+        return date(int(y), int(m), int(d))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _get(campos: list[str], idx: int) -> str:
+    """Devuelve el campo en el índice dado o cadena vacía si no existe."""
+    return campos[idx].strip() if len(campos) > idx else ""
+
+
 # ─── Parser B1 ────────────────────────────────────────────────────────────────
 
 def parsear_b1(contenido: str) -> list[dict[str, Any]]:
     """
-    Parsea el fichero B1 según la estructura del Formulario B1 (BOE-A-2021-21003).
-
-    Campos usados:
-      0  → id_tramo          (IDENTIFICADOR_TRAMO)
-      1  → cini              (CINI)
-      2  → codigo_ccuu       (CODIGO_CCUU)
-      3  → nudo_inicio       (NUDO_INICIAL)
-      4  → nudo_fin          (NUDO_FINAL)
-      5  → ccaa_1
-      6  → ccaa_2            (en la práctica contiene nivel tensión: 07/08)
-      8  → tension_kv        (TENSION_EXPLOTACION, kV con coma decimal)
-      10 → longitud_km       (LONGITUD, km con coma decimal)
+    Parsea el fichero B1 según el Formulario B1 (BOE-A-2021-21003).
+    Extrae todos los campos relevantes para el tooltip del mapa.
     """
     registros: list[dict[str, Any]] = []
 
@@ -128,19 +142,40 @@ def parsear_b1(contenido: str) -> list[dict[str, Any]]:
         if len(campos) < 5:
             continue
 
-        id_tramo = campos[0].strip() or None
+        id_tramo = _get(campos, 0) or None
         if not id_tramo:
             continue
 
         registros.append({
+            # Identificación
             "id_tramo":    id_tramo,
-            "cini":        campos[1].strip() or None if len(campos) > 1 else None,
-            "codigo_ccuu": campos[2].strip() or None if len(campos) > 2 else None,
-            "nudo_inicio": campos[3].strip() or None if len(campos) > 3 else None,
-            "nudo_fin":    campos[4].strip() or None if len(campos) > 4 else None,
-            "nivel_tension": campos[6].strip() or None if len(campos) > 6 else None,
-            "tension_kv":  _float(campos[8])  if len(campos) > 8  else None,
-            "longitud_km": _float(campos[10]) if len(campos) > 10 else None,
+            "cini":        _get(campos, 1)  or None,
+            "codigo_ccuu": _get(campos, 2)  or None,
+
+            # Topología
+            "nudo_inicio": _get(campos, 3)  or None,
+            "nudo_fin":    _get(campos, 4)  or None,
+            "ccaa_1":      _get(campos, 5)  or None,
+
+            # Nivel tensión (campo 6 en práctica contiene 07/08)
+            "nivel_tension": _get(campos, 6) or None,
+
+            # Características eléctricas
+            "propiedad":              _int(_get(campos, 7)),
+            "tension_kv":             _float(_get(campos, 8)),
+            "tension_construccion_kv": _float(_get(campos, 9)),
+            "longitud_km":            _float(_get(campos, 10)),
+            "resistencia_ohm":        _float(_get(campos, 11)),
+            "reactancia_ohm":         _float(_get(campos, 12)),
+            "intensidad_a":           _float(_get(campos, 13)),
+
+            # Estado
+            "punto_frontera": _int(_get(campos, 15)),
+            "modelo":         _get(campos, 16) or None,
+            "operacion":      _int(_get(campos, 17)),
+            "fecha_aps":      _date(_get(campos, 18)),
+            "causa_baja":     _int(_get(campos, 19)),
+            "fecha_baja":     _date(_get(campos, 20)),
         })
 
     return registros
@@ -151,18 +186,7 @@ def parsear_b1(contenido: str) -> list[dict[str, Any]]:
 def parsear_b11(contenido: str) -> list[dict[str, Any]]:
     """
     Parsea el fichero B11 según el Formulario B1.1 (BOE-A-2021-21003).
-
-    Campos:
-      0 → id_segmento       (SEGMENTO)
-      1 → id_tramo          (IDENTIFICADOR_TRAMO)
-      2 → orden             (ORDEN_SEGMENTO)
-      3 → num_segmentos     (N_SEGMENTOS)
-      4 → utm_x_ini         (COORDENADAS_1 X)
-      5 → utm_y_ini         (COORDENADAS_1 Y)
-      6 → z_ini             (ignorado)
-      7 → utm_x_fin         (COORDENADAS_2 X)
-      8 → utm_y_fin         (COORDENADAS_2 Y)
-      9 → z_fin             (ignorado)
+    Convierte coordenadas UTM ETRS89 huso 30 → WGS84.
     """
     registros: list[dict[str, Any]] = []
 
@@ -175,10 +199,10 @@ def parsear_b11(contenido: str) -> list[dict[str, Any]]:
         if len(campos) < 9:
             continue
 
-        utm_x_ini = _float(campos[4])
-        utm_y_ini = _float(campos[5])
-        utm_x_fin = _float(campos[7])
-        utm_y_fin = _float(campos[8])
+        utm_x_ini = _float(_get(campos, 4))
+        utm_y_ini = _float(_get(campos, 5))
+        utm_x_fin = _float(_get(campos, 7))
+        utm_y_fin = _float(_get(campos, 8))
 
         lat_ini = lon_ini = None
         lat_fin = lon_fin = None
@@ -196,10 +220,10 @@ def parsear_b11(contenido: str) -> list[dict[str, Any]]:
                 pass
 
         registros.append({
-            "id_tramo":  campos[0].strip() or None,   # SEGMENTO — id único del segmento
-            "id_linea":  campos[1].strip() or None,   # IDENTIFICADOR_TRAMO — agrupa segmentos
-            "orden":     _int(campos[2]),
-            "num_tramo": _int(campos[3]),
+            "id_tramo":  _get(campos, 0) or None,   # SEGMENTO
+            "id_linea":  _get(campos, 1) or None,   # IDENTIFICADOR_TRAMO
+            "orden":     _int(_get(campos, 2)),
+            "num_tramo": _int(_get(campos, 3)),
             "utm_x_ini": utm_x_ini,
             "utm_y_ini": utm_y_ini,
             "utm_x_fin": utm_x_fin,

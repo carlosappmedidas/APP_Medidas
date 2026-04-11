@@ -11,6 +11,7 @@ from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.tenants.models import User
 from app.topologia import services
+from app.topologia.models import LineaInventario, LineaTramo
 from app.topologia.schemas import (
     CtInventarioRead,
     CtMapaRead,
@@ -138,15 +139,64 @@ def get_tramos_mapa(
 ) -> List[TramoMapaRead]:
     """
     Devuelve tramos GIS con coordenadas válidas para pintar la red en el mapa.
+    Hace JOIN con linea_inventario para incluir los campos del B1 en el tooltip.
     Si se pasa id_linea filtra solo los tramos de esa línea.
     """
     _assert_not_viewer(current_user)
-    return services.list_tramos_mapa(  # type: ignore[return-value]
-        db         = db,
-        tenant_id  = _tenant_id(current_user),
-        empresa_id = empresa_id,
-        id_linea   = id_linea,
+    tid = _tenant_id(current_user)
+
+    # JOIN: linea_tramo (B11) + linea_inventario (B1) por id_linea = id_tramo
+    q = (
+        db.query(LineaTramo, LineaInventario)
+        .outerjoin(
+            LineaInventario,
+            (LineaInventario.id_tramo   == LineaTramo.id_linea) &
+            (LineaInventario.tenant_id  == LineaTramo.tenant_id) &
+            (LineaInventario.empresa_id == LineaTramo.empresa_id),
+        )
+        .filter(
+            LineaTramo.tenant_id  == tid,
+            LineaTramo.empresa_id == empresa_id,
+            LineaTramo.lat_ini.isnot(None),
+            LineaTramo.lon_ini.isnot(None),
+            LineaTramo.lat_fin.isnot(None),
+            LineaTramo.lon_fin.isnot(None),
+        )
     )
+
+    if id_linea is not None:
+        q = q.filter(LineaTramo.id_linea == id_linea)
+
+    q = q.order_by(LineaTramo.id_linea, LineaTramo.orden)
+    filas = q.all()
+
+    resultado = []
+    for tramo, linea in filas:
+        resultado.append(TramoMapaRead(
+            # B11
+            id_tramo = tramo.id_tramo,
+            id_linea = tramo.id_linea,
+            lat_ini  = tramo.lat_ini,
+            lon_ini  = tramo.lon_ini,
+            lat_fin  = tramo.lat_fin,
+            lon_fin  = tramo.lon_fin,
+            # B1 — None si no se importó el B1
+            cini                    = linea.cini                    if linea else None,
+            codigo_ccuu             = linea.codigo_ccuu             if linea else None,
+            tension_kv              = linea.tension_kv              if linea else None,
+            tension_construccion_kv = linea.tension_construccion_kv if linea else None,
+            longitud_km             = linea.longitud_km             if linea else None,
+            resistencia_ohm         = linea.resistencia_ohm         if linea else None,
+            reactancia_ohm          = linea.reactancia_ohm          if linea else None,
+            intensidad_a            = linea.intensidad_a            if linea else None,
+            propiedad               = linea.propiedad               if linea else None,
+            operacion               = linea.operacion               if linea else None,
+            causa_baja              = linea.causa_baja              if linea else None,
+            fecha_aps               = linea.fecha_aps               if linea else None,
+            fecha_baja              = linea.fecha_baja              if linea else None,
+        ))
+
+    return resultado
 
 
 # ── Listado de CTs (para filtros y selectores) ────────────────────────────────
