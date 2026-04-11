@@ -12,6 +12,7 @@ import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
 import CargaSection from "./components/ingestion/CargaSection";
 import ComunicacionesSection from "./components/comunicaciones/ComunicacionesSection";
 import PerdidasSection from "./components/perdidas/PerdidasSection";
+import TopologiaSection from "./components/topologia/TopologiaSection";
 import UsersSection from "./components/admin/UsersSection";
 import SistemaSection from "./components/settings/SistemaSection";
 import ClientesSection from "./components/admin/ClientesSection";
@@ -36,6 +37,7 @@ type MainTab =
   | "carga"
   | "comunicaciones"
   | "perdidas"
+  | "topologia"
   | "ajustes"
   | "sistema";
 
@@ -53,6 +55,7 @@ const PAGE_TITLES: Record<MainTab, string> = {
   "carga":            "Carga de datos",
   "comunicaciones":   "Comunicaciones FTP",
   "perdidas":         "Pérdidas por transformación",
+  "topologia":        "Topología de red",
   "ajustes":          "Configuración",
   "sistema":          "Sistema",
 };
@@ -100,7 +103,7 @@ const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
   { id: "energia_pf_art15_kwh",            label: "E PF ART15",                 group: "ART15" },
   { id: "energia_frontera_dd_art15_kwh",    label: "E front DD ART15",           group: "ART15" },
   { id: "energia_generada_art15_kwh",       label: "E gen ART15",                group: "ART15" },
-  { id: "energia_neta_facturada_art15_kwh", label: "E neta ART15",              group: "ART15" },
+  { id: "energia_neta_facturada_art15_kwh", label: "E neta ART15",               group: "ART15" },
   { id: "perdidas_e_facturada_art15_kwh",   label: "Pérdidas ART15 (kWh)",       group: "ART15" },
   { id: "perdidas_e_facturada_art15_pct",   label: "Pérdidas ART15 (%)",         group: "ART15" },
 ];
@@ -112,6 +115,9 @@ const SIDEBAR_STORAGE_KEY      = "ui_sidebar_collapsed";
 const AUTH_TOKEN_STORAGE_KEY   = "auth_token";
 const MEDIDAS_OPEN_STORAGE_KEY = "ui_medidas_open";
 const TABLAS_OPEN_STORAGE_KEY  = "ui_tablas_open";
+const PERDIDAS_OPEN_STORAGE_KEY = "ui_perdidas_open";
+
+const PERDIDAS_TABS: MainTab[] = ["perdidas", "topologia"];
 
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(() => {
@@ -122,14 +128,15 @@ export default function HomePage() {
   const [activeTab, setActiveTab]               = useState<MainTab>("dashboard");
   const [medidasOpen, setMedidasOpen]           = useState(false);
   const [tablasOpen, setTablasOpen]             = useState(false);
+  const [perdidasOpen, setPerdidasOpen]         = useState(false);
   const [currentUser, setCurrentUser]           = useState<User | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [homeMenuOpen, setHomeMenuOpen]         = useState(false);
 
   // ── Collapsibles ajustes ───────────────────────────────────────────────
-  const [showApariencia,   setShowApariencia]   = useState(false);
-  const [showTablas,       setShowTablas]       = useState(false);
-  const [showAlertConfig,  setShowAlertConfig]  = useState(false);
+  const [showApariencia,  setShowApariencia]  = useState(false);
+  const [showTablas,      setShowTablas]      = useState(false);
+  const [showAlertConfig, setShowAlertConfig] = useState(false);
 
   // ── Collapsibles alertas ───────────────────────────────────────────────
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
@@ -150,6 +157,7 @@ export default function HomePage() {
       if (localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1") setSidebarCollapsed(true);
       if (localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1") setMedidasOpen(true);
       if (localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1") setTablasOpen(true);
+      if (localStorage.getItem(PERDIDAS_OPEN_STORAGE_KEY) === "1") setPerdidasOpen(true);
     } catch { /* ignore */ }
     finally { setAuthReady(true); }
   }, []);
@@ -158,6 +166,7 @@ export default function HomePage() {
   useEffect(() => { try { localStorage.setItem("ui_active_tab", activeTab); } catch { /* */ } }, [activeTab]);
   useEffect(() => { try { localStorage.setItem(MEDIDAS_OPEN_STORAGE_KEY, medidasOpen ? "1" : "0"); } catch { /* */ } }, [medidasOpen]);
   useEffect(() => { try { localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0"); } catch { /* */ } }, [tablasOpen]);
+  useEffect(() => { try { localStorage.setItem(PERDIDAS_OPEN_STORAGE_KEY, perdidasOpen ? "1" : "0"); } catch { /* */ } }, [perdidasOpen]);
   useEffect(() => { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0"); } catch { /* */ } }, [sidebarCollapsed]);
 
   // ── Cargar usuario ─────────────────────────────────────────────────────
@@ -177,11 +186,7 @@ export default function HomePage() {
   }, [token]);
 
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
-
-  // Al cambiar a alertas, los collapsibles internos empiezan cerrados
-  useEffect(() => {
-    if (activeTab === "alertas") setShowAlertasGeneral(false);
-  }, [activeTab]);
+  useEffect(() => { if (activeTab === "alertas") setShowAlertasGeneral(false); }, [activeTab]);
 
   // ── Permisos ───────────────────────────────────────────────────────────
   const isViewer         = currentUser?.rol === "viewer";
@@ -199,19 +204,23 @@ export default function HomePage() {
     setToken(null); setCurrentUser(null); setHomeMenuOpen(false);
   };
   const handleGoHome = () => { setActiveTab("dashboard"); setHomeMenuOpen(false); };
+
   const handleMedidasClick = () => {
     setMedidasOpen((prev) => !prev);
     if (!["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab)) {
       setActiveTab("medidas");
     }
   };
-  const handleGoToTableSettings = () => { setActiveTab("ajustes"); setShowTablas(true); };
 
-  // Navegar a Configuración → abrir bloque de Configuración de Alertas
-  const handleGoToAlertConfig = () => {
-    setActiveTab("ajustes");
-    setShowAlertConfig(true);
+  const handlePerdidasClick = () => {
+    setPerdidasOpen((prev) => !prev);
+    if (!PERDIDAS_TABS.includes(activeTab)) {
+      setActiveTab("perdidas");
+    }
   };
+
+  const handleGoToTableSettings = () => { setActiveTab("ajustes"); setShowTablas(true); };
+  const handleGoToAlertConfig   = () => { setActiveTab("ajustes"); setShowAlertConfig(true); };
 
   // ── Loading / Login ────────────────────────────────────────────────────
   if (!authReady) {
@@ -270,6 +279,7 @@ export default function HomePage() {
               <span>Dashboard</span>
             </button>
 
+            {/* Medidas */}
             <div>
               <button onClick={handleMedidasClick}
                 className={["ui-nav-item", ["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
@@ -297,15 +307,12 @@ export default function HomePage() {
                       </div>
                     )}
                   </>
-
-                  {/* Objeciones — oculto para viewer */}
                   {!isViewer && (
                     <button type="button" onClick={() => setActiveTab("objeciones")}
                       className={["ui-nav-subitem", activeTab === "objeciones" ? "ui-nav-subitem--active" : ""].join(" ")}>
                       <span>Objeciones</span>
                     </button>
                   )}
-
                   <button type="button" onClick={() => setActiveTab("calendario-ree")}
                     className={["ui-nav-subitem", activeTab === "calendario-ree" ? "ui-nav-subitem--active" : ""].join(" ")}>
                     <span>Calendario REE</span>
@@ -344,7 +351,6 @@ export default function HomePage() {
               </button>
             )}
 
-            {/* Comunicaciones — oculto para viewer */}
             {!isViewer && (
               <button onClick={() => setActiveTab("comunicaciones")}
                 className={["ui-nav-item", activeTab === "comunicaciones" ? "ui-nav-item--active" : ""].join(" ")}>
@@ -352,12 +358,27 @@ export default function HomePage() {
               </button>
             )}
 
-            {/* Pérdidas — oculto para viewer */}
+            {/* Pérdidas — con submenú */}
             {!isViewer && (
-              <button onClick={() => setActiveTab("perdidas")}
-                className={["ui-nav-item", activeTab === "perdidas" ? "ui-nav-item--active" : ""].join(" ")}>
-                <span>Pérdidas</span>
-              </button>
+              <div>
+                <button onClick={handlePerdidasClick}
+                  className={["ui-nav-item", PERDIDAS_TABS.includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
+                  <span>Pérdidas</span>
+                  <span className="text-[10px] ui-muted">{perdidasOpen ? "▾" : "▸"}</span>
+                </button>
+                {perdidasOpen && (
+                  <div className="ui-nav-sub">
+                    <button type="button" onClick={() => setActiveTab("perdidas")}
+                      className={["ui-nav-subitem", activeTab === "perdidas" ? "ui-nav-subitem--active" : ""].join(" ")}>
+                      <span>Balance CT</span>
+                    </button>
+                    <button type="button" onClick={() => setActiveTab("topologia")}
+                      className={["ui-nav-subitem", activeTab === "topologia" ? "ui-nav-subitem--active" : ""].join(" ")}>
+                      <span>Topología</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             {canSeeAjustes && (
@@ -405,14 +426,10 @@ export default function HomePage() {
 
         {activeTab === "dashboard"      && <DashboardSection token={token} />}
         {activeTab === "medidas"        && <MedidasSection token={token} currentUser={currentUser} />}
-
-        {/* Objeciones — oculto para viewer */}
         {activeTab === "objeciones" && !isViewer && <ObjecionesSection token={token} currentUser={currentUser} />}
-
         {activeTab === "calendario-ree" && <CalendarioReeSection token={token} currentUser={currentUser} />}
         {activeTab === "graficos"       && <GraficosSection token={token} currentUser={currentUser} />}
 
-        {/* ── ALERTAS ── */}
         {activeTab === "alertas" && (
           <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div className="ui-collapsible-card">
@@ -430,11 +447,8 @@ export default function HomePage() {
               </button>
               {showAlertasGeneral && (
                 <div className="ui-collapsible-card__body">
-                  <AlertsSection
-                    token={token}
-                    currentUser={currentUser}
-                    onGoToAlertConfig={canManageAlerts ? handleGoToAlertConfig : undefined}
-                  />
+                  <AlertsSection token={token} currentUser={currentUser}
+                    onGoToAlertConfig={canManageAlerts ? handleGoToAlertConfig : undefined} />
                 </div>
               )}
             </div>
@@ -445,59 +459,50 @@ export default function HomePage() {
         {activeTab === "clientes"  && isSuperuser && <ClientesSection token={token} currentUser={currentUser} />}
 
         {activeTab === "tablas-general" && (
-          <MedidasGeneralSection
-            token={token}
+          <MedidasGeneralSection token={token}
             columnOrder={generalColumnOrder} setColumnOrder={setGeneralColumnOrder}
             hiddenColumns={generalHiddenColumns} setHiddenColumns={setGeneralHiddenColumns}
             onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
-            appearance={appearance}
-          />
+            appearance={appearance} />
         )}
         {activeTab === "tablas-ps" && (
-          <MedidasPsSection
-            token={token}
+          <MedidasPsSection token={token}
             columnOrder={psColumnOrder} setColumnOrder={setPsColumnOrder}
             hiddenColumns={psHiddenColumns} setHiddenColumns={setPsHiddenColumns}
             onGoToSettings={canSeeAjustes ? handleGoToTableSettings : undefined}
-            appearance={appearance}
-          />
+            appearance={appearance} />
         )}
 
         {activeTab === "carga" && !isViewer && <CargaSection token={token} />}
 
-        {/* Comunicaciones — oculto para viewer */}
         {activeTab === "comunicaciones" && !isViewer && (
           <ComunicacionesSection token={token} currentUser={currentUser} />
         )}
 
-        {/* Pérdidas — oculto para viewer */}
         {activeTab === "perdidas" && !isViewer && (
           <PerdidasSection token={token} currentUser={currentUser} />
         )}
 
+        {activeTab === "topologia" && !isViewer && (
+          <TopologiaSection token={token} currentUser={currentUser} />
+        )}
+
         {activeTab === "ajustes" && canSeeAjustes && (
           <section className="settings-page" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
             {canSeeApariencia && (
               <div className="ui-collapsible-card">
                 <button type="button" className="ui-collapsible-card__trigger"
                   onClick={() => setShowApariencia((v) => !v)}>
                   <div>
                     <div className="ui-collapsible-card__title">APARIENCIA DEL PANEL</div>
-                    <p className="ui-collapsible-card__subtitle">
-                      Cambia los colores del panel. Se aplica al momento en todas las secciones.
-                    </p>
+                    <p className="ui-collapsible-card__subtitle">Cambia los colores del panel. Se aplica al momento en todas las secciones.</p>
                   </div>
-                  <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
-                    {showApariencia ? "Ocultar" : "Mostrar"}
-                  </span>
+                  <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showApariencia ? "Ocultar" : "Mostrar"}</span>
                 </button>
                 {showApariencia && (
                   <div className="ui-collapsible-card__body">
                     <div className="flex justify-end mb-3">
-                      <button type="button" onClick={resetUiColors} className="ui-btn ui-btn-outline ui-btn-xs">
-                        Restaurar colores
-                      </button>
+                      <button type="button" onClick={resetUiColors} className="ui-btn ui-btn-outline ui-btn-xs">Restaurar colores</button>
                     </div>
                     <AppearanceSettingsSection token={token} />
                   </div>
@@ -506,17 +511,12 @@ export default function HomePage() {
             )}
 
             <div className="ui-collapsible-card">
-              <button type="button" className="ui-collapsible-card__trigger"
-                onClick={() => setShowTablas((v) => !v)}>
+              <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowTablas((v) => !v)}>
                 <div>
                   <div className="ui-collapsible-card__title">CONFIGURACIÓN DE TABLAS</div>
-                  <p className="ui-collapsible-card__subtitle">
-                    Apariencia, columnas y orden de las tablas de medidas. Se guarda en servidor.
-                  </p>
+                  <p className="ui-collapsible-card__subtitle">Apariencia, columnas y orden de las tablas de medidas. Se guarda en servidor.</p>
                 </div>
-                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
-                  {showTablas ? "Ocultar" : "Mostrar"}
-                </span>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showTablas ? "Ocultar" : "Mostrar"}</span>
               </button>
               {showTablas && (
                 <div className="ui-collapsible-card__body">
@@ -528,24 +528,18 @@ export default function HomePage() {
                     psColumnOrder={psColumnOrder} psHiddenColumns={psHiddenColumns}
                     psMeta={COLUMNS_PS_META}
                     onSetPsOrder={setPsColumnOrder} onSetPsHidden={setPsHiddenColumns}
-                    onResetAll={resetTableSettings}
-                  />
+                    onResetAll={resetTableSettings} />
                 </div>
               )}
             </div>
 
             <div className="ui-collapsible-card">
-              <button type="button" className="ui-collapsible-card__trigger"
-                onClick={() => setShowAlertConfig((v) => !v)}>
+              <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowAlertConfig((v) => !v)}>
                 <div>
                   <div className="ui-collapsible-card__title">CONFIGURACIÓN DE ALERTAS</div>
-                  <p className="ui-collapsible-card__subtitle">
-                    Umbrales y severidad de alertas por empresa y tipo de medida.
-                  </p>
+                  <p className="ui-collapsible-card__subtitle">Umbrales y severidad de alertas por empresa y tipo de medida.</p>
                 </div>
-                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
-                  {showAlertConfig ? "Ocultar" : "Mostrar"}
-                </span>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showAlertConfig ? "Ocultar" : "Mostrar"}</span>
               </button>
               {showAlertConfig && (
                 <div className="ui-collapsible-card__body">
@@ -553,7 +547,6 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-
           </section>
         )}
 

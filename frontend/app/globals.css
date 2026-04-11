@@ -1,7 +1,7 @@
 /* app/globals.css */
 @import "tailwindcss";
 
-/* Estilos especÃ­ficos de secciÃ³n â€” extraÃ­dos para mantener este fichero limpio */
+/* Estilos específicos de sección — extraídos para mantener este fichero limpio */
 @import "./styles/alerts.css";
 @import "./styles/settings.css";
 @import "./styles/appearance.css";
@@ -136,7 +136,7 @@
   --ghost-hover: rgba(255, 255, 255, 0.08);
 }
 
-/* â”€â”€ Tema claro â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Tema claro ──────────────────────────────────────────── */
 :root[data-theme="light"] {
   --app-bg: #f8fafc;
   --app-fg: #0f172a;
@@ -187,7 +187,7 @@
 }
 
 /* =========================================================
-   2) Accesibilidad / reducciÃ³n de movimiento
+   2) Accesibilidad / reducción de movimiento
    ========================================================= */
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -256,21 +256,15 @@ body {
 }
 
 /* =========================================================
-   6) Tarjeta desplegable estÃ¡ndar â€” ui-collapsible-card
-   PatrÃ³n unificado para Carga, Apariencia, Usuarios, Clientes, Alertas.
-   Sin padding en el wrapper â€” el trigger y el body lo controlan.
-   Resultado visual idÃ©ntico al patrÃ³n ya usado en CargaSection.
+   6) Tarjeta desplegable estándar — ui-collapsible-card
    ========================================================= */
-
-/* Wrapper â€” mismo aspecto visual que antes sin ui-card */
 .ui-collapsible-card {
   border-radius: var(--radius-card);
   border: 1px solid var(--card-border);
   background: var(--card-bg);
-  font-size: 0.875rem; /* text-sm */
+  font-size: 0.875rem;
 }
 
-/* BotÃ³n cabecera â€” full width, mismo padding que Carga/Apariencia/Usuarios */
 .ui-collapsible-card__trigger {
   display: flex;
   width: 100%;
@@ -280,27 +274,22 @@ body {
   padding: 16px;
   text-align: left;
   cursor: pointer;
-  /* Sin background propio â€” hereda el del wrapper */
 }
 
-/* TÃ­tulo en mayÃºsculas â€” idÃ©ntico a "CARGA DE FICHEROS", "APARIENCIA DEL PANEL" */
 .ui-collapsible-card__title {
-  font-size: var(--title-card);   /* 14px */
+  font-size: var(--title-card);
   font-weight: 600;
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  /* Equivale a: ui-card-title text-base md:text-lg */
 }
 
-/* SubtÃ­tulo â€” idÃ©ntico al ui-card-subtitle existente + mt-1 */
 .ui-collapsible-card__subtitle {
   margin-top: 4px;
-  font-size: var(--subtitle-card); /* 10px */
+  font-size: var(--subtitle-card);
   color: var(--text-muted);
 }
 
-/* Contenido desplegado â€” separador superior + padding lateral */
 .ui-collapsible-card__body {
   border-top: 1px solid var(--card-border);
   padding: 12px 16px 16px;
@@ -761,4 +750,17 @@ body {
   .ui-main {
     padding: 24px;
   }
+}
+
+/* =========================================================
+   18) Fix Leaflet — zoom con rueda y drag en Safari/Chrome
+   touch-action:none elimina el bloqueo de eventos de scroll
+   y pointer que Safari/Chrome aplican en modo touch.
+   ========================================================= */
+.leaflet-container {
+  touch-action: none !important;
+}
+
+.ui-main:has(.leaflet-container:hover) {
+  overflow-y: hidden !important;
 }
