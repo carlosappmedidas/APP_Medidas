@@ -24,7 +24,7 @@ from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router
 from app.objeciones.routes import router as objeciones_router
 from app.tenants.routes import router as auth_router
 from app.perdidas.routes import router as perdidas_router
-
+from app.topologia.routes import router as topologia_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
@@ -38,12 +38,10 @@ from app.measures.ps_models import PSPeriodContribution  # noqa: F401
 from app.measures.ps_detail_models import PSPeriodDetail  # noqa: F401
 from app.objeciones.models import ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, ObjecionCIL  # noqa: F401
 from app.perdidas.models import Concentrador, PerdidaDiaria  # noqa: F401
-
-
+from app.topologia.models import CtInventario, CtTransformador, CupsTopologia  # noqa: F401
 
 # Scheduler FTP
 from app.comunicaciones.scheduler import start_scheduler, stop_scheduler
-
 
 
 settings = get_settings()
@@ -106,4 +104,4 @@ app.include_router(medidas_graficos_ps_router)
 app.include_router(objeciones_router)
 app.include_router(comunicaciones_router)
 app.include_router(perdidas_router)
-
+app.include_router(topologia_router)
