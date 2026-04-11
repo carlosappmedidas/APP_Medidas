@@ -179,7 +179,7 @@ def parsear_a1(
             registros.append({
                 # Identificación
                 "cups":     cups,
-                "id_ct":    None,   # sin cruce directo en A1 — requiere GIS o PRIMER
+                "id_ct":    _str(_get(campos, 0)),   # NUDO de conexión del CUPS
                 "id_salida": None,  # no existe en A1
 
                 # Clasificación

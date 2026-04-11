@@ -189,10 +189,6 @@ def get_tabla_lineas(
     db:           Session       = Depends(get_db),
     current_user: User          = Depends(get_current_user),
 ) -> List[LineaTablaRead]:
-    """
-    Tabla de líneas con su CT asignado. Filtrable por CT, sin CT o método.
-    Útil para revisión y corrección manual de asociaciones.
-    """
     _assert_not_viewer(current_user)
     lineas, _ = services.list_lineas_tabla(
         db         = db,
@@ -220,10 +216,6 @@ def get_tabla_cups(
     db:           Session       = Depends(get_db),
     current_user: User          = Depends(get_current_user),
 ) -> List[CupsTablaRead]:
-    """
-    Tabla de CUPS con su CT asignado. Filtrable por CT, sin CT o método.
-    Útil para revisión y corrección manual de asociaciones.
-    """
     _assert_not_viewer(current_user)
     cups, _ = services.list_cups_tabla(
         db         = db,
@@ -272,35 +264,57 @@ def get_cups_mapa(
 @router.get("/mapa/tramos", response_model=List[TramoMapaRead])
 def get_tramos_mapa(
     empresa_id:   int           = Query(...),
-    id_linea:     Optional[str] = Query(None, description="Filtrar por id_linea (IDENTIFICADOR_TRAMO del B1)"),
+    id_linea:     Optional[str] = Query(None, description="Filtrar por id_linea"),
+    id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado a la línea"),
     db:           Session       = Depends(get_db),
     current_user: User          = Depends(get_current_user),
 ) -> List[TramoMapaRead]:
     """
     Devuelve segmentos GIS (B11) con coordenadas válidas.
-    Hace LEFT JOIN con linea_inventario (B1) por id_linea = id_tramo.
-    Incluye orden y num_tramo para identificar inicio/fin de cada línea.
+    Hace LEFT JOIN con linea_inventario (B1).
+    Si se pasa id_ct, devuelve solo los tramos cuyas líneas están asignadas a ese CT.
     """
     _assert_not_viewer(current_user)
     tid = _tenant_id(current_user)
 
-    q = (
-        db.query(LineaTramo, LineaInventario)
-        .outerjoin(
-            LineaInventario,
-            (LineaInventario.id_tramo   == LineaTramo.id_linea) &
-            (LineaInventario.tenant_id  == LineaTramo.tenant_id) &
-            (LineaInventario.empresa_id == LineaTramo.empresa_id),
+    # Si filtramos por CT usamos INNER JOIN para que solo salgan líneas con CT asignado
+    if id_ct is not None:
+        q = (
+            db.query(LineaTramo, LineaInventario)
+            .join(
+                LineaInventario,
+                (LineaInventario.id_tramo   == LineaTramo.id_linea) &
+                (LineaInventario.tenant_id  == LineaTramo.tenant_id) &
+                (LineaInventario.empresa_id == LineaTramo.empresa_id),
+            )
+            .filter(
+                LineaTramo.tenant_id  == tid,
+                LineaTramo.empresa_id == empresa_id,
+                LineaTramo.lat_ini.isnot(None),
+                LineaTramo.lon_ini.isnot(None),
+                LineaTramo.lat_fin.isnot(None),
+                LineaTramo.lon_fin.isnot(None),
+                LineaInventario.id_ct == id_ct,
+            )
         )
-        .filter(
-            LineaTramo.tenant_id  == tid,
-            LineaTramo.empresa_id == empresa_id,
-            LineaTramo.lat_ini.isnot(None),
-            LineaTramo.lon_ini.isnot(None),
-            LineaTramo.lat_fin.isnot(None),
-            LineaTramo.lon_fin.isnot(None),
+    else:
+        q = (
+            db.query(LineaTramo, LineaInventario)
+            .outerjoin(
+                LineaInventario,
+                (LineaInventario.id_tramo   == LineaTramo.id_linea) &
+                (LineaInventario.tenant_id  == LineaTramo.tenant_id) &
+                (LineaInventario.empresa_id == LineaTramo.empresa_id),
+            )
+            .filter(
+                LineaTramo.tenant_id  == tid,
+                LineaTramo.empresa_id == empresa_id,
+                LineaTramo.lat_ini.isnot(None),
+                LineaTramo.lon_ini.isnot(None),
+                LineaTramo.lat_fin.isnot(None),
+                LineaTramo.lon_fin.isnot(None),
+            )
         )
-    )
 
     if id_linea is not None:
         q = q.filter(LineaTramo.id_linea == id_linea)
@@ -311,7 +325,6 @@ def get_tramos_mapa(
     resultado = []
     for tramo, linea in filas:
         resultado.append(TramoMapaRead(
-            # B11
             id_tramo  = tramo.id_tramo,
             id_linea  = tramo.id_linea,
             orden     = tramo.orden,
@@ -320,7 +333,6 @@ def get_tramos_mapa(
             lon_ini   = tramo.lon_ini,
             lat_fin   = tramo.lat_fin,
             lon_fin   = tramo.lon_fin,
-            # B1 — None si no se importó el B1
             cini                    = linea.cini                    if linea else None,
             codigo_ccuu             = linea.codigo_ccuu             if linea else None,
             nudo_inicio             = linea.nudo_inicio             if linea else None,
@@ -354,9 +366,8 @@ def get_tramos_mapa(
             cuenta                  = linea.cuenta                  if linea else None,
             avifauna                = linea.avifauna                if linea else None,
             identificador_baja      = linea.identificador_baja      if linea else None,
-            # CT asignado
-            id_ct                = linea.id_ct                if linea else None,
-            metodo_asignacion_ct = linea.metodo_asignacion_ct if linea else None,
+            id_ct                   = linea.id_ct                   if linea else None,
+            metodo_asignacion_ct    = linea.metodo_asignacion_ct    if linea else None,
         ))
 
     return resultado
@@ -370,10 +381,6 @@ def get_lineas_disponibles(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ) -> List[str]:
-    """
-    Devuelve los identificadores únicos de línea (id_linea / IDENTIFICADOR_TRAMO del B1)
-    que tienen segmentos GIS en BD. Usado para el selector de línea en el mapa.
-    """
     _assert_not_viewer(current_user)
     tid = _tenant_id(current_user)
 

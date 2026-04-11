@@ -9,6 +9,7 @@ import type {
   TooltipLineasConfig, TooltipTramosConfig, TooltipCtsConfig, TooltipCupsConfig,
 } from "./MapaLeaflet";
 import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./MapaLeaflet";
+import TablePaginationFooter from "../ui/TablePaginationFooter";
 
 const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
   ssr: false,
@@ -18,8 +19,6 @@ const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
     </div>
   ),
 });
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface EmpresaOption { id: number; nombre: string; }
 
@@ -32,46 +31,42 @@ interface ImportResult {
   ficheros: string[];
 }
 
-interface Props {
-  token:         string | null;
-  currentUser:   User | null;
-  tooltipLineas: TooltipLineasConfig;
-  tooltipTramos: TooltipTramosConfig;
-  tooltipCts:    TooltipCtsConfig;
-  tooltipCups:   TooltipCupsConfig;
+interface CalcCtResult {
+  lineas_bfs: number; lineas_proximidad: number; lineas_sin_asoc: number; lineas_total: number;
+  cups_asignados: number; cups_sin_asoc: number; cups_total: number;
 }
 
-// ─── Clasificación BT/MT por tensión de explotación ──────────────────────────
-// Fuente de verdad: tension_kv del B1. Fallback por prefijo si no hay dato.
+interface LineaTabla {
+  id_tramo: string; nudo_inicio: string | null; nudo_fin: string | null;
+  tension_kv: number | null; longitud_km: number | null; codigo_ccuu: string | null;
+  operacion: number | null; fecha_aps: string | null;
+  id_ct: string | null; metodo_asignacion_ct: string | null;
+}
+
+interface CupsTabla {
+  cups: string; id_ct: string | null; tarifa: string | null;
+  tension_kv: number | null; potencia_contratada_kw: number | null;
+  municipio: string | null; conexion: string | null;
+  id_ct_asignado: string | null; metodo_asignacion_ct: string | null;
+}
+
+interface Props {
+  token: string | null; currentUser: User | null;
+  tooltipLineas: TooltipLineasConfig; tooltipTramos: TooltipTramosConfig;
+  tooltipCts: TooltipCtsConfig; tooltipCups: TooltipCupsConfig;
+}
 
 function esBTTramo(t: TramoMapa): boolean {
-  if (t.tension_kv !== null && t.tension_kv !== undefined)
-    return t.tension_kv <= 1;
+  if (t.tension_kv !== null && t.tension_kv !== undefined) return t.tension_kv <= 1;
   const id = t.id_linea ?? "";
   return id.includes("BTV") || id.includes("LBT");
 }
 
-// ─── Estilos ──────────────────────────────────────────────────────────────────
-
-const panelStyle: React.CSSProperties = {
-  background: "var(--card-bg)", border: "1px solid var(--card-border)",
-  borderRadius: "10px", overflow: "hidden", marginBottom: "10px",
-};
-const mapaPanelStyle: React.CSSProperties = {
-  background: "var(--card-bg)", border: "1px solid var(--card-border)",
-  borderRadius: "10px", overflow: "visible", marginBottom: "10px",
-};
-const panelHeaderStyle: React.CSSProperties = {
-  display: "flex", alignItems: "center", justifyContent: "space-between",
-  padding: "14px 20px", cursor: "pointer", userSelect: "none",
-};
-const panelTitleStyle: React.CSSProperties = {
-  fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em",
-  textTransform: "uppercase", color: "var(--text)",
-};
-const panelDescStyle: React.CSSProperties = {
-  fontSize: "11px", color: "var(--text-muted)", marginTop: 3,
-};
+const panelStyle: React.CSSProperties = { background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "10px", overflow: "hidden", marginBottom: "10px" };
+const mapaPanelStyle: React.CSSProperties = { background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "10px", overflow: "visible", marginBottom: "10px" };
+const panelHeaderStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", cursor: "pointer", userSelect: "none" };
+const panelTitleStyle: React.CSSProperties = { fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text)" };
+const panelDescStyle: React.CSSProperties = { fontSize: "11px", color: "var(--text-muted)", marginTop: 3 };
 
 const FICHEROS_CONFIG = [
   { key: "b2",  label: "B2 — Centros de transformación", desc: "CIR8_2021_B2_R1-XXX_AAAA.txt" },
@@ -83,19 +78,20 @@ const FICHEROS_CONFIG = [
 
 type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+const METODO_LABEL: Record<string, string> = { bfs: "Topológico", proximidad: "Proximidad", nudo_linea: "Nudo→Línea", manual: "Manual" };
+const METODO_COLOR: Record<string, string> = { bfs: "#1D9E75", proximidad: "#F59E0B", nudo_linea: "#378ADD", manual: "#A855F7" };
 
 export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, tooltipCts, tooltipCups }: Props) {
 
   const [panelImportOpen, setPanelImportOpen] = useState(false);
   const [panelMapaOpen,   setPanelMapaOpen]   = useState(true);
+  const [panelTablasOpen, setPanelTablasOpen] = useState(false);
   const [capasOpen,       setCapasOpen]       = useState(true);
 
   const [empresas,  setEmpresas]  = useState<EmpresaOption[]>([]);
   const [empresaId, setEmpresaId] = useState<number | "">("");
   const [anioDecl,  setAnioDecl]  = useState<string>(String(new Date().getFullYear()));
-
-  const [ficheros,     setFicheros]     = useState<Record<FicheroKey, File | null>>({ b2: null, b21: null, a1: null, b1: null, b11: null });
+  const [ficheros,  setFicheros]  = useState<Record<FicheroKey, File | null>>({ b2: null, b21: null, a1: null, b1: null, b11: null });
   const [importing,    setImporting]    = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError,  setImportError]  = useState<string | null>(null);
@@ -103,15 +99,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [cts,    setCts]    = useState<CtMapa[]>([]);
   const [cups,   setCups]   = useState<CupsMapa[]>([]);
   const [tramos, setTramos] = useState<TramoMapa[]>([]);
-
-  // Mapa id_linea → tension_kv para clasificar el selector de líneas
   const [tensionPorLinea, setTensionPorLinea] = useState<Map<string, number | null>>(new Map());
   const [lineas,          setLineas]          = useState<string[]>([]);
 
   const [loadingCts,    setLoadingCts]    = useState(false);
   const [loadingCups,   setLoadingCups]   = useState(false);
   const [loadingTramos, setLoadingTramos] = useState(false);
-
   const [mostrarCts,  setMostrarCts]  = useState(true);
   const [mostrarCups, setMostrarCups] = useState(true);
   const [mostrarBT,   setMostrarBT]   = useState(true);
@@ -119,25 +112,44 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
 
   const [ctSeleccionado,    setCtSeleccionado]    = useState<string>("");
   const [lineaSeleccionada, setLineaSeleccionada] = useState<string | null>(null);
-
-  // ── Búsqueda de línea ──────────────────────────────────────────────────────
   const [busquedaLinea,          setBusquedaLinea]          = useState<string>("");
   const [busquedaLineaPendiente, setBusquedaLineaPendiente] = useState<string>("");
-  const inputBusquedaLineaRef = useRef<HTMLInputElement>(null);
-
-  // ── Búsqueda de CT ────────────────────────────────────────────────────────
   const [busquedaCt,          setBusquedaCt]          = useState<string>("");
   const [busquedaCtPendiente, setBusquedaCtPendiente] = useState<string>("");
-  const inputBusquedaCtRef = useRef<HTMLInputElement>(null);
+  const inputBusquedaLineaRef = useRef<HTMLInputElement>(null);
+  const inputBusquedaCtRef    = useRef<HTMLInputElement>(null);
+
+  // Tablas
+  const [tablaActiva,    setTablaActiva]    = useState<"lineas" | "cups">("lineas");
+  const [calcCt,         setCalcCt]         = useState(false);
+  const [calcCtResult,   setCalcCtResult]   = useState<CalcCtResult | null>(null);
+  const [calcCtError,    setCalcCtError]    = useState<string | null>(null);
+  const [lineasTabla,    setLineasTabla]    = useState<LineaTabla[]>([]);
+  const [cupsTabla,      setCupsTabla]      = useState<CupsTabla[]>([]);
+  const [loadingTabla,   setLoadingTabla]   = useState(false);
+  const [hasLoadedTabla, setHasLoadedTabla] = useState(false);
+  const [filtroCtTabla,  setFiltroCtTabla]  = useState<string>("");
+  const [filtroSinCt,    setFiltroSinCt]    = useState(false);
+  const [filtroMetodo,   setFiltroMetodo]   = useState<string>("");
+
+  // Paginación
+  const [pageLineas,     setPageLineas]     = useState(0);
+  const [pageSizeLineas, setPageSizeLineas] = useState(50);
+  const [pageCups,       setPageCups]       = useState(0);
+  const [pageSizeCups,   setPageSizeCups]   = useState(50);
+
+  // Edición inline
+  const [editandoLinea, setEditandoLinea] = useState<string | null>(null);
+  const [editandoCups,  setEditandoCups]  = useState<string | null>(null);
+  const [editValor,     setEditValor]     = useState<string>("");
+  const [guardando,     setGuardando]     = useState(false);
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
   useEffect(() => {
     if (!token) return;
     fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) })
-      .then(r => r.ok ? r.json() : [])
-      .then(setEmpresas)
-      .catch(() => {});
+      .then(r => r.ok ? r.json() : []).then(setEmpresas).catch(() => {});
   }, [token]);
 
   const cargarCts = useCallback(async () => {
@@ -147,8 +159,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       const res = await fetch(`${API_BASE_URL}/topologia/mapa/cts?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       setCts(await res.json());
-    } catch { setCts([]); }
-    finally { setLoadingCts(false); }
+    } catch { setCts([]); } finally { setLoadingCts(false); }
   }, [token, empresaId]);
 
   const cargarCups = useCallback(async () => {
@@ -160,155 +171,181 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       const res = await fetch(`${API_BASE_URL}/topologia/mapa/cups?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       setCups(await res.json());
-    } catch { setCups([]); }
-    finally { setLoadingCups(false); }
+    } catch { setCups([]); } finally { setLoadingCups(false); }
   }, [token, empresaId, ctSeleccionado]);
 
   const cargarTramos = useCallback(async () => {
     if (!token || !empresaId) return;
     setLoadingTramos(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/topologia/mapa/tramos?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
+      const params = new URLSearchParams({ empresa_id: String(empresaId) });
+      if (ctSeleccionado) params.set("id_ct", ctSeleccionado);
+      const res = await fetch(`${API_BASE_URL}/topologia/mapa/tramos?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       const data: TramoMapa[] = await res.json();
       setTramos(data);
+      if (!ctSeleccionado) {
+        const mapa = new Map<string, number | null>();
+        data.forEach(t => { if (t.id_linea && !mapa.has(t.id_linea)) mapa.set(t.id_linea, t.tension_kv); });
+        setTensionPorLinea(mapa);
+        setLineas(Array.from(new Set(data.map(t => t.id_linea).filter(Boolean) as string[])).sort());
+      }
+    } catch { setTramos([]); } finally { setLoadingTramos(false); }
+  }, [token, empresaId, ctSeleccionado]);
 
-      // Construir mapa id_linea → tension_kv (primer tramo con dato gana)
-      const mapa = new Map<string, number | null>();
-      data.forEach(t => {
-        if (t.id_linea && !mapa.has(t.id_linea)) {
-          mapa.set(t.id_linea, t.tension_kv);
-        }
-      });
-      setTensionPorLinea(mapa);
+  const cargarTablaLineas = useCallback(async () => {
+    if (!token || !empresaId) return;
+    setLoadingTabla(true);
+    try {
+      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: "2000" });
+      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      if (filtroSinCt)   params.set("sin_ct", "true");
+      if (filtroMetodo)  params.set("metodo", filtroMetodo);
+      const res = await fetch(`${API_BASE_URL}/topologia/tabla/lineas?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      setLineasTabla(await res.json());
+      setHasLoadedTabla(true); setPageLineas(0);
+    } catch { setLineasTabla([]); } finally { setLoadingTabla(false); }
+  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo]);
 
-      const lineasUnicas = Array.from(new Set(data.map(t => t.id_linea).filter(Boolean) as string[])).sort();
-      setLineas(lineasUnicas);
-    } catch { setTramos([]); setLineas([]); setTensionPorLinea(new Map()); }
-    finally { setLoadingTramos(false); }
-  }, [token, empresaId]);
+  const cargarTablaCups = useCallback(async () => {
+    if (!token || !empresaId) return;
+    setLoadingTabla(true);
+    try {
+      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: "2000" });
+      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      if (filtroSinCt)   params.set("sin_ct", "true");
+      if (filtroMetodo)  params.set("metodo", filtroMetodo);
+      const res = await fetch(`${API_BASE_URL}/topologia/tabla/cups?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      setCupsTabla(await res.json());
+      setHasLoadedTabla(true); setPageCups(0);
+    } catch { setCupsTabla([]); } finally { setLoadingTabla(false); }
+  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo]);
+
+  // Carga inicial
+  useEffect(() => {
+    if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId]);
+
+  // Recarga tramos y cups cuando cambia CT
+  useEffect(() => {
+    if (empresaId) { cargarCups(); cargarTramos(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctSeleccionado]);
 
   useEffect(() => {
-    if (empresaId) { cargarCts(); cargarCups(); cargarTramos(); }
-  }, [empresaId, cargarCts, cargarCups, cargarTramos]);
+    if (empresaId && panelTablasOpen) {
+      if (tablaActiva === "lineas") cargarTablaLineas();
+      else cargarTablaCups();
+    }
+  }, [empresaId, panelTablasOpen, tablaActiva, cargarTablaLineas, cargarTablaCups]);
 
-  useEffect(() => {
-    if (empresaId) cargarCups();
-  }, [ctSeleccionado, empresaId, cargarCups]);
-
-  // ── Filtrado por capa — usa tension_kv como fuente de verdad ──────────────
-  const tramosFiltrados = tramos.filter(t => {
-    if (esBTTramo(t)) return mostrarBT;
-    return mostrarMT;
-  });
-
+  const tramosFiltrados = tramos.filter(t => esBTTramo(t) ? mostrarBT : mostrarMT);
   const numBT = tramos.filter(t =>  esBTTramo(t)).length;
   const numMT = tramos.filter(t => !esBTTramo(t)).length;
 
-  // Clasificar líneas usando el mapa tension_kv acumulado en cargarTramos
   const esBTLinea = (id: string): boolean => {
     const tension = tensionPorLinea.get(id);
     if (tension !== null && tension !== undefined) return tension <= 1;
     return id.includes("BTV") || id.includes("LBT");
   };
+  const lineasFiltradas  = lineas.filter(id => esBTLinea(id) ? mostrarBT : mostrarMT);
+  const hayAlgunFichero  = Object.values(ficheros).some(f => f !== null);
+  const lineasEnSelect   = busquedaLinea ? lineasFiltradas.filter(id => id.toUpperCase().includes(busquedaLinea.toUpperCase())) : lineasFiltradas;
+  const ctsFiltrados     = busquedaCt    ? cts.filter(ct => ct.id_ct.toUpperCase().includes(busquedaCt.toUpperCase()) || ct.nombre.toUpperCase().includes(busquedaCt.toUpperCase())) : cts;
 
-  const lineasFiltradas = lineas.filter(id => {
-    if (esBTLinea(id)) return mostrarBT;
-    return mostrarMT;
-  });
+  // Paginación client-side
+  const startLineas    = pageLineas * pageSizeLineas;
+  const endLineas      = Math.min(startLineas + pageSizeLineas, lineasTabla.length);
+  const totalPagLineas = Math.max(1, Math.ceil(lineasTabla.length / pageSizeLineas));
+  const lineasPagina   = lineasTabla.slice(startLineas, endLineas);
+  const startCups      = pageCups * pageSizeCups;
+  const endCups        = Math.min(startCups + pageSizeCups, cupsTabla.length);
+  const totalPagCups   = Math.max(1, Math.ceil(cupsTabla.length / pageSizeCups));
+  const cupsPagina     = cupsTabla.slice(startCups, endCups);
 
-  const hayAlgunFichero = Object.values(ficheros).some(f => f !== null);
+  const handleCalcularCt = async () => {
+    if (!token || !empresaId) return;
+    setCalcCt(true); setCalcCtError(null); setCalcCtResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/topologia/calcular-ct?empresa_id=${empresaId}`, { method: "POST", headers: getAuthHeaders(token) });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error((err as { detail?: string }).detail || `Error ${res.status}`); }
+      setCalcCtResult(await res.json());
+      cargarCups(); cargarTramos();
+      if (tablaActiva === "lineas") cargarTablaLineas(); else cargarTablaCups();
+    } catch (e) { setCalcCtError(e instanceof Error ? e.message : "Error calculando CT"); }
+    finally { setCalcCt(false); }
+  };
+
+  const handleGuardarLinea = async (id_tramo: string) => {
+    if (!token || !empresaId) return;
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/topologia/lineas/${encodeURIComponent(id_tramo)}/ct?empresa_id=${empresaId}`, {
+        method: "PATCH", headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ id_ct: editValor || null }),
+      });
+      if (!res.ok) throw new Error();
+      setEditandoLinea(null); cargarTablaLineas();
+    } catch { } finally { setGuardando(false); }
+  };
+
+  const handleGuardarCups = async (cups: string) => {
+    if (!token || !empresaId) return;
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/topologia/cups/${encodeURIComponent(cups)}/ct?empresa_id=${empresaId}`, {
+        method: "PATCH", headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ id_ct: editValor || null }),
+      });
+      if (!res.ok) throw new Error();
+      setEditandoCups(null); cargarTablaCups();
+    } catch { } finally { setGuardando(false); }
+  };
 
   const handleImportar = async () => {
     if (!token || !empresaId || !hayAlgunFichero) return;
     setImporting(true); setImportError(null); setImportResult(null);
     const fd = new FormData();
-    fd.append("empresa_id", String(empresaId));
-    fd.append("anio_declaracion", anioDecl);
-    (Object.entries(ficheros) as [FicheroKey, File | null][]).forEach(([key, file]) => {
-      if (file) fd.append(key, file);
-    });
+    fd.append("empresa_id", String(empresaId)); fd.append("anio_declaracion", anioDecl);
+    (Object.entries(ficheros) as [FicheroKey, File | null][]).forEach(([key, file]) => { if (file) fd.append(key, file); });
     try {
-      const res = await fetch(`${API_BASE_URL}/topologia/importar`, {
-        method: "POST", headers: getAuthHeaders(token), body: fd,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
-      }
+      const res = await fetch(`${API_BASE_URL}/topologia/importar`, { method: "POST", headers: getAuthHeaders(token), body: fd });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error((err as { detail?: string }).detail || `Error ${res.status}`); }
       setImportResult(await res.json() as ImportResult);
       cargarCts(); cargarCups(); cargarTramos();
-    } catch (e: unknown) {
-      setImportError(e instanceof Error ? e.message : "Error importando");
-    } finally { setImporting(false); }
+      if (panelTablasOpen) { if (tablaActiva === "lineas") cargarTablaLineas(); else cargarTablaCups(); }
+    } catch (e: unknown) { setImportError(e instanceof Error ? e.message : "Error importando"); }
+    finally { setImporting(false); }
   };
 
-  // Líneas filtradas por búsqueda activa
-  const lineasEnSelect = busquedaLinea
-    ? lineasFiltradas.filter(id => id.toUpperCase().includes(busquedaLinea.toUpperCase()))
-    : lineasFiltradas;
-
-  // CTs filtrados por búsqueda activa
-  const ctsFiltrados = busquedaCt
-    ? cts.filter(ct =>
-        ct.id_ct.toUpperCase().includes(busquedaCt.toUpperCase()) ||
-        ct.nombre.toUpperCase().includes(busquedaCt.toUpperCase())
-      )
-    : cts;
-
-  // ── Handlers búsqueda línea ───────────────────────────────────────────────
   const handleBuscarLinea = () => {
-    const q = busquedaLineaPendiente.trim();
-    setBusquedaLinea(q);
-    const coincidencias = lineasFiltradas.filter(id => id.toUpperCase().includes(q.toUpperCase()));
-    if (coincidencias.length === 1) setLineaSeleccionada(coincidencias[0]);
-    else setLineaSeleccionada(null);
+    const q = busquedaLineaPendiente.trim(); setBusquedaLinea(q);
+    const c = lineasFiltradas.filter(id => id.toUpperCase().includes(q.toUpperCase()));
+    if (c.length === 1) setLineaSeleccionada(c[0]); else setLineaSeleccionada(null);
   };
-  const handleBusquedaLineaKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleBuscarLinea(); };
-  const handleLimpiarLinea = () => {
-    setBusquedaLinea(""); setBusquedaLineaPendiente(""); setLineaSeleccionada(null);
-    inputBusquedaLineaRef.current?.focus();
-  };
-
-  // ── Handlers búsqueda CT ──────────────────────────────────────────────────
   const handleBuscarCt = () => {
-    const q = busquedaCtPendiente.trim();
-    setBusquedaCt(q);
-    const coincidencias = cts.filter(ct =>
-      ct.id_ct.toUpperCase().includes(q.toUpperCase()) ||
-      ct.nombre.toUpperCase().includes(q.toUpperCase())
-    );
-    if (coincidencias.length === 1) setCtSeleccionado(coincidencias[0].id_ct);
-    else setCtSeleccionado("");
+    const q = busquedaCtPendiente.trim(); setBusquedaCt(q);
+    const c = cts.filter(ct => ct.id_ct.toUpperCase().includes(q.toUpperCase()) || ct.nombre.toUpperCase().includes(q.toUpperCase()));
+    if (c.length === 1) setCtSeleccionado(c[0].id_ct); else setCtSeleccionado("");
   };
-  const handleBusquedaCtKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleBuscarCt(); };
-  const handleLimpiarCt = () => {
-    setBusquedaCt(""); setBusquedaCtPendiente(""); setCtSeleccionado("");
-    inputBusquedaCtRef.current?.focus();
-  };
+  const handleLimpiarLinea = () => { setBusquedaLinea(""); setBusquedaLineaPendiente(""); setLineaSeleccionada(null); inputBusquedaLineaRef.current?.focus(); };
+  const handleLimpiarCt    = () => { setBusquedaCt(""); setBusquedaCtPendiente(""); setCtSeleccionado(""); inputBusquedaCtRef.current?.focus(); };
+  const handleLineaClick   = (id: string | null) => { setLineaSeleccionada(id); if (id) { setBusquedaLineaPendiente(""); setBusquedaLinea(""); } };
 
-  const handleLineaClick = (id: string | null) => {
-    setLineaSeleccionada(id);
-    if (id) { setBusquedaLineaPendiente(""); setBusquedaLinea(""); }
-  };
-
-  // ── Subcomponente desplegable ─────────────────────────────────────────────
   const SeccionLabel = ({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) => (
-    <button
-      type="button"
-      onClick={onToggle}
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        width: "100%", background: "none", border: "none", cursor: "pointer",
-        padding: 0, marginBottom: open ? 8 : 0,
-      }}
-    >
-      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {label}
-      </span>
+    <button type="button" onClick={onToggle} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: open ? 8 : 0 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
       <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{open ? "▾" : "▸"}</span>
     </button>
   );
+
+  const BadgeMetodo = ({ metodo }: { metodo: string | null }) => {
+    if (!metodo) return <span style={{ color: "var(--text-muted)", fontSize: 10 }}>—</span>;
+    return <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: `${METODO_COLOR[metodo] ?? "#888"}22`, color: METODO_COLOR[metodo] ?? "#888", border: `1px solid ${METODO_COLOR[metodo] ?? "#888"}44` }}>{METODO_LABEL[metodo] ?? metodo}</span>;
+  };
 
   return (
     <div className="text-sm">
@@ -320,10 +357,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             <div style={panelTitleStyle}>📥 Importar inventario CNMC 8/2021</div>
             <div style={panelDescStyle}>Carga los ficheros B2, B21, A1, B1 y B11 para poblar el mapa topológico</div>
           </div>
-          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanelImportOpen(v => !v); }}>
-            {panelImportOpen ? "Ocultar" : "Mostrar"}
-          </button>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={e => { e.stopPropagation(); setPanelImportOpen(v => !v); }}>{panelImportOpen ? "Ocultar" : "Mostrar"}</button>
         </div>
         {panelImportOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
@@ -331,16 +365,14 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 200 }}
-                  value={empresaId} onChange={e => setEmpresaId(e.target.value === "" ? "" : Number(e.target.value))}>
+                <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 200 }} value={empresaId} onChange={e => setEmpresaId(e.target.value === "" ? "" : Number(e.target.value))}>
                   <option value="">Selecciona empresa</option>
                   {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Año declaración</label>
-                <input className="ui-input" type="number" style={{ fontSize: 11, height: 30, width: 80 }}
-                  value={anioDecl} onChange={e => setAnioDecl(e.target.value)} />
+                <input className="ui-input" type="number" style={{ fontSize: 11, height: 30, width: 80 }} value={anioDecl} onChange={e => setAnioDecl(e.target.value)} />
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
@@ -348,8 +380,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 <div key={key} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{desc}</div>
-                  <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }}
-                    onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
+                  <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }} onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
                   {ficheros[key] && <div style={{ fontSize: 10, color: "#1D9E75", marginTop: 4 }}>✓ {ficheros[key]!.name}</div>}
                 </div>
               ))}
@@ -359,22 +390,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 <div key={key} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{desc}</div>
-                  <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }}
-                    onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
+                  <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }} onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
                   {ficheros[key] && <div style={{ fontSize: 10, color: "#1D9E75", marginTop: 4 }}>✓ {ficheros[key]!.name}</div>}
                 </div>
               ))}
               <div />
             </div>
-            <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-              onClick={handleImportar} disabled={importing || !empresaId || !hayAlgunFichero}>
-              {importing ? "Importando..." : "Importar ficheros"}
-            </button>
+            <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={handleImportar} disabled={importing || !empresaId || !hayAlgunFichero}>{importing ? "Importando..." : "Importar ficheros"}</button>
             {importResult && (
               <div style={{ marginTop: 16, background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
-                  Resultado — ficheros: {importResult.ficheros.join(", ")}
-                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>Resultado — ficheros: {importResult.ficheros.join(", ")}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   {[
                     { label: "CTs (B2)",              ins: importResult.cts_insertados,    act: importResult.cts_actualizados,    err: importResult.cts_errores },
@@ -408,38 +433,29 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 : "Selecciona una empresa para cargar el mapa"}
             </div>
           </div>
-          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={e => { e.stopPropagation(); setPanelMapaOpen(v => !v); }}>
-            {panelMapaOpen ? "Ocultar" : "Mostrar"}
-          </button>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={e => { e.stopPropagation(); setPanelMapaOpen(v => !v); }}>{panelMapaOpen ? "Ocultar" : "Mostrar"}</button>
         </div>
 
         {panelMapaOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)" }}>
             <div style={{ display: "flex", height: 580 }}>
-
-              {/* ── Panel lateral ── */}
               <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid var(--card-border)", padding: "14px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
 
-                {/* Empresa */}
                 <div>
                   <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
-                  <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                    value={empresaId}
+                  <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={empresaId}
                     onChange={e => {
                       setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
                       setCtSeleccionado(""); setLineaSeleccionada(null);
                       setBusquedaLinea(""); setBusquedaLineaPendiente("");
                       setBusquedaCt(""); setBusquedaCtPendiente("");
-                      setCts([]); setCups([]); setTramos([]); setLineas([]);
-                      setTensionPorLinea(new Map());
+                      setCts([]); setCups([]); setTramos([]); setLineas([]); setTensionPorLinea(new Map());
                     }}>
                     <option value="">Selecciona empresa</option>
                     {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
                   </select>
                 </div>
 
-                {/* ── Capas — desplegable ── */}
                 <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
                   <SeccionLabel label="Capas" open={capasOpen} onToggle={() => setCapasOpen(v => !v)} />
                   {capasOpen && (
@@ -456,7 +472,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       </label>
                       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
                         <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} />
-                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", display: "inline-block" }} />
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", display: "inline-block" }} />
                         CTs {loadingCts ? "…" : `(${cts.length})`}
                       </label>
                       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
@@ -468,146 +484,298 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   )}
                 </div>
 
-                {/* ── Selector de línea ── */}
                 {lineasFiltradas.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Seleccionar línea
-                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Seleccionar línea</div>
                     <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                      <input
-                        ref={inputBusquedaLineaRef}
-                        className="ui-input"
-                        style={{ flex: 1, fontSize: 11, height: 28, fontFamily: "monospace" }}
-                        placeholder="Buscar ID..."
-                        value={busquedaLineaPendiente}
+                      <input ref={inputBusquedaLineaRef} className="ui-input" style={{ flex: 1, fontSize: 11, height: 28, fontFamily: "monospace" }}
+                        placeholder="Buscar ID..." value={busquedaLineaPendiente}
                         onChange={e => setBusquedaLineaPendiente(e.target.value)}
-                        onKeyDown={handleBusquedaLineaKeyDown}
-                      />
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                        style={{ height: 28, padding: "0 8px", fontSize: 13, flexShrink: 0 }}
-                        onClick={handleBuscarLinea} title="Buscar (Enter)">
-                        🔍
-                      </button>
+                        onKeyDown={e => { if (e.key === "Enter") handleBuscarLinea(); }} />
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28, padding: "0 8px", fontSize: 13 }} onClick={handleBuscarLinea}>🔍</button>
                     </div>
-                    {busquedaLinea && (
-                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                        {lineasEnSelect.length} resultado{lineasEnSelect.length !== 1 ? "s" : ""}
-                        {lineasEnSelect.length === 0 && " — no encontrada"}
-                      </div>
-                    )}
-                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={lineaSeleccionada ?? ""}
-                      onChange={e => setLineaSeleccionada(e.target.value || null)}>
+                    {busquedaLinea && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{lineasEnSelect.length} resultado{lineasEnSelect.length !== 1 ? "s" : ""}</div>}
+                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={lineaSeleccionada ?? ""} onChange={e => setLineaSeleccionada(e.target.value || null)}>
                       <option value="">Todas las líneas</option>
-                      {lineasEnSelect.map(id => (
-                        <option key={id} value={id}>{id}</option>
-                      ))}
+                      {lineasEnSelect.map(id => <option key={id} value={id}>{id}</option>)}
                     </select>
                     {(lineaSeleccionada || busquedaLinea) && (
-                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                        style={{ marginTop: 6, fontSize: 10 }}
-                        onClick={handleLimpiarLinea}>
-                        ✕ Limpiar
-                      </button>
-                    )}
-                    {lineaSeleccionada && (
-                      <div style={{ marginTop: 8, fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                        <div>▶ = inicio del tramo</div>
-                        <div>■ = fin del tramo</div>
-                        <div style={{ marginTop: 4 }}>Clic en línea para seleccionar</div>
-                      </div>
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }} onClick={handleLimpiarLinea}>✕ Limpiar</button>
                     )}
                   </div>
                 )}
 
-                {/* ── Filtro CUPS por CT ── */}
                 {cts.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Filtrar CUPS por CT
-                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Filtrar por CT</div>
+                    {ctSeleccionado && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Mostrando CT + líneas + CUPS</div>}
                     <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                      <input
-                        ref={inputBusquedaCtRef}
-                        className="ui-input"
-                        style={{ flex: 1, fontSize: 11, height: 28 }}
-                        placeholder="Buscar CT..."
-                        value={busquedaCtPendiente}
+                      <input ref={inputBusquedaCtRef} className="ui-input" style={{ flex: 1, fontSize: 11, height: 28 }}
+                        placeholder="Buscar CT..." value={busquedaCtPendiente}
                         onChange={e => setBusquedaCtPendiente(e.target.value)}
-                        onKeyDown={handleBusquedaCtKeyDown}
-                      />
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                        style={{ height: 28, padding: "0 8px", fontSize: 13, flexShrink: 0 }}
-                        onClick={handleBuscarCt} title="Buscar (Enter)">
-                        🔍
-                      </button>
+                        onKeyDown={e => { if (e.key === "Enter") handleBuscarCt(); }} />
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28, padding: "0 8px", fontSize: 13 }} onClick={handleBuscarCt}>🔍</button>
                     </div>
-                    {busquedaCt && (
-                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                        {ctsFiltrados.length} resultado{ctsFiltrados.length !== 1 ? "s" : ""}
-                        {ctsFiltrados.length === 0 && " — no encontrado"}
-                      </div>
-                    )}
-                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }}
-                      value={ctSeleccionado}
-                      onChange={e => setCtSeleccionado(e.target.value)}>
+                    {busquedaCt && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{ctsFiltrados.length} resultado{ctsFiltrados.length !== 1 ? "s" : ""}</div>}
+                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={ctSeleccionado} onChange={e => setCtSeleccionado(e.target.value)}>
                       <option value="">Todos los CTs</option>
-                      {ctsFiltrados.map(ct => (
-                        <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>
-                      ))}
+                      {ctsFiltrados.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
                     </select>
                     {(ctSeleccionado || busquedaCt) && (
-                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs"
-                        style={{ marginTop: 6, fontSize: 10 }}
-                        onClick={handleLimpiarCt}>
-                        ✕ Limpiar
-                      </button>
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }} onClick={handleLimpiarCt}>✕ Limpiar</button>
                     )}
                   </div>
                 )}
 
-                {/* ── Leyenda ── */}
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                    <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />Línea MT
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                    <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />Línea BT
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", display: "inline-block" }} />Centro de transformación
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)" }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#378ADD", display: "inline-block" }} />Punto de suministro
-                  </div>
+                  {[
+                    { color: "#A855F7", w: 16, h: 3, label: "Línea MT", radius: 2 },
+                    { color: "#F59E0B", w: 16, h: 3, label: "Línea BT", radius: 2 },
+                    { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
+                    { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",      radius: "50%" as const },
+                  ].map(({ color, w, h, label, radius, border }) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                      <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
+                      {label}
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* ── Mapa ── */}
               <div style={{ flex: 1, position: "relative", minHeight: 580 }}>
                 {!empresaId && (
                   <div style={{ position: "absolute", inset: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.85)", fontSize: 12, color: "var(--text-muted)", borderRadius: "0 10px 10px 0" }}>
                     Selecciona una empresa para cargar el mapa
                   </div>
                 )}
-                <MapaLeaflet
-                  cts={cts}
-                  cups={cups}
-                  tramos={tramosFiltrados}
-                  mostrarCts={mostrarCts}
-                  mostrarCups={mostrarCups}
-                  mostrarLineas={mostrarLineas}
+                <MapaLeaflet cts={ctSeleccionado ? cts.filter(ct => ct.id_ct === ctSeleccionado) : cts} cups={cups} tramos={tramosFiltrados}
+                  mostrarCts={mostrarCts} mostrarCups={mostrarCups} mostrarLineas={mostrarLineas}
                   lineaSeleccionada={lineaSeleccionada}
-                  tooltipLineas={tooltipLineas}
-                  tooltipTramos={tooltipTramos}
-                  tooltipCts={tooltipCts}
-                  tooltipCups={tooltipCups}
-                  onLineaClick={handleLineaClick}
-                />
+                  tooltipLineas={tooltipLineas} tooltipTramos={tooltipTramos}
+                  tooltipCts={tooltipCts} tooltipCups={tooltipCups}
+                  onLineaClick={handleLineaClick} />
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ══ PANEL 3 — TABLAS ══ */}
+      <div style={panelStyle}>
+        <div style={panelHeaderStyle} onClick={() => setPanelTablasOpen(v => !v)}>
+          <div>
+            <div style={panelTitleStyle}>📊 Tablas de asociación CT</div>
+            <div style={panelDescStyle}>Revisión y corrección de la asociación líneas → CT y CUPS → CT</div>
+          </div>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={e => { e.stopPropagation(); setPanelTablasOpen(v => !v); }}>{panelTablasOpen ? "Ocultar" : "Mostrar"}</button>
+        </div>
+
+        {panelTablasOpen && (
+          <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
+
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: 16, flexWrap: "wrap" }}>
+              <div>
+                <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
+                <select className="ui-select" style={{ fontSize: 11, height: 30, minWidth: 200 }} value={empresaId} onChange={e => setEmpresaId(e.target.value === "" ? "" : Number(e.target.value))}>
+                  <option value="">Selecciona empresa</option>
+                  {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
+                </select>
+              </div>
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 30 }}
+                onClick={handleCalcularCt} disabled={calcCt || !empresaId} title="Recalcula BFS + proximidad">
+                {calcCt ? "Calculando..." : "⚡ Calcular CT"}
+              </button>
+            </div>
+
+            {calcCtError && <div className="ui-alert ui-alert--danger mb-3">{calcCtError}</div>}
+            {calcCtResult && (
+              <div style={{ marginBottom: 16, background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Resultado del cálculo</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Líneas ({calcCtResult.lineas_total} total)</div>
+                    <div style={{ fontSize: 11 }}>
+                      <span style={{ color: METODO_COLOR.bfs }}>● Topológico: {calcCtResult.lineas_bfs}</span>{" · "}
+                      <span style={{ color: METODO_COLOR.proximidad }}>● Proximidad: {calcCtResult.lineas_proximidad}</span>{" · "}
+                      <span style={{ color: "var(--text-muted)" }}>Sin CT: {calcCtResult.lineas_sin_asoc}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>CUPS ({calcCtResult.cups_total} total)</div>
+                    <div style={{ fontSize: 11 }}>
+                      <span style={{ color: METODO_COLOR.nudo_linea }}>● Asignados: {calcCtResult.cups_asignados}</span>{" · "}
+                      <span style={{ color: "var(--text-muted)" }}>Sin CT: {calcCtResult.cups_sin_asoc}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--card-border)" }}>
+              {(["lineas", "cups"] as const).map(tab => (
+                <button key={tab} type="button"
+                  onClick={() => { setTablaActiva(tab); setHasLoadedTabla(false); if (tab === "lineas") cargarTablaLineas(); else cargarTablaCups(); }}
+                  style={{ padding: "6px 16px", fontSize: 11, fontWeight: 600, background: "none", border: "none", cursor: "pointer", borderBottom: tablaActiva === tab ? "2px solid var(--primary)" : "2px solid transparent", color: tablaActiva === tab ? "var(--primary)" : "var(--text-muted)" }}>
+                  {tab === "lineas" ? `Líneas → CT (${lineasTabla.length})` : `CUPS → CT (${cupsTabla.length})`}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div>
+                <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>CT</label>
+                <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 180 }} value={filtroCtTabla} onChange={e => setFiltroCtTabla(e.target.value)}>
+                  <option value="">Todos los CTs</option>
+                  {cts.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Método</label>
+                <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 140 }} value={filtroMetodo} onChange={e => setFiltroMetodo(e.target.value)}>
+                  <option value="">Todos</option>
+                  {tablaActiva === "lineas"
+                    ? <><option value="bfs">Topológico</option><option value="proximidad">Proximidad</option><option value="manual">Manual</option></>
+                    : <><option value="nudo_linea">Nudo→Línea</option><option value="manual">Manual</option></>
+                  }
+                </select>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", height: 28 }}>
+                <input type="checkbox" checked={filtroSinCt} onChange={e => setFiltroSinCt(e.target.checked)} />Sin CT asignado
+              </label>
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28 }}
+                onClick={() => { setHasLoadedTabla(false); if (tablaActiva === "lineas") cargarTablaLineas(); else cargarTablaCups(); }}>
+                🔍 Buscar
+              </button>
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 28 }}
+                onClick={() => { setFiltroCtTabla(""); setFiltroSinCt(false); setFiltroMetodo(""); }}>
+                Limpiar
+              </button>
+            </div>
+
+            {/* Tabla líneas */}
+            {tablaActiva === "lineas" && (
+              <div style={{ overflowX: "auto" }}>
+                {loadingTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                ) : lineasTabla.length === 0 && hasLoadedTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
+                ) : lineasPagina.length > 0 ? (
+                  <>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
+                          {["ID Tramo", "Tensión", "Long.", "Op.", "APS", "CT asignado", "Método", ""].map(h => (
+                            <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lineasPagina.map(l => (
+                          <tr key={l.id_tramo} style={{ borderBottom: "1px solid var(--card-border)" }}>
+                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{l.id_tramo}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{l.tension_kv != null ? `${l.tension_kv} kV` : "—"}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{l.longitud_km != null ? `${l.longitud_km.toFixed(3)} km` : "—"}</td>
+                            <td style={{ padding: "5px 8px" }}>{l.operacion === 1 ? "✅" : l.operacion === 0 ? "⚠️" : "—"}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{l.fecha_aps ?? "—"}</td>
+                            <td style={{ padding: "5px 8px" }}>
+                              {editandoLinea === l.id_tramo ? (
+                                <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 160 }} value={editValor} onChange={e => setEditValor(e.target.value)}>
+                                  <option value="">— Sin CT —</option>
+                                  {cts.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
+                                </select>
+                              ) : (
+                                <span style={{ fontFamily: "monospace", fontSize: 10, color: l.id_ct ? "var(--text)" : "var(--text-muted)" }}>
+                                  {l.id_ct ? (cts.find(c => c.id_ct === l.id_ct)?.nombre ?? l.id_ct) : "—"}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={l.metodo_asignacion_ct} /></td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                              {editandoLinea === l.id_tramo ? (
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => handleGuardarLinea(l.id_tramo)} disabled={guardando}>{guardando ? "…" : "✓"}</button>
+                                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => setEditandoLinea(null)}>✕</button>
+                                </div>
+                              ) : (
+                                <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }} onClick={() => { setEditandoLinea(l.id_tramo); setEditValor(l.id_ct ?? ""); }}>✏️</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <TablePaginationFooter
+                      loading={loadingTabla} hasLoadedOnce={hasLoadedTabla}
+                      totalFilas={lineasTabla.length} startIndex={startLineas} endIndex={endLineas}
+                      pageSize={pageSizeLineas} setPageSize={(v) => { setPageSizeLineas(v); setPageLineas(0); }}
+                      currentPage={pageLineas} totalPages={totalPagLineas} setPage={setPageLineas} compact />
+                  </>
+                ) : null}
+              </div>
+            )}
+
+            {/* Tabla CUPS */}
+            {tablaActiva === "cups" && (
+              <div style={{ overflowX: "auto" }}>
+                {loadingTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                ) : cupsTabla.length === 0 && hasLoadedTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
+                ) : cupsPagina.length > 0 ? (
+                  <>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
+                          {["CUPS", "Tarifa", "Tensión", "Potencia", "Municipio", "CT asignado", "Método", ""].map(h => (
+                            <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cupsPagina.map(c => (
+                          <tr key={c.cups} style={{ borderBottom: "1px solid var(--card-border)" }}>
+                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{c.cups}</td>
+                            <td style={{ padding: "5px 8px" }}>{c.tarifa ?? "—"}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{c.tension_kv != null ? `${c.tension_kv} kV` : "—"}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{c.potencia_contratada_kw != null ? `${c.potencia_contratada_kw} kW` : "—"}</td>
+                            <td style={{ padding: "5px 8px" }}>{c.municipio ?? "—"}</td>
+                            <td style={{ padding: "5px 8px" }}>
+                              {editandoCups === c.cups ? (
+                                <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 160 }} value={editValor} onChange={e => setEditValor(e.target.value)}>
+                                  <option value="">— Sin CT —</option>
+                                  {cts.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
+                                </select>
+                              ) : (
+                                <span style={{ fontFamily: "monospace", fontSize: 10, color: c.id_ct_asignado ? "var(--text)" : "var(--text-muted)" }}>
+                                  {c.id_ct_asignado ? (cts.find(ct => ct.id_ct === c.id_ct_asignado)?.nombre ?? c.id_ct_asignado) : "—"}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={c.metodo_asignacion_ct} /></td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                              {editandoCups === c.cups ? (
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => handleGuardarCups(c.cups)} disabled={guardando}>{guardando ? "…" : "✓"}</button>
+                                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => setEditandoCups(null)}>✕</button>
+                                </div>
+                              ) : (
+                                <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }} onClick={() => { setEditandoCups(c.cups); setEditValor(c.id_ct_asignado ?? ""); }}>✏️</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <TablePaginationFooter
+                      loading={loadingTabla} hasLoadedOnce={hasLoadedTabla}
+                      totalFilas={cupsTabla.length} startIndex={startCups} endIndex={endCups}
+                      pageSize={pageSizeCups} setPageSize={(v) => { setPageSizeCups(v); setPageCups(0); }}
+                      currentPage={pageCups} totalPages={totalPagCups} setPage={setPageCups} compact />
+                  </>
+                ) : null}
+              </div>
+            )}
           </div>
         )}
       </div>
