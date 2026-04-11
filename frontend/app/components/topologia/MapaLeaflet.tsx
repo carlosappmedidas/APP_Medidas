@@ -603,10 +603,64 @@ export default function MapaLeaflet({
         dragging: true, scrollWheelZoom: true,
         doubleClickZoom: true, zoomControl: true, touchZoom: false,
       });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map);
+
+      // ── Capas base ─────────────────────────────────────────────────────────
+      //
+      //   OSM      → OpenStreetMap (por defecto)
+      //   PNOA     → Ortofoto aérea IGN — WMTS IDEE
+      //   IGN Base → Cartografía topográfica IGN — WMTS IDEE
+      //   Catastro → Parcelas catastrales DGCT — WMS
+      //
+      const capaOSM = L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19,
+        }
+      );
+
+      const capaPNOA = L.tileLayer(
+        "https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
+        {
+          attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA máxima actualidad',
+          maxZoom: 19,
+        }
+      );
+
+      const capaIGNBase = L.tileLayer(
+        "https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
+        {
+          attribution: '© <a href="https://www.ign.es">IGN</a> — Base cartográfica',
+          maxZoom: 17,
+        }
+      );
+
+      const capaCatastro = L.tileLayer.wms(
+        "https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx",
+        {
+          layers:      "Catastro",
+          format:      "image/png",
+          transparent: true,
+          attribution: '© <a href="https://www.catastro.meh.es">Catastro</a> — DGCT',
+          maxZoom:     19,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+      );
+
+      // OSM activa por defecto
+      capaOSM.addTo(map);
+
+      // Control de capas base nativo Leaflet — esquina superior derecha
+      L.control.layers(
+        {
+          "OpenStreetMap": capaOSM,
+          "PNOA (Ortofoto IGN)": capaPNOA,
+          "IGN Base": capaIGNBase,
+          "Catastro": capaCatastro,
+        },
+        {},
+        { position: "topright", collapsed: true }
+      ).addTo(map);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapAny = map as any;
