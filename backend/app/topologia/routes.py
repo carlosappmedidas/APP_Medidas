@@ -2,7 +2,7 @@
 # pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
@@ -176,21 +176,25 @@ def reasignar_ct_cups(
     return {"ok": True, "cups": cups, "id_ct": payload.id_ct}
 
 
-# ── Tabla de líneas con CT ────────────────────────────────────────────────────
-
-@router.get("/tabla/lineas", response_model=List[LineaTablaRead])
+# ── Tabla de líneas con CT — paginación servidor ──────────────────────────────
+#
+#   Devuelve { items: [...], total: N } para que el frontend pueda
+#   calcular el número de páginas sin descargar todos los registros.
+#   Parámetros de paginación: limit (tamaño de página) + offset (desplazamiento).
+#
+@router.get("/tabla/lineas")
 def get_tabla_lineas(
     empresa_id:   int           = Query(...),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
     sin_ct:       bool          = Query(False, description="Mostrar solo líneas sin CT"),
     metodo:       Optional[str] = Query(None, description="Filtrar por método: bfs/proximidad/manual"),
-    limit:        int           = Query(500, ge=1, le=2000),
+    limit:        int           = Query(50, ge=1, le=500),
     offset:       int           = Query(0, ge=0),
     db:           Session       = Depends(get_db),
     current_user: User          = Depends(get_current_user),
-) -> List[LineaTablaRead]:
+) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
-    lineas, _ = services.list_lineas_tabla(
+    lineas, total = services.list_lineas_tabla(
         db         = db,
         tenant_id  = _tenant_id(current_user),
         empresa_id = empresa_id,
@@ -200,24 +204,29 @@ def get_tabla_lineas(
         limit      = limit,
         offset     = offset,
     )
-    return lineas  # type: ignore[return-value]
+    return {
+        "items": [LineaTablaRead.model_validate(linea) for linea in lineas],
+        "total": total,
+    }
 
 
-# ── Tabla de CUPS con CT ──────────────────────────────────────────────────────
-
-@router.get("/tabla/cups", response_model=List[CupsTablaRead])
+# ── Tabla de CUPS con CT — paginación servidor ────────────────────────────────
+#
+#   Devuelve { items: [...], total: N } para paginación en servidor.
+#
+@router.get("/tabla/cups")
 def get_tabla_cups(
     empresa_id:   int           = Query(...),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
     sin_ct:       bool          = Query(False, description="Mostrar solo CUPS sin CT"),
     metodo:       Optional[str] = Query(None, description="Filtrar por método: nudo_linea/manual"),
-    limit:        int           = Query(500, ge=1, le=2000),
+    limit:        int           = Query(50, ge=1, le=500),
     offset:       int           = Query(0, ge=0),
     db:           Session       = Depends(get_db),
     current_user: User          = Depends(get_current_user),
-) -> List[CupsTablaRead]:
+) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
-    cups, _ = services.list_cups_tabla(
+    cups, total = services.list_cups_tabla(
         db         = db,
         tenant_id  = _tenant_id(current_user),
         empresa_id = empresa_id,
@@ -227,7 +236,10 @@ def get_tabla_cups(
         limit      = limit,
         offset     = offset,
     )
-    return cups  # type: ignore[return-value]
+    return {
+        "items": [CupsTablaRead.model_validate(c) for c in cups],
+        "total": total,
+    }
 
 
 # ── Mapa — CTs ────────────────────────────────────────────────────────────────

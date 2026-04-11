@@ -85,7 +85,6 @@ export interface TramoMapa {
   lon_ini:   number | null;
   lat_fin:   number | null;
   lon_fin:   number | null;
-  // B1
   cini:                    string | null;
   codigo_ccuu:             string | null;
   nudo_inicio:             string | null;
@@ -119,7 +118,6 @@ export interface TramoMapa {
   cuenta:                  string | null;
   avifauna:                number | null;
   identificador_baja:      string | null;
-  // CT asignado
   id_ct:                string | null;
   metodo_asignacion_ct: string | null;
 }
@@ -345,8 +343,8 @@ export const DEFAULT_TOOLTIP_CUPS: TooltipCupsConfig = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  cts:               CtMapa[];   // CTs a pintar en el mapa (puede estar filtrado por ctSeleccionado)
-  ctsTodos:          CtMapa[];   // TODOS los CTs — para el selector del popup de línea
+  cts:               CtMapa[];   // CTs a pintar en el mapa
+  ctsTodos:          CtMapa[];   // TODOS los CTs — para el selector del popup
   cups:              CupsMapa[];
   tramos:            TramoMapa[];
   mostrarCts:        boolean;
@@ -359,6 +357,9 @@ interface Props {
   tooltipCups:       TooltipCupsConfig;
   onLineaClick:      (id_linea: string | null) => void;
   onReasignarCt:     (id_tramo: string, id_ct: string | null) => void;
+  // Colores por CT — solo tiene entradas cuando hay ≥2 CTs seleccionados.
+  // Cuando está vacío ({}) se usan los colores estándar MT/BT.
+  coloresCt:         Record<string, string>;
 }
 
 // ─── Color y nivel ────────────────────────────────────────────────────────────
@@ -379,33 +380,24 @@ function nivelLinea(id: string | null, tension_kv?: number | null): string {
   return "MT";
 }
 
-// ─── Detección aéreo/subterráneo — Anexo I Orden IET/2660/2015 ───────────────
 function esLineaSubterranea(codigo_ccuu: string | null): boolean {
   if (!codigo_ccuu) return false;
   const m = codigo_ccuu.match(/^TI-(\d+)/);
   if (!m) return false;
-  const n = parseInt(m[1]);
-  return n >= 14 && n <= 21;
+  return parseInt(m[1]) >= 14 && parseInt(m[1]) <= 21;
 }
-
-// ─── Haversine ────────────────────────────────────────────────────────────────
 
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatearLongitud(m: number): string {
   return `${(m / 1000).toFixed(3)} km`;
 }
-
-// ─── Helpers tooltip ──────────────────────────────────────────────────────────
 
 function fila(label: string, valor: string | number): string {
   return `<div style="margin-bottom:1px"><span style="color:#999">${label}:</span> <strong>${valor}</strong></div>`;
@@ -414,18 +406,11 @@ function fila(label: string, valor: string | number): string {
 const DIVISOR = `<div style="margin:6px 0;border-top:1px solid #e5e7eb;"></div>`;
 
 // ─── Selector CT en popup ─────────────────────────────────────────────────────
-//
-// Leaflet usa HTML estático — la interacción se gestiona via window.__reasignarCt
-// que se registra al montar el mapa y apunta al callback React onReasignarCt.
-// ctsTodos contiene TODOS los CTs de la empresa (no filtrado por ctSeleccionado).
-//
 function buildSelectorCt(idTramo: string, idCtActual: string | null, ctsTodos: CtMapa[]): string {
   const ctActualNombre = ctsTodos.find(c => c.id_ct === idCtActual)?.nombre ?? idCtActual ?? "Sin CT";
-
   const opciones = ctsTodos.map(ct =>
     `<option value="${ct.id_ct}" ${ct.id_ct === idCtActual ? "selected" : ""}>${ct.nombre}</option>`
   ).join("");
-
   return `
     ${DIVISOR}
     <div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:6px;letter-spacing:0.06em">Asignar CT</div>
@@ -444,8 +429,7 @@ function buildSelectorCt(idTramo: string, idCtActual: string | null, ctsTodos: C
   `;
 }
 
-// ─── Tooltip línea (B11 + B1 + selector CT) ───────────────────────────────────
-
+// ─── Tooltip línea ─────────────────────────────────────────────────────────────
 function buildTooltipLinea(
   t: TramoMapa,
   cfgL: TooltipLineasConfig,
@@ -454,10 +438,8 @@ function buildTooltipLinea(
   nivel: string,
   ctsTodos: CtMapa[],
 ): string {
-  const longSegM =
-    t.lat_ini !== null && t.lon_ini !== null && t.lat_fin !== null && t.lon_fin !== null
-      ? haversineM(t.lat_ini, t.lon_ini, t.lat_fin, t.lon_fin)
-      : null;
+  const longSegM = t.lat_ini !== null && t.lon_ini !== null && t.lat_fin !== null && t.lon_fin !== null
+    ? haversineM(t.lat_ini, t.lon_ini, t.lat_fin, t.lon_fin) : null;
 
   const b11: string[] = [];
   if (cfgT.mostrar_id_tramo         && t.id_tramo)         b11.push(fila("ID segmento",    t.id_tramo));
@@ -504,18 +486,12 @@ function buildTooltipLinea(
   const cabecera = `
     <div style="font-weight:700;font-size:12px;color:${color};margin-bottom:1px">${nivel}</div>
     <div style="color:#888;font-size:10px;font-family:monospace;margin-bottom:4px">${t.id_linea ?? "—"}</div>`;
-  const secB11 = b11.length > 0
-    ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:3px;letter-spacing:0.06em">Segmento (B11)</div>${b11.join("")}`
-    : "";
-  const sep   = b11.length > 0 && b1.length > 0 ? DIVISOR : "";
-  const secB1 = b1.length > 0
-    ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:3px;letter-spacing:0.06em">Línea (B1)</div>${b1.join("")}`
-    : "";
-
-  const selectorCt = buildSelectorCt(t.id_tramo, t.id_ct ?? null, ctsTodos);
+  const secB11 = b11.length > 0 ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:3px;letter-spacing:0.06em">Segmento (B11)</div>${b11.join("")}` : "";
+  const sep    = b11.length > 0 && b1.length > 0 ? DIVISOR : "";
+  const secB1  = b1.length > 0  ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:3px;letter-spacing:0.06em">Línea (B1)</div>${b1.join("")}` : "";
 
   return `<div style="font-size:11px;line-height:1.7;min-width:220px;max-width:300px">
-    ${cabecera}${secB11}${sep}${secB1}${selectorCt}
+    ${cabecera}${secB11}${sep}${secB1}${buildSelectorCt(t.id_tramo, t.id_ct ?? null, ctsTodos)}
   </div>`;
 }
 
@@ -602,8 +578,8 @@ export default function MapaLeaflet({
   mostrarCts, mostrarCups, mostrarLineas,
   lineaSeleccionada,
   tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
-  onLineaClick,
-  onReasignarCt,
+  onLineaClick, onReasignarCt,
+  coloresCt,
 }: Props) {
   const mapRef             = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -620,15 +596,16 @@ export default function MapaLeaflet({
   const onReasignarCtRef = useRef(onReasignarCt);
   useEffect(() => { onReasignarCtRef.current = onReasignarCt; }, [onReasignarCt]);
 
+  // Modo multi-CT: hay colores personalizados cuando hay ≥2 CTs seleccionados
+  const modoMultiCt = Object.keys(coloresCt).length >= 2;
+
   // ── Inicializar mapa ──────────────────────────────────────────────────────
   useEffect(() => {
     if (mapaInstancia.current || !mapRef.current) return;
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__reasignarCt = (idTramo: string, idCt: string | null) => {
       onReasignarCtRef.current(idTramo, idCt || null);
     };
-
     import("leaflet").then(L => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -638,91 +615,50 @@ export default function MapaLeaflet({
         shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (L.Browser as any).touch   = false;
+      (L.Browser as any).touch = false;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (L.Browser as any).pointer = false;
-
       const map = L.map(mapRef.current!, {
         center: [40.0, -3.7], zoom: 7,
-        dragging: true, scrollWheelZoom: true,
-        doubleClickZoom: true, zoomControl: true, touchZoom: false,
+        dragging: true, scrollWheelZoom: true, doubleClickZoom: true, zoomControl: true, touchZoom: false,
       });
-
-      const capaOSM = L.tileLayer(
-        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 }
-      );
-      const capaPNOA = L.tileLayer(
-        "https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
-        { attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA máxima actualidad', maxZoom: 19 }
-      );
-      const capaIGNBase = L.tileLayer(
-        "https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
-        { attribution: '© <a href="https://www.ign.es">IGN</a> — Base cartográfica', maxZoom: 17 }
-      );
-      const capaCatastro = L.tileLayer.wms(
-        "https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { layers: "Catastro", format: "image/png", transparent: true, attribution: '© <a href="https://www.catastro.meh.es">Catastro</a> — DGCT', maxZoom: 19 } as any
-      );
-
+      const capaOSM = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 });
+      const capaPNOA = L.tileLayer("https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA', maxZoom: 19 });
+      const capaIGNBase = L.tileLayer("https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — Base', maxZoom: 17 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const capaCatastro = L.tileLayer.wms("https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx", { layers: "Catastro", format: "image/png", transparent: true, attribution: '© <a href="https://www.catastro.meh.es">Catastro</a>', maxZoom: 19 } as any);
       capaOSM.addTo(map);
-      L.control.layers(
-        { "OpenStreetMap": capaOSM, "PNOA (Ortofoto IGN)": capaPNOA, "IGN Base": capaIGNBase, "Catastro": capaCatastro },
-        {}, { position: "topright", collapsed: true }
-      ).addTo(map);
-
+      L.control.layers({ "OpenStreetMap": capaOSM, "PNOA (Ortofoto IGN)": capaPNOA, "IGN Base": capaIGNBase, "Catastro": capaCatastro }, {}, { position: "topright", collapsed: true }).addTo(map);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapAny = map as any;
       if (mapAny.touchZoom) mapAny.touchZoom.disable();
       if (mapAny.tap)       mapAny.tap.disable();
       map.dragging.enable();
-
       lineasLayerRef.current     = L.layerGroup().addTo(map);
       marcadoresLayerRef.current = L.layerGroup().addTo(map);
       ctLayerRef.current         = L.layerGroup().addTo(map);
       cupsLayerRef.current       = L.layerGroup().addTo(map);
       mapaInstancia.current      = map;
       setTimeout(() => map.invalidateSize(), 200);
-
       const container = mapRef.current!;
       let dragging = false, lastX = 0, lastY = 0;
       const onMouseDown = (e: MouseEvent) => { if (e.button !== 0) return; dragging = true; lastX = e.clientX; lastY = e.clientY; };
-      const onMouseMove = (e: MouseEvent) => {
-        if (!dragging || !mapaInstancia.current) return;
-        const dx = e.clientX - lastX, dy = e.clientY - lastY;
-        if (dx !== 0 || dy !== 0) mapaInstancia.current.panBy([-dx, -dy], { animate: false });
-        lastX = e.clientX; lastY = e.clientY;
-      };
+      const onMouseMove = (e: MouseEvent) => { if (!dragging || !mapaInstancia.current) return; const dx = e.clientX - lastX, dy = e.clientY - lastY; if (dx !== 0 || dy !== 0) mapaInstancia.current.panBy([-dx, -dy], { animate: false }); lastX = e.clientX; lastY = e.clientY; };
       const onMouseUp = () => { dragging = false; };
-      const onWheel = (e: WheelEvent) => {
-        e.preventDefault();
-        if (!mapaInstancia.current) return;
-        const zoom = mapaInstancia.current.getZoom();
-        mapaInstancia.current.setZoom(e.deltaY < 0 ? zoom + 1 : zoom - 1);
-      };
+      const onWheel = (e: WheelEvent) => { e.preventDefault(); if (!mapaInstancia.current) return; const zoom = mapaInstancia.current.getZoom(); mapaInstancia.current.setZoom(e.deltaY < 0 ? zoom + 1 : zoom - 1); };
       container.addEventListener("mousedown", onMouseDown);
       document.addEventListener("mousemove",  onMouseMove);
       document.addEventListener("mouseup",    onMouseUp);
       container.addEventListener("wheel",     onWheel, { passive: false });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mapaInstancia as any)._cleanup = () => {
-        container.removeEventListener("mousedown", onMouseDown);
-        document.removeEventListener("mousemove",  onMouseMove);
-        document.removeEventListener("mouseup",    onMouseUp);
-        container.removeEventListener("wheel",     onWheel);
-      };
+      (mapaInstancia as any)._cleanup = () => { container.removeEventListener("mousedown", onMouseDown); document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); container.removeEventListener("wheel", onWheel); };
     });
     return () => {
       if (mapaInstancia.current) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mapaInstancia as any)._cleanup?.();
         mapaInstancia.current.remove();
-        mapaInstancia.current      = null;
-        ctLayerRef.current         = null;
-        cupsLayerRef.current       = null;
-        lineasLayerRef.current     = null;
-        marcadoresLayerRef.current = null;
+        mapaInstancia.current = null; ctLayerRef.current = null; cupsLayerRef.current = null; lineasLayerRef.current = null; marcadoresLayerRef.current = null;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (window as any).__reasignarCt;
@@ -738,37 +674,40 @@ export default function MapaLeaflet({
       if (!mostrarLineas) return;
 
       const porLinea = new Map<string, TramoMapa[]>();
-      tramos.forEach(t => {
-        const key = t.id_linea ?? "__sin_linea__";
-        if (!porLinea.has(key)) porLinea.set(key, []);
-        porLinea.get(key)!.push(t);
-      });
-
+      tramos.forEach(t => { const key = t.id_linea ?? "__sin_linea__"; if (!porLinea.has(key)) porLinea.set(key, []); porLinea.get(key)!.push(t); });
       const puntosUnion: [number, number][] = [];
 
       const pintarTramo = (t: TramoMapa) => {
         if (t.lat_ini === null || t.lon_ini === null || t.lat_fin === null || t.lon_fin === null) return;
         const nivel          = nivelLinea(t.id_linea, t.tension_kv);
-        const color          = colorLinea(t.id_linea, t.tension_kv);
         const esSeleccionada = lineaSeleccionada !== null && t.id_linea === lineaSeleccionada;
         const haySeleccion   = lineaSeleccionada !== null;
+        const subterranea    = esLineaSubterranea(t.codigo_ccuu);
+
+        // ── Color: multi-CT > seleccionada > estándar ─────────────────────
+        let colorBase: string;
+        if (modoMultiCt && t.id_ct && coloresCt[t.id_ct]) {
+          // Modo multi-CT: color propio del CT
+          colorBase = coloresCt[t.id_ct];
+        } else {
+          // Modo normal: MT morado / BT naranja
+          colorBase = colorLinea(t.id_linea, t.tension_kv);
+        }
 
         const peso       = esSeleccionada ? (nivel === "MT" ? 5 : 4) : (nivel === "MT" ? 2.5 : 1.5);
         const opacity    = haySeleccion   ? (esSeleccionada ? 1 : 0.15) : 0.85;
-        const colorFinal = esSeleccionada ? (nivel === "MT" ? "#7C3AED" : "#D97706") : color;
-        const subterranea = esLineaSubterranea(t.codigo_ccuu);
+        // Al seleccionar una línea en modo multi-CT usamos el color del CT pero más oscuro
+        const colorFinal = esSeleccionada
+          ? (modoMultiCt && t.id_ct && coloresCt[t.id_ct] ? coloresCt[t.id_ct] : (nivel === "MT" ? "#7C3AED" : "#D97706"))
+          : colorBase;
 
         const poly = L.polyline(
           [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
-          { color: colorFinal, weight: peso, opacity, dashArray: subterranea ? "8 5" : undefined }
+          { color: colorFinal, weight: esSeleccionada ? peso + 1 : peso, opacity, dashArray: subterranea ? "8 5" : undefined }
         );
         poly.on("click", () => { onLineaClick(t.id_linea); });
-        // ctsTodos = todos los CTs de la empresa, para que el selector tenga las 46 opciones
-        poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, colorFinal, nivel, ctsTodos), {
-          maxWidth: 320,
-        });
+        poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, colorFinal, nivel, ctsTodos), { maxWidth: 320 });
         poly.addTo(lineasLayerRef.current);
-
         if (esSeleccionada) puntosUnion.push([t.lat_fin, t.lon_fin]);
       };
 
@@ -776,47 +715,29 @@ export default function MapaLeaflet({
       tramos.filter(t => t.id_linea === lineaSeleccionada).forEach(pintarTramo);
 
       puntosUnion.forEach(([lat, lon]) => {
-        L.circleMarker([lat, lon], {
-          radius: 3, color: "#000000", weight: 1, fillColor: "#000000", fillOpacity: 1,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any).addTo(marcadoresLayerRef.current);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        L.circleMarker([lat, lon], { radius: 3, color: "#000000", weight: 1, fillColor: "#000000", fillOpacity: 1 } as any).addTo(marcadoresLayerRef.current);
       });
 
       if (lineaSeleccionada && marcadoresLayerRef.current) {
-        const segmentos = (porLinea.get(lineaSeleccionada) ?? [])
-          .filter(t => t.lat_ini !== null)
-          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
-
+        const segmentos = (porLinea.get(lineaSeleccionada) ?? []).filter(t => t.lat_ini !== null).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         if (segmentos.length > 0) {
-          const primero = segmentos[0];
-          const ultimo  = segmentos[segmentos.length - 1];
+          const primero = segmentos[0], ultimo = segmentos[segmentos.length - 1];
           const color   = colorLinea(lineaSeleccionada);
-
           if (primero.lat_ini !== null && primero.lon_ini !== null) {
-            L.marker([primero.lat_ini, primero.lon_ini], {
-              icon: L.divIcon({
-                className: "",
-                html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">▶</div>`,
-                iconSize: [14, 14], iconAnchor: [7, 7],
-              }),
-            }).bindPopup(`<div style="font-size:11px"><strong>Inicio de línea</strong><br><span style="color:#888;font-size:10px;font-family:monospace">${lineaSeleccionada}</span><br>Segmento 1 de ${primero.num_tramo ?? "?"}</div>`)
+            L.marker([primero.lat_ini, primero.lon_ini], { icon: L.divIcon({ className: "", html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">▶</div>`, iconSize: [14, 14], iconAnchor: [7, 7] }) })
+              .bindPopup(`<div style="font-size:11px"><strong>Inicio de línea</strong><br><span style="color:#888;font-size:10px;font-family:monospace">${lineaSeleccionada}</span><br>Segmento 1 de ${primero.num_tramo ?? "?"}</div>`)
               .addTo(marcadoresLayerRef.current);
           }
-
           if (ultimo.lat_fin !== null && ultimo.lon_fin !== null) {
-            L.marker([ultimo.lat_fin, ultimo.lon_fin], {
-              icon: L.divIcon({
-                className: "",
-                html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">■</div>`,
-                iconSize: [14, 14], iconAnchor: [7, 7],
-              }),
-            }).bindPopup(`<div style="font-size:11px"><strong>Fin de línea</strong><br><span style="color:#888;font-size:10px;font-family:monospace">${lineaSeleccionada}</span><br>Segmento ${ultimo.orden ?? "?"} de ${ultimo.num_tramo ?? "?"}</div>`)
+            L.marker([ultimo.lat_fin, ultimo.lon_fin], { icon: L.divIcon({ className: "", html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:bold">■</div>`, iconSize: [14, 14], iconAnchor: [7, 7] }) })
+              .bindPopup(`<div style="font-size:11px"><strong>Fin de línea</strong><br><span style="color:#888;font-size:10px;font-family:monospace">${lineaSeleccionada}</span><br>Segmento ${ultimo.orden ?? "?"} de ${ultimo.num_tramo ?? "?"}</div>`)
               .addTo(marcadoresLayerRef.current);
           }
         }
       }
     });
-  }, [tramos, mostrarLineas, tooltipLineas, tooltipTramos, lineaSeleccionada, onLineaClick, ctsTodos]);
+  }, [tramos, mostrarLineas, tooltipLineas, tooltipTramos, lineaSeleccionada, onLineaClick, ctsTodos, coloresCt, modoMultiCt]);
 
   // ── Pintar CTs ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -824,19 +745,21 @@ export default function MapaLeaflet({
     import("leaflet").then(L => {
       ctLayerRef.current.clearLayers();
       if (!mostrarCts) return;
-      const iconCt = L.divIcon({
-        className: "",
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:#E24B4A;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
-        iconSize: [14, 14], iconAnchor: [7, 7],
-      });
       cts.forEach(ct => {
         if (ct.lat === null || ct.lon === null) return;
+        // En modo multi-CT el icono del CT usa su color propio
+        const color = modoMultiCt && coloresCt[ct.id_ct] ? coloresCt[ct.id_ct] : "#E24B4A";
+        const iconCt = L.divIcon({
+          className: "",
+          html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
+          iconSize: [14, 14], iconAnchor: [7, 7],
+        });
         L.marker([ct.lat, ct.lon], { icon: iconCt })
           .bindPopup(buildTooltipCt(ct, tooltipCts))
           .addTo(ctLayerRef.current);
       });
     });
-  }, [cts, mostrarCts, tooltipCts]);
+  }, [cts, mostrarCts, tooltipCts, coloresCt, modoMultiCt]);
 
   // ── Pintar CUPS ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -844,16 +767,10 @@ export default function MapaLeaflet({
     import("leaflet").then(L => {
       cupsLayerRef.current.clearLayers();
       if (!mostrarCups) return;
-      const iconCups = L.divIcon({
-        className: "",
-        html: `<div style="width:7px;height:7px;border-radius:50%;background:#378ADD;border:1px solid rgba(255,255,255,0.9);box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`,
-        iconSize: [7, 7], iconAnchor: [3, 3],
-      });
+      const iconCups = L.divIcon({ className: "", html: `<div style="width:7px;height:7px;border-radius:50%;background:#378ADD;border:1px solid rgba(255,255,255,0.9);box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`, iconSize: [7, 7], iconAnchor: [3, 3] });
       cups.forEach(c => {
         if (c.lat === null || c.lon === null) return;
-        L.marker([c.lat, c.lon], { icon: iconCups })
-          .bindPopup(buildTooltipCups(c, tooltipCups))
-          .addTo(cupsLayerRef.current);
+        L.marker([c.lat, c.lon], { icon: iconCups }).bindPopup(buildTooltipCups(c, tooltipCups)).addTo(cupsLayerRef.current);
       });
       const validos = cups.filter(c => c.lat !== null && c.lon !== null);
       if (validos.length > 0 && mapaInstancia.current) {

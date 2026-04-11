@@ -62,6 +62,18 @@ function esBTTramo(t: TramoMapa): boolean {
   return id.includes("BTV") || id.includes("LBT");
 }
 
+// ─── Paleta de colores para multi-CT ─────────────────────────────────────────
+const PALETA_CT = [
+  "#E24B4A", "#2563EB", "#16A34A", "#F59E0B", "#7C3AED",
+  "#0891B2", "#DB2777", "#65A30D", "#EA580C", "#0284C7",
+];
+
+function generarColoresCt(ids: string[]): Record<string, string> {
+  const mapa: Record<string, string> = {};
+  ids.forEach((id, i) => { mapa[id] = PALETA_CT[i % PALETA_CT.length]; });
+  return mapa;
+}
+
 const panelStyle: React.CSSProperties = { background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "10px", overflow: "hidden", marginBottom: "10px" };
 const mapaPanelStyle: React.CSSProperties = { background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "10px", overflow: "visible", marginBottom: "10px" };
 const panelHeaderStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", cursor: "pointer", userSelect: "none" };
@@ -110,35 +122,40 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [mostrarBT,   setMostrarBT]   = useState(true);
   const [mostrarMT,   setMostrarMT]   = useState(true);
 
-  const [ctSeleccionado,    setCtSeleccionado]    = useState<string>("");
+  // Multi-CT
+  const [ctsSeleccionados, setCtsSeleccionados] = useState<string[]>([]);
+  const [busquedaCtFiltro, setBusquedaCtFiltro] = useState<string>("");
+  const [ctListaOpen,      setCtListaOpen]      = useState(true);
+
+  const coloresCt = ctsSeleccionados.length >= 2 ? generarColoresCt(ctsSeleccionados) : {};
+
   const [lineaSeleccionada, setLineaSeleccionada] = useState<string | null>(null);
   const [busquedaLinea,          setBusquedaLinea]          = useState<string>("");
   const [busquedaLineaPendiente, setBusquedaLineaPendiente] = useState<string>("");
-  const [busquedaCt,          setBusquedaCt]          = useState<string>("");
-  const [busquedaCtPendiente, setBusquedaCtPendiente] = useState<string>("");
   const inputBusquedaLineaRef = useRef<HTMLInputElement>(null);
-  const inputBusquedaCtRef    = useRef<HTMLInputElement>(null);
 
-  // Tablas
+  // ── Tablas ────────────────────────────────────────────────────────────────
   const [tablaActiva,    setTablaActiva]    = useState<"lineas" | "cups">("lineas");
   const [calcCt,         setCalcCt]         = useState(false);
   const [calcCtResult,   setCalcCtResult]   = useState<CalcCtResult | null>(null);
   const [calcCtError,    setCalcCtError]    = useState<string | null>(null);
   const [lineasTabla,    setLineasTabla]    = useState<LineaTabla[]>([]);
   const [cupsTabla,      setCupsTabla]      = useState<CupsTabla[]>([]);
+  const [totalLineas,    setTotalLineas]    = useState(0);
+  const [totalCups,      setTotalCups]      = useState(0);
   const [loadingTabla,   setLoadingTabla]   = useState(false);
   const [hasLoadedTabla, setHasLoadedTabla] = useState(false);
   const [filtroCtTabla,  setFiltroCtTabla]  = useState<string>("");
   const [filtroSinCt,    setFiltroSinCt]    = useState(false);
   const [filtroMetodo,   setFiltroMetodo]   = useState<string>("");
 
-  // Paginación
+  // Paginación servidor
   const [pageLineas,     setPageLineas]     = useState(0);
   const [pageSizeLineas, setPageSizeLineas] = useState(50);
   const [pageCups,       setPageCups]       = useState(0);
   const [pageSizeCups,   setPageSizeCups]   = useState(50);
 
-  // Edición inline tabla
+  // Edición inline
   const [editandoLinea, setEditandoLinea] = useState<string | null>(null);
   const [editandoCups,  setEditandoCups]  = useState<string | null>(null);
   const [editValor,     setEditValor]     = useState<string>("");
@@ -151,6 +168,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) })
       .then(r => r.ok ? r.json() : []).then(setEmpresas).catch(() => {});
   }, [token]);
+
+  // ── Carga mapa ────────────────────────────────────────────────────────────
 
   const cargarCts = useCallback(async () => {
     if (!token || !empresaId) return;
@@ -166,81 +185,136 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     if (!token || !empresaId) return;
     setLoadingCups(true);
     try {
-      const params = new URLSearchParams({ empresa_id: String(empresaId) });
-      if (ctSeleccionado) params.set("id_ct", ctSeleccionado);
-      const res = await fetch(`${API_BASE_URL}/topologia/mapa/cups?${params}`, { headers: getAuthHeaders(token) });
-      if (!res.ok) throw new Error();
-      setCups(await res.json());
+      if (ctsSeleccionados.length === 0) {
+        const res = await fetch(`${API_BASE_URL}/topologia/mapa/cups?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
+        if (!res.ok) throw new Error();
+        setCups(await res.json());
+      } else {
+        const results = await Promise.all(
+          ctsSeleccionados.map(id =>
+            fetch(`${API_BASE_URL}/topologia/mapa/cups?empresa_id=${empresaId}&id_ct=${id}`, { headers: getAuthHeaders(token) })
+              .then(r => r.ok ? r.json() : [])
+          )
+        );
+        const vistos = new Set<string>(); const merged: CupsMapa[] = [];
+        for (const arr of results) for (const c of arr) if (!vistos.has(c.cups)) { vistos.add(c.cups); merged.push(c); }
+        setCups(merged);
+      }
     } catch { setCups([]); } finally { setLoadingCups(false); }
-  }, [token, empresaId, ctSeleccionado]);
+  }, [token, empresaId, ctsSeleccionados]);
 
   const cargarTramos = useCallback(async () => {
     if (!token || !empresaId) return;
     setLoadingTramos(true);
     try {
-      const params = new URLSearchParams({ empresa_id: String(empresaId) });
-      if (ctSeleccionado) params.set("id_ct", ctSeleccionado);
-      const res = await fetch(`${API_BASE_URL}/topologia/mapa/tramos?${params}`, { headers: getAuthHeaders(token) });
-      if (!res.ok) throw new Error();
-      const data: TramoMapa[] = await res.json();
-      setTramos(data);
-      if (!ctSeleccionado) {
+      if (ctsSeleccionados.length === 0) {
+        const res = await fetch(`${API_BASE_URL}/topologia/mapa/tramos?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) });
+        if (!res.ok) throw new Error();
+        const data: TramoMapa[] = await res.json();
+        setTramos(data);
         const mapa = new Map<string, number | null>();
         data.forEach(t => { if (t.id_linea && !mapa.has(t.id_linea)) mapa.set(t.id_linea, t.tension_kv); });
         setTensionPorLinea(mapa);
         setLineas(Array.from(new Set(data.map(t => t.id_linea).filter(Boolean) as string[])).sort());
+      } else {
+        const results = await Promise.all(
+          ctsSeleccionados.map(id =>
+            fetch(`${API_BASE_URL}/topologia/mapa/tramos?empresa_id=${empresaId}&id_ct=${id}`, { headers: getAuthHeaders(token) })
+              .then(r => r.ok ? r.json() : [])
+          )
+        );
+        const vistos = new Set<string>(); const merged: TramoMapa[] = [];
+        for (const arr of results) for (const t of arr) if (!vistos.has(t.id_tramo)) { vistos.add(t.id_tramo); merged.push(t); }
+        setTramos(merged);
       }
     } catch { setTramos([]); } finally { setLoadingTramos(false); }
-  }, [token, empresaId, ctSeleccionado]);
+  }, [token, empresaId, ctsSeleccionados]);
 
-  const cargarTablaLineas = useCallback(async () => {
+  // ── Carga tablas — paginación servidor ───────────────────────────────────
+  //
+  //  El backend devuelve { items: [...], total: N }.
+  //  El frontend pasa limit + offset reales — no hay slice en cliente.
+  //  Cada vez que cambia página o pageSize se hace un nuevo fetch.
+  //
+
+  const cargarTablaLineas = useCallback(async (page = pageLineas, size = pageSizeLineas) => {
     if (!token || !empresaId) return;
     setLoadingTabla(true);
     try {
-      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: "2000" });
-      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      const params = new URLSearchParams({
+        empresa_id: String(empresaId),
+        limit:      String(size),
+        offset:     String(page * size),
+      });
+      if (filtroCtTabla) params.set("id_ct",  filtroCtTabla);
       if (filtroSinCt)   params.set("sin_ct", "true");
-      if (filtroMetodo)  params.set("metodo", filtroMetodo);
+      if (filtroMetodo)  params.set("metodo",  filtroMetodo);
       const res = await fetch(`${API_BASE_URL}/topologia/tabla/lineas?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
-      setLineasTabla(await res.json());
-      setHasLoadedTabla(true); setPageLineas(0);
-    } catch { setLineasTabla([]); } finally { setLoadingTabla(false); }
-  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo]);
+      const data = await res.json();
+      setLineasTabla(data.items ?? []);
+      setTotalLineas(data.total ?? 0);
+      setHasLoadedTabla(true);
+    } catch { setLineasTabla([]); setTotalLineas(0); } finally { setLoadingTabla(false); }
+  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, pageLineas, pageSizeLineas]);
 
-  const cargarTablaCups = useCallback(async () => {
+  const cargarTablaCups = useCallback(async (page = pageCups, size = pageSizeCups) => {
     if (!token || !empresaId) return;
     setLoadingTabla(true);
     try {
-      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: "2000" });
-      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      const params = new URLSearchParams({
+        empresa_id: String(empresaId),
+        limit:      String(size),
+        offset:     String(page * size),
+      });
+      if (filtroCtTabla) params.set("id_ct",  filtroCtTabla);
       if (filtroSinCt)   params.set("sin_ct", "true");
-      if (filtroMetodo)  params.set("metodo", filtroMetodo);
+      if (filtroMetodo)  params.set("metodo",  filtroMetodo);
       const res = await fetch(`${API_BASE_URL}/topologia/tabla/cups?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
-      setCupsTabla(await res.json());
-      setHasLoadedTabla(true); setPageCups(0);
-    } catch { setCupsTabla([]); } finally { setLoadingTabla(false); }
-  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo]);
+      const data = await res.json();
+      setCupsTabla(data.items ?? []);
+      setTotalCups(data.total ?? 0);
+      setHasLoadedTabla(true);
+    } catch { setCupsTabla([]); setTotalCups(0); } finally { setLoadingTabla(false); }
+  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, pageCups, pageSizeCups]);
 
-  // Carga inicial
+  // Carga inicial mapa
   useEffect(() => {
     if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId]);
 
-  // Recarga tramos y cups cuando cambia CT seleccionado
+  // Recarga mapa cuando cambian CTs seleccionados
   useEffect(() => {
     if (empresaId) { cargarCups(); cargarTramos(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctSeleccionado]);
+  }, [ctsSeleccionados]);
 
+  // Carga tabla cuando se abre el panel
   useEffect(() => {
     if (empresaId && panelTablasOpen) {
-      if (tablaActiva === "lineas") cargarTablaLineas();
-      else cargarTablaCups();
+      if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas);
+      else cargarTablaCups(0, pageSizeCups);
     }
-  }, [empresaId, panelTablasOpen, tablaActiva, cargarTablaLineas, cargarTablaCups]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, panelTablasOpen, tablaActiva]);
+
+  // Recarga tabla cuando cambia la página (lineas)
+  useEffect(() => {
+    if (empresaId && panelTablasOpen && tablaActiva === "lineas" && hasLoadedTabla) {
+      cargarTablaLineas(pageLineas, pageSizeLineas);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLineas, pageSizeLineas]);
+
+  // Recarga tabla cuando cambia la página (cups)
+  useEffect(() => {
+    if (empresaId && panelTablasOpen && tablaActiva === "cups" && hasLoadedTabla) {
+      cargarTablaCups(pageCups, pageSizeCups);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageCups, pageSizeCups]);
 
   const tramosFiltrados = tramos.filter(t => esBTTramo(t) ? mostrarBT : mostrarMT);
   const numBT = tramos.filter(t =>  esBTTramo(t)).length;
@@ -251,20 +325,32 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     if (tension !== null && tension !== undefined) return tension <= 1;
     return id.includes("BTV") || id.includes("LBT");
   };
+
   const lineasFiltradas  = lineas.filter(id => esBTLinea(id) ? mostrarBT : mostrarMT);
   const hayAlgunFichero  = Object.values(ficheros).some(f => f !== null);
-  const lineasEnSelect   = busquedaLinea ? lineasFiltradas.filter(id => id.toUpperCase().includes(busquedaLinea.toUpperCase())) : lineasFiltradas;
-  const ctsFiltrados     = busquedaCt    ? cts.filter(ct => ct.id_ct.toUpperCase().includes(busquedaCt.toUpperCase()) || ct.nombre.toUpperCase().includes(busquedaCt.toUpperCase())) : cts;
+  const lineasEnSelect   = busquedaLinea
+    ? lineasFiltradas.filter(id => id.toUpperCase().includes(busquedaLinea.toUpperCase()))
+    : lineasFiltradas;
 
-  // Paginación client-side
-  const startLineas    = pageLineas * pageSizeLineas;
-  const endLineas      = Math.min(startLineas + pageSizeLineas, lineasTabla.length);
-  const totalPagLineas = Math.max(1, Math.ceil(lineasTabla.length / pageSizeLineas));
-  const lineasPagina   = lineasTabla.slice(startLineas, endLineas);
-  const startCups      = pageCups * pageSizeCups;
-  const endCups        = Math.min(startCups + pageSizeCups, cupsTabla.length);
-  const totalPagCups   = Math.max(1, Math.ceil(cupsTabla.length / pageSizeCups));
-  const cupsPagina     = cupsTabla.slice(startCups, endCups);
+  const ctsFiltradosLista = busquedaCtFiltro
+    ? cts.filter(ct => ct.id_ct.toUpperCase().includes(busquedaCtFiltro.toUpperCase()) || ct.nombre.toUpperCase().includes(busquedaCtFiltro.toUpperCase()))
+    : cts;
+
+  const ctsPintados = ctsSeleccionados.length > 0
+    ? cts.filter(ct => ctsSeleccionados.includes(ct.id_ct))
+    : cts;
+
+  // Paginación calculada desde total servidor
+  const totalPagLineas = Math.max(1, Math.ceil(totalLineas / pageSizeLineas));
+  const totalPagCups   = Math.max(1, Math.ceil(totalCups   / pageSizeCups));
+  const startLineas    = pageLineas * pageSizeLineas + 1;
+  const endLineas      = Math.min(pageLineas * pageSizeLineas + lineasTabla.length, totalLineas);
+  const startCups      = pageCups  * pageSizeCups  + 1;
+  const endCups        = Math.min(pageCups  * pageSizeCups  + cupsTabla.length,   totalCups);
+
+  const toggleCt = (id: string) => {
+    setCtsSeleccionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
 
   const handleCalcularCt = async () => {
     if (!token || !empresaId) return;
@@ -274,7 +360,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error((err as { detail?: string }).detail || `Error ${res.status}`); }
       setCalcCtResult(await res.json());
       cargarCups(); cargarTramos();
-      if (tablaActiva === "lineas") cargarTablaLineas(); else cargarTablaCups();
+      if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas); else cargarTablaCups(0, pageSizeCups);
     } catch (e) { setCalcCtError(e instanceof Error ? e.message : "Error calculando CT"); }
     finally { setCalcCt(false); }
   };
@@ -290,9 +376,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       });
       if (!res.ok) throw new Error();
       setEditandoLinea(null);
-      // Recargar tramos del mapa y tabla si está abierta
       cargarTramos();
-      if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas();
+      if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas(pageLineas, pageSizeLineas);
     } catch { } finally { setGuardando(false); }
   };
 
@@ -305,30 +390,22 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
         body: JSON.stringify({ id_ct: editValor || null }),
       });
       if (!res.ok) throw new Error();
-      setEditandoCups(null); cargarTablaCups();
+      setEditandoCups(null); cargarTablaCups(pageCups, pageSizeCups);
     } catch { } finally { setGuardando(false); }
   };
 
-  // ── Reasignación CT desde popup del mapa ─────────────────────────────────
   const handleReasignarCtMapa = useCallback(async (id_tramo: string, id_ct: string | null) => {
     if (!token || !empresaId) return;
     try {
       const res = await fetch(
         `${API_BASE_URL}/topologia/lineas/${encodeURIComponent(id_tramo)}/ct?empresa_id=${empresaId}`,
-        {
-          method: "PATCH",
-          headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-          body: JSON.stringify({ id_ct }),
-        }
+        { method: "PATCH", headers: { ...getAuthHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ id_ct }) }
       );
       if (!res.ok) throw new Error();
-      // Recargar tramos para actualizar colores/popup y tabla si está abierta
       cargarTramos();
-      if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas();
-    } catch {
-      console.error("Error reasignando CT desde mapa");
-    }
-  }, [token, empresaId, cargarTramos, panelTablasOpen, tablaActiva, cargarTablaLineas]);
+      if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas(pageLineas, pageSizeLineas);
+    } catch { console.error("Error reasignando CT desde mapa"); }
+  }, [token, empresaId, cargarTramos, panelTablasOpen, tablaActiva, cargarTablaLineas, pageLineas, pageSizeLineas]);
 
   const handleImportar = async () => {
     if (!token || !empresaId || !hayAlgunFichero) return;
@@ -341,7 +418,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error((err as { detail?: string }).detail || `Error ${res.status}`); }
       setImportResult(await res.json() as ImportResult);
       cargarCts(); cargarCups(); cargarTramos();
-      if (panelTablasOpen) { if (tablaActiva === "lineas") cargarTablaLineas(); else cargarTablaCups(); }
+      if (panelTablasOpen) { if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas); else cargarTablaCups(0, pageSizeCups); }
     } catch (e: unknown) { setImportError(e instanceof Error ? e.message : "Error importando"); }
     finally { setImporting(false); }
   };
@@ -351,13 +428,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     const c = lineasFiltradas.filter(id => id.toUpperCase().includes(q.toUpperCase()));
     if (c.length === 1) setLineaSeleccionada(c[0]); else setLineaSeleccionada(null);
   };
-  const handleBuscarCt = () => {
-    const q = busquedaCtPendiente.trim(); setBusquedaCt(q);
-    const c = cts.filter(ct => ct.id_ct.toUpperCase().includes(q.toUpperCase()) || ct.nombre.toUpperCase().includes(q.toUpperCase()));
-    if (c.length === 1) setCtSeleccionado(c[0].id_ct); else setCtSeleccionado("");
-  };
   const handleLimpiarLinea = () => { setBusquedaLinea(""); setBusquedaLineaPendiente(""); setLineaSeleccionada(null); inputBusquedaLineaRef.current?.focus(); };
-  const handleLimpiarCt    = () => { setBusquedaCt(""); setBusquedaCtPendiente(""); setCtSeleccionado(""); inputBusquedaCtRef.current?.focus(); };
   const handleLineaClick   = (id: string | null) => { setLineaSeleccionada(id); if (id) { setBusquedaLineaPendiente(""); setBusquedaLinea(""); } };
 
   const SeccionLabel = ({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) => (
@@ -464,16 +535,15 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
         {panelMapaOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)" }}>
             <div style={{ display: "flex", height: 580 }}>
-              <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid var(--card-border)", padding: "14px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ width: 230, flexShrink: 0, borderRight: "1px solid var(--card-border)", padding: "14px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
 
                 <div>
                   <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
                   <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={empresaId}
                     onChange={e => {
                       setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
-                      setCtSeleccionado(""); setLineaSeleccionada(null);
-                      setBusquedaLinea(""); setBusquedaLineaPendiente("");
-                      setBusquedaCt(""); setBusquedaCtPendiente("");
+                      setCtsSeleccionados([]); setLineaSeleccionada(null);
+                      setBusquedaLinea(""); setBusquedaLineaPendiente(""); setBusquedaCtFiltro("");
                       setCts([]); setCups([]); setTramos([]); setLineas([]); setTensionPorLinea(new Map());
                     }}>
                     <option value="">Selecciona empresa</option>
@@ -530,41 +600,89 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   </div>
                 )}
 
+                {/* Multi-CT checkboxes */}
                 {cts.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Filtrar por CT</div>
-                    {ctSeleccionado && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Mostrando CT + líneas + CUPS</div>}
-                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                      <input ref={inputBusquedaCtRef} className="ui-input" style={{ flex: 1, fontSize: 11, height: 28 }}
-                        placeholder="Buscar CT..." value={busquedaCtPendiente}
-                        onChange={e => setBusquedaCtPendiente(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") handleBuscarCt(); }} />
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28, padding: "0 8px", fontSize: 13 }} onClick={handleBuscarCt}>🔍</button>
-                    </div>
-                    {busquedaCt && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{ctsFiltrados.length} resultado{ctsFiltrados.length !== 1 ? "s" : ""}</div>}
-                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={ctSeleccionado} onChange={e => setCtSeleccionado(e.target.value)}>
-                      <option value="">Todos los CTs</option>
-                      {ctsFiltrados.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
-                    </select>
-                    {(ctSeleccionado || busquedaCt) && (
-                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }} onClick={handleLimpiarCt}>✕ Limpiar</button>
+                    <SeccionLabel
+                      label={`Filtrar por CT${ctsSeleccionados.length > 0 ? ` (${ctsSeleccionados.length})` : ""}`}
+                      open={ctListaOpen}
+                      onToggle={() => setCtListaOpen(v => !v)}
+                    />
+                    {ctListaOpen && (
+                      <>
+                        <input className="ui-input" style={{ width: "100%", fontSize: 10, height: 26, marginBottom: 6 }}
+                          placeholder="Buscar CT..." value={busquedaCtFiltro}
+                          onChange={e => setBusquedaCtFiltro(e.target.value)} />
+                        <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 9, flex: 1 }} onClick={() => setCtsSeleccionados([])}>Todos</button>
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 9, flex: 1 }} onClick={() => setCtsSeleccionados(cts.map(c => c.id_ct))}>Ninguno</button>
+                        </div>
+                        {ctsSeleccionados.length >= 2 && (
+                          <div style={{ fontSize: 9, color: "#1D9E75", fontWeight: 600, marginBottom: 6 }}>● Modo multi-CT activo</div>
+                        )}
+                        <div style={{ maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                          {ctsFiltradosLista.map(ct => {
+                            const sel = ctsSeleccionados.includes(ct.id_ct);
+                            const colorCt = ctsSeleccionados.length >= 2 && sel ? coloresCt[ct.id_ct] : undefined;
+                            return (
+                              <label key={ct.id_ct} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 4px", borderRadius: 4, background: sel ? "var(--field-bg-soft)" : "transparent" }}>
+                                <input type="checkbox" checked={sel} onChange={() => toggleCt(ct.id_ct)} style={{ flexShrink: 0 }} />
+                                {colorCt && <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorCt, flexShrink: 0 }} />}
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: sel ? "var(--text)" : "var(--text-muted)" }}>{ct.nombre}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {ctsSeleccionados.length > 0 && (
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }}
+                            onClick={() => { setCtsSeleccionados([]); setBusquedaCtFiltro(""); }}>
+                            ✕ Limpiar selección
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
 
+                {/* Leyenda */}
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
-                  {[
-                    { color: "#A855F7", w: 16, h: 3,  label: "Línea MT",                   radius: 2 },
-                    { color: "#F59E0B", w: 16, h: 3,  label: "Línea BT",                   radius: 2 },
-                    { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación",    radius: "50%" as const, border: "2px solid #fff" },
-                    { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",         radius: "50%" as const },
-                  ].map(({ color, w, h, label, radius, border }) => (
-                    <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                      <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
-                      {label}
-                    </div>
-                  ))}
+                  {ctsSeleccionados.length >= 2 ? (
+                    <>
+                      {ctsSeleccionados.map(id => {
+                        const ct = cts.find(c => c.id_ct === id);
+                        return (
+                          <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>
+                            <span style={{ width: 16, height: 3, background: coloresCt[id], display: "inline-block", borderRadius: 2 }} />
+                            {ct?.nombre ?? id}
+                          </div>
+                        );
+                      })}
+                      <div style={{ marginTop: 4 }}>
+                        {[
+                          { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
+                          { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",      radius: "50%" as const },
+                        ].map(({ color, w, h, label, radius, border }) => (
+                          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                            <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
+                            {label}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    [
+                      { color: "#A855F7", w: 16, h: 3,  label: "Línea MT",                radius: 2 },
+                      { color: "#F59E0B", w: 16, h: 3,  label: "Línea BT",                radius: 2 },
+                      { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
+                      { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",     radius: "50%" as const },
+                    ].map(({ color, w, h, label, radius, border }) => (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+                        <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
+                        {label}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -575,7 +693,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   </div>
                 )}
                 <MapaLeaflet
-                  cts={ctSeleccionado ? cts.filter(ct => ct.id_ct === ctSeleccionado) : cts}
+                  cts={ctsPintados}
+                  ctsTodos={cts}
                   cups={cups}
                   tramos={tramosFiltrados}
                   mostrarCts={mostrarCts}
@@ -588,8 +707,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   tooltipCups={tooltipCups}
                   onLineaClick={handleLineaClick}
                   onReasignarCt={handleReasignarCtMapa}
-                  ctsTodos={cts}
-
+                  coloresCt={coloresCt}
                 />
               </div>
             </div>
@@ -609,7 +727,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
 
         {panelTablasOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)", padding: "16px 20px" }}>
-
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: 16, flexWrap: "wrap" }}>
               <div>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
@@ -619,7 +736,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 </select>
               </div>
               <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 30 }}
-                onClick={handleCalcularCt} disabled={calcCt || !empresaId} title="Recalcula BFS + proximidad">
+                onClick={handleCalcularCt} disabled={calcCt || !empresaId}>
                 {calcCt ? "Calculando..." : "⚡ Calcular CT"}
               </button>
             </div>
@@ -651,9 +768,13 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--card-border)" }}>
               {(["lineas", "cups"] as const).map(tab => (
                 <button key={tab} type="button"
-                  onClick={() => { setTablaActiva(tab); setHasLoadedTabla(false); if (tab === "lineas") cargarTablaLineas(); else cargarTablaCups(); }}
+                  onClick={() => {
+                    setTablaActiva(tab); setHasLoadedTabla(false);
+                    if (tab === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
+                    else { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
+                  }}
                   style={{ padding: "6px 16px", fontSize: 11, fontWeight: 600, background: "none", border: "none", cursor: "pointer", borderBottom: tablaActiva === tab ? "2px solid var(--primary)" : "2px solid transparent", color: tablaActiva === tab ? "var(--primary)" : "var(--text-muted)" }}>
-                  {tab === "lineas" ? `Líneas → CT (${lineasTabla.length})` : `CUPS → CT (${cupsTabla.length})`}
+                  {tab === "lineas" ? `Líneas → CT (${totalLineas.toLocaleString()})` : `CUPS → CT (${totalCups.toLocaleString()})`}
                 </button>
               ))}
             </div>
@@ -680,7 +801,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 <input type="checkbox" checked={filtroSinCt} onChange={e => setFiltroSinCt(e.target.checked)} />Sin CT asignado
               </label>
               <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28 }}
-                onClick={() => { setHasLoadedTabla(false); if (tablaActiva === "lineas") cargarTablaLineas(); else cargarTablaCups(); }}>
+                onClick={() => {
+                  setHasLoadedTabla(false);
+                  if (tablaActiva === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
+                  else { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
+                }}>
                 🔍 Buscar
               </button>
               <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 28 }}
@@ -696,7 +821,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
                 ) : lineasTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
-                ) : lineasPagina.length > 0 ? (
+                ) : lineasTabla.length > 0 ? (
                   <>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
@@ -707,7 +832,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                         </tr>
                       </thead>
                       <tbody>
-                        {lineasPagina.map(l => (
+                        {lineasTabla.map(l => (
                           <tr key={l.id_tramo} style={{ borderBottom: "1px solid var(--card-border)" }}>
                             <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{l.id_tramo}</td>
                             <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{l.tension_kv != null ? `${l.tension_kv} kV` : "—"}</td>
@@ -743,9 +868,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     </table>
                     <TablePaginationFooter
                       loading={loadingTabla} hasLoadedOnce={hasLoadedTabla}
-                      totalFilas={lineasTabla.length} startIndex={startLineas} endIndex={endLineas}
-                      pageSize={pageSizeLineas} setPageSize={(v) => { setPageSizeLineas(v); setPageLineas(0); }}
-                      currentPage={pageLineas} totalPages={totalPagLineas} setPage={setPageLineas} compact />
+                      totalFilas={totalLineas} startIndex={startLineas - 1} endIndex={endLineas}
+                      pageSize={pageSizeLineas}
+                      setPageSize={v => { setPageSizeLineas(v); setPageLineas(0); }}
+                      currentPage={pageLineas} totalPages={totalPagLineas}
+                      setPage={p => setPageLineas(p)}
+                      compact />
                   </>
                 ) : null}
               </div>
@@ -758,7 +886,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
                 ) : cupsTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
-                ) : cupsPagina.length > 0 ? (
+                ) : cupsTabla.length > 0 ? (
                   <>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
@@ -769,7 +897,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                         </tr>
                       </thead>
                       <tbody>
-                        {cupsPagina.map(c => (
+                        {cupsTabla.map(c => (
                           <tr key={c.cups} style={{ borderBottom: "1px solid var(--card-border)" }}>
                             <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{c.cups}</td>
                             <td style={{ padding: "5px 8px" }}>{c.tarifa ?? "—"}</td>
@@ -805,9 +933,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     </table>
                     <TablePaginationFooter
                       loading={loadingTabla} hasLoadedOnce={hasLoadedTabla}
-                      totalFilas={cupsTabla.length} startIndex={startCups} endIndex={endCups}
-                      pageSize={pageSizeCups} setPageSize={(v) => { setPageSizeCups(v); setPageCups(0); }}
-                      currentPage={pageCups} totalPages={totalPagCups} setPage={setPageCups} compact />
+                      totalFilas={totalCups} startIndex={startCups - 1} endIndex={endCups}
+                      pageSize={pageSizeCups}
+                      setPageSize={v => { setPageSizeCups(v); setPageCups(0); }}
+                      currentPage={pageCups} totalPages={totalPagCups}
+                      setPage={p => setPageCups(p)}
+                      compact />
                   </>
                 ) : null}
               </div>
