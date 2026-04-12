@@ -62,7 +62,6 @@ function esBTTramo(t: TramoMapa): boolean {
   return id.includes("BTV") || id.includes("LBT");
 }
 
-// ─── Paleta de colores para multi-CT ─────────────────────────────────────────
 const PALETA_CT = [
   "#E24B4A", "#2563EB", "#16A34A", "#F59E0B", "#7C3AED",
   "#0891B2", "#DB2777", "#65A30D", "#EA580C", "#0284C7",
@@ -74,25 +73,22 @@ function generarColoresCt(ids: string[]): Record<string, string> {
   return mapa;
 }
 
-// Skeleton row component used to avoid flicker when loading paginated tables.
-// It renders a table row with a set of placeholder cells that match the
-// structure of the actual data tables. The number of columns can be
-// customized via the `columns` prop.
-const SkeletonRow = ({ columns }: { columns: number }) => (
-  <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-    {Array.from({ length: columns }).map((_, idx) => (
-      <td key={idx} style={{ padding: "5px 8px" }}>
-        <div
-          style={{
-            height: 10,
-            width: "80%",
-            background: "var(--field-bg-soft)",
-            borderRadius: 4,
-          }}
-        />
-      </td>
-    ))}
-  </tr>
+// ─── Overlay de carga sobre tabla existente ───────────────────────────────────
+const TableLoadingOverlay = () => (
+  <div style={{
+    position: "absolute", inset: 0, zIndex: 5,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    pointerEvents: "none",
+  }}>
+    <div style={{
+      background: "var(--card-bg)", border: "1px solid var(--card-border)",
+      borderRadius: 6, padding: "6px 14px",
+      fontSize: 10, color: "var(--text-muted)",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    }}>
+      Cargando...
+    </div>
+  </div>
 );
 
 const panelStyle: React.CSSProperties = { background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "10px", overflow: "hidden", marginBottom: "10px" };
@@ -143,7 +139,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [mostrarBT,   setMostrarBT]   = useState(true);
   const [mostrarMT,   setMostrarMT]   = useState(true);
 
-  // Multi-CT
   const [ctsSeleccionados, setCtsSeleccionados] = useState<string[]>([]);
   const [busquedaCtFiltro, setBusquedaCtFiltro] = useState<string>("");
   const [ctListaOpen,      setCtListaOpen]      = useState(true);
@@ -155,7 +150,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [busquedaLineaPendiente, setBusquedaLineaPendiente] = useState<string>("");
   const inputBusquedaLineaRef = useRef<HTMLInputElement>(null);
 
-  // ── Tablas ────────────────────────────────────────────────────────────────
   const [tablaActiva,    setTablaActiva]    = useState<"lineas" | "cups">("lineas");
   const [calcCt,         setCalcCt]         = useState(false);
   const [calcCtResult,   setCalcCtResult]   = useState<CalcCtResult | null>(null);
@@ -170,17 +164,23 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [filtroSinCt,    setFiltroSinCt]    = useState(false);
   const [filtroMetodo,   setFiltroMetodo]   = useState<string>("");
 
-  // Paginación servidor
   const [pageLineas,     setPageLineas]     = useState(0);
   const [pageSizeLineas, setPageSizeLineas] = useState(50);
   const [pageCups,       setPageCups]       = useState(0);
   const [pageSizeCups,   setPageSizeCups]   = useState(50);
 
-  // Edición inline
   const [editandoLinea, setEditandoLinea] = useState<string | null>(null);
   const [editandoCups,  setEditandoCups]  = useState<string | null>(null);
   const [editValor,     setEditValor]     = useState<string>("");
   const [guardando,     setGuardando]     = useState(false);
+
+  // ── Refs para fijar altura durante cambio de página ───────────────────────
+  // Capturamos la altura del wrapper antes de cada fetch y la mantenemos
+  // como minHeight durante la carga para evitar el salto de layout.
+  const tablaLineasRef   = useRef<HTMLDivElement>(null);
+  const tablaCupsRef     = useRef<HTMLDivElement>(null);
+  const [minHLineas, setMinHLineas] = useState<number | undefined>(undefined);
+  const [minHCups,   setMinHCups]   = useState<number | undefined>(undefined);
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
@@ -189,8 +189,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) })
       .then(r => r.ok ? r.json() : []).then(setEmpresas).catch(() => {});
   }, [token]);
-
-  // ── Carga mapa ────────────────────────────────────────────────────────────
 
   const cargarCts = useCallback(async () => {
     if (!token || !empresaId) return;
@@ -251,22 +249,13 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     } catch { setTramos([]); } finally { setLoadingTramos(false); }
   }, [token, empresaId, ctsSeleccionados]);
 
-  // ── Carga tablas — paginación servidor ───────────────────────────────────
-  //
-  //  El backend devuelve { items: [...], total: N }.
-  //  El frontend pasa limit + offset reales — no hay slice en cliente.
-  //  Cada vez que cambia página o pageSize se hace un nuevo fetch.
-  //
-
   const cargarTablaLineas = useCallback(async (page = pageLineas, size = pageSizeLineas) => {
     if (!token || !empresaId) return;
+    // Fijar altura antes de la carga para evitar salto de layout
+    if (tablaLineasRef.current) setMinHLineas(tablaLineasRef.current.offsetHeight);
     setLoadingTabla(true);
     try {
-      const params = new URLSearchParams({
-        empresa_id: String(empresaId),
-        limit:      String(size),
-        offset:     String(page * size),
-      });
+      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
       if (filtroCtTabla) params.set("id_ct",  filtroCtTabla);
       if (filtroSinCt)   params.set("sin_ct", "true");
       if (filtroMetodo)  params.set("metodo",  filtroMetodo);
@@ -276,18 +265,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setLineasTabla(data.items ?? []);
       setTotalLineas(data.total ?? 0);
       setHasLoadedTabla(true);
-    } catch { setLineasTabla([]); setTotalLineas(0); } finally { setLoadingTabla(false); }
+    } catch { setLineasTabla([]); setTotalLineas(0); }
+    finally { setLoadingTabla(false); setMinHLineas(undefined); }
   }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, pageLineas, pageSizeLineas]);
 
   const cargarTablaCups = useCallback(async (page = pageCups, size = pageSizeCups) => {
     if (!token || !empresaId) return;
+    if (tablaCupsRef.current) setMinHCups(tablaCupsRef.current.offsetHeight);
     setLoadingTabla(true);
     try {
-      const params = new URLSearchParams({
-        empresa_id: String(empresaId),
-        limit:      String(size),
-        offset:     String(page * size),
-      });
+      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
       if (filtroCtTabla) params.set("id_ct",  filtroCtTabla);
       if (filtroSinCt)   params.set("sin_ct", "true");
       if (filtroMetodo)  params.set("metodo",  filtroMetodo);
@@ -297,22 +284,20 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setCupsTabla(data.items ?? []);
       setTotalCups(data.total ?? 0);
       setHasLoadedTabla(true);
-    } catch { setCupsTabla([]); setTotalCups(0); } finally { setLoadingTabla(false); }
+    } catch { setCupsTabla([]); setTotalCups(0); }
+    finally { setLoadingTabla(false); setMinHCups(undefined); }
   }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, pageCups, pageSizeCups]);
 
-  // Carga inicial mapa
   useEffect(() => {
     if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId]);
 
-  // Recarga mapa cuando cambian CTs seleccionados
   useEffect(() => {
     if (empresaId) { cargarCups(); cargarTramos(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctsSeleccionados]);
 
-  // Carga tabla cuando se abre el panel
   useEffect(() => {
     if (empresaId && panelTablasOpen) {
       if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas);
@@ -321,19 +306,15 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId, panelTablasOpen, tablaActiva]);
 
-  // Recarga tabla cuando cambia la página (lineas)
   useEffect(() => {
-    if (empresaId && panelTablasOpen && tablaActiva === "lineas" && hasLoadedTabla) {
+    if (empresaId && panelTablasOpen && tablaActiva === "lineas" && hasLoadedTabla)
       cargarTablaLineas(pageLineas, pageSizeLineas);
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageLineas, pageSizeLineas]);
 
-  // Recarga tabla cuando cambia la página (cups)
   useEffect(() => {
-    if (empresaId && panelTablasOpen && tablaActiva === "cups" && hasLoadedTabla) {
+    if (empresaId && panelTablasOpen && tablaActiva === "cups" && hasLoadedTabla)
       cargarTablaCups(pageCups, pageSizeCups);
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageCups, pageSizeCups]);
 
@@ -352,16 +333,13 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const lineasEnSelect   = busquedaLinea
     ? lineasFiltradas.filter(id => id.toUpperCase().includes(busquedaLinea.toUpperCase()))
     : lineasFiltradas;
-
   const ctsFiltradosLista = busquedaCtFiltro
     ? cts.filter(ct => ct.id_ct.toUpperCase().includes(busquedaCtFiltro.toUpperCase()) || ct.nombre.toUpperCase().includes(busquedaCtFiltro.toUpperCase()))
     : cts;
-
   const ctsPintados = ctsSeleccionados.length > 0
     ? cts.filter(ct => ctsSeleccionados.includes(ct.id_ct))
     : cts;
 
-  // Paginación calculada desde total servidor
   const totalPagLineas = Math.max(1, Math.ceil(totalLineas / pageSizeLineas));
   const totalPagCups   = Math.max(1, Math.ceil(totalCups   / pageSizeCups));
   const startLineas    = pageLineas * pageSizeLineas + 1;
@@ -621,7 +599,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   </div>
                 )}
 
-                {/* Multi-CT checkboxes */}
                 {cts.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
                     <SeccionLabel
@@ -665,7 +642,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   </div>
                 )}
 
-                {/* Leyenda */}
                 <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
                   {ctsSeleccionados.length >= 2 ? (
@@ -835,49 +811,25 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
               </button>
             </div>
 
-            {/* Tabla líneas */}
+            {/* ── Tabla líneas ── */}
             {tablaActiva === "lineas" && (
               <div style={{ overflowX: "auto" }}>
-                {loadingTabla ? (
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                        {[
-                          "ID Tramo",
-                          "Tensión",
-                          "Long.",
-                          "Op.",
-                          "APS",
-                          "CT asignado",
-                          "Método",
-                          "",
-                        ].map(h => (
-                          <th
-                            key={h}
-                            style={{
-                              padding: "6px 8px",
-                              textAlign: "left",
-                              fontSize: 10,
-                              color: "var(--text-muted)",
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.from({ length: pageSizeLineas }).map((_, i) => (
-                        <SkeletonRow key={i} columns={8} />
-                      ))}
-                    </tbody>
-                  </table>
+                {!hasLoadedTabla && loadingTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
                 ) : lineasTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : lineasTabla.length > 0 ? (
-                  <>
+                  <div
+                    ref={tablaLineasRef}
+                    style={{
+                      position: "relative",
+                      opacity: loadingTabla ? 0.45 : 1,
+                      transition: "opacity 0.18s ease",
+                      // minHeight fijado al iniciar la carga para evitar salto de layout
+                      minHeight: minHLineas,
+                    }}
+                  >
+                    {loadingTabla && <TableLoadingOverlay />}
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
@@ -929,54 +881,29 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       currentPage={pageLineas} totalPages={totalPagLineas}
                       setPage={p => setPageLineas(p)}
                       compact />
-                  </>
+                  </div>
                 ) : null}
               </div>
             )}
 
-            {/* Tabla CUPS */}
+            {/* ── Tabla CUPS ── */}
             {tablaActiva === "cups" && (
               <div style={{ overflowX: "auto" }}>
-                {loadingTabla ? (
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                        {[
-                          "CUPS",
-                          "Tarifa",
-                          "Tensión",
-                          "Potencia",
-                          "Municipio",
-                          "CT asignado",
-                          "Método",
-                          "",
-                        ].map(h => (
-                          <th
-                            key={h}
-                            style={{
-                              padding: "6px 8px",
-                              textAlign: "left",
-                              fontSize: 10,
-                              color: "var(--text-muted)",
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.from({ length: pageSizeCups }).map((_, i) => (
-                        <SkeletonRow key={i} columns={8} />
-                      ))}
-                    </tbody>
-                  </table>
+                {!hasLoadedTabla && loadingTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
                 ) : cupsTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : cupsTabla.length > 0 ? (
-                  <>
+                  <div
+                    ref={tablaCupsRef}
+                    style={{
+                      position: "relative",
+                      opacity: loadingTabla ? 0.45 : 1,
+                      transition: "opacity 0.18s ease",
+                      minHeight: minHCups,
+                    }}
+                  >
+                    {loadingTabla && <TableLoadingOverlay />}
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
@@ -1028,7 +955,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       currentPage={pageCups} totalPages={totalPagCups}
                       setPage={p => setPageCups(p)}
                       compact />
-                  </>
+                  </div>
                 ) : null}
               </div>
             )}
