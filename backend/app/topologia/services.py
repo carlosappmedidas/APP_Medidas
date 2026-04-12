@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.topologia.models import (
+    CtCelda,
     CtInventario,
     CtTransformador,
     CupsTopologia,
@@ -20,6 +21,7 @@ from app.topologia.models import (
 from app.topologia.parsers.parser_b2 import parsear_b2
 from app.topologia.parsers.parser_a1 import parsear_a1
 from app.topologia.parsers.parser_b1_b11 import parsear_b1, parsear_b11
+from app.topologia.parsers.parser_b22 import parsear_b22
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -149,6 +151,46 @@ def _upsert_transformador(
     obj.potencia_kva     = registro.get("potencia_kva")
     obj.anio_fabricacion = registro.get("anio_fabricacion")
     obj.en_operacion     = registro.get("en_operacion")
+    return accion
+
+
+# ── Upsert CT celda (B22) ─────────────────────────────────────────────────────
+
+def _upsert_celda(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    registro: Dict[str, Any],
+) -> str:
+    obj = (
+        db.query(CtCelda)
+        .filter(
+            CtCelda.tenant_id  == tenant_id,
+            CtCelda.empresa_id == empresa_id,
+            CtCelda.id_celda   == registro["id_celda"],
+        )
+        .first()
+    )
+    if obj is None:
+        obj = CtCelda(
+            tenant_id  = tenant_id,
+            empresa_id = empresa_id,
+            created_at = _now(),
+            updated_at = _now(),
+        )
+        db.add(obj)
+        accion = "insertado"
+    else:
+        obj.updated_at = _now()
+        accion = "actualizado"
+
+    obj.id_ct            = registro["id_ct"]
+    obj.id_celda         = registro["id_celda"]
+    obj.id_transformador = registro.get("id_transformador")
+    obj.cini             = registro.get("cini")
+    obj.posicion         = registro.get("posicion")
+    obj.en_servicio      = registro.get("en_servicio")
+    obj.anio_instalacion = registro.get("anio_instalacion")
     return accion
 
 
@@ -405,15 +447,22 @@ RADIO_SALIDAS_CT_M = 5   # metros — radio para detección de salidas directas 
 MAX_DIST_M         = 50  # metros — radio máximo proximidad general (UTM)
 
 
-# ── Helper BT ─────────────────────────────────────────────────────────────────
+# ── Helpers BT / MT ───────────────────────────────────────────────────────────
 
 def _es_bt(linea: LineaInventario) -> bool:
     """True si la línea es de baja tensión (≤1 kV)."""
     if linea.tension_kv is not None:
         return float(linea.tension_kv) <= 1.0
-    # Fallback por ID cuando tension_kv es None
     id_t = linea.id_tramo or ""
     return "BTV" in id_t or "LBT" in id_t
+
+
+def _es_mt(linea: LineaInventario) -> bool:
+    """True si la línea es de media tensión (>1 kV)."""
+    if linea.tension_kv is not None:
+        return float(linea.tension_kv) > 1.0
+    id_t = linea.id_tramo or ""
+    return "ATV" in id_t or "ATR" in id_t
 
 
 # ── BFS solo BT ──────────────────────────────────────────────────────────────
@@ -440,7 +489,6 @@ def _bfs_bt(
             continue
         visitados.add(nudo)
 
-        # Hacia adelante: nudo_inicio → nudo_fin, solo BT
         for linea in nudo_a_lineas_ini.get(nudo, []):
             if not _es_bt(linea):
                 continue
@@ -450,7 +498,6 @@ def _bfs_bt(
             if linea.nudo_fin and linea.nudo_fin not in visitados:
                 cola.append(linea.nudo_fin)
 
-        # Hacia atrás: nudo_fin → nudo_inicio, solo BT
         for linea in nudo_a_lineas_fin.get(nudo, []):
             if not _es_bt(linea):
                 continue
@@ -459,6 +506,53 @@ def _bfs_bt(
                 metodo[linea.id_tramo]     = "bfs"
             if linea.nudo_inicio and linea.nudo_inicio not in visitados:
                 cola.append(linea.nudo_inicio)
+
+
+# ── BFS solo MT ──────────────────────────────────────────────────────────────
+
+def _bfs_mt(
+    nudos_arranque: List[str],
+    nudo_a_lineas_ini: Dict[str, List[LineaInventario]],
+    nudo_a_lineas_fin: Dict[str, List[LineaInventario]],
+    id_ct: str,
+    linea_a_ct_mt: Dict[str, str],
+    metodo_mt: Dict[str, str],
+    nudos_ct: set,
+) -> None:
+    """
+    BFS desde nudo_alta del CT por la red MT.
+    Se detiene al llegar al nudo_alta de otro CT (frontera de red).
+    No sobreescribe asignaciones existentes.
+    """
+    visitados: set = set()
+    cola = list(nudos_arranque)
+
+    while cola:
+        nudo = cola.pop(0)
+        if nudo in visitados:
+            continue
+        visitados.add(nudo)
+
+        for linea in nudo_a_lineas_ini.get(nudo, []):
+            if not _es_mt(linea):
+                continue
+            if linea.id_tramo not in linea_a_ct_mt:
+                linea_a_ct_mt[linea.id_tramo] = id_ct
+                metodo_mt[linea.id_tramo]     = "nudo_alta"
+            # Propagar solo si el nudo_fin no es frontera de otro CT
+            if linea.nudo_fin and linea.nudo_fin not in visitados:
+                if linea.nudo_fin not in nudos_ct or linea.nudo_fin in nudos_arranque:
+                    cola.append(linea.nudo_fin)
+
+        for linea in nudo_a_lineas_fin.get(nudo, []):
+            if not _es_mt(linea):
+                continue
+            if linea.id_tramo not in linea_a_ct_mt:
+                linea_a_ct_mt[linea.id_tramo] = id_ct
+                metodo_mt[linea.id_tramo]     = "nudo_alta"
+            if linea.nudo_inicio and linea.nudo_inicio not in visitados:
+                if linea.nudo_inicio not in nudos_ct or linea.nudo_inicio in nudos_arranque:
+                    cola.append(linea.nudo_inicio)
 
 
 # ── Detección de salidas del CT ───────────────────────────────────────────────
@@ -490,21 +584,10 @@ def _detectar_salidas_bt(
     """
     Detecta salidas BT del CT para propagar el BFS cuando el nudo_baja
     no alcanzó ninguna línea BT.
-
-    Nivel 1 — salidas confirmadas nudo+GPS:
-      Líneas BT ya asignadas a este CT cuyo punto de inicio esté a ≤5m.
-      Confirma que el BFS topológico y el GPS coinciden.
-
-    Nivel 2 (fallback) — GPS puro:
-      Líneas BT NO asignadas aún, a ≤5m del CT, con fecha_aps y operacion=1.
-      Descarta continuaciones de otras candidatas en el radio.
-
-    Devuelve lista de nudo_inicio para alimentar el BFS.
     """
     if ct.lat is None or ct.lon is None:
         return []
 
-    # Nivel 1: BT asignadas a este CT cerca del CT
     nudos_nivel1: List[str] = []
     for row in tramos_gps:
         if linea_a_ct.get(row.id_linea) != ct.id_ct:
@@ -521,7 +604,6 @@ def _detectar_salidas_bt(
     if nudos_nivel1:
         return list(set(nudos_nivel1))
 
-    # Nivel 2 (fallback): BT no asignadas cerca del CT
     candidatas: List[_TramoGPS] = []
     for row in tramos_gps:
         if row.id_linea in linea_a_ct:
@@ -544,7 +626,7 @@ def _detectar_salidas_bt(
     return [row.nudo_inicio for row in salidas if row.nudo_inicio]
 
 
-# ── Algoritmo principal ───────────────────────────────────────────────────────
+# ── Algoritmo BT principal ────────────────────────────────────────────────────
 
 def calcular_asociacion_ct(
     db: Session,
@@ -552,14 +634,15 @@ def calcular_asociacion_ct(
     empresa_id: int,
 ) -> Dict[str, Any]:
     """
-    Calcula y persiste la asociación CT → línea BT y CT → CUPS.
-    Las líneas MT NO se asignan aquí — se gestionan en una fase separada.
+    Calcula y persiste la asociación CT → línea BT y CT → CUPS BT.
+    Las líneas MT y CUPS MT NO se tocan aquí — usar calcular_asociacion_ct_mt.
     No sobreescribe asignaciones manuales (metodo='manual').
 
     PASO 1 — BFS solo BT desde nudo_baja del CT.
     PASO 2 — Salidas BT detectadas por GPS (nudo+GPS o GPS puro).
     PASO 3 — BFS solo BT desde las salidas del PASO 2.
     PASO 4 — Proximidad general para líneas BT sin asignar (≤50m UTM).
+    PASO 5 — CUPS BT: buscar en líneas BT que terminan en su nudo.
     """
     cts = (
         db.query(CtInventario)
@@ -612,7 +695,6 @@ def calcular_asociacion_ct(
         )
         .all()
     )
-    # Solo BT en tramos_gps — no necesitamos MT para el algoritmo BT
     tramos_gps: List[_TramoGPS] = []
     for row in tramos_gps_rows:
         linea = lineas_por_tramo.get(row.id_linea)
@@ -639,7 +721,6 @@ def calcular_asociacion_ct(
 
     for ct in cts:
         # ── PASO 1: BFS solo BT desde nudo_baja ───────────────────────────────
-        # Las líneas MT no se tocan — se gestionan en fase separada
         if ct.nudo_baja:
             _bfs_bt(
                 [ct.nudo_baja],
@@ -661,7 +742,6 @@ def calcular_asociacion_ct(
             )
 
     # ── PASO 4: proximidad general para BT sin asignar (≤ MAX_DIST_M UTM) ─────
-    # Centroide de cada CT calculado desde sus líneas BT ya asignadas
     ct_coords: Dict[str, Tuple[float, float]] = {}
     for ct in cts:
         lineas_ct = [
@@ -675,7 +755,6 @@ def calcular_asociacion_ct(
                 sum(c[1] for c in lineas_ct) / len(lineas_ct),
             )
 
-    # Solo líneas BT sin asignar — usa _es_bt para no depender del nombre del ID
     bt_sin = [
         linea for linea in lineas
         if linea.id_tramo not in linea_a_ct
@@ -695,19 +774,15 @@ def calcular_asociacion_ct(
             linea_a_ct[linea.id_tramo] = mejor_ct
             metodo[linea.id_tramo]     = "proximidad"
 
-    # Persistir — no sobreescribir manuales, no tocar líneas MT
+    # Persistir BT — no sobreescribir manuales, no tocar MT
     lineas_bfs      = 0
     lineas_prox     = 0
     lineas_sin_asoc = 0
     for linea in lineas:
         if linea.metodo_asignacion_ct == "manual":
             continue
-        # Las líneas MT se limpian — ya no deben tener CT asignado por este algoritmo
         if not _es_bt(linea):
-            if linea.id_ct is not None and linea.metodo_asignacion_ct != "manual":
-                linea.id_ct                = None
-                linea.metodo_asignacion_ct = None
-                linea.updated_at           = _now()
+            # MT las gestiona calcular_asociacion_ct_mt — no tocar
             continue
         id_ct_calc  = linea_a_ct.get(linea.id_tramo)
         metodo_calc = metodo.get(linea.id_tramo)
@@ -724,7 +799,7 @@ def calcular_asociacion_ct(
 
     db.flush()
 
-    # CUPS → CT via nudo → línea BT
+    # ── PASO 5: CUPS BT → CT via nudo → línea BT ──────────────────────────────
     cups_lista = (
         db.query(CupsTopologia)
         .filter(
@@ -738,12 +813,14 @@ def calcular_asociacion_ct(
     for cups in cups_lista:
         if cups.metodo_asignacion_ct == "manual":
             continue
+        # CUPS MT los gestiona calcular_asociacion_ct_mt
+        if cups.tension_kv is not None and float(cups.tension_kv) > 1.0:
+            continue
         nudo = cups.id_ct
         if not nudo:
             cups_sin_asoc += 1
             continue
         id_ct_cups = None
-        # Buscar primero en líneas BT que terminan en este nudo
         for linea in nudo_a_lineas_fin.get(nudo, []):
             if not _es_bt(linea):
                 continue
@@ -767,6 +844,147 @@ def calcular_asociacion_ct(
         "cups_asignados":    cups_asignados,
         "cups_sin_asoc":     cups_sin_asoc,
         "cups_total":        len(cups_lista),
+    }
+
+
+# ── Algoritmo MT ──────────────────────────────────────────────────────────────
+
+def calcular_asociacion_ct_mt(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+) -> Dict[str, Any]:
+    """
+    Calcula y persiste la asociación CT → línea MT y CT → CUPS MT.
+    No sobreescribe asignaciones manuales (metodo='manual').
+
+    PASO 1 — BFS MT desde nudo_alta de cada CT.
+              Se detiene al llegar al nudo_alta de otro CT (frontera).
+    PASO 2 — Persistir líneas MT asignadas.
+    PASO 3 — CUPS MT: buscar en líneas MT que tocan su nudo.
+    """
+    cts = (
+        db.query(CtInventario)
+        .filter(
+            CtInventario.tenant_id  == tenant_id,
+            CtInventario.empresa_id == empresa_id,
+        )
+        .all()
+    )
+    lineas = (
+        db.query(LineaInventario)
+        .filter(
+            LineaInventario.tenant_id  == tenant_id,
+            LineaInventario.empresa_id == empresa_id,
+        )
+        .all()
+    )
+
+    # Todos los nudos_alta son fronteras del BFS MT
+    nudos_ct: set = {ct.nudo_alta for ct in cts if ct.nudo_alta}
+
+    nudo_a_lineas_ini: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
+    nudo_a_lineas_fin: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
+    for linea in lineas:
+        if linea.nudo_inicio:
+            nudo_a_lineas_ini[linea.nudo_inicio].append(linea)
+        if linea.nudo_fin:
+            nudo_a_lineas_fin[linea.nudo_fin].append(linea)
+
+    linea_a_ct_mt: Dict[str, str] = {}
+    metodo_mt:     Dict[str, str] = {}
+
+    # ── PASO 1: BFS MT desde nudo_alta de cada CT ─────────────────────────────
+    for ct in cts:
+        if not ct.nudo_alta:
+            continue
+        _bfs_mt(
+            [ct.nudo_alta],
+            nudo_a_lineas_ini,
+            nudo_a_lineas_fin,
+            ct.id_ct,
+            linea_a_ct_mt,
+            metodo_mt,
+            nudos_ct,
+        )
+
+    # ── PASO 2: Persistir líneas MT ───────────────────────────────────────────
+    lineas_mt_asignadas = 0
+    lineas_mt_sin_asoc  = 0
+    for linea in lineas:
+        if not _es_mt(linea):
+            continue
+        if linea.metodo_asignacion_ct == "manual":
+            continue
+        id_ct_calc  = linea_a_ct_mt.get(linea.id_tramo)
+        metodo_calc = metodo_mt.get(linea.id_tramo)
+        if id_ct_calc:
+            linea.id_ct                = id_ct_calc
+            linea.metodo_asignacion_ct = metodo_calc
+            linea.updated_at           = _now()
+            lineas_mt_asignadas += 1
+        else:
+            # Limpiar asignación automática previa si ya no corresponde
+            if linea.id_ct is not None and linea.metodo_asignacion_ct != "manual":
+                linea.id_ct                = None
+                linea.metodo_asignacion_ct = None
+                linea.updated_at           = _now()
+            lineas_mt_sin_asoc += 1
+
+    db.flush()
+
+    # ── PASO 3: CUPS MT → CT via nudo → línea MT ──────────────────────────────
+    cups_lista = (
+        db.query(CupsTopologia)
+        .filter(
+            CupsTopologia.tenant_id  == tenant_id,
+            CupsTopologia.empresa_id == empresa_id,
+        )
+        .all()
+    )
+    cups_mt_asignados = 0
+    cups_mt_sin_asoc  = 0
+    for cups in cups_lista:
+        if cups.metodo_asignacion_ct == "manual":
+            continue
+        # Solo CUPS MT
+        if cups.tension_kv is None or float(cups.tension_kv) <= 1.0:
+            continue
+        nudo = cups.id_ct
+        if not nudo:
+            cups_mt_sin_asoc += 1
+            continue
+        id_ct_cups = None
+        # Buscar en líneas MT que terminan en el nudo del CUPS
+        for linea in nudo_a_lineas_fin.get(nudo, []):
+            if not _es_mt(linea):
+                continue
+            id_ct_cups = linea_a_ct_mt.get(linea.id_tramo)
+            if id_ct_cups:
+                break
+        # Fallback: líneas MT que arrancan desde el nudo
+        if not id_ct_cups:
+            for linea in nudo_a_lineas_ini.get(nudo, []):
+                if not _es_mt(linea):
+                    continue
+                id_ct_cups = linea_a_ct_mt.get(linea.id_tramo)
+                if id_ct_cups:
+                    break
+        if id_ct_cups:
+            cups.id_ct_asignado       = id_ct_cups
+            cups.metodo_asignacion_ct = "nudo_linea_mt"
+            cups.updated_at           = _now()
+            cups_mt_asignados += 1
+        else:
+            cups_mt_sin_asoc += 1
+
+    db.commit()
+    return {
+        "lineas_mt_asignadas": lineas_mt_asignadas,
+        "lineas_mt_sin_asoc":  lineas_mt_sin_asoc,
+        "lineas_mt_total":     sum(1 for ln in lineas if _es_mt(ln)),
+        "cups_mt_asignados":   cups_mt_asignados,
+        "cups_mt_sin_asoc":    cups_mt_sin_asoc,
     }
 
 
@@ -865,6 +1083,7 @@ def importar_topologia(
     anio_declaracion: int,
     contenido_b2:     Optional[bytes] = None,
     contenido_b21:    Optional[bytes] = None,
+    contenido_b22:    Optional[bytes] = None,
     contenido_a1:     Optional[bytes] = None,
     contenido_b1:     Optional[bytes] = None,
     contenido_b11:    Optional[bytes] = None,
@@ -873,21 +1092,24 @@ def importar_topologia(
 ) -> Dict[str, Any]:
 
     resultado: Dict[str, Any] = {
-        "cts_insertados":      0,
-        "cts_actualizados":    0,
-        "cts_errores":         0,
-        "trfs_insertados":     0,
-        "trfs_actualizados":   0,
-        "trfs_errores":        0,
-        "cups_insertados":     0,
-        "cups_actualizados":   0,
-        "cups_errores":        0,
-        "lineas_insertadas":   0,
-        "lineas_actualizadas": 0,
-        "lineas_errores":      0,
-        "tramos_insertados":   0,
-        "tramos_actualizados": 0,
-        "tramos_errores":      0,
+        "cts_insertados":       0,
+        "cts_actualizados":     0,
+        "cts_errores":          0,
+        "trfs_insertados":      0,
+        "trfs_actualizados":    0,
+        "trfs_errores":         0,
+        "celdas_insertadas":    0,
+        "celdas_actualizadas":  0,
+        "celdas_errores":       0,
+        "cups_insertados":      0,
+        "cups_actualizados":    0,
+        "cups_errores":         0,
+        "lineas_insertadas":    0,
+        "lineas_actualizadas":  0,
+        "lineas_errores":       0,
+        "tramos_insertados":    0,
+        "tramos_actualizados":  0,
+        "tramos_errores":       0,
         "ficheros": [],
     }
 
@@ -922,6 +1144,22 @@ def importar_topologia(
                 resultado["trfs_errores"] += 1
         db.commit()
         resultado["ficheros"].append("B21")
+
+    if contenido_b22:
+        registros, errores = parsear_b22(contenido_b22, encoding=encoding)
+        resultado["celdas_errores"] += len(errores)
+        for reg in registros:
+            try:
+                accion = _upsert_celda(db, tenant_id, empresa_id, reg)
+                if accion == "insertado":
+                    resultado["celdas_insertadas"] += 1
+                else:
+                    resultado["celdas_actualizadas"] += 1
+            except Exception:
+                db.rollback()
+                resultado["celdas_errores"] += 1
+        db.commit()
+        resultado["ficheros"].append("B22")
 
     if contenido_a1:
         registros, errores = parsear_a1(contenido_a1, encoding=encoding, utm_zone=utm_zone)
@@ -964,7 +1202,7 @@ def importar_topologia(
                 if accion == "insertado":
                     resultado["tramos_insertados"] += 1
                 elif accion == "actualizado":
-                    resultado["tramos_actualizadas"] += 1
+                    resultado["tramos_actualizados"] += 1
                 else:
                     resultado["tramos_errores"] += 1
             except Exception:
@@ -976,6 +1214,10 @@ def importar_topologia(
     if contenido_b1 or contenido_b2 or contenido_b11:
         try:
             calcular_asociacion_ct(db, tenant_id, empresa_id)
+        except Exception:
+            pass
+        try:
+            calcular_asociacion_ct_mt(db, tenant_id, empresa_id)
         except Exception:
             pass
 
@@ -1090,3 +1332,35 @@ def list_cups_tabla(
     total = q.count()
     cups  = q.order_by(CupsTopologia.cups).offset(offset).limit(limit).all()
     return cups, total
+
+
+def list_celdas_ct(
+    db: Session, tenant_id: int, empresa_id: int, id_ct: str,
+) -> List[CtCelda]:
+    """Devuelve todas las celdas de un CT ordenadas por posición e id."""
+    return (
+        db.query(CtCelda)
+        .filter(
+            CtCelda.tenant_id  == tenant_id,
+            CtCelda.empresa_id == empresa_id,
+            CtCelda.id_ct      == id_ct,
+        )
+        .order_by(CtCelda.posicion, CtCelda.id_celda)
+        .all()
+    )
+
+
+def list_transformadores_ct(
+    db: Session, tenant_id: int, empresa_id: int, id_ct: str,
+) -> List[CtTransformador]:
+    """Devuelve todos los transformadores de un CT."""
+    return (
+        db.query(CtTransformador)
+        .filter(
+            CtTransformador.tenant_id  == tenant_id,
+            CtTransformador.empresa_id == empresa_id,
+            CtTransformador.id_ct      == id_ct,
+        )
+        .order_by(CtTransformador.id_transformador)
+        .all()
+    )

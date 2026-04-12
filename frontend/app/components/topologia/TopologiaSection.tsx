@@ -366,6 +366,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       const res = await fetch(`${API_BASE_URL}/topologia/calcular-ct?empresa_id=${empresaId}`, { method: "POST", headers: getAuthHeaders(token) });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error((err as { detail?: string }).detail || `Error ${res.status}`); }
       setCalcCtResult(await res.json());
+      await fetch(`${API_BASE_URL}/topologia/calcular-ct-mt?empresa_id=${empresaId}`, { method: "POST", headers: getAuthHeaders(token) });
       cargarCups(); cargarTramos();
       if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas); else cargarTablaCups(0, pageSizeCups);
     } catch (e) { setCalcCtError(e instanceof Error ? e.message : "Error calculando CT"); }

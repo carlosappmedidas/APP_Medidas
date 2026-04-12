@@ -74,6 +74,33 @@ class CtTransformadorRead(BaseModel):
         from_attributes = True
 
 
+# ── CT Celda ──────────────────────────────────────────────────────────────────
+
+class CtCeldaRead(BaseModel):
+    id:               int
+    empresa_id:       int
+    id_ct:            str
+    id_celda:         str
+    id_transformador: Optional[str]
+    cini:             Optional[str]
+    posicion:         Optional[int]
+    en_servicio:      Optional[int]
+    anio_instalacion: Optional[int]
+    created_at:       datetime
+    updated_at:       datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── CT Detalle (CT + trafos + celdas) ────────────────────────────────────────
+
+class CtDetalleRead(BaseModel):
+    ct:              CtInventarioRead
+    transformadores: List[CtTransformadorRead]
+    celdas:          List[CtCeldaRead]
+
+
 # ── CUPS Topología (completa) ─────────────────────────────────────────────────
 
 class CupsTopologiaRead(BaseModel):
@@ -129,6 +156,9 @@ class ImportarTopologiaResponse(BaseModel):
     trfs_insertados:     int
     trfs_actualizados:   int
     trfs_errores:        int
+    celdas_insertadas:   int = 0
+    celdas_actualizadas: int = 0
+    celdas_errores:      int = 0
     cups_insertados:     int
     cups_actualizados:   int
     cups_errores:        int
@@ -154,7 +184,7 @@ class AsignacionFaseRequest(BaseModel):
 
 
 class CalcAsignacionCtResponse(BaseModel):
-    """Resultado del cálculo automático de asociación CT."""
+    """Resultado del cálculo automático de asociación CT BT."""
     lineas_bfs:        int
     lineas_proximidad: int
     lineas_sin_asoc:   int
@@ -162,6 +192,15 @@ class CalcAsignacionCtResponse(BaseModel):
     cups_asignados:    int
     cups_sin_asoc:     int
     cups_total:        int
+
+
+class CalcAsignacionCtMtResponse(BaseModel):
+    """Resultado del cálculo automático de asociación CT MT."""
+    lineas_mt_asignadas: int
+    lineas_mt_sin_asoc:  int
+    lineas_mt_total:     int
+    cups_mt_asignados:   int
+    cups_mt_sin_asoc:    int
 
 
 # ── Tabla líneas — para la vista de gestión ───────────────────────────────────
@@ -194,7 +233,7 @@ class CupsTablaRead(BaseModel):
     conexion:             Optional[str]
     id_ct_asignado:       Optional[str]
     metodo_asignacion_ct: Optional[str]
-    fase:                 Optional[str]   # ← NUEVO: R/S/T/RST
+    fase:                 Optional[str]
 
     class Config:
         from_attributes = True
@@ -251,7 +290,7 @@ class CupsMapaRead(BaseModel):
     id_ct:                  Optional[str]
     id_ct_asignado:         Optional[str]
     metodo_asignacion_ct:   Optional[str]
-    fase:                   Optional[str]   # ← NUEVO: R/S/T/RST
+    fase:                   Optional[str]
     cnae:                   Optional[str]
     tarifa:                 Optional[str]
     lat:                    Optional[float]

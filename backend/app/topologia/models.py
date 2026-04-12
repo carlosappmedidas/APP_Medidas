@@ -3,7 +3,7 @@
 """
 Modelos de BD para el módulo de topología de red.
 Todos los campos corresponden a los definidos en la Circular CNMC 8/2021
-(BOE-A-2021-21003) para los ficheros B1, B2, B11 y A1.
+(BOE-A-2021-21003) para los ficheros B1, B2, B11, A1, B21 y B22.
 """
 from __future__ import annotations
 
@@ -101,6 +101,30 @@ class CtTransformador(TenantMixin, TimestampMixin, Base):
     potencia_kva     = Column(Numeric(10, 3), nullable=True)
     anio_fabricacion = Column(Integer, nullable=True)
     en_operacion     = Column(Integer, nullable=True)
+
+
+class CtCelda(TenantMixin, TimestampMixin, Base):
+    """
+    Celda instalada en CT — Formulario B22 (BOE-A-2021-21003).
+    """
+    __tablename__ = "ct_celda"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "empresa_id", "id_celda",
+            name="uq_ct_celda_tenant_empresa_celda",
+        ),
+    )
+
+    id         = Column(Integer, primary_key=True)
+    empresa_id = Column(Integer, nullable=False, index=True)
+
+    id_ct            = Column(String,  nullable=False, index=True)
+    id_celda         = Column(String,  nullable=False, index=True)
+    id_transformador = Column(String,  nullable=True)   # vacío en celdas de línea
+    cini             = Column(String,  nullable=True)   # I28C2A1M / I28C2A2M / I28C3A1M
+    posicion         = Column(Integer, nullable=True)   # 0=línea, 1=trafo, 2=medida
+    en_servicio      = Column(Integer, nullable=True)   # siempre 1 en ficheros actuales
+    anio_instalacion = Column(Integer, nullable=True)
 
 
 class CupsTopologia(TenantMixin, TimestampMixin, Base):

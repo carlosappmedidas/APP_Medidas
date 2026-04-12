@@ -11,13 +11,17 @@ from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.tenants.models import User
 from app.topologia import services
-from app.topologia.models import LineaInventario, LineaTramo
+from app.topologia.models import CtInventario, LineaInventario, LineaTramo
 from app.topologia.schemas import (
     AsignacionCtRequest,
-    AsignacionFaseRequest,       # ← NUEVO
+    AsignacionFaseRequest,
+    CalcAsignacionCtMtResponse,
     CalcAsignacionCtResponse,
+    CtCeldaRead,
+    CtDetalleRead,
     CtInventarioRead,
     CtMapaRead,
+    CtTransformadorRead,
     CupsMapaRead,
     CupsTablaRead,
     ImportarTopologiaResponse,
@@ -47,6 +51,7 @@ async def importar_topologia(
     anio_declaracion: int                  = Form(...),
     b2:               Optional[UploadFile] = File(None),
     b21:              Optional[UploadFile] = File(None),
+    b22:              Optional[UploadFile] = File(None),
     a1:               Optional[UploadFile] = File(None),
     b1:               Optional[UploadFile] = File(None),
     b11:              Optional[UploadFile] = File(None),
@@ -57,18 +62,19 @@ async def importar_topologia(
     Importa los ficheros CNMC 8/2021 para una empresa.
     Se pueden subir todos o solo algunos ficheros a la vez.
     La reimportación actualiza registro a registro sin borrar datos.
-    Al finalizar lanza automáticamente el cálculo de asociación CT.
+    Al finalizar lanza automáticamente el cálculo de asociación CT BT y MT.
     """
     _assert_not_viewer(current_user)
 
-    if not b2 and not b21 and not a1 and not b1 and not b11:
+    if not b2 and not b21 and not b22 and not a1 and not b1 and not b11:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Debes subir al menos uno de los ficheros: b2, b21, a1, b1 o b11",
+            detail="Debes subir al menos uno de los ficheros: b2, b21, b22, a1, b1 o b11",
         )
 
     contenido_b2  = await b2.read()  if b2  else None
     contenido_b21 = await b21.read() if b21 else None
+    contenido_b22 = await b22.read() if b22 else None
     contenido_a1  = await a1.read()  if a1  else None
     contenido_b1  = await b1.read()  if b1  else None
     contenido_b11 = await b11.read() if b11 else None
@@ -81,6 +87,7 @@ async def importar_topologia(
             anio_declaracion = anio_declaracion,
             contenido_b2     = contenido_b2,
             contenido_b21    = contenido_b21,
+            contenido_b22    = contenido_b22,
             contenido_a1     = contenido_a1,
             contenido_b1     = contenido_b1,
             contenido_b11    = contenido_b11,
@@ -94,7 +101,7 @@ async def importar_topologia(
     return ImportarTopologiaResponse(**resultado)
 
 
-# ── Cálculo de asociación CT ──────────────────────────────────────────────────
+# ── Cálculo de asociación CT BT ───────────────────────────────────────────────
 
 @router.post("/calcular-ct", response_model=CalcAsignacionCtResponse, status_code=status.HTTP_200_OK)
 def calcular_ct(
@@ -102,6 +109,7 @@ def calcular_ct(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ) -> CalcAsignacionCtResponse:
+    """Recalcula la asociación CT → líneas BT y CUPS BT."""
     _assert_not_viewer(current_user)
     try:
         resultado = services.calcular_asociacion_ct(
@@ -110,9 +118,70 @@ def calcular_ct(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error calculando asociación CT: {str(exc)[:300]}",
+            detail=f"Error calculando asociación CT BT: {str(exc)[:300]}",
         ) from exc
     return CalcAsignacionCtResponse(**resultado)
+
+
+# ── Cálculo de asociación CT MT ───────────────────────────────────────────────
+
+@router.post("/calcular-ct-mt", response_model=CalcAsignacionCtMtResponse, status_code=status.HTTP_200_OK)
+def calcular_ct_mt(
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> CalcAsignacionCtMtResponse:
+    """Recalcula la asociación CT → líneas MT y CUPS MT."""
+    _assert_not_viewer(current_user)
+    try:
+        resultado = services.calcular_asociacion_ct_mt(
+            db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculando asociación CT MT: {str(exc)[:300]}",
+        ) from exc
+    return CalcAsignacionCtMtResponse(**resultado)
+
+
+# ── Detalle de CT (datos + transformadores + celdas) ─────────────────────────
+
+@router.get("/cts/{id_ct}/detalle", response_model=CtDetalleRead)
+def get_ct_detalle(
+    id_ct:        str,
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> CtDetalleRead:
+    """Devuelve los datos completos de un CT junto con sus transformadores y celdas."""
+    _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+
+    ct = (
+        db.query(CtInventario)
+        .filter(
+            CtInventario.tenant_id  == tid,
+            CtInventario.empresa_id == empresa_id,
+            CtInventario.id_ct      == id_ct,
+        )
+        .first()
+    )
+    if ct is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"CT {id_ct} no encontrado")
+
+    transformadores = services.list_transformadores_ct(
+        db=db, tenant_id=tid, empresa_id=empresa_id, id_ct=id_ct,
+    )
+    celdas = services.list_celdas_ct(
+        db=db, tenant_id=tid, empresa_id=empresa_id, id_ct=id_ct,
+    )
+
+    return CtDetalleRead(
+        ct              = CtInventarioRead.model_validate(ct),
+        transformadores = [CtTransformadorRead.model_validate(t) for t in transformadores],
+        celdas          = [CtCeldaRead.model_validate(c) for c in celdas],
+    )
 
 
 # ── Reasignación manual — CT de línea ─────────────────────────────────────────
@@ -169,10 +238,7 @@ def reasignar_fase_cups(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ) -> dict:
-    """
-    Asigna la fase del CT (R/S/T/RST) a un CUPS.
-    Enviar fase=null o fase="" para limpiar.
-    """
+    """Asigna la fase del CT (R/S/T/RST) a un CUPS. Enviar fase=null para limpiar."""
     _assert_not_viewer(current_user)
     try:
         services.reasignar_fase_cups(
@@ -191,7 +257,7 @@ def get_tabla_lineas(
     empresa_id:   int           = Query(...),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
     sin_ct:       bool          = Query(False, description="Mostrar solo líneas sin CT"),
-    metodo:       Optional[str] = Query(None, description="Filtrar por método: bfs/proximidad/manual"),
+    metodo:       Optional[str] = Query(None, description="Filtrar por método: bfs/proximidad/nudo_alta/manual"),
     limit:        int           = Query(50, ge=1, le=500),
     offset:       int           = Query(0, ge=0),
     db:           Session       = Depends(get_db),
@@ -212,7 +278,7 @@ def get_tabla_cups(
     empresa_id:   int           = Query(...),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
     sin_ct:       bool          = Query(False, description="Mostrar solo CUPS sin CT"),
-    metodo:       Optional[str] = Query(None, description="Filtrar por método: nudo_linea/manual"),
+    metodo:       Optional[str] = Query(None, description="Filtrar por método: nudo_linea/nudo_linea_mt/manual"),
     limit:        int           = Query(50, ge=1, le=500),
     offset:       int           = Query(0, ge=0),
     db:           Session       = Depends(get_db),
