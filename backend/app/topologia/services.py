@@ -416,9 +416,9 @@ def _es_bt(linea: LineaInventario) -> bool:
     return "BTV" in id_t or "LBT" in id_t
 
 
-# ── BFS bidireccional (atrás solo BT) ────────────────────────────────────────
+# ── BFS solo BT ──────────────────────────────────────────────────────────────
 
-def _bfs_bidireccional(
+def _bfs_bt(
     nudos_arranque: List[str],
     nudo_a_lineas_ini: Dict[str, List[LineaInventario]],
     nudo_a_lineas_fin: Dict[str, List[LineaInventario]],
@@ -428,12 +428,8 @@ def _bfs_bidireccional(
 ) -> None:
     """
     BFS bidireccional desde los nudos de arranque.
-
-    Hacia adelante (nudo_ini → nudo_fin): propaga por cualquier línea.
-    Hacia atrás  (nudo_fin → nudo_ini): SOLO líneas BT (≤1 kV).
-      → Evita subir por la red MT y contaminar otros CTs.
-
-    Solo asigna líneas no asignadas aún — nunca sobreescribe.
+    SOLO propaga por líneas BT (tension_kv ≤ 1 kV).
+    No toca nunca líneas MT — nunca sobreescribe asignaciones existentes.
     """
     visitados: set = set()
     cola = list(nudos_arranque)
@@ -444,7 +440,7 @@ def _bfs_bidireccional(
             continue
         visitados.add(nudo)
 
-        # Hacia adelante: líneas que arrancan en este nudo (todas)
+        # Hacia adelante: nudo_inicio → nudo_fin, solo BT
         for linea in nudo_a_lineas_ini.get(nudo, []):
             if not _es_bt(linea):
                 continue
@@ -454,7 +450,7 @@ def _bfs_bidireccional(
             if linea.nudo_fin and linea.nudo_fin not in visitados:
                 cola.append(linea.nudo_fin)
 
-        # Hacia atrás: SOLO líneas BT — no subir por red MT
+        # Hacia atrás: nudo_fin → nudo_inicio, solo BT
         for linea in nudo_a_lineas_fin.get(nudo, []):
             if not _es_bt(linea):
                 continue
@@ -465,7 +461,7 @@ def _bfs_bidireccional(
                 cola.append(linea.nudo_inicio)
 
 
-# ── Detección de salidas directas por proximidad GPS ─────────────────────────
+# ── Detección de salidas del CT ───────────────────────────────────────────────
 
 class _TramoGPS:
     __slots__ = ("id_linea", "lat_ini", "lon_ini", "nudo_inicio", "nudo_fin")
@@ -485,30 +481,56 @@ class _TramoGPS:
         self.nudo_fin    = nudo_fin
 
 
-def _detectar_salidas_ct(
+def _detectar_salidas_bt(
     ct: CtInventario,
     tramos_gps: List[_TramoGPS],
     lineas_por_tramo: Dict[str, LineaInventario],
     linea_a_ct: Dict[str, str],
 ) -> List[str]:
     """
-    Detecta salidas directas del CT no alcanzadas por BFS.
-    Criterios: orden=1, ≤RADIO_SALIDAS_CT_M, fecha_aps + operacion=1,
-    no asignada, no continuación de otra candidata dentro del radio.
-    Devuelve lista de nudo_inicio.
+    Detecta salidas BT del CT para propagar el BFS cuando el nudo_baja
+    no alcanzó ninguna línea BT.
+
+    Nivel 1 — salidas confirmadas nudo+GPS:
+      Líneas BT ya asignadas a este CT cuyo punto de inicio esté a ≤5m.
+      Confirma que el BFS topológico y el GPS coinciden.
+
+    Nivel 2 (fallback) — GPS puro:
+      Líneas BT NO asignadas aún, a ≤5m del CT, con fecha_aps y operacion=1.
+      Descarta continuaciones de otras candidatas en el radio.
+
+    Devuelve lista de nudo_inicio para alimentar el BFS.
     """
     if ct.lat is None or ct.lon is None:
         return []
 
-    candidatas: List[_TramoGPS] = []
+    # Nivel 1: BT asignadas a este CT cerca del CT
+    nudos_nivel1: List[str] = []
     for row in tramos_gps:
-        if row.id_linea in linea_a_ct:
+        if linea_a_ct.get(row.id_linea) != ct.id_ct:
+            continue
+        linea = lineas_por_tramo.get(row.id_linea)
+        if linea is None or not _es_bt(linea):
             continue
         dist = _haversine_m(ct.lat, ct.lon, row.lat_ini, row.lon_ini)
         if dist > RADIO_SALIDAS_CT_M:
             continue
+        if row.nudo_inicio:
+            nudos_nivel1.append(row.nudo_inicio)
+
+    if nudos_nivel1:
+        return list(set(nudos_nivel1))
+
+    # Nivel 2 (fallback): BT no asignadas cerca del CT
+    candidatas: List[_TramoGPS] = []
+    for row in tramos_gps:
+        if row.id_linea in linea_a_ct:
+            continue
         linea = lineas_por_tramo.get(row.id_linea)
-        if linea is None:
+        if linea is None or not _es_bt(linea):
+            continue
+        dist = _haversine_m(ct.lat, ct.lon, row.lat_ini, row.lon_ini)
+        if dist > RADIO_SALIDAS_CT_M:
             continue
         if linea.fecha_aps is None or linea.operacion != 1:
             continue
@@ -530,16 +552,14 @@ def calcular_asociacion_ct(
     empresa_id: int,
 ) -> Dict[str, Any]:
     """
-    Calcula y persiste la asociación CT→línea y CT→CUPS para una empresa.
+    Calcula y persiste la asociación CT → línea BT y CT → CUPS.
+    Las líneas MT NO se asignan aquí — se gestionan en una fase separada.
     No sobreescribe asignaciones manuales (metodo='manual').
 
-    PASO 1 — BFS bidireccional desde nudo_baja del CT.
-             Adelante: todas las líneas. Atrás: solo BT (evita subir por MT).
-    PASO 2 — Salidas adicionales por proximidad GPS (≤5m al CT).
-             Solo líneas reales (fecha_aps + operacion=1) no asignadas.
-             Descarta continuaciones.
-    PASO 3 — BFS bidireccional desde salidas del PASO 2.
-    PASO 4 — Proximidad general BT sin asignar (≤50m UTM).
+    PASO 1 — BFS solo BT desde nudo_baja del CT.
+    PASO 2 — Salidas BT detectadas por GPS (nudo+GPS o GPS puro).
+    PASO 3 — BFS solo BT desde las salidas del PASO 2.
+    PASO 4 — Proximidad general para líneas BT sin asignar (≤50m UTM).
     """
     cts = (
         db.query(CtInventario)
@@ -592,10 +612,11 @@ def calcular_asociacion_ct(
         )
         .all()
     )
+    # Solo BT en tramos_gps — no necesitamos MT para el algoritmo BT
     tramos_gps: List[_TramoGPS] = []
     for row in tramos_gps_rows:
         linea = lineas_por_tramo.get(row.id_linea)
-        if linea is None:
+        if linea is None or not _es_bt(linea):
             continue
         tramos_gps.append(_TramoGPS(
             id_linea    = row.id_linea,
@@ -617,35 +638,30 @@ def calcular_asociacion_ct(
     metodo:     Dict[str, str] = {}
 
     for ct in cts:
-        # MT: líneas cuyo nudo_fin = nudo_alta
-        for linea in nudo_a_lineas_fin.get(ct.nudo_alta or "", []):
-            if linea.id_tramo not in linea_a_ct:
-                linea_a_ct[linea.id_tramo] = ct.id_ct
-                metodo[linea.id_tramo]     = "bfs"
-            break
-
-        # ── PASO 1: BFS bidireccional desde nudo_baja ─────────────────────────
+        # ── PASO 1: BFS solo BT desde nudo_baja ───────────────────────────────
+        # Las líneas MT no se tocan — se gestionan en fase separada
         if ct.nudo_baja:
-            _bfs_bidireccional(
+            _bfs_bt(
                 [ct.nudo_baja],
                 nudo_a_lineas_ini, nudo_a_lineas_fin,
                 ct.id_ct, linea_a_ct, metodo,
             )
 
-        # ── PASO 2: salidas adicionales por proximidad GPS ────────────────────
-        nudos_salidas = _detectar_salidas_ct(
+        # ── PASO 2: salidas BT por GPS ─────────────────────────────────────────
+        nudos_salidas = _detectar_salidas_bt(
             ct, tramos_gps, lineas_por_tramo, linea_a_ct,
         )
 
-        # ── PASO 3: BFS desde salidas GPS ─────────────────────────────────────
+        # ── PASO 3: BFS BT desde salidas GPS ──────────────────────────────────
         if nudos_salidas:
-            _bfs_bidireccional(
+            _bfs_bt(
                 nudos_salidas,
                 nudo_a_lineas_ini, nudo_a_lineas_fin,
                 ct.id_ct, linea_a_ct, metodo,
             )
 
-    # ── PASO 4: proximidad general para BT sin asignar (≤ MAX_DIST_M) ─────────
+    # ── PASO 4: proximidad general para BT sin asignar (≤ MAX_DIST_M UTM) ─────
+    # Centroide de cada CT calculado desde sus líneas BT ya asignadas
     ct_coords: Dict[str, Tuple[float, float]] = {}
     for ct in cts:
         lineas_ct = [
@@ -659,10 +675,11 @@ def calcular_asociacion_ct(
                 sum(c[1] for c in lineas_ct) / len(lineas_ct),
             )
 
+    # Solo líneas BT sin asignar — usa _es_bt para no depender del nombre del ID
     bt_sin = [
         linea for linea in lineas
         if linea.id_tramo not in linea_a_ct
-        and ("BTV" in linea.id_tramo or "LBT" in linea.id_tramo)
+        and _es_bt(linea)
         and linea.id_tramo in linea_coords_utm
     ]
     for linea in bt_sin:
@@ -678,12 +695,19 @@ def calcular_asociacion_ct(
             linea_a_ct[linea.id_tramo] = mejor_ct
             metodo[linea.id_tramo]     = "proximidad"
 
-    # Persistir — no sobreescribir manuales
+    # Persistir — no sobreescribir manuales, no tocar líneas MT
     lineas_bfs      = 0
     lineas_prox     = 0
     lineas_sin_asoc = 0
     for linea in lineas:
         if linea.metodo_asignacion_ct == "manual":
+            continue
+        # Las líneas MT se limpian — ya no deben tener CT asignado por este algoritmo
+        if not _es_bt(linea):
+            if linea.id_ct is not None and linea.metodo_asignacion_ct != "manual":
+                linea.id_ct                = None
+                linea.metodo_asignacion_ct = None
+                linea.updated_at           = _now()
             continue
         id_ct_calc  = linea_a_ct.get(linea.id_tramo)
         metodo_calc = metodo.get(linea.id_tramo)
@@ -700,7 +724,7 @@ def calcular_asociacion_ct(
 
     db.flush()
 
-    # CUPS → CT via nudo → línea
+    # CUPS → CT via nudo → línea BT
     cups_lista = (
         db.query(CupsTopologia)
         .filter(
@@ -719,7 +743,10 @@ def calcular_asociacion_ct(
             cups_sin_asoc += 1
             continue
         id_ct_cups = None
+        # Buscar primero en líneas BT que terminan en este nudo
         for linea in nudo_a_lineas_fin.get(nudo, []):
+            if not _es_bt(linea):
+                continue
             id_ct_cups = linea_a_ct.get(linea.id_tramo)
             if id_ct_cups:
                 break
@@ -937,7 +964,7 @@ def importar_topologia(
                 if accion == "insertado":
                     resultado["tramos_insertados"] += 1
                 elif accion == "actualizado":
-                    resultado["tramos_actualizados"] += 1
+                    resultado["tramos_actualizadas"] += 1
                 else:
                     resultado["tramos_errores"] += 1
             except Exception:
