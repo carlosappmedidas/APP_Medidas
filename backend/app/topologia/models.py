@@ -106,6 +106,19 @@ class CtTransformador(TenantMixin, TimestampMixin, Base):
 class CtCelda(TenantMixin, TimestampMixin, Base):
     """
     Celda instalada en CT — Formulario B22 (BOE-A-2021-21003).
+
+    Campos cini_p1..cini_p8 = decodificación completa del CINI I28
+    según la tabla del Anexo II de la Circular 8/2021 (págs. 156048-156050).
+
+    Ejemplo: I28C2A2M
+      p1=I  → Instalación
+      p2=2  → Distribución
+      p3=8  → Parques de distribución y posiciones equipadas
+      p4=C  → 36 kV > U ≥ 1 kV
+      p5=2  → Posición con interruptor
+      p6=A  → Interior - Blindada
+      p7=2  → Transformación
+      p8=M  → 15 kV
     """
     __tablename__ = "ct_celda"
     __table_args__ = (
@@ -122,9 +135,38 @@ class CtCelda(TenantMixin, TimestampMixin, Base):
     id_celda         = Column(String,  nullable=False, index=True)
     id_transformador = Column(String,  nullable=True)   # vacío en celdas de línea
     cini             = Column(String,  nullable=True)   # I28C2A1M / I28C2A2M / I28C3A1M
-    posicion         = Column(Integer, nullable=True)   # 0=línea, 1=trafo, 2=medida
+    posicion         = Column(Integer, nullable=True)   # valor raw del B22
     en_servicio      = Column(Integer, nullable=True)   # siempre 1 en ficheros actuales
     anio_instalacion = Column(Integer, nullable=True)
+
+    # ── Campos decodificados del CINI I28 (Circular 8/2021, Anexo II) ────────
+    # Pos 1 (1er carácter): tipo de instalación — siempre "I" = Instalación
+    cini_p1_tipo_instalacion = Column(String(30), nullable=True)
+    # Pos 2 (2º carácter): actividad — siempre "2" = Distribución
+    cini_p2_actividad        = Column(String(30), nullable=True)
+    # Pos 3 (3er carácter): tipo de equipo — siempre "8" = Parques y posiciones equipadas
+    cini_p3_tipo_equipo      = Column(String(60), nullable=True)
+    # Pos 4 (4º carácter): rango de tensión (2/3/4/A/B/C)
+    cini_p4_tension_rango    = Column(String(30), nullable=True)
+    # Pos 5 (5º carácter): tipo de posición (1=Parque, 2=Con interruptor, 3=Sin interruptor, 4=SE reparto, 5=Punto Frontera)
+    cini_p5_tipo_posicion    = Column(String(40), nullable=True)
+    # Pos 6 (6º carácter): ubicación/tipología — depende de pos5
+    #   Si parque (pos5=1): 1=Convencional, 2=Blindada, 3=Híbrida
+    #   Si posición (pos5=2..5): A=Interior-Blindada, B=Intemperie-Blindada,
+    #     C=Interior-Convencional, D=Intemperie-Convencional,
+    #     E=Interior-Híbrida, F=Intemperie-Híbrida, G=Móvil-Blindada
+    cini_p6_ubicacion        = Column(String(40), nullable=True)
+    # Pos 7 (7º carácter): función — depende de pos5
+    #   Si parque (pos5=1): A=Simple barra, B=Simple barra partida,
+    #     C=Doble barra, D=Doble barra partida, E=Tipo H, Z=Otras
+    #   Si posición (pos5=2..5): 1=Línea, 2=Transformación,
+    #     3=Acoplamiento, 4=Medida, 5=Reserva
+    cini_p7_funcion          = Column(String(30), nullable=True)
+    # Pos 8 (8º carácter): tensión nominal en kV
+    #   C=1, D=3, E=5, F=5.5, G=6, H=6.6, I=10, J=11, K=12, L=13.2,
+    #   M=15, N=16, O=20, P=22, Q=24, R=25, S=30, T=33,
+    #   U=45, V=50, W=55, X=66, Y=110, Z=130, 1=132, 2=150, 5=Otros
+    cini_p8_tension_nominal  = Column(String(10), nullable=True)
 
 
 class CupsTopologia(TenantMixin, TimestampMixin, Base):

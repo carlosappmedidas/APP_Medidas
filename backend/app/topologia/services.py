@@ -22,6 +22,7 @@ from app.topologia.parsers.parser_b2 import parsear_b2
 from app.topologia.parsers.parser_a1 import parsear_a1
 from app.topologia.parsers.parser_b1_b11 import parsear_b1, parsear_b11
 from app.topologia.parsers.parser_b22 import parsear_b22
+from app.topologia.cini_decoder import decodificar_cini_i28
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -191,6 +192,17 @@ def _upsert_celda(
     obj.posicion         = registro.get("posicion")
     obj.en_servicio      = registro.get("en_servicio")
     obj.anio_instalacion = registro.get("anio_instalacion")
+    # Decodificar CINI I28 en las 8 posiciones
+    decoded = decodificar_cini_i28(registro.get("cini"))
+    obj.cini_p1_tipo_instalacion = decoded["cini_p1_tipo_instalacion"]
+    obj.cini_p2_actividad        = decoded["cini_p2_actividad"]
+    obj.cini_p3_tipo_equipo      = decoded["cini_p3_tipo_equipo"]
+    obj.cini_p4_tension_rango    = decoded["cini_p4_tension_rango"]
+    obj.cini_p5_tipo_posicion    = decoded["cini_p5_tipo_posicion"]
+    obj.cini_p6_ubicacion        = decoded["cini_p6_ubicacion"]
+    obj.cini_p7_funcion          = decoded["cini_p7_funcion"]
+    obj.cini_p8_tension_nominal  = decoded["cini_p8_tension_nominal"]
+
     return accion
 
 

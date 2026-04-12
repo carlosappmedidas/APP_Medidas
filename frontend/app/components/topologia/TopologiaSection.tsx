@@ -49,7 +49,22 @@ interface CupsTabla {
   tension_kv: number | null; potencia_contratada_kw: number | null;
   municipio: string | null; conexion: string | null;
   id_ct_asignado: string | null; metodo_asignacion_ct: string | null;
-  fase: string | null;   // ← R/S/T/RST
+  fase: string | null;
+}
+
+interface CeldaTabla {
+  id_ct: string;
+  id_celda: string;
+  id_transformador: string | null;
+  cini: string | null;
+  posicion: number | null;
+  en_servicio: number | null;
+  anio_instalacion: number | null;
+  cini_p4_tension_rango: string | null;
+  cini_p5_tipo_posicion: string | null;
+  cini_p6_ubicacion: string | null;
+  cini_p7_funcion: string | null;
+  cini_p8_tension_nominal: string | null;
 }
 
 interface Props {
@@ -75,7 +90,6 @@ function generarColoresCt(ids: string[]): Record<string, string> {
   return mapa;
 }
 
-// ─── Colores y etiquetas de fase ──────────────────────────────────────────────
 const FASE_COLOR: Record<string, string> = {
   R:   "#E24B4A",
   S:   "#F59E0B",
@@ -83,7 +97,14 @@ const FASE_COLOR: Record<string, string> = {
   RST: "#1D9E75",
 };
 
-// ─── Overlay de carga ─────────────────────────────────────────────────────────
+const FUNCION_COLOR: Record<string, string> = {
+  "Línea":          "#2563EB",
+  "Transformación": "#E24B4A",
+  "Acoplamiento":   "#F59E0B",
+  "Medida":         "#16A34A",
+  "Reserva":        "#7C3AED",
+};
+
 const TableLoadingOverlay = () => (
   <div style={{
     position: "absolute", inset: 0, zIndex: 5,
@@ -161,14 +182,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [busquedaLineaPendiente, setBusquedaLineaPendiente] = useState<string>("");
   const inputBusquedaLineaRef = useRef<HTMLInputElement>(null);
 
-  const [tablaActiva,    setTablaActiva]    = useState<"lineas" | "cups">("lineas");
+  const [tablaActiva,    setTablaActiva]    = useState<"lineas" | "cups" | "celdas">("lineas");
   const [calcCt,         setCalcCt]         = useState(false);
   const [calcCtResult,   setCalcCtResult]   = useState<CalcCtResult | null>(null);
   const [calcCtError,    setCalcCtError]    = useState<string | null>(null);
   const [lineasTabla,    setLineasTabla]    = useState<LineaTabla[]>([]);
   const [cupsTabla,      setCupsTabla]      = useState<CupsTabla[]>([]);
+  const [celdasTabla,    setCeldasTabla]    = useState<CeldaTabla[]>([]);
   const [totalLineas,    setTotalLineas]    = useState(0);
   const [totalCups,      setTotalCups]      = useState(0);
+  const [totalCeldas,    setTotalCeldas]    = useState(0);
   const [loadingTabla,   setLoadingTabla]   = useState(false);
   const [hasLoadedTabla, setHasLoadedTabla] = useState(false);
   const [filtroCtTabla,  setFiltroCtTabla]  = useState<string>("");
@@ -179,19 +202,22 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [pageSizeLineas, setPageSizeLineas] = useState(50);
   const [pageCups,       setPageCups]       = useState(0);
   const [pageSizeCups,   setPageSizeCups]   = useState(50);
+  const [pageCeldas,     setPageCeldas]     = useState(0);
+  const [pageSizeCeldas, setPageSizeCeldas] = useState(50);
 
   const [editandoLinea,  setEditandoLinea]  = useState<string | null>(null);
   const [editandoCups,   setEditandoCups]   = useState<string | null>(null);
-  const [editandoFase,   setEditandoFase]   = useState<string | null>(null);  // cups en edición de fase
+  const [editandoFase,   setEditandoFase]   = useState<string | null>(null);
   const [editValor,      setEditValor]      = useState<string>("");
   const [editFaseValor,  setEditFaseValor]  = useState<string>("");
   const [guardando,      setGuardando]      = useState(false);
 
-  // ── Refs para fijar altura durante cambio de página ───────────────────────
   const tablaLineasRef = useRef<HTMLDivElement>(null);
   const tablaCupsRef   = useRef<HTMLDivElement>(null);
+  const tablaCeldasRef = useRef<HTMLDivElement>(null);
   const [minHLineas, setMinHLineas] = useState<number | undefined>(undefined);
   const [minHCups,   setMinHCups]   = useState<number | undefined>(undefined);
+  const [minHCeldas, setMinHCeldas] = useState<number | undefined>(undefined);
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
@@ -298,6 +324,23 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     finally { setLoadingTabla(false); setMinHCups(undefined); }
   }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, pageCups, pageSizeCups]);
 
+  const cargarTablaCeldas = useCallback(async (page = pageCeldas, size = pageSizeCeldas) => {
+    if (!token || !empresaId) return;
+    if (tablaCeldasRef.current) setMinHCeldas(tablaCeldasRef.current.offsetHeight);
+    setLoadingTabla(true);
+    try {
+      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
+      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      const res = await fetch(`${API_BASE_URL}/topologia/tabla/celdas?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setCeldasTabla(data.items ?? []);
+      setTotalCeldas(data.total ?? 0);
+      setHasLoadedTabla(true);
+    } catch { setCeldasTabla([]); setTotalCeldas(0); }
+    finally { setLoadingTabla(false); setMinHCeldas(undefined); }
+  }, [token, empresaId, filtroCtTabla, pageCeldas, pageSizeCeldas]);
+
   useEffect(() => {
     if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -311,7 +354,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   useEffect(() => {
     if (empresaId && panelTablasOpen) {
       if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas);
-      else cargarTablaCups(0, pageSizeCups);
+      else if (tablaActiva === "cups") cargarTablaCups(0, pageSizeCups);
+      else cargarTablaCeldas(0, pageSizeCeldas);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId, panelTablasOpen, tablaActiva]);
@@ -327,6 +371,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       cargarTablaCups(pageCups, pageSizeCups);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageCups, pageSizeCups]);
+
+  useEffect(() => {
+    if (empresaId && panelTablasOpen && tablaActiva === "celdas" && hasLoadedTabla)
+      cargarTablaCeldas(pageCeldas, pageSizeCeldas);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageCeldas, pageSizeCeldas]);
 
   const tramosFiltrados = tramos.filter(t => esBTTramo(t) ? mostrarBT : mostrarMT);
   const numBT = tramos.filter(t =>  esBTTramo(t)).length;
@@ -352,10 +402,13 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
 
   const totalPagLineas = Math.max(1, Math.ceil(totalLineas / pageSizeLineas));
   const totalPagCups   = Math.max(1, Math.ceil(totalCups   / pageSizeCups));
+  const totalPagCeldas = Math.max(1, Math.ceil(totalCeldas / pageSizeCeldas));
   const startLineas    = pageLineas * pageSizeLineas + 1;
   const endLineas      = Math.min(pageLineas * pageSizeLineas + lineasTabla.length, totalLineas);
   const startCups      = pageCups  * pageSizeCups  + 1;
   const endCups        = Math.min(pageCups  * pageSizeCups  + cupsTabla.length,   totalCups);
+  const startCeldas    = pageCeldas * pageSizeCeldas + 1;
+  const endCeldas      = Math.min(pageCeldas * pageSizeCeldas + celdasTabla.length, totalCeldas);
 
   const toggleCt = (id: string) => {
     setCtsSeleccionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -370,7 +423,9 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setCalcCtResult(await res.json());
       await fetch(`${API_BASE_URL}/topologia/calcular-ct-mt?empresa_id=${empresaId}`, { method: "POST", headers: getAuthHeaders(token) });
       cargarCups(); cargarTramos();
-      if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas); else cargarTablaCups(0, pageSizeCups);
+      if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas);
+      else if (tablaActiva === "cups") cargarTablaCups(0, pageSizeCups);
+      else cargarTablaCeldas(0, pageSizeCeldas);
     } catch (e) { setCalcCtError(e instanceof Error ? e.message : "Error calculando CT"); }
     finally { setCalcCt(false); }
   };
@@ -457,7 +512,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error((err as { detail?: string }).detail || `Error ${res.status}`); }
       setImportResult(await res.json() as ImportResult);
       cargarCts(); cargarCups(); cargarTramos();
-      if (panelTablasOpen) { if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas); else cargarTablaCups(0, pageSizeCups); }
+      if (panelTablasOpen) {
+        if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas);
+        else if (tablaActiva === "cups") cargarTablaCups(0, pageSizeCups);
+        else cargarTablaCeldas(0, pageSizeCeldas);
+      }
     } catch (e: unknown) { setImportError(e instanceof Error ? e.message : "Error importando"); }
     finally { setImporting(false); }
   };
@@ -488,6 +547,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     return (
       <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10, background: `${color}22`, color, border: `1px solid ${color}44` }}>
         {fase}
+      </span>
+    );
+  };
+
+  const BadgeFuncion = ({ funcion }: { funcion: string | null }) => {
+    if (!funcion) return <span style={{ color: "var(--text-muted)", fontSize: 10 }}>—</span>;
+    const color = FUNCION_COLOR[funcion] ?? "#888";
+    return (
+      <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: `${color}22`, color, border: `1px solid ${color}44` }}>
+        {funcion}
       </span>
     );
   };
@@ -815,15 +884,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             )}
 
             <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--card-border)" }}>
-              {(["lineas", "cups"] as const).map(tab => (
+              {(["lineas", "cups", "celdas"] as const).map(tab => (
                 <button key={tab} type="button"
                   onClick={() => {
                     setTablaActiva(tab); setHasLoadedTabla(false);
                     if (tab === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
-                    else { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
+                    else if (tab === "cups") { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
+                    else { setPageCeldas(0); cargarTablaCeldas(0, pageSizeCeldas); }
                   }}
                   style={{ padding: "6px 16px", fontSize: 11, fontWeight: 600, background: "none", border: "none", cursor: "pointer", borderBottom: tablaActiva === tab ? "2px solid var(--primary)" : "2px solid transparent", color: tablaActiva === tab ? "var(--primary)" : "var(--text-muted)" }}>
-                  {tab === "lineas" ? `Líneas → CT (${totalLineas.toLocaleString()})` : `CUPS → CT (${totalCups.toLocaleString()})`}
+                  {tab === "lineas" ? `Líneas → CT (${totalLineas.toLocaleString()})` : tab === "cups" ? `CUPS → CT (${totalCups.toLocaleString()})` : `Celdas (${totalCeldas.toLocaleString()})`}
                 </button>
               ))}
             </div>
@@ -836,24 +906,29 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   {cts.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Método</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 140 }} value={filtroMetodo} onChange={e => setFiltroMetodo(e.target.value)}>
-                  <option value="">Todos</option>
-                  {tablaActiva === "lineas"
-                    ? <><option value="bfs">Topológico</option><option value="proximidad">Proximidad</option><option value="manual">Manual</option></>
-                    : <><option value="nudo_linea">Nudo→Línea</option><option value="manual">Manual</option></>
-                  }
-                </select>
-              </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", height: 28 }}>
-                <input type="checkbox" checked={filtroSinCt} onChange={e => setFiltroSinCt(e.target.checked)} />Sin CT asignado
-              </label>
+              {tablaActiva !== "celdas" && (
+                <>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Método</label>
+                    <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 140 }} value={filtroMetodo} onChange={e => setFiltroMetodo(e.target.value)}>
+                      <option value="">Todos</option>
+                      {tablaActiva === "lineas"
+                        ? <><option value="bfs">Topológico</option><option value="proximidad">Proximidad</option><option value="manual">Manual</option></>
+                        : <><option value="nudo_linea">Nudo→Línea</option><option value="manual">Manual</option></>
+                      }
+                    </select>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", height: 28 }}>
+                    <input type="checkbox" checked={filtroSinCt} onChange={e => setFiltroSinCt(e.target.checked)} />Sin CT asignado
+                  </label>
+                </>
+              )}
               <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28 }}
                 onClick={() => {
                   setHasLoadedTabla(false);
                   if (tablaActiva === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
-                  else { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
+                  else if (tablaActiva === "cups") { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
+                  else { setPageCeldas(0); cargarTablaCeldas(0, pageSizeCeldas); }
                 }}>
                 🔍 Buscar
               </button>
@@ -968,8 +1043,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                               )}
                             </td>
                             <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={c.metodo_asignacion_ct} /></td>
-
-                            {/* ── Columna Fase ── */}
                             <td style={{ padding: "5px 8px" }}>
                               {editandoFase === c.cups ? (
                                 <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 80 }} value={editFaseValor} onChange={e => setEditFaseValor(e.target.value)}>
@@ -983,8 +1056,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                                 <BadgeFase fase={c.fase} />
                               )}
                             </td>
-
-                            {/* ── Acciones: CT + Fase ── */}
                             <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                               {editandoCups === c.cups ? (
                                 <div style={{ display: "flex", gap: 4 }}>
@@ -1014,6 +1085,57 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       setPageSize={v => { setPageSizeCups(v); setPageCups(0); }}
                       currentPage={pageCups} totalPages={totalPagCups}
                       setPage={p => setPageCups(p)}
+                      compact />
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* ── Tabla Celdas ── */}
+            {tablaActiva === "celdas" && (
+              <div style={{ overflowX: "auto" }}>
+                {!hasLoadedTabla && loadingTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                ) : celdasTabla.length === 0 && hasLoadedTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
+                ) : celdasTabla.length > 0 ? (
+                  <div ref={tablaCeldasRef} style={{ position: "relative", opacity: loadingTabla ? 0.45 : 1, transition: "opacity 0.18s ease", minHeight: minHCeldas }}>
+                    {loadingTabla && <TableLoadingOverlay />}
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
+                          {["CT", "Celda", "Función", "Tipo posición", "Ubicación", "Tensión", "Trafo asociado", "CINI", "Año"].map(h => (
+                            <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {celdasTabla.map(c => (
+                          <tr key={c.id_celda} style={{ borderBottom: "1px solid var(--card-border)" }}>
+                            <td style={{ padding: "5px 8px", fontSize: 10 }}>
+                              {cts.find(ct => ct.id_ct === c.id_ct)?.nombre ?? c.id_ct}
+                            </td>
+                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{c.id_celda}</td>
+                            <td style={{ padding: "5px 8px" }}><BadgeFuncion funcion={c.cini_p7_funcion} /></td>
+                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{c.cini_p5_tipo_posicion ?? "—"}</td>
+                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{c.cini_p6_ubicacion ?? "—"}</td>
+                            <td style={{ padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap" }}>{c.cini_p8_tension_nominal ?? "—"}</td>
+                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10, color: c.id_transformador ? "var(--text)" : "var(--text-muted)" }}>
+                              {c.id_transformador ?? "—"}
+                            </td>
+                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{c.cini ?? "—"}</td>
+                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{c.anio_instalacion ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <TablePaginationFooter
+                      loading={loadingTabla} hasLoadedOnce={hasLoadedTabla}
+                      totalFilas={totalCeldas} startIndex={startCeldas - 1} endIndex={endCeldas}
+                      pageSize={pageSizeCeldas}
+                      setPageSize={v => { setPageSizeCeldas(v); setPageCeldas(0); }}
+                      currentPage={pageCeldas} totalPages={totalPagCeldas}
+                      setPage={p => setPageCeldas(p)}
                       compact />
                   </div>
                 ) : null}

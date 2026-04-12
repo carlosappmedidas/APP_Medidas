@@ -17,6 +17,7 @@ from app.topologia.schemas import (
     AsignacionFaseRequest,
     CalcAsignacionCtMtResponse,
     CalcAsignacionCtResponse,
+    CeldaTablaRead,
     CtCeldaRead,
     CtDetalleRead,
     CtInventarioRead,
@@ -290,6 +291,25 @@ def get_tabla_cups(
         id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, limit=limit, offset=offset,
     )
     return {"items": [CupsTablaRead.model_validate(c) for c in cups], "total": total}
+
+
+# ── Tabla de Celdas — paginación servidor ─────────────────────────────────────
+
+@router.get("/tabla/celdas")
+def get_tabla_celdas(
+    empresa_id:   int           = Query(...),
+    id_ct:        Optional[str] = Query(None, description="Filtrar por CT"),
+    limit:        int           = Query(50, ge=1, le=500),
+    offset:       int           = Query(0, ge=0),
+    db:           Session       = Depends(get_db),
+    current_user: User          = Depends(get_current_user),
+) -> Dict[str, Any]:
+    _assert_not_viewer(current_user)
+    celdas, total = services.list_celdas_tabla(
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+        id_ct=id_ct, limit=limit, offset=offset,
+    )
+    return {"items": [CeldaTablaRead.model_validate(c) for c in celdas], "total": total}
 
 
 # ── Mapa — CTs ────────────────────────────────────────────────────────────────

@@ -86,6 +86,14 @@ class CtCeldaRead(BaseModel):
     posicion:         Optional[int]
     en_servicio:      Optional[int]
     anio_instalacion: Optional[int]
+    cini_p1_tipo_instalacion: Optional[str]
+    cini_p2_actividad:        Optional[str]
+    cini_p3_tipo_equipo:      Optional[str]
+    cini_p4_tension_rango:    Optional[str]
+    cini_p5_tipo_posicion:    Optional[str]
+    cini_p6_ubicacion:        Optional[str]
+    cini_p7_funcion:          Optional[str]
+    cini_p8_tension_nominal:  Optional[str]
     created_at:       datetime
     updated_at:       datetime
 
@@ -216,6 +224,26 @@ class LineaTablaRead(BaseModel):
     fecha_aps:            Optional[date]
     id_ct:                Optional[str]
     metodo_asignacion_ct: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+# ── Tabla Celdas — para la vista de gestión ───────────────────────────────────
+
+class CeldaTablaRead(BaseModel):
+    id_ct:                    str
+    id_celda:                 str
+    id_transformador:         Optional[str]
+    cini:                     Optional[str]
+    posicion:                 Optional[int]
+    en_servicio:              Optional[int]
+    anio_instalacion:         Optional[int]
+    cini_p4_tension_rango:    Optional[str]
+    cini_p5_tipo_posicion:    Optional[str]
+    cini_p6_ubicacion:        Optional[str]
+    cini_p7_funcion:          Optional[str]
+    cini_p8_tension_nominal:  Optional[str]
 
     class Config:
         from_attributes = True
