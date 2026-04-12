@@ -4,8 +4,8 @@
 Parser del fichero B22 (Circular CNMC 8/2021).
 Formato: 7 campos separados por ';'
 
-  pos0  id_ct            — identificador del CT
-  pos1  id_celda         — identificador de la celda
+  pos0  id_celda         — identificador de la celda
+  pos1  id_ct            — CT o CS al que pertenece
   pos2  id_transformador — trafo asociado (vacío en celdas de línea)
   pos3  cini             — I28C2A1M / I28C2A2M / I28C3A1M
   pos4  posicion         — 0=línea, 1=trafo, 2=medida
@@ -41,19 +41,18 @@ def parsear_b22(
             errores.append(f"Línea {num}: solo {len(campos)} campos (se esperan 7)")
             continue
 
-        id_ct    = campos[0].strip()
-        id_celda = campos[1].strip()
+        id_celda = campos[0].strip()
+        id_ct    = campos[1].strip()
 
-        if not id_ct:
-            errores.append(f"Línea {num}: id_ct vacío")
-            continue
         if not id_celda:
             errores.append(f"Línea {num}: id_celda vacío")
             continue
+        if not id_ct:
+            errores.append(f"Línea {num}: id_ct vacío")
+            continue
 
         id_transformador = campos[2].strip() or None
-
-        cini = campos[3].strip() or None
+        cini             = campos[3].strip() or None
 
         posicion = None
         try:
