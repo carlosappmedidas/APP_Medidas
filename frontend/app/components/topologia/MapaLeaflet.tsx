@@ -46,6 +46,9 @@ export interface CtMapa {
 export interface CupsMapa {
   cups:                   string;
   id_ct:                  string | null;
+  id_ct_asignado:         string | null;   // ← CT calculado
+  metodo_asignacion_ct:   string | null;
+  fase:                   string | null;   // ← R/S/T/RST
   cnae:                   string | null;
   tarifa:                 string | null;
   lat:                    number | null;
@@ -343,8 +346,8 @@ export const DEFAULT_TOOLTIP_CUPS: TooltipCupsConfig = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  cts:               CtMapa[];   // CTs a pintar en el mapa
-  ctsTodos:          CtMapa[];   // TODOS los CTs — para el selector del popup
+  cts:               CtMapa[];
+  ctsTodos:          CtMapa[];
   cups:              CupsMapa[];
   tramos:            TramoMapa[];
   mostrarCts:        boolean;
@@ -357,8 +360,7 @@ interface Props {
   tooltipCups:       TooltipCupsConfig;
   onLineaClick:      (id_linea: string | null) => void;
   onReasignarCt:     (id_tramo: string, id_ct: string | null) => void;
-  // Colores por CT — solo tiene entradas cuando hay ≥2 CTs seleccionados.
-  // Cuando está vacío ({}) se usan los colores estándar MT/BT.
+  onReasignarFase:   (cups: string, fase: string | null) => void;   // ← NUEVO
   coloresCt:         Record<string, string>;
 }
 
@@ -405,7 +407,21 @@ function fila(label: string, valor: string | number): string {
 
 const DIVISOR = `<div style="margin:6px 0;border-top:1px solid #e5e7eb;"></div>`;
 
-// ─── Selector CT en popup ─────────────────────────────────────────────────────
+// ─── Colores de fase ──────────────────────────────────────────────────────────
+const FASE_COLOR: Record<string, string> = {
+  R:   "#E24B4A",
+  S:   "#F59E0B",
+  T:   "#2563EB",
+  RST: "#1D9E75",
+};
+const FASE_LABEL: Record<string, string> = {
+  R:   "R — Fase 1",
+  S:   "S — Fase 2",
+  T:   "T — Fase 3",
+  RST: "RST — Trifásico",
+};
+
+// ─── Selector CT en popup (líneas) ────────────────────────────────────────────
 function buildSelectorCt(idTramo: string, idCtActual: string | null, ctsTodos: CtMapa[]): string {
   const ctActualNombre = ctsTodos.find(c => c.id_ct === idCtActual)?.nombre ?? idCtActual ?? "Sin CT";
   const opciones = ctsTodos.map(ct =>
@@ -429,7 +445,34 @@ function buildSelectorCt(idTramo: string, idCtActual: string | null, ctsTodos: C
   `;
 }
 
-// ─── Tooltip línea ─────────────────────────────────────────────────────────────
+// ─── Selector fase en popup (CUPS) ────────────────────────────────────────────
+function buildSelectorFase(cupsId: string, faseActual: string | null): string {
+  const faseLabel = faseActual ? (FASE_LABEL[faseActual] ?? faseActual) : "Sin asignar";
+  const faseColor = faseActual ? (FASE_COLOR[faseActual] ?? "#888") : "#aaa";
+  const opciones = ["R", "S", "T", "RST"].map(f =>
+    `<option value="${f}" ${f === faseActual ? "selected" : ""}>${FASE_LABEL[f]}</option>`
+  ).join("");
+  // Escapamos el cups para usarlo como id de DOM — reemplazamos caracteres problemáticos
+  const domId = `fase-select-${cupsId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  return `
+    ${DIVISOR}
+    <div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#aaa;margin-bottom:6px;letter-spacing:0.06em">Asignar fase</div>
+    <div style="font-size:10px;color:#999;margin-bottom:4px">Actual: <strong style="color:${faseColor}">${faseLabel}</strong></div>
+    <div style="display:flex;gap:4px;align-items:center">
+      <select id="${domId}" style="flex:1;font-size:10px;padding:2px 4px;border:1px solid #ccc;border-radius:4px;background:#fff;color:#333;height:24px">
+        <option value="">— Sin fase —</option>
+        ${opciones}
+      </select>
+      <button
+        onclick="window.__reasignarFase('${cupsId}', document.getElementById('${domId}').value || null)"
+        style="font-size:10px;padding:2px 8px;background:#2563EB;color:#fff;border:none;border-radius:4px;cursor:pointer;height:24px;white-space:nowrap">
+        ✓ Guardar
+      </button>
+    </div>
+  `;
+}
+
+// ─── Tooltip línea ────────────────────────────────────────────────────────────
 function buildTooltipLinea(
   t: TramoMapa,
   cfgL: TooltipLineasConfig,
@@ -564,10 +607,21 @@ function buildTooltipCups(c: CupsMapa, cfg: TooltipCupsConfig): string {
   if (cfg.mostrar_conexion_autoconsumo && c.conexion_autoconsumo    !== null)    f.push(fila("Conex. autocons.",  ["Red interior","Red dist.","Mixta"][c.conexion_autoconsumo] ?? c.conexion_autoconsumo));
   if (cfg.mostrar_energia_autoconsumida && c.energia_autoconsumida_kwh !== null) f.push(fila("E. autoconsumida", `${c.energia_autoconsumida_kwh?.toLocaleString()} kWh`));
   if (cfg.mostrar_energia_excedentaria  && c.energia_excedentaria_kwh  !== null) f.push(fila("E. excedentaria",  `${c.energia_excedentaria_kwh?.toLocaleString()} kWh`));
+
+  // Badge de fase (si está asignada)
+  const faseBadge = c.fase
+    ? `<div style="display:inline-block;margin-top:3px;padding:1px 7px;border-radius:10px;background:${FASE_COLOR[c.fase] ?? "#888"}22;color:${FASE_COLOR[c.fase] ?? "#888"};border:1px solid ${FASE_COLOR[c.fase] ?? "#888"}44;font-size:10px;font-weight:700">${c.fase}</div>`
+    : "";
+
   return `<div style="font-size:11px;min-width:200px;max-width:280px;line-height:1.7">
     <div style="font-weight:700;font-size:11px;font-family:monospace;margin-bottom:1px">${c.cups}</div>
-    <div style="color:#888;font-size:10px;margin-bottom:4px">CT: ${c.id_ct ?? "No asignado"}</div>
+    <div style="color:#888;font-size:10px;margin-bottom:2px">CT: ${c.id_ct_asignado ?? c.id_ct ?? "No asignado"}</div>
+    ${faseBadge}
+    ${faseBadge ? "" : ""}
+    <div style="margin-top:${faseBadge ? "2px" : "0"}">
     ${f.join("")}
+    </div>
+    ${buildSelectorFase(c.cups, c.fase)}
   </div>`;
 }
 
@@ -578,7 +632,7 @@ export default function MapaLeaflet({
   mostrarCts, mostrarCups, mostrarLineas,
   lineaSeleccionada,
   tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
-  onLineaClick, onReasignarCt,
+  onLineaClick, onReasignarCt, onReasignarFase,
   coloresCt,
 }: Props) {
   const mapRef             = useRef<HTMLDivElement>(null);
@@ -593,10 +647,11 @@ export default function MapaLeaflet({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresLayerRef = useRef<any>(null);
 
-  const onReasignarCtRef = useRef(onReasignarCt);
-  useEffect(() => { onReasignarCtRef.current = onReasignarCt; }, [onReasignarCt]);
+  const onReasignarCtRef   = useRef(onReasignarCt);
+  const onReasignarFaseRef = useRef(onReasignarFase);
+  useEffect(() => { onReasignarCtRef.current   = onReasignarCt;   }, [onReasignarCt]);
+  useEffect(() => { onReasignarFaseRef.current = onReasignarFase; }, [onReasignarFase]);
 
-  // Modo multi-CT: hay colores personalizados cuando hay ≥2 CTs seleccionados
   const modoMultiCt = Object.keys(coloresCt).length >= 2;
 
   // ── Inicializar mapa ──────────────────────────────────────────────────────
@@ -605,6 +660,10 @@ export default function MapaLeaflet({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__reasignarCt = (idTramo: string, idCt: string | null) => {
       onReasignarCtRef.current(idTramo, idCt || null);
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__reasignarFase = (cups: string, fase: string | null) => {
+      onReasignarFaseRef.current(cups, fase || null);
     };
     import("leaflet").then(L => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -622,8 +681,8 @@ export default function MapaLeaflet({
         center: [40.0, -3.7], zoom: 7,
         dragging: true, scrollWheelZoom: true, doubleClickZoom: true, zoomControl: true, touchZoom: false,
       });
-      const capaOSM = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 });
-      const capaPNOA = L.tileLayer("https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA', maxZoom: 19 });
+      const capaOSM     = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 });
+      const capaPNOA    = L.tileLayer("https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA', maxZoom: 19 });
       const capaIGNBase = L.tileLayer("https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — Base', maxZoom: 17 });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const capaCatastro = L.tileLayer.wms("https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx", { layers: "Catastro", format: "image/png", transparent: true, attribution: '© <a href="https://www.catastro.meh.es">Catastro</a>', maxZoom: 19 } as any);
@@ -651,17 +710,26 @@ export default function MapaLeaflet({
       document.addEventListener("mouseup",    onMouseUp);
       container.addEventListener("wheel",     onWheel, { passive: false });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mapaInstancia as any)._cleanup = () => { container.removeEventListener("mousedown", onMouseDown); document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); container.removeEventListener("wheel", onWheel); };
+      (mapaInstancia as any)._cleanup = () => {
+        container.removeEventListener("mousedown", onMouseDown);
+        document.removeEventListener("mousemove",  onMouseMove);
+        document.removeEventListener("mouseup",    onMouseUp);
+        container.removeEventListener("wheel",     onWheel);
+      };
     });
     return () => {
       if (mapaInstancia.current) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mapaInstancia as any)._cleanup?.();
         mapaInstancia.current.remove();
-        mapaInstancia.current = null; ctLayerRef.current = null; cupsLayerRef.current = null; lineasLayerRef.current = null; marcadoresLayerRef.current = null;
+        mapaInstancia.current = null;
+        ctLayerRef.current = null; cupsLayerRef.current = null;
+        lineasLayerRef.current = null; marcadoresLayerRef.current = null;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (window as any).__reasignarCt;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__reasignarFase;
     };
   }, []);
 
@@ -684,19 +752,15 @@ export default function MapaLeaflet({
         const haySeleccion   = lineaSeleccionada !== null;
         const subterranea    = esLineaSubterranea(t.codigo_ccuu);
 
-        // ── Color: multi-CT > seleccionada > estándar ─────────────────────
         let colorBase: string;
         if (modoMultiCt && t.id_ct && coloresCt[t.id_ct]) {
-          // Modo multi-CT: color propio del CT
           colorBase = coloresCt[t.id_ct];
         } else {
-          // Modo normal: MT morado / BT naranja
           colorBase = colorLinea(t.id_linea, t.tension_kv);
         }
 
         const peso       = esSeleccionada ? (nivel === "MT" ? 5 : 4) : (nivel === "MT" ? 2.5 : 1.5);
         const opacity    = haySeleccion   ? (esSeleccionada ? 1 : 0.15) : 0.85;
-        // Al seleccionar una línea en modo multi-CT usamos el color del CT pero más oscuro
         const colorFinal = esSeleccionada
           ? (modoMultiCt && t.id_ct && coloresCt[t.id_ct] ? coloresCt[t.id_ct] : (nivel === "MT" ? "#7C3AED" : "#D97706"))
           : colorBase;
@@ -747,7 +811,6 @@ export default function MapaLeaflet({
       if (!mostrarCts) return;
       cts.forEach(ct => {
         if (ct.lat === null || ct.lon === null) return;
-        // En modo multi-CT el icono del CT usa su color propio
         const color = modoMultiCt && coloresCt[ct.id_ct] ? coloresCt[ct.id_ct] : "#E24B4A";
         const iconCt = L.divIcon({
           className: "",
@@ -767,10 +830,18 @@ export default function MapaLeaflet({
     import("leaflet").then(L => {
       cupsLayerRef.current.clearLayers();
       if (!mostrarCups) return;
-      const iconCups = L.divIcon({ className: "", html: `<div style="width:7px;height:7px;border-radius:50%;background:#378ADD;border:1px solid rgba(255,255,255,0.9);box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`, iconSize: [7, 7], iconAnchor: [3, 3] });
       cups.forEach(c => {
         if (c.lat === null || c.lon === null) return;
-        L.marker([c.lat, c.lon], { icon: iconCups }).bindPopup(buildTooltipCups(c, tooltipCups)).addTo(cupsLayerRef.current);
+        // Color del marcador: si tiene fase asignada usa el color de la fase
+        const color = c.fase && FASE_COLOR[c.fase] ? FASE_COLOR[c.fase] : "#378ADD";
+        const iconCups = L.divIcon({
+          className: "",
+          html: `<div style="width:7px;height:7px;border-radius:50%;background:${color};border:1px solid rgba(255,255,255,0.9);box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`,
+          iconSize: [7, 7], iconAnchor: [3, 3],
+        });
+        L.marker([c.lat, c.lon], { icon: iconCups })
+          .bindPopup(buildTooltipCups(c, tooltipCups), { maxWidth: 300 })
+          .addTo(cupsLayerRef.current);
       });
       const validos = cups.filter(c => c.lat !== null && c.lon !== null);
       if (validos.length > 0 && mapaInstancia.current) {

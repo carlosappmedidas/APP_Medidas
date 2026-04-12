@@ -48,6 +48,7 @@ interface CupsTabla {
   tension_kv: number | null; potencia_contratada_kw: number | null;
   municipio: string | null; conexion: string | null;
   id_ct_asignado: string | null; metodo_asignacion_ct: string | null;
+  fase: string | null;   // ← R/S/T/RST
 }
 
 interface Props {
@@ -73,7 +74,15 @@ function generarColoresCt(ids: string[]): Record<string, string> {
   return mapa;
 }
 
-// ─── Overlay de carga sobre tabla existente ───────────────────────────────────
+// ─── Colores y etiquetas de fase ──────────────────────────────────────────────
+const FASE_COLOR: Record<string, string> = {
+  R:   "#E24B4A",
+  S:   "#F59E0B",
+  T:   "#2563EB",
+  RST: "#1D9E75",
+};
+
+// ─── Overlay de carga ─────────────────────────────────────────────────────────
 const TableLoadingOverlay = () => (
   <div style={{
     position: "absolute", inset: 0, zIndex: 5,
@@ -169,16 +178,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [pageCups,       setPageCups]       = useState(0);
   const [pageSizeCups,   setPageSizeCups]   = useState(50);
 
-  const [editandoLinea, setEditandoLinea] = useState<string | null>(null);
-  const [editandoCups,  setEditandoCups]  = useState<string | null>(null);
-  const [editValor,     setEditValor]     = useState<string>("");
-  const [guardando,     setGuardando]     = useState(false);
+  const [editandoLinea,  setEditandoLinea]  = useState<string | null>(null);
+  const [editandoCups,   setEditandoCups]   = useState<string | null>(null);
+  const [editandoFase,   setEditandoFase]   = useState<string | null>(null);  // cups en edición de fase
+  const [editValor,      setEditValor]      = useState<string>("");
+  const [editFaseValor,  setEditFaseValor]  = useState<string>("");
+  const [guardando,      setGuardando]      = useState(false);
 
   // ── Refs para fijar altura durante cambio de página ───────────────────────
-  // Capturamos la altura del wrapper antes de cada fetch y la mantenemos
-  // como minHeight durante la carga para evitar el salto de layout.
-  const tablaLineasRef   = useRef<HTMLDivElement>(null);
-  const tablaCupsRef     = useRef<HTMLDivElement>(null);
+  const tablaLineasRef = useRef<HTMLDivElement>(null);
+  const tablaCupsRef   = useRef<HTMLDivElement>(null);
   const [minHLineas, setMinHLineas] = useState<number | undefined>(undefined);
   const [minHCups,   setMinHCups]   = useState<number | undefined>(undefined);
 
@@ -251,7 +260,6 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
 
   const cargarTablaLineas = useCallback(async (page = pageLineas, size = pageSizeLineas) => {
     if (!token || !empresaId) return;
-    // Fijar altura antes de la carga para evitar salto de layout
     if (tablaLineasRef.current) setMinHLineas(tablaLineasRef.current.offsetHeight);
     setLoadingTabla(true);
     try {
@@ -389,7 +397,23 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
         body: JSON.stringify({ id_ct: editValor || null }),
       });
       if (!res.ok) throw new Error();
-      setEditandoCups(null); cargarTablaCups(pageCups, pageSizeCups);
+      setEditandoCups(null);
+      cargarTablaCups(pageCups, pageSizeCups);
+    } catch { } finally { setGuardando(false); }
+  };
+
+  const handleGuardarFaseCups = async (cups: string) => {
+    if (!token || !empresaId) return;
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/topologia/cups/${encodeURIComponent(cups)}/fase?empresa_id=${empresaId}`, {
+        method: "PATCH", headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ fase: editFaseValor || null }),
+      });
+      if (!res.ok) throw new Error();
+      setEditandoFase(null);
+      cargarCups();
+      cargarTablaCups(pageCups, pageSizeCups);
     } catch { } finally { setGuardando(false); }
   };
 
@@ -405,6 +429,19 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas(pageLineas, pageSizeLineas);
     } catch { console.error("Error reasignando CT desde mapa"); }
   }, [token, empresaId, cargarTramos, panelTablasOpen, tablaActiva, cargarTablaLineas, pageLineas, pageSizeLineas]);
+
+  const handleReasignarFaseMapa = useCallback(async (cupsId: string, fase: string | null) => {
+    if (!token || !empresaId) return;
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/topologia/cups/${encodeURIComponent(cupsId)}/fase?empresa_id=${empresaId}`,
+        { method: "PATCH", headers: { ...getAuthHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ fase }) }
+      );
+      if (!res.ok) throw new Error();
+      cargarCups();
+      if (panelTablasOpen && tablaActiva === "cups") cargarTablaCups(pageCups, pageSizeCups);
+    } catch { console.error("Error asignando fase desde mapa"); }
+  }, [token, empresaId, cargarCups, panelTablasOpen, tablaActiva, cargarTablaCups, pageCups, pageSizeCups]);
 
   const handleImportar = async () => {
     if (!token || !empresaId || !hayAlgunFichero) return;
@@ -440,6 +477,16 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const BadgeMetodo = ({ metodo }: { metodo: string | null }) => {
     if (!metodo) return <span style={{ color: "var(--text-muted)", fontSize: 10 }}>—</span>;
     return <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: `${METODO_COLOR[metodo] ?? "#888"}22`, color: METODO_COLOR[metodo] ?? "#888", border: `1px solid ${METODO_COLOR[metodo] ?? "#888"}44` }}>{METODO_LABEL[metodo] ?? metodo}</span>;
+  };
+
+  const BadgeFase = ({ fase }: { fase: string | null }) => {
+    if (!fase) return <span style={{ color: "var(--text-muted)", fontSize: 10 }}>—</span>;
+    const color = FASE_COLOR[fase] ?? "#888";
+    return (
+      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10, background: `${color}22`, color, border: `1px solid ${color}44` }}>
+        {fase}
+      </span>
+    );
   };
 
   return (
@@ -704,6 +751,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   tooltipCups={tooltipCups}
                   onLineaClick={handleLineaClick}
                   onReasignarCt={handleReasignarCtMapa}
+                  onReasignarFase={handleReasignarFaseMapa}
                   coloresCt={coloresCt}
                 />
               </div>
@@ -819,16 +867,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 ) : lineasTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : lineasTabla.length > 0 ? (
-                  <div
-                    ref={tablaLineasRef}
-                    style={{
-                      position: "relative",
-                      opacity: loadingTabla ? 0.45 : 1,
-                      transition: "opacity 0.18s ease",
-                      // minHeight fijado al iniciar la carga para evitar salto de layout
-                      minHeight: minHLineas,
-                    }}
-                  >
+                  <div ref={tablaLineasRef} style={{ position: "relative", opacity: loadingTabla ? 0.45 : 1, transition: "opacity 0.18s ease", minHeight: minHLineas }}>
                     {loadingTabla && <TableLoadingOverlay />}
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
@@ -839,34 +878,34 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                         </tr>
                       </thead>
                       <tbody>
-                        {lineasTabla.map(l => (
-                          <tr key={l.id_tramo} style={{ borderBottom: "1px solid var(--card-border)" }}>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{l.id_tramo}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{l.tension_kv != null ? `${l.tension_kv} kV` : "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{l.longitud_km != null ? `${l.longitud_km.toFixed(3)} km` : "—"}</td>
-                            <td style={{ padding: "5px 8px" }}>{l.operacion === 1 ? "✅" : l.operacion === 0 ? "⚠️" : "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{l.fecha_aps ?? "—"}</td>
+                        {lineasTabla.map(linea => (
+                          <tr key={linea.id_tramo} style={{ borderBottom: "1px solid var(--card-border)" }}>
+                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{linea.id_tramo}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{linea.tension_kv != null ? `${linea.tension_kv} kV` : "—"}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{linea.longitud_km != null ? `${linea.longitud_km.toFixed(3)} km` : "—"}</td>
+                            <td style={{ padding: "5px 8px" }}>{linea.operacion === 1 ? "✅" : linea.operacion === 0 ? "⚠️" : "—"}</td>
+                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{linea.fecha_aps ?? "—"}</td>
                             <td style={{ padding: "5px 8px" }}>
-                              {editandoLinea === l.id_tramo ? (
+                              {editandoLinea === linea.id_tramo ? (
                                 <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 160 }} value={editValor} onChange={e => setEditValor(e.target.value)}>
                                   <option value="">— Sin CT —</option>
                                   {cts.map(ct => <option key={ct.id_ct} value={ct.id_ct}>{ct.nombre}</option>)}
                                 </select>
                               ) : (
-                                <span style={{ fontFamily: "monospace", fontSize: 10, color: l.id_ct ? "var(--text)" : "var(--text-muted)" }}>
-                                  {l.id_ct ? (cts.find(c => c.id_ct === l.id_ct)?.nombre ?? l.id_ct) : "—"}
+                                <span style={{ fontFamily: "monospace", fontSize: 10, color: linea.id_ct ? "var(--text)" : "var(--text-muted)" }}>
+                                  {linea.id_ct ? (cts.find(c => c.id_ct === linea.id_ct)?.nombre ?? linea.id_ct) : "—"}
                                 </span>
                               )}
                             </td>
-                            <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={l.metodo_asignacion_ct} /></td>
+                            <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={linea.metodo_asignacion_ct} /></td>
                             <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
-                              {editandoLinea === l.id_tramo ? (
+                              {editandoLinea === linea.id_tramo ? (
                                 <div style={{ display: "flex", gap: 4 }}>
-                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => handleGuardarLinea(l.id_tramo)} disabled={guardando}>{guardando ? "…" : "✓"}</button>
+                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => handleGuardarLinea(linea.id_tramo)} disabled={guardando}>{guardando ? "…" : "✓"}</button>
                                   <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => setEditandoLinea(null)}>✕</button>
                                 </div>
                               ) : (
-                                <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }} onClick={() => { setEditandoLinea(l.id_tramo); setEditValor(l.id_ct ?? ""); }}>✏️</button>
+                                <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }} onClick={() => { setEditandoLinea(linea.id_tramo); setEditValor(linea.id_ct ?? ""); }}>✏️</button>
                               )}
                             </td>
                           </tr>
@@ -894,20 +933,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 ) : cupsTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : cupsTabla.length > 0 ? (
-                  <div
-                    ref={tablaCupsRef}
-                    style={{
-                      position: "relative",
-                      opacity: loadingTabla ? 0.45 : 1,
-                      transition: "opacity 0.18s ease",
-                      minHeight: minHCups,
-                    }}
-                  >
+                  <div ref={tablaCupsRef} style={{ position: "relative", opacity: loadingTabla ? 0.45 : 1, transition: "opacity 0.18s ease", minHeight: minHCups }}>
                     {loadingTabla && <TableLoadingOverlay />}
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                          {["CUPS", "Tarifa", "Tensión", "Potencia", "Municipio", "CT asignado", "Método", ""].map(h => (
+                          {["CUPS", "Tarifa", "Tensión", "Potencia", "Municipio", "CT asignado", "Método", "Fase", ""].map(h => (
                             <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
@@ -933,14 +964,39 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                               )}
                             </td>
                             <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={c.metodo_asignacion_ct} /></td>
+
+                            {/* ── Columna Fase ── */}
+                            <td style={{ padding: "5px 8px" }}>
+                              {editandoFase === c.cups ? (
+                                <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 80 }} value={editFaseValor} onChange={e => setEditFaseValor(e.target.value)}>
+                                  <option value="">— —</option>
+                                  <option value="R">R</option>
+                                  <option value="S">S</option>
+                                  <option value="T">T</option>
+                                  <option value="RST">RST</option>
+                                </select>
+                              ) : (
+                                <BadgeFase fase={c.fase} />
+                              )}
+                            </td>
+
+                            {/* ── Acciones: CT + Fase ── */}
                             <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                               {editandoCups === c.cups ? (
                                 <div style={{ display: "flex", gap: 4 }}>
-                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => handleGuardarCups(c.cups)} disabled={guardando}>{guardando ? "…" : "✓"}</button>
+                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => handleGuardarCups(c.cups)} disabled={guardando}>{guardando ? "…" : "✓ CT"}</button>
                                   <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => setEditandoCups(null)}>✕</button>
                                 </div>
+                              ) : editandoFase === c.cups ? (
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px", background: "#2563EB22", borderColor: "#2563EB44", color: "#2563EB" }} onClick={() => handleGuardarFaseCups(c.cups)} disabled={guardando}>{guardando ? "…" : "✓ Fase"}</button>
+                                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10, padding: "1px 8px" }} onClick={() => setEditandoFase(null)}>✕</button>
+                                </div>
                               ) : (
-                                <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }} onClick={() => { setEditandoCups(c.cups); setEditValor(c.id_ct_asignado ?? ""); }}>✏️</button>
+                                <div style={{ display: "flex", gap: 3 }}>
+                                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }} title="Editar CT" onClick={() => { setEditandoCups(c.cups); setEditValor(c.id_ct_asignado ?? ""); setEditandoFase(null); }}>✏️</button>
+                                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10, color: "#2563EB" }} title="Editar fase" onClick={() => { setEditandoFase(c.cups); setEditFaseValor(c.fase ?? ""); setEditandoCups(null); }}>⚡</button>
+                                </div>
                               )}
                             </td>
                           </tr>

@@ -14,6 +14,7 @@ from app.topologia import services
 from app.topologia.models import LineaInventario, LineaTramo
 from app.topologia.schemas import (
     AsignacionCtRequest,
+    AsignacionFaseRequest,       # ← NUEVO
     CalcAsignacionCtResponse,
     CtInventarioRead,
     CtMapaRead,
@@ -101,16 +102,10 @@ def calcular_ct(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ) -> CalcAsignacionCtResponse:
-    """
-    Lanza el algoritmo BFS + proximidad geográfica para asociar líneas y CUPS
-    a sus CTs. No sobreescribe asignaciones manuales (metodo='manual').
-    """
     _assert_not_viewer(current_user)
     try:
         resultado = services.calcular_asociacion_ct(
-            db         = db,
-            tenant_id  = _tenant_id(current_user),
-            empresa_id = empresa_id,
+            db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
         )
     except Exception as exc:
         raise HTTPException(
@@ -120,7 +115,7 @@ def calcular_ct(
     return CalcAsignacionCtResponse(**resultado)
 
 
-# ── Reasignación manual — línea ───────────────────────────────────────────────
+# ── Reasignación manual — CT de línea ─────────────────────────────────────────
 
 @router.patch("/lineas/{id_tramo}/ct", status_code=status.HTTP_200_OK)
 def reasignar_ct_linea(
@@ -130,25 +125,19 @@ def reasignar_ct_linea(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ) -> dict:
-    """
-    Reasigna manualmente el CT de una línea.
-    Enviar id_ct=null o id_ct="" para limpiar la asignación.
-    """
+    """Reasigna manualmente el CT de una línea. Enviar id_ct=null para limpiar."""
     _assert_not_viewer(current_user)
     try:
         services.reasignar_ct_linea(
-            db           = db,
-            tenant_id    = _tenant_id(current_user),
-            empresa_id   = empresa_id,
-            id_tramo     = id_tramo,
-            id_ct_nuevo  = payload.id_ct or None,
+            db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+            id_tramo=id_tramo, id_ct_nuevo=payload.id_ct or None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return {"ok": True, "id_tramo": id_tramo, "id_ct": payload.id_ct}
 
 
-# ── Reasignación manual — CUPS ────────────────────────────────────────────────
+# ── Reasignación manual — CT de CUPS ─────────────────────────────────────────
 
 @router.patch("/cups/{cups}/ct", status_code=status.HTTP_200_OK)
 def reasignar_ct_cups(
@@ -158,30 +147,45 @@ def reasignar_ct_cups(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ) -> dict:
-    """
-    Reasigna manualmente el CT de un CUPS.
-    Enviar id_ct=null o id_ct="" para limpiar la asignación.
-    """
+    """Reasigna manualmente el CT de un CUPS. Enviar id_ct=null para limpiar."""
     _assert_not_viewer(current_user)
     try:
         services.reasignar_ct_cups(
-            db           = db,
-            tenant_id    = _tenant_id(current_user),
-            empresa_id   = empresa_id,
-            cups         = cups,
-            id_ct_nuevo  = payload.id_ct or None,
+            db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+            cups=cups, id_ct_nuevo=payload.id_ct or None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return {"ok": True, "cups": cups, "id_ct": payload.id_ct}
 
 
-# ── Tabla de líneas con CT — paginación servidor ──────────────────────────────
-#
-#   Devuelve { items: [...], total: N } para que el frontend pueda
-#   calcular el número de páginas sin descargar todos los registros.
-#   Parámetros de paginación: limit (tamaño de página) + offset (desplazamiento).
-#
+# ── Asignación manual — fase de CUPS ─────────────────────────────────────────
+
+@router.patch("/cups/{cups}/fase", status_code=status.HTTP_200_OK)
+def reasignar_fase_cups(
+    cups:         str,
+    payload:      AsignacionFaseRequest,
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> dict:
+    """
+    Asigna la fase del CT (R/S/T/RST) a un CUPS.
+    Enviar fase=null o fase="" para limpiar.
+    """
+    _assert_not_viewer(current_user)
+    try:
+        services.reasignar_fase_cups(
+            db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+            cups=cups, fase_nueva=payload.fase or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {"ok": True, "cups": cups, "fase": payload.fase}
+
+
+# ── Tabla de líneas — paginación servidor ─────────────────────────────────────
+
 @router.get("/tabla/lineas")
 def get_tabla_lineas(
     empresa_id:   int           = Query(...),
@@ -195,25 +199,14 @@ def get_tabla_lineas(
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
     lineas, total = services.list_lineas_tabla(
-        db         = db,
-        tenant_id  = _tenant_id(current_user),
-        empresa_id = empresa_id,
-        id_ct      = id_ct,
-        sin_ct     = sin_ct,
-        metodo     = metodo,
-        limit      = limit,
-        offset     = offset,
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+        id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, limit=limit, offset=offset,
     )
-    return {
-        "items": [LineaTablaRead.model_validate(linea) for linea in lineas],
-        "total": total,
-    }
+    return {"items": [LineaTablaRead.model_validate(linea) for linea in lineas], "total": total}
 
 
-# ── Tabla de CUPS con CT — paginación servidor ────────────────────────────────
-#
-#   Devuelve { items: [...], total: N } para paginación en servidor.
-#
+# ── Tabla de CUPS — paginación servidor ──────────────────────────────────────
+
 @router.get("/tabla/cups")
 def get_tabla_cups(
     empresa_id:   int           = Query(...),
@@ -227,19 +220,10 @@ def get_tabla_cups(
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
     cups, total = services.list_cups_tabla(
-        db         = db,
-        tenant_id  = _tenant_id(current_user),
-        empresa_id = empresa_id,
-        id_ct      = id_ct,
-        sin_ct     = sin_ct,
-        metodo     = metodo,
-        limit      = limit,
-        offset     = offset,
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+        id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, limit=limit, offset=offset,
     )
-    return {
-        "items": [CupsTablaRead.model_validate(c) for c in cups],
-        "total": total,
-    }
+    return {"items": [CupsTablaRead.model_validate(c) for c in cups], "total": total}
 
 
 # ── Mapa — CTs ────────────────────────────────────────────────────────────────
@@ -281,15 +265,9 @@ def get_tramos_mapa(
     db:           Session       = Depends(get_db),
     current_user: User          = Depends(get_current_user),
 ) -> List[TramoMapaRead]:
-    """
-    Devuelve segmentos GIS (B11) con coordenadas válidas.
-    Hace LEFT JOIN con linea_inventario (B1).
-    Si se pasa id_ct, devuelve solo los tramos cuyas líneas están asignadas a ese CT.
-    """
     _assert_not_viewer(current_user)
     tid = _tenant_id(current_user)
 
-    # Si filtramos por CT usamos INNER JOIN para que solo salgan líneas con CT asignado
     if id_ct is not None:
         q = (
             db.query(LineaTramo, LineaInventario)
@@ -385,7 +363,7 @@ def get_tramos_mapa(
     return resultado
 
 
-# ── Listado de líneas disponibles (para el selector del mapa) ─────────────────
+# ── Listado de líneas disponibles ─────────────────────────────────────────────
 
 @router.get("/mapa/lineas", response_model=List[str])
 def get_lineas_disponibles(
@@ -395,7 +373,6 @@ def get_lineas_disponibles(
 ) -> List[str]:
     _assert_not_viewer(current_user)
     tid = _tenant_id(current_user)
-
     filas = (
         db.query(LineaTramo.id_linea)
         .filter(

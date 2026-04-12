@@ -111,6 +111,7 @@ class CupsTopologiaRead(BaseModel):
     energia_excedentaria_kwh:  Optional[float]
     id_ct_asignado:           Optional[str]
     metodo_asignacion_ct:     Optional[str]
+    fase:                     Optional[str]
     anio_declaracion:         Optional[int]
     created_at:               datetime
     updated_at:               datetime
@@ -144,7 +145,12 @@ class ImportarTopologiaResponse(BaseModel):
 
 class AsignacionCtRequest(BaseModel):
     """Payload para reasignación manual de CT en línea o CUPS."""
-    id_ct: Optional[str] = None  # None o "" para limpiar la asignación
+    id_ct: Optional[str] = None
+
+
+class AsignacionFaseRequest(BaseModel):
+    """Payload para asignación manual de fase en CUPS."""
+    fase: Optional[str] = None  # 'R', 'S', 'T', 'RST' o None para limpiar
 
 
 class CalcAsignacionCtResponse(BaseModel):
@@ -161,10 +167,6 @@ class CalcAsignacionCtResponse(BaseModel):
 # ── Tabla líneas — para la vista de gestión ───────────────────────────────────
 
 class LineaTablaRead(BaseModel):
-    """
-    Línea con su CT asignado para la tabla de gestión.
-    Incluye solo los campos relevantes para revisión y corrección.
-    """
     id_tramo:             str
     nudo_inicio:          Optional[str]
     nudo_fin:             Optional[str]
@@ -183,12 +185,8 @@ class LineaTablaRead(BaseModel):
 # ── Tabla CUPS — para la vista de gestión ─────────────────────────────────────
 
 class CupsTablaRead(BaseModel):
-    """
-    CUPS con su CT asignado para la tabla de gestión.
-    Incluye solo los campos relevantes para revisión y corrección.
-    """
     cups:                 str
-    id_ct:                Optional[str]   # NUDO del A1
+    id_ct:                Optional[str]
     tarifa:               Optional[str]
     tension_kv:           Optional[float]
     potencia_contratada_kw: Optional[float]
@@ -196,6 +194,7 @@ class CupsTablaRead(BaseModel):
     conexion:             Optional[str]
     id_ct_asignado:       Optional[str]
     metodo_asignacion_ct: Optional[str]
+    fase:                 Optional[str]   # ← NUEVO: R/S/T/RST
 
     class Config:
         from_attributes = True
@@ -249,9 +248,10 @@ class CtMapaRead(BaseModel):
 
 class CupsMapaRead(BaseModel):
     cups:                   str
-    id_ct:                  Optional[str]   # NUDO del A1
-    id_ct_asignado:         Optional[str]   # CT calculado
+    id_ct:                  Optional[str]
+    id_ct_asignado:         Optional[str]
     metodo_asignacion_ct:   Optional[str]
+    fase:                   Optional[str]   # ← NUEVO: R/S/T/RST
     cnae:                   Optional[str]
     tarifa:                 Optional[str]
     lat:                    Optional[float]
@@ -288,11 +288,6 @@ class CupsMapaRead(BaseModel):
 # ── Mapa — Tramo ──────────────────────────────────────────────────────────────
 
 class TramoMapaRead(BaseModel):
-    """
-    Segmento GIS (B11) con campos del B1 para tooltip configurable.
-    orden y num_tramo permiten identificar inicio/fin de cada línea.
-    """
-    # B11 — segmento GIS
     id_tramo:  str
     id_linea:  Optional[str]
     orden:     Optional[int]
@@ -302,7 +297,6 @@ class TramoMapaRead(BaseModel):
     lat_fin:   Optional[float]
     lon_fin:   Optional[float]
 
-    # B1 — datos de la línea
     cini:                    Optional[str]
     codigo_ccuu:             Optional[str]
     nudo_inicio:             Optional[str]
@@ -337,7 +331,6 @@ class TramoMapaRead(BaseModel):
     avifauna:                Optional[int]
     identificador_baja:      Optional[str]
 
-    # CT asignado
     id_ct:                Optional[str]
     metodo_asignacion_ct: Optional[str]
 

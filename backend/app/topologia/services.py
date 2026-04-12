@@ -175,7 +175,7 @@ def _upsert_cups(
         accion = "actualizado"
 
     obj.cups      = registro["cups"]
-    obj.id_ct     = registro.get("id_ct")       # NUDO de conexión del A1
+    obj.id_ct     = registro.get("id_ct")
     obj.id_salida = registro.get("id_salida")
     obj.cnae      = registro.get("cnae")
     obj.tarifa    = registro.get("tarifa")
@@ -207,6 +207,7 @@ def _upsert_cups(
     obj.conexion_autoconsumo    = registro.get("conexion_autoconsumo")
     obj.energia_autoconsumida_kwh = registro.get("energia_autoconsumida_kwh")
     obj.energia_excedentaria_kwh  = registro.get("energia_excedentaria_kwh")
+    # Nota: no tocamos 'fase' al reimportar — es asignación manual
     return accion
 
 
@@ -319,18 +320,18 @@ def _upsert_tramo(
         obj.anio_declaracion = anio_declaracion
         accion = "actualizado"
 
-    obj.id_tramo   = registro["id_tramo"]
-    obj.id_linea   = registro.get("id_linea") or ""
-    obj.orden      = registro.get("orden")
-    obj.num_tramo  = registro.get("num_tramo")
-    obj.utm_x_ini  = registro.get("utm_x_ini")
-    obj.utm_y_ini  = registro.get("utm_y_ini")
-    obj.utm_x_fin  = registro.get("utm_x_fin")
-    obj.utm_y_fin  = registro.get("utm_y_fin")
-    obj.lat_ini    = registro.get("lat_ini")
-    obj.lon_ini    = registro.get("lon_ini")
-    obj.lat_fin    = registro.get("lat_fin")
-    obj.lon_fin    = registro.get("lon_fin")
+    obj.id_tramo  = registro["id_tramo"]
+    obj.id_linea  = registro.get("id_linea") or ""
+    obj.orden     = registro.get("orden")
+    obj.num_tramo = registro.get("num_tramo")
+    obj.utm_x_ini = registro.get("utm_x_ini")
+    obj.utm_y_ini = registro.get("utm_y_ini")
+    obj.utm_x_fin = registro.get("utm_x_fin")
+    obj.utm_y_fin = registro.get("utm_y_fin")
+    obj.lat_ini   = registro.get("lat_ini")
+    obj.lon_ini   = registro.get("lon_ini")
+    obj.lat_fin   = registro.get("lat_fin")
+    obj.lon_fin   = registro.get("lon_fin")
     return accion
 
 
@@ -388,18 +389,6 @@ def _parsear_b21(
 
 
 # ── Algoritmo BFS + proximidad geográfica ─────────────────────────────────────
-#
-# PASO 1 — BFS bidireccional (topológico):
-#   MT: líneas cuyo nudo_fin = nudo_alta del CT
-#   BT: BFS desde nudo_baja del CT recorriendo nudo_inicio de líneas BT
-#
-# PASO 2 — Proximidad geográfica (líneas BT sin asociar):
-#   Calcula centroide UTM del CT con sus líneas ya asociadas.
-#   Asigna la línea BT huérfana al CT más cercano dentro de MAX_DIST_M.
-#
-# PASO 3 — CUPS→CT via nudo:
-#   CUPS.id_ct (campo NUDO del A1) = nudo_fin de alguna línea BT
-#   La línea hereda el id_ct calculado en PASO 1/2.
 
 MAX_DIST_M = 500  # metros — umbral máximo para asignación por proximidad
 
@@ -414,8 +403,6 @@ def calcular_asociacion_ct(
     de una empresa. No sobreescribe asignaciones manuales (metodo='manual').
     Devuelve un resumen con contadores.
     """
-
-    # ── Cargar CTs ────────────────────────────────────────────────────────────
     cts = (
         db.query(CtInventario)
         .filter(
@@ -424,8 +411,6 @@ def calcular_asociacion_ct(
         )
         .all()
     )
-
-    # ── Cargar líneas ─────────────────────────────────────────────────────────
     lineas = (
         db.query(LineaInventario)
         .filter(
@@ -434,9 +419,6 @@ def calcular_asociacion_ct(
         )
         .all()
     )
-
-    # ── Cargar coordenadas UTM del primer segmento de cada línea (B11) ────────
-    # Usamos utm_x_ini / utm_y_ini del segmento orden=1
     tramos_primeros = (
         db.query(LineaTramo.id_linea, LineaTramo.utm_x_ini, LineaTramo.utm_y_ini)
         .filter(
@@ -449,11 +431,9 @@ def calcular_asociacion_ct(
         .all()
     )
     linea_coords: Dict[str, Tuple[float, float]] = {
-        r.id_linea: (r.utm_x_ini, r.utm_y_ini)
-        for r in tramos_primeros
+        r.id_linea: (r.utm_x_ini, r.utm_y_ini) for r in tramos_primeros
     }
 
-    # ── Índices nudo → líneas ─────────────────────────────────────────────────
     nudo_a_lineas_ini: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
     nudo_a_lineas_fin: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
     for linea in lineas:
@@ -462,18 +442,16 @@ def calcular_asociacion_ct(
         if linea.nudo_fin:
             nudo_a_lineas_fin[linea.nudo_fin].append(linea)
 
-    # ── PASO 1: BFS bidireccional ─────────────────────────────────────────────
-    linea_a_ct: Dict[str, str] = {}   # id_tramo → id_ct
-    metodo:     Dict[str, str] = {}   # id_tramo → 'bfs'
+    # PASO 1 — BFS bidireccional
+    linea_a_ct: Dict[str, str] = {}
+    metodo:     Dict[str, str] = {}
 
     for ct in cts:
-        # MT: nudo_fin de la línea = nudo_alta del CT
         for linea in nudo_a_lineas_fin.get(ct.nudo_alta or "", []):
             if linea.id_tramo not in linea_a_ct:
                 linea_a_ct[linea.id_tramo] = ct.id_ct
                 metodo[linea.id_tramo]     = "bfs"
 
-        # BT: BFS desde nudo_baja
         if not ct.nudo_baja:
             continue
         visitados: set = set()
@@ -490,8 +468,7 @@ def calcular_asociacion_ct(
                     if linea.nudo_fin and linea.nudo_fin not in visitados:
                         cola.append(linea.nudo_fin)
 
-    # ── PASO 2: Proximidad geográfica para BT sin asociar ─────────────────────
-    # Calcular centroide UTM de cada CT usando sus líneas ya asociadas
+    # PASO 2 — Proximidad geográfica para BT sin asociar
     ct_coords: Dict[str, Tuple[float, float]] = {}
     for ct in cts:
         lineas_ct = [
@@ -511,11 +488,10 @@ def calcular_asociacion_ct(
         and ("BTV" in linea.id_tramo or "LBT" in linea.id_tramo)
         and linea.id_tramo in linea_coords
     ]
-
     for linea in bt_sin:
         lx, ly = linea_coords[linea.id_tramo]
-        mejor_ct:   Optional[str]   = None
-        mejor_dist: float           = MAX_DIST_M
+        mejor_ct:   Optional[str] = None
+        mejor_dist: float         = MAX_DIST_M
         for id_ct, (cx, cy) in ct_coords.items():
             dist = math.sqrt((lx - cx) ** 2 + (ly - cy) ** 2)
             if dist < mejor_dist:
@@ -525,16 +501,14 @@ def calcular_asociacion_ct(
             linea_a_ct[linea.id_tramo] = mejor_ct
             metodo[linea.id_tramo]     = "proximidad"
 
-    # ── Persistir asociación en linea_inventario ──────────────────────────────
-    # No sobreescribir asignaciones manuales
-    lineas_bfs       = 0
-    lineas_prox      = 0
-    lineas_sin_asoc  = 0
-
+    # Persistir asociación en linea_inventario — no sobreescribir manuales
+    lineas_bfs      = 0
+    lineas_prox     = 0
+    lineas_sin_asoc = 0
     for linea in lineas:
         if linea.metodo_asignacion_ct == "manual":
-            continue  # respetar correcciones manuales
-        id_ct_calc = linea_a_ct.get(linea.id_tramo)
+            continue
+        id_ct_calc  = linea_a_ct.get(linea.id_tramo)
         metodo_calc = metodo.get(linea.id_tramo)
         if id_ct_calc:
             linea.id_ct                = id_ct_calc
@@ -549,9 +523,7 @@ def calcular_asociacion_ct(
 
     db.flush()
 
-    # ── PASO 3: CUPS → CT via nudo → línea ───────────────────────────────────
-    # CUPS.id_ct = NUDO del A1 → buscar línea cuyo nudo_fin = ese nudo
-    # La línea tiene id_ct calculado → el CUPS hereda ese id_ct
+    # PASO 3 — CUPS → CT via nudo → línea
     cups_lista = (
         db.query(CupsTopologia)
         .filter(
@@ -560,18 +532,15 @@ def calcular_asociacion_ct(
         )
         .all()
     )
-
-    cups_asignados   = 0
-    cups_sin_asoc    = 0
-
+    cups_asignados = 0
+    cups_sin_asoc  = 0
     for cups in cups_lista:
         if cups.metodo_asignacion_ct == "manual":
-            continue  # respetar correcciones manuales
-        nudo = cups.id_ct  # campo NUDO del A1
+            continue
+        nudo = cups.id_ct
         if not nudo:
             cups_sin_asoc += 1
             continue
-        # Buscar línea cuyo nudo_fin = nudo del CUPS
         lineas_del_nudo = nudo_a_lineas_fin.get(nudo, [])
         id_ct_cups = None
         for linea in lineas_del_nudo:
@@ -587,19 +556,18 @@ def calcular_asociacion_ct(
             cups_sin_asoc += 1
 
     db.commit()
-
     return {
-        "lineas_bfs":       lineas_bfs,
+        "lineas_bfs":        lineas_bfs,
         "lineas_proximidad": lineas_prox,
-        "lineas_sin_asoc":  lineas_sin_asoc,
-        "lineas_total":     len(lineas),
-        "cups_asignados":   cups_asignados,
-        "cups_sin_asoc":    cups_sin_asoc,
-        "cups_total":       len(cups_lista),
+        "lineas_sin_asoc":   lineas_sin_asoc,
+        "lineas_total":      len(lineas),
+        "cups_asignados":    cups_asignados,
+        "cups_sin_asoc":     cups_sin_asoc,
+        "cups_total":        len(cups_lista),
     }
 
 
-# ── Reasignación manual — línea ───────────────────────────────────────────────
+# ── Reasignación manual — CT de línea ─────────────────────────────────────────
 
 def reasignar_ct_linea(
     db: Session,
@@ -608,10 +576,7 @@ def reasignar_ct_linea(
     id_tramo: str,
     id_ct_nuevo: Optional[str],
 ) -> LineaInventario:
-    """
-    Reasigna manualmente el CT de una línea.
-    Si id_ct_nuevo es None o vacío, limpia la asignación.
-    """
+    """Reasigna manualmente el CT de una línea. None limpia la asignación."""
     linea = (
         db.query(LineaInventario)
         .filter(
@@ -623,7 +588,6 @@ def reasignar_ct_linea(
     )
     if linea is None:
         raise ValueError(f"Línea {id_tramo} no encontrada")
-
     linea.id_ct                = id_ct_nuevo or None
     linea.metodo_asignacion_ct = "manual" if id_ct_nuevo else None
     linea.updated_at           = _now()
@@ -632,7 +596,7 @@ def reasignar_ct_linea(
     return linea
 
 
-# ── Reasignación manual — CUPS ────────────────────────────────────────────────
+# ── Reasignación manual — CT de CUPS ─────────────────────────────────────────
 
 def reasignar_ct_cups(
     db: Session,
@@ -641,10 +605,7 @@ def reasignar_ct_cups(
     cups: str,
     id_ct_nuevo: Optional[str],
 ) -> CupsTopologia:
-    """
-    Reasigna manualmente el CT de un CUPS.
-    Si id_ct_nuevo es None o vacío, limpia la asignación.
-    """
+    """Reasigna manualmente el CT de un CUPS. None limpia la asignación."""
     obj = (
         db.query(CupsTopologia)
         .filter(
@@ -656,10 +617,45 @@ def reasignar_ct_cups(
     )
     if obj is None:
         raise ValueError(f"CUPS {cups} no encontrado")
-
     obj.id_ct_asignado       = id_ct_nuevo or None
     obj.metodo_asignacion_ct = "manual" if id_ct_nuevo else None
     obj.updated_at           = _now()
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+# ── Reasignación manual — fase de CUPS ───────────────────────────────────────
+
+def reasignar_fase_cups(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    cups: str,
+    fase_nueva: Optional[str],
+) -> CupsTopologia:
+    """
+    Asigna manualmente la fase del CT (R/S/T/RST) a un CUPS.
+    Enviar fase=None o fase="" para limpiar.
+    Valores válidos: 'R', 'S', 'T', 'RST'.
+    """
+    FASES_VALIDAS = {"R", "S", "T", "RST"}
+    if fase_nueva and fase_nueva not in FASES_VALIDAS:
+        raise ValueError(f"Fase '{fase_nueva}' no válida. Use: R, S, T o RST")
+
+    obj = (
+        db.query(CupsTopologia)
+        .filter(
+            CupsTopologia.tenant_id  == tenant_id,
+            CupsTopologia.empresa_id == empresa_id,
+            CupsTopologia.cups       == cups,
+        )
+        .first()
+    )
+    if obj is None:
+        raise ValueError(f"CUPS {cups} no encontrado")
+    obj.fase       = fase_nueva or None
+    obj.updated_at = _now()
     db.commit()
     db.refresh(obj)
     return obj
@@ -682,15 +678,15 @@ def importar_topologia(
 ) -> Dict[str, Any]:
 
     resultado: Dict[str, Any] = {
-        "cts_insertados":    0,
-        "cts_actualizados":  0,
-        "cts_errores":       0,
-        "trfs_insertados":   0,
-        "trfs_actualizados": 0,
-        "trfs_errores":      0,
-        "cups_insertados":   0,
-        "cups_actualizados": 0,
-        "cups_errores":      0,
+        "cts_insertados":      0,
+        "cts_actualizados":    0,
+        "cts_errores":         0,
+        "trfs_insertados":     0,
+        "trfs_actualizados":   0,
+        "trfs_errores":        0,
+        "cups_insertados":     0,
+        "cups_actualizados":   0,
+        "cups_errores":        0,
         "lineas_insertadas":   0,
         "lineas_actualizadas": 0,
         "lineas_errores":      0,
@@ -787,13 +783,12 @@ def importar_topologia(
         db.commit()
         resultado["ficheros"].append("B11")
 
-    # ── Calcular asociación CT automáticamente si hay datos suficientes ────────
-    # Solo lanza el cálculo si se importaron B1 o B2 (cambió la topología)
+    # Solo lanza el cálculo si cambió la topología
     if contenido_b1 or contenido_b2 or contenido_b11:
         try:
             calcular_asociacion_ct(db, tenant_id, empresa_id)
         except Exception:
-            pass  # No bloquear la importación si falla el cálculo
+            pass
 
     return resultado
 
@@ -876,7 +871,7 @@ def list_tramos_mapa(
     return q.order_by(LineaTramo.id_linea, LineaTramo.orden).all()
 
 
-# ── Tabla líneas — para la vista de gestión ───────────────────────────────────
+# ── Tabla líneas ──────────────────────────────────────────────────────────────
 
 def list_lineas_tabla(
     db: Session,
@@ -901,12 +896,12 @@ def list_lineas_tabla(
         q = q.filter(LineaInventario.id_ct.is_(None))
     if metodo:
         q = q.filter(LineaInventario.metodo_asignacion_ct == metodo)
-    total = q.count()
+    total  = q.count()
     lineas = q.order_by(LineaInventario.id_tramo).offset(offset).limit(limit).all()
     return lineas, total
 
 
-# ── Tabla CUPS — para la vista de gestión ─────────────────────────────────────
+# ── Tabla CUPS ────────────────────────────────────────────────────────────────
 
 def list_cups_tabla(
     db: Session,
@@ -932,5 +927,5 @@ def list_cups_tabla(
     if metodo:
         q = q.filter(CupsTopologia.metodo_asignacion_ct == metodo)
     total = q.count()
-    cups = q.order_by(CupsTopologia.cups).offset(offset).limit(limit).all()
+    cups  = q.order_by(CupsTopologia.cups).offset(offset).limit(limit).all()
     return cups, total
