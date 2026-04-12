@@ -1345,6 +1345,24 @@ def list_cups_tabla(
     cups  = q.order_by(CupsTopologia.cups).offset(offset).limit(limit).all()
     return cups, total
 
+def list_celdas_tabla(
+    db: Session, tenant_id: int, empresa_id: int,
+    id_ct: Optional[str] = None, limit: int = 500, offset: int = 0,
+) -> Tuple[List[CtCelda], int]:
+    """Devuelve celdas paginadas, opcionalmente filtradas por CT."""
+    q = (
+        db.query(CtCelda)
+        .filter(
+            CtCelda.tenant_id  == tenant_id,
+            CtCelda.empresa_id == empresa_id,
+        )
+    )
+    if id_ct:
+        q = q.filter(CtCelda.id_ct == id_ct)
+    total  = q.count()
+    celdas = q.order_by(CtCelda.id_ct, CtCelda.id_celda).offset(offset).limit(limit).all()
+    return celdas, total
+
 
 def list_celdas_ct(
     db: Session, tenant_id: int, empresa_id: int, id_ct: str,
