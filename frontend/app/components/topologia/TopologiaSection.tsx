@@ -25,6 +25,7 @@ interface EmpresaOption { id: number; nombre: string; }
 interface ImportResult {
   cts_insertados: number; cts_actualizados: number; cts_errores: number;
   trfs_insertados: number; trfs_actualizados: number; trfs_errores: number;
+  celdas_insertadas: number; celdas_actualizadas: number; celdas_errores: number;
   cups_insertados: number; cups_actualizados: number; cups_errores: number;
   lineas_insertadas: number; lineas_actualizadas: number; lineas_errores: number;
   tramos_insertados: number; tramos_actualizados: number; tramos_errores: number;
@@ -109,6 +110,7 @@ const panelDescStyle: React.CSSProperties = { fontSize: "11px", color: "var(--te
 const FICHEROS_CONFIG = [
   { key: "b2",  label: "B2 — Centros de transformación", desc: "CIR8_2021_B2_R1-XXX_AAAA.txt" },
   { key: "b21", label: "B21 — Transformadores en CT",    desc: "CIR8_2021_B21_R1-XXX_AAAA.txt" },
+  { key: "b22", label: "B22 — Celdas de CT",             desc: "CIR8_2021_B22_R1-XXX_AAAA.txt" },
   { key: "a1",  label: "A1 — Puntos de suministro",      desc: "CIR8_2021_A1_R1-XXX_AAAA.txt" },
   { key: "b1",  label: "B1 — Líneas eléctricas",         desc: "CIR8_2021_B1_R1-XXX_AAAA.txt" },
   { key: "b11", label: "B11 — Tramos GIS de líneas",     desc: "CIR8_2021_B11_R1-XXX_AAAA.txt" },
@@ -129,7 +131,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [empresas,  setEmpresas]  = useState<EmpresaOption[]>([]);
   const [empresaId, setEmpresaId] = useState<number | "">("");
   const [anioDecl,  setAnioDecl]  = useState<string>(String(new Date().getFullYear()));
-  const [ficheros,  setFicheros]  = useState<Record<FicheroKey, File | null>>({ b2: null, b21: null, a1: null, b1: null, b11: null });
+  const [ficheros, setFicheros] = useState<Record<FicheroKey, File | null>>({ b2: null, b21: null, b22: null, a1: null, b1: null, b11: null });
   const [importing,    setImporting]    = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError,  setImportError]  = useState<string | null>(null);
@@ -547,6 +549,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   {[
                     { label: "CTs (B2)",              ins: importResult.cts_insertados,    act: importResult.cts_actualizados,    err: importResult.cts_errores },
                     { label: "Transformadores (B21)", ins: importResult.trfs_insertados,   act: importResult.trfs_actualizados,   err: importResult.trfs_errores },
+                    { label: "Celdas (B22)",          ins: importResult.celdas_insertadas, act: importResult.celdas_actualizadas, err: importResult.celdas_errores },
                     { label: "CUPS (A1)",             ins: importResult.cups_insertados,   act: importResult.cups_actualizados,   err: importResult.cups_errores },
                     { label: "Líneas (B1)",           ins: importResult.lineas_insertadas, act: importResult.lineas_actualizadas, err: importResult.lineas_errores },
                     { label: "Tramos GIS (B11)",      ins: importResult.tramos_insertados, act: importResult.tramos_actualizados, err: importResult.tramos_errores },
