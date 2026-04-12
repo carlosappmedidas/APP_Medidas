@@ -28,6 +28,17 @@ def _now() -> datetime:
     return datetime.utcnow()
 
 
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Distancia en metros entre dos puntos GPS."""
+    R = 6_371_000
+    d_lat = (lat2 - lat1) * math.pi / 180
+    d_lon = (lon2 - lon1) * math.pi / 180
+    a = (math.sin(d_lat / 2) ** 2
+         + math.cos(lat1 * math.pi / 180) * math.cos(lat2 * math.pi / 180)
+         * math.sin(d_lon / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
 # ── Upsert CT inventario (B2) ─────────────────────────────────────────────────
 
 def _upsert_ct(
@@ -388,10 +399,130 @@ def _parsear_b21(
     return registros, errores
 
 
-# ── Algoritmo BFS + proximidad geográfica ─────────────────────────────────────
+# ── Constantes del algoritmo ──────────────────────────────────────────────────
 
-MAX_DIST_M = 500  # metros — umbral máximo para asignación por proximidad
+RADIO_SALIDAS_CT_M = 5   # metros — radio para detección de salidas directas por GPS
+MAX_DIST_M         = 50  # metros — radio máximo proximidad general (UTM)
 
+
+# ── Helper BT ─────────────────────────────────────────────────────────────────
+
+def _es_bt(linea: LineaInventario) -> bool:
+    """True si la línea es de baja tensión (≤1 kV)."""
+    if linea.tension_kv is not None:
+        return float(linea.tension_kv) <= 1.0
+    # Fallback por ID cuando tension_kv es None
+    id_t = linea.id_tramo or ""
+    return "BTV" in id_t or "LBT" in id_t
+
+
+# ── BFS bidireccional (atrás solo BT) ────────────────────────────────────────
+
+def _bfs_bidireccional(
+    nudos_arranque: List[str],
+    nudo_a_lineas_ini: Dict[str, List[LineaInventario]],
+    nudo_a_lineas_fin: Dict[str, List[LineaInventario]],
+    id_ct: str,
+    linea_a_ct: Dict[str, str],
+    metodo: Dict[str, str],
+) -> None:
+    """
+    BFS bidireccional desde los nudos de arranque.
+
+    Hacia adelante (nudo_ini → nudo_fin): propaga por cualquier línea.
+    Hacia atrás  (nudo_fin → nudo_ini): SOLO líneas BT (≤1 kV).
+      → Evita subir por la red MT y contaminar otros CTs.
+
+    Solo asigna líneas no asignadas aún — nunca sobreescribe.
+    """
+    visitados: set = set()
+    cola = list(nudos_arranque)
+
+    while cola:
+        nudo = cola.pop(0)
+        if nudo in visitados:
+            continue
+        visitados.add(nudo)
+
+        # Hacia adelante: líneas que arrancan en este nudo (todas)
+        for linea in nudo_a_lineas_ini.get(nudo, []):
+            if not _es_bt(linea):
+                continue
+            if linea.id_tramo not in linea_a_ct:
+                linea_a_ct[linea.id_tramo] = id_ct
+                metodo[linea.id_tramo]     = "bfs"
+            if linea.nudo_fin and linea.nudo_fin not in visitados:
+                cola.append(linea.nudo_fin)
+
+        # Hacia atrás: SOLO líneas BT — no subir por red MT
+        for linea in nudo_a_lineas_fin.get(nudo, []):
+            if not _es_bt(linea):
+                continue
+            if linea.id_tramo not in linea_a_ct:
+                linea_a_ct[linea.id_tramo] = id_ct
+                metodo[linea.id_tramo]     = "bfs"
+            if linea.nudo_inicio and linea.nudo_inicio not in visitados:
+                cola.append(linea.nudo_inicio)
+
+
+# ── Detección de salidas directas por proximidad GPS ─────────────────────────
+
+class _TramoGPS:
+    __slots__ = ("id_linea", "lat_ini", "lon_ini", "nudo_inicio", "nudo_fin")
+
+    def __init__(
+        self,
+        id_linea: str,
+        lat_ini: float,
+        lon_ini: float,
+        nudo_inicio: Optional[str],
+        nudo_fin: Optional[str],
+    ) -> None:
+        self.id_linea    = id_linea
+        self.lat_ini     = lat_ini
+        self.lon_ini     = lon_ini
+        self.nudo_inicio = nudo_inicio
+        self.nudo_fin    = nudo_fin
+
+
+def _detectar_salidas_ct(
+    ct: CtInventario,
+    tramos_gps: List[_TramoGPS],
+    lineas_por_tramo: Dict[str, LineaInventario],
+    linea_a_ct: Dict[str, str],
+) -> List[str]:
+    """
+    Detecta salidas directas del CT no alcanzadas por BFS.
+    Criterios: orden=1, ≤RADIO_SALIDAS_CT_M, fecha_aps + operacion=1,
+    no asignada, no continuación de otra candidata dentro del radio.
+    Devuelve lista de nudo_inicio.
+    """
+    if ct.lat is None or ct.lon is None:
+        return []
+
+    candidatas: List[_TramoGPS] = []
+    for row in tramos_gps:
+        if row.id_linea in linea_a_ct:
+            continue
+        dist = _haversine_m(ct.lat, ct.lon, row.lat_ini, row.lon_ini)
+        if dist > RADIO_SALIDAS_CT_M:
+            continue
+        linea = lineas_por_tramo.get(row.id_linea)
+        if linea is None:
+            continue
+        if linea.fecha_aps is None or linea.operacion != 1:
+            continue
+        candidatas.append(row)
+
+    if not candidatas:
+        return []
+
+    nudo_fin_cands = {row.nudo_fin for row in candidatas if row.nudo_fin}
+    salidas = [row for row in candidatas if row.nudo_inicio not in nudo_fin_cands]
+    return [row.nudo_inicio for row in salidas if row.nudo_inicio]
+
+
+# ── Algoritmo principal ───────────────────────────────────────────────────────
 
 def calcular_asociacion_ct(
     db: Session,
@@ -399,9 +530,16 @@ def calcular_asociacion_ct(
     empresa_id: int,
 ) -> Dict[str, Any]:
     """
-    Calcula y persiste la asociación CT para todas las líneas y CUPS
-    de una empresa. No sobreescribe asignaciones manuales (metodo='manual').
-    Devuelve un resumen con contadores.
+    Calcula y persiste la asociación CT→línea y CT→CUPS para una empresa.
+    No sobreescribe asignaciones manuales (metodo='manual').
+
+    PASO 1 — BFS bidireccional desde nudo_baja del CT.
+             Adelante: todas las líneas. Atrás: solo BT (evita subir por MT).
+    PASO 2 — Salidas adicionales por proximidad GPS (≤5m al CT).
+             Solo líneas reales (fecha_aps + operacion=1) no asignadas.
+             Descarta continuaciones.
+    PASO 3 — BFS bidireccional desde salidas del PASO 2.
+    PASO 4 — Proximidad general BT sin asignar (≤50m UTM).
     """
     cts = (
         db.query(CtInventario)
@@ -419,7 +557,12 @@ def calcular_asociacion_ct(
         )
         .all()
     )
-    tramos_primeros = (
+
+    lineas_por_tramo: Dict[str, LineaInventario] = {
+        str(linea.id_tramo): linea for linea in lineas
+    }
+
+    tramos_utm = (
         db.query(LineaTramo.id_linea, LineaTramo.utm_x_ini, LineaTramo.utm_y_ini)
         .filter(
             LineaTramo.tenant_id  == tenant_id,
@@ -430,9 +573,37 @@ def calcular_asociacion_ct(
         )
         .all()
     )
-    linea_coords: Dict[str, Tuple[float, float]] = {
-        r.id_linea: (r.utm_x_ini, r.utm_y_ini) for r in tramos_primeros
+    linea_coords_utm: Dict[str, Tuple[float, float]] = {
+        r.id_linea: (r.utm_x_ini, r.utm_y_ini) for r in tramos_utm
     }
+
+    tramos_gps_rows = (
+        db.query(
+            LineaTramo.id_linea,
+            LineaTramo.lat_ini,
+            LineaTramo.lon_ini,
+        )
+        .filter(
+            LineaTramo.tenant_id  == tenant_id,
+            LineaTramo.empresa_id == empresa_id,
+            LineaTramo.orden      == 1,
+            LineaTramo.lat_ini.isnot(None),
+            LineaTramo.lon_ini.isnot(None),
+        )
+        .all()
+    )
+    tramos_gps: List[_TramoGPS] = []
+    for row in tramos_gps_rows:
+        linea = lineas_por_tramo.get(row.id_linea)
+        if linea is None:
+            continue
+        tramos_gps.append(_TramoGPS(
+            id_linea    = row.id_linea,
+            lat_ini     = row.lat_ini,
+            lon_ini     = row.lon_ini,
+            nudo_inicio = linea.nudo_inicio,
+            nudo_fin    = linea.nudo_fin,
+        ))
 
     nudo_a_lineas_ini: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
     nudo_a_lineas_fin: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
@@ -442,39 +613,45 @@ def calcular_asociacion_ct(
         if linea.nudo_fin:
             nudo_a_lineas_fin[linea.nudo_fin].append(linea)
 
-    # PASO 1 — BFS bidireccional
     linea_a_ct: Dict[str, str] = {}
     metodo:     Dict[str, str] = {}
 
     for ct in cts:
+        # MT: líneas cuyo nudo_fin = nudo_alta
         for linea in nudo_a_lineas_fin.get(ct.nudo_alta or "", []):
             if linea.id_tramo not in linea_a_ct:
                 linea_a_ct[linea.id_tramo] = ct.id_ct
                 metodo[linea.id_tramo]     = "bfs"
+            break
 
-        if not ct.nudo_baja:
-            continue
-        visitados: set = set()
-        cola = [ct.nudo_baja]
-        while cola:
-            nudo = cola.pop(0)
-            if nudo in visitados:
-                continue
-            visitados.add(nudo)
-            for linea in nudo_a_lineas_ini.get(nudo, []):
-                if linea.id_tramo not in linea_a_ct:
-                    linea_a_ct[linea.id_tramo] = ct.id_ct
-                    metodo[linea.id_tramo]     = "bfs"
-                    if linea.nudo_fin and linea.nudo_fin not in visitados:
-                        cola.append(linea.nudo_fin)
+        # ── PASO 1: BFS bidireccional desde nudo_baja ─────────────────────────
+        if ct.nudo_baja:
+            _bfs_bidireccional(
+                [ct.nudo_baja],
+                nudo_a_lineas_ini, nudo_a_lineas_fin,
+                ct.id_ct, linea_a_ct, metodo,
+            )
 
-    # PASO 2 — Proximidad geográfica para BT sin asociar
+        # ── PASO 2: salidas adicionales por proximidad GPS ────────────────────
+        nudos_salidas = _detectar_salidas_ct(
+            ct, tramos_gps, lineas_por_tramo, linea_a_ct,
+        )
+
+        # ── PASO 3: BFS desde salidas GPS ─────────────────────────────────────
+        if nudos_salidas:
+            _bfs_bidireccional(
+                nudos_salidas,
+                nudo_a_lineas_ini, nudo_a_lineas_fin,
+                ct.id_ct, linea_a_ct, metodo,
+            )
+
+    # ── PASO 4: proximidad general para BT sin asignar (≤ MAX_DIST_M) ─────────
     ct_coords: Dict[str, Tuple[float, float]] = {}
     for ct in cts:
         lineas_ct = [
-            linea_coords[l_id]
+            linea_coords_utm[l_id]
             for l_id, ct_id in linea_a_ct.items()
-            if ct_id == ct.id_ct and l_id in linea_coords
+            if ct_id == ct.id_ct and l_id in linea_coords_utm
         ]
         if lineas_ct:
             ct_coords[ct.id_ct] = (
@@ -486,10 +663,10 @@ def calcular_asociacion_ct(
         linea for linea in lineas
         if linea.id_tramo not in linea_a_ct
         and ("BTV" in linea.id_tramo or "LBT" in linea.id_tramo)
-        and linea.id_tramo in linea_coords
+        and linea.id_tramo in linea_coords_utm
     ]
     for linea in bt_sin:
-        lx, ly = linea_coords[linea.id_tramo]
+        lx, ly = linea_coords_utm[linea.id_tramo]
         mejor_ct:   Optional[str] = None
         mejor_dist: float         = MAX_DIST_M
         for id_ct, (cx, cy) in ct_coords.items():
@@ -501,7 +678,7 @@ def calcular_asociacion_ct(
             linea_a_ct[linea.id_tramo] = mejor_ct
             metodo[linea.id_tramo]     = "proximidad"
 
-    # Persistir asociación en linea_inventario — no sobreescribir manuales
+    # Persistir — no sobreescribir manuales
     lineas_bfs      = 0
     lineas_prox     = 0
     lineas_sin_asoc = 0
@@ -523,7 +700,7 @@ def calcular_asociacion_ct(
 
     db.flush()
 
-    # PASO 3 — CUPS → CT via nudo → línea
+    # CUPS → CT via nudo → línea
     cups_lista = (
         db.query(CupsTopologia)
         .filter(
@@ -541,9 +718,8 @@ def calcular_asociacion_ct(
         if not nudo:
             cups_sin_asoc += 1
             continue
-        lineas_del_nudo = nudo_a_lineas_fin.get(nudo, [])
         id_ct_cups = None
-        for linea in lineas_del_nudo:
+        for linea in nudo_a_lineas_fin.get(nudo, []):
             id_ct_cups = linea_a_ct.get(linea.id_tramo)
             if id_ct_cups:
                 break
@@ -576,7 +752,6 @@ def reasignar_ct_linea(
     id_tramo: str,
     id_ct_nuevo: Optional[str],
 ) -> LineaInventario:
-    """Reasigna manualmente el CT de una línea. None limpia la asignación."""
     linea = (
         db.query(LineaInventario)
         .filter(
@@ -605,7 +780,6 @@ def reasignar_ct_cups(
     cups: str,
     id_ct_nuevo: Optional[str],
 ) -> CupsTopologia:
-    """Reasigna manualmente el CT de un CUPS. None limpia la asignación."""
     obj = (
         db.query(CupsTopologia)
         .filter(
@@ -634,15 +808,9 @@ def reasignar_fase_cups(
     cups: str,
     fase_nueva: Optional[str],
 ) -> CupsTopologia:
-    """
-    Asigna manualmente la fase del CT (R/S/T/RST) a un CUPS.
-    Enviar fase=None o fase="" para limpiar.
-    Valores válidos: 'R', 'S', 'T', 'RST'.
-    """
     FASES_VALIDAS = {"R", "S", "T", "RST"}
     if fase_nueva and fase_nueva not in FASES_VALIDAS:
         raise ValueError(f"Fase '{fase_nueva}' no válida. Use: R, S, T o RST")
-
     obj = (
         db.query(CupsTopologia)
         .filter(
@@ -696,7 +864,6 @@ def importar_topologia(
         "ficheros": [],
     }
 
-    # ── B2 — CTs ──────────────────────────────────────────────────────────────
     if contenido_b2:
         registros, errores = parsear_b2(contenido_b2, encoding=encoding, utm_zone=utm_zone)
         resultado["cts_errores"] += len(errores)
@@ -713,7 +880,6 @@ def importar_topologia(
         db.commit()
         resultado["ficheros"].append("B2")
 
-    # ── B21 — Transformadores ─────────────────────────────────────────────────
     if contenido_b21:
         registros, errores = _parsear_b21(contenido_b21, encoding=encoding)
         resultado["trfs_errores"] += len(errores)
@@ -730,7 +896,6 @@ def importar_topologia(
         db.commit()
         resultado["ficheros"].append("B21")
 
-    # ── A1 — CUPS ─────────────────────────────────────────────────────────────
     if contenido_a1:
         registros, errores = parsear_a1(contenido_a1, encoding=encoding, utm_zone=utm_zone)
         resultado["cups_errores"] += len(errores)
@@ -747,7 +912,6 @@ def importar_topologia(
         db.commit()
         resultado["ficheros"].append("A1")
 
-    # ── B1 — Líneas ───────────────────────────────────────────────────────────
     if contenido_b1:
         texto = contenido_b1.decode(encoding, errors="replace")
         for reg in parsear_b1(texto):
@@ -765,7 +929,6 @@ def importar_topologia(
         db.commit()
         resultado["ficheros"].append("B1")
 
-    # ── B11 — Tramos GIS ──────────────────────────────────────────────────────
     if contenido_b11:
         texto = contenido_b11.decode(encoding, errors="replace")
         for reg in parsear_b11(texto):
@@ -783,7 +946,6 @@ def importar_topologia(
         db.commit()
         resultado["ficheros"].append("B11")
 
-    # Solo lanza el cálculo si cambió la topología
     if contenido_b1 or contenido_b2 or contenido_b11:
         try:
             calcular_asociacion_ct(db, tenant_id, empresa_id)
@@ -793,13 +955,9 @@ def importar_topologia(
     return resultado
 
 
-# ── Consultas para el mapa ────────────────────────────────────────────────────
+# ── Consultas ─────────────────────────────────────────────────────────────────
 
-def list_cts_mapa(
-    db: Session,
-    tenant_id: int,
-    empresa_id: int,
-) -> List[CtInventario]:
+def list_cts_mapa(db: Session, tenant_id: int, empresa_id: int) -> List[CtInventario]:
     return (
         db.query(CtInventario)
         .filter(
@@ -814,10 +972,7 @@ def list_cts_mapa(
 
 
 def list_cups_mapa(
-    db: Session,
-    tenant_id: int,
-    empresa_id: int,
-    id_ct: Optional[str] = None,
+    db: Session, tenant_id: int, empresa_id: int, id_ct: Optional[str] = None,
 ) -> List[CupsTopologia]:
     q = (
         db.query(CupsTopologia)
@@ -833,11 +988,7 @@ def list_cups_mapa(
     return q.order_by(CupsTopologia.cups).all()
 
 
-def list_cts(
-    db: Session,
-    tenant_id: int,
-    empresa_id: int,
-) -> List[CtInventario]:
+def list_cts(db: Session, tenant_id: int, empresa_id: int) -> List[CtInventario]:
     return (
         db.query(CtInventario)
         .filter(
@@ -850,10 +1001,7 @@ def list_cts(
 
 
 def list_tramos_mapa(
-    db: Session,
-    tenant_id: int,
-    empresa_id: int,
-    id_linea: Optional[str] = None,
+    db: Session, tenant_id: int, empresa_id: int, id_linea: Optional[str] = None,
 ) -> List[LineaTramo]:
     q = (
         db.query(LineaTramo)
@@ -871,17 +1019,10 @@ def list_tramos_mapa(
     return q.order_by(LineaTramo.id_linea, LineaTramo.orden).all()
 
 
-# ── Tabla líneas ──────────────────────────────────────────────────────────────
-
 def list_lineas_tabla(
-    db: Session,
-    tenant_id: int,
-    empresa_id: int,
-    id_ct: Optional[str] = None,
-    sin_ct: bool = False,
-    metodo: Optional[str] = None,
-    limit: int = 500,
-    offset: int = 0,
+    db: Session, tenant_id: int, empresa_id: int,
+    id_ct: Optional[str] = None, sin_ct: bool = False,
+    metodo: Optional[str] = None, limit: int = 500, offset: int = 0,
 ) -> Tuple[List[LineaInventario], int]:
     q = (
         db.query(LineaInventario)
@@ -901,17 +1042,10 @@ def list_lineas_tabla(
     return lineas, total
 
 
-# ── Tabla CUPS ────────────────────────────────────────────────────────────────
-
 def list_cups_tabla(
-    db: Session,
-    tenant_id: int,
-    empresa_id: int,
-    id_ct: Optional[str] = None,
-    sin_ct: bool = False,
-    metodo: Optional[str] = None,
-    limit: int = 500,
-    offset: int = 0,
+    db: Session, tenant_id: int, empresa_id: int,
+    id_ct: Optional[str] = None, sin_ct: bool = False,
+    metodo: Optional[str] = None, limit: int = 500, offset: int = 0,
 ) -> Tuple[List[CupsTopologia], int]:
     q = (
         db.query(CupsTopologia)

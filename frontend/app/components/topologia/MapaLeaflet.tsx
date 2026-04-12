@@ -681,9 +681,9 @@ export default function MapaLeaflet({
         center: [40.0, -3.7], zoom: 7,
         dragging: true, scrollWheelZoom: true, doubleClickZoom: true, zoomControl: true, touchZoom: false,
       });
-      const capaOSM     = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 });
-      const capaPNOA    = L.tileLayer("https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA', maxZoom: 19 });
-      const capaIGNBase = L.tileLayer("https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — Base', maxZoom: 17 });
+      const capaOSM     = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 28, maxNativeZoom: 19 });
+      const capaPNOA    = L.tileLayer("https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — PNOA', maxZoom: 28, maxNativeZoom: 20 });
+      const capaIGNBase = L.tileLayer("https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=IGNBaseTodo&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg", { attribution: '© <a href="https://www.ign.es">IGN</a> — Base', maxZoom: 28, maxNativeZoom: 17 });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const capaCatastro = L.tileLayer.wms("https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx", { layers: "Catastro", format: "image/png", transparent: true, attribution: '© <a href="https://www.catastro.meh.es">Catastro</a>', maxZoom: 19 } as any);
       capaOSM.addTo(map);
