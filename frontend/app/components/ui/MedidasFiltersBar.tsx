@@ -14,6 +14,9 @@ type MedidasFiltersBarProps = {
   setFiltroAnios: (values: string[]) => void;
   filtroMeses: string[];
   setFiltroMeses: (values: string[]) => void;
+  filtroPeriodos?: string;
+  setFiltroPeriodos?: (value: string) => void;
+  ultimoPeriodo?: { anio: number; mes: number } | null;
   opcionesTenant: string[];
   empresaOptions: MultiSelectOption[];
   anioOptions: MultiSelectOption[];
@@ -23,11 +26,9 @@ type MedidasFiltersBarProps = {
   mesPlaceholder?: string;
   compact?: boolean;
   filtrosActivosCount?: number;
-  /** Slot opcional: botón de ajuste de columnas en la misma línea que los filtros */
   adjustButton?: React.ReactNode;
 };
 
-// ── Tipos de filtro rápido ─────────────────────────────────────────────────
 type QuickFilterId = "1m" | "2m" | "6m" | "1y" | "2y" | null;
 
 const QUICK_FILTERS: { id: Exclude<QuickFilterId, null>; label: string }[] = [
@@ -38,55 +39,65 @@ const QUICK_FILTERS: { id: Exclude<QuickFilterId, null>; label: string }[] = [
   { id: "2y", label: "2 años"    },
 ];
 
-// Calcula los pares {anio, mes} que cubre un filtro rápido
-function getAniosMeses(filterId: Exclude<QuickFilterId, null>): {
-  anios: string[];
-  meses: string[];
-} {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1; // 1-12
+/**
+ * Genera N periodos hacia atrás empezando desde `ultimo` (último mes con datos).
+ * Si no hay ultimo, usa mes actual - 1 como fallback (facturación a mes vencido).
+ * "6 meses" con ultimo={2026,2} → Feb 2026, Ene 2026, Dic 2025, Nov 2025, Oct 2025, Sep 2025
+ */
+function getPeriods(
+  filterId: Exclude<QuickFilterId, null>,
+  ultimo?: { anio: number; mes: number } | null,
+): { anio: number; mes: number }[] {
+  let startYear: number;
+  let startMonth: number;
+
+  if (ultimo) {
+    startYear = ultimo.anio;
+    startMonth = ultimo.mes;
+  } else {
+    // Fallback: mes actual - 1 (facturación a mes vencido)
+    const now = new Date();
+    startYear = now.getFullYear();
+    startMonth = now.getMonth(); // getMonth() es 0-based, así que esto ya es mes_actual - 1
+    if (startMonth <= 0) { startMonth = 12; startYear -= 1; }
+  }
+
+  const monthCounts: Record<string, number> = { "1m": 1, "2m": 2, "6m": 6, "1y": 12, "2y": 24 };
+  const n = monthCounts[filterId] ?? 1;
 
   const periods: { anio: number; mes: number }[] = [];
-
-  // Facturación va a mes vencido: empieza siempre desde el mes ANTERIOR al actual
-  // i=1 → mes anterior, i=2 → hace 2 meses, etc.
-  const addPrevMonths = (n: number) => {
-    for (let i = 1; i <= n; i++) {
-      let m = currentMonth - i;
-      let y = currentYear;
-      while (m <= 0) { m += 12; y -= 1; }
-      periods.push({ anio: y, mes: m });
-    }
-  };
-
-  if (filterId === "1m") addPrevMonths(1);
-  if (filterId === "2m") addPrevMonths(2);
-  if (filterId === "6m") addPrevMonths(6);
-  if (filterId === "1y") addPrevMonths(12);
-  if (filterId === "2y") addPrevMonths(24);
-
-  const aniosSet  = new Set(periods.map((p) => String(p.anio)));
-  const mesesSet  = new Set(periods.map((p) => String(p.mes)));
-
-  return {
-    anios: Array.from(aniosSet).sort(),
-    meses: Array.from(mesesSet).sort((a, b) => Number(a) - Number(b)),
-  };
-}
-
-// Genera una etiqueta legible del período aplicado
-function getPeriodLabel(filterId: Exclude<QuickFilterId, null>): string {
-  const { anios, meses } = getAniosMeses(filterId);
-  const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  const mesLabels = meses.map((m) => MESES[Number(m) - 1] ?? m);
-  if (anios.length === 1) {
-    return `${mesLabels.join(", ")} ${anios[0]}`;
+  for (let i = 0; i < n; i++) {
+    let m = startMonth - i;
+    let y = startYear;
+    while (m <= 0) { m += 12; y -= 1; }
+    periods.push({ anio: y, mes: m });
   }
-  return `${mesLabels[mesLabels.length - 1]} ${anios[0]} – ${mesLabels[0]} ${anios[anios.length - 1]}`;
+  return periods;
 }
 
-// ── Componente ─────────────────────────────────────────────────────────────
+function buildPeriodosString(
+  filterId: Exclude<QuickFilterId, null>,
+  ultimo?: { anio: number; mes: number } | null,
+): string {
+  return getPeriods(filterId, ultimo).map((p) => `${p.anio}-${p.mes}`).join(",");
+}
+
+function getPeriodLabel(
+  filterId: Exclude<QuickFilterId, null>,
+  ultimo?: { anio: number; mes: number } | null,
+): string {
+  const periods = getPeriods(filterId, ultimo);
+  const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  if (periods.length === 0) return "";
+  if (periods.length === 1) {
+    const p = periods[0];
+    return `${MESES[p.mes - 1]} ${p.anio}`;
+  }
+  const oldest = periods[periods.length - 1];
+  const newest = periods[0];
+  return `${MESES[oldest.mes - 1]} ${oldest.anio} – ${MESES[newest.mes - 1]} ${newest.anio}`;
+}
+
 export default function MedidasFiltersBar({
   isSistema,
   token,
@@ -99,6 +110,9 @@ export default function MedidasFiltersBar({
   setFiltroAnios,
   filtroMeses,
   setFiltroMeses,
+  filtroPeriodos,
+  setFiltroPeriodos,
+  ultimoPeriodo,
   opcionesTenant,
   empresaOptions,
   anioOptions,
@@ -118,33 +132,44 @@ export default function MedidasFiltersBar({
     : { minHeight: 30, paddingTop: 4, paddingBottom: 4, paddingLeft: 8, paddingRight: 8, lineHeight: 1.15 };
 
   function applyQuickFilter(id: Exclude<QuickFilterId, null>) {
-    const { anios, meses } = getAniosMeses(id);
-    // Solo aplicar los valores que existen en las opciones disponibles
-    const validAnios = anios.filter((a) => anioOptions.some((o) => o.value === a));
-    const validMeses = meses.filter((m) => mesOptions.some((o) => o.value === m));
-    setFiltroAnios(validAnios);
-    setFiltroMeses(validMeses);
+    const periodosStr = buildPeriodosString(id, ultimoPeriodo);
+
+    if (setFiltroPeriodos) {
+      setFiltroAnios([]);
+      setFiltroMeses([]);
+      setFiltroPeriodos(periodosStr);
+    } else {
+      // Fallback: usar años/meses separados (comportamiento antiguo)
+      const periods = getPeriods(id, ultimoPeriodo);
+      const aniosSet = new Set(periods.map((p) => String(p.anio)));
+      const mesesSet = new Set(periods.map((p) => String(p.mes)));
+      const validAnios = Array.from(aniosSet).filter((a) => anioOptions.some((o) => o.value === a)).sort();
+      const validMeses = Array.from(mesesSet).filter((m) => mesOptions.some((o) => o.value === m)).sort((a, b) => Number(a) - Number(b));
+      setFiltroAnios(validAnios);
+      setFiltroMeses(validMeses);
+    }
     setActiveQuick(id);
   }
 
   function clearQuickFilter() {
     setFiltroAnios([]);
     setFiltroMeses([]);
+    if (setFiltroPeriodos) setFiltroPeriodos("");
     setActiveQuick(null);
   }
 
-  // Si el usuario cambia manualmente año/mes, desactivar el filtro rápido
   function handleAniosChange(values: string[]) {
     setFiltroAnios(values);
+    if (setFiltroPeriodos) setFiltroPeriodos("");
     setActiveQuick(null);
   }
 
   function handleMesesChange(values: string[]) {
     setFiltroMeses(values);
+    if (setFiltroPeriodos) setFiltroPeriodos("");
     setActiveQuick(null);
   }
 
-  // Estilo de píldora quick filter
   const pillBase: React.CSSProperties = {
     height: compact ? 28 : 30,
     padding: "0 10px",
@@ -174,7 +199,6 @@ export default function MedidasFiltersBar({
     fontSize: 10,
   };
 
-  // Botón "Acceso rápido ▾/▴"
   const quickBtnStyle: React.CSSProperties = {
     ...pillBase,
     gap: 5,
@@ -185,7 +209,6 @@ export default function MedidasFiltersBar({
 
   return (
     <div className="mb-3">
-      {/* Fila principal de filtros */}
       <div className="flex flex-wrap items-end gap-2">
 
         {isSistema && (
@@ -242,7 +265,6 @@ export default function MedidasFiltersBar({
           />
         </div>
 
-        {/* Botón "Acceso rápido" */}
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <label className="ui-label" style={{ opacity: 0 }}>·</label>
           <button
@@ -251,7 +273,6 @@ export default function MedidasFiltersBar({
             onClick={() => setQuickOpen((v) => !v)}
             disabled={!token || loading}
           >
-            {/* icono reloj */}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
               <path d="M6 3.5V6l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
@@ -263,7 +284,6 @@ export default function MedidasFiltersBar({
           </button>
         </div>
 
-        {/* Botones de ajuste + refresh al extremo derecho */}
         {adjustButton && (
           <div className="ml-auto flex items-end gap-1">
             {adjustButton}
@@ -271,7 +291,6 @@ export default function MedidasFiltersBar({
         )}
       </div>
 
-      {/* Panel desplegable de filtros rápidos */}
       {quickOpen && (
         <div
           style={{
@@ -317,7 +336,6 @@ export default function MedidasFiltersBar({
           >
             ✕ Limpiar
           </button>
-          {/* Etiqueta del período activo */}
           {activeQuick && (
             <span
               style={{
@@ -327,13 +345,12 @@ export default function MedidasFiltersBar({
                 fontWeight: 500,
               }}
             >
-              → {getPeriodLabel(activeQuick)}
+              → {getPeriodLabel(activeQuick, ultimoPeriodo)}
             </span>
           )}
         </div>
       )}
 
-      {/* Filtros activos — debajo, pequeño y discreto */}
       {filtrosActivosCount !== undefined && (
         <div className="mt-1 text-[10px] ui-muted">
           Filtros activos:{" "}

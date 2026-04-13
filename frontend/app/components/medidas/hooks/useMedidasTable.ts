@@ -15,6 +15,7 @@ type FiltersResponse = {
   empresas: EmpresaFilterOption[];
   anios: number[];
   meses: number[];
+  ultimo_periodo?: { anio: number; mes: number } | null;
 };
 
 type PaginatedResponse<T> = {
@@ -69,6 +70,8 @@ export function useMedidasTable<T>({
   const [filtroEmpresaIds, setFiltroEmpresaIds] = useState<string[]>([]);
   const [filtroAnios, setFiltroAnios] = useState<string[]>([]);
   const [filtroMeses, setFiltroMeses] = useState<string[]>([]);
+  const [filtroPeriodos, setFiltroPeriodos] = useState<string>("");
+  const [ultimoPeriodo, setUltimoPeriodo] = useState<{ anio: number; mes: number } | null>(null);
 
   const [opcionesEmpresa, setOpcionesEmpresa] = useState<EmpresaFilterOption[]>([]);
   const [opcionesAnio, setOpcionesAnio] = useState<number[]>([]);
@@ -103,13 +106,15 @@ export function useMedidasTable<T>({
     (isSistema && filtroTenant ? 1 : 0) +
     (filtroEmpresaIds.length > 0 ? 1 : 0) +
     (filtroAnios.length > 0 ? 1 : 0) +
-    (filtroMeses.length > 0 ? 1 : 0);
+    (filtroMeses.length > 0 ? 1 : 0) +
+    (filtroPeriodos ? 1 : 0);
 
   const clearFilters = useCallback(() => {
     setFiltroTenant("");
     setFiltroEmpresaIds([]);
     setFiltroAnios([]);
     setFiltroMeses([]);
+    setFiltroPeriodos("");
     setPage(0);
   }, []);
 
@@ -130,6 +135,7 @@ export function useMedidasTable<T>({
       setOpcionesEmpresa(Array.isArray(json?.empresas) ? json.empresas : []);
       setOpcionesAnio(Array.isArray(json?.anios) ? json.anios : []);
       setOpcionesMes(Array.isArray(json?.meses) ? json.meses : []);
+      if (json?.ultimo_periodo) setUltimoPeriodo(json.ultimo_periodo);
     } catch (e) {
       console.error("Error cargando filtros:", e);
     }
@@ -153,8 +159,12 @@ export function useMedidasTable<T>({
 
         if (isSistema && filtroTenant) params.set("tenant_id", filtroTenant);
         if (filtroEmpresaIds.length > 0) params.set("empresa_ids", filtroEmpresaIds.join(","));
-        if (filtroAnios.length > 0) params.set("anios", filtroAnios.join(","));
-        if (filtroMeses.length > 0) params.set("meses", filtroMeses.join(","));
+        if (filtroPeriodos) {
+          params.set("periodos", filtroPeriodos);
+        } else {
+          if (filtroAnios.length > 0) params.set("anios", filtroAnios.join(","));
+          if (filtroMeses.length > 0) params.set("meses", filtroMeses.join(","));
+        }
 
         const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
           headers: getAuthHeaders(token),
@@ -190,6 +200,7 @@ export function useMedidasTable<T>({
       filtroEmpresaIds,
       filtroAnios,
       filtroMeses,
+      filtroPeriodos,
       loadErrorMessage,
     ]
   );
@@ -208,6 +219,8 @@ export function useMedidasTable<T>({
       setFiltroEmpresaIds([]);
       setFiltroAnios([]);
       setFiltroMeses([]);
+      setFiltroPeriodos("");
+      setUltimoPeriodo(null);
       setPage(0);
       setTotalFilas(0);
       setTotalPages(1);
@@ -228,7 +241,7 @@ export function useMedidasTable<T>({
   useEffect(() => {
     if (!token) return;
 
-    const key = `${scope}::${filtroTenant}::${filtroEmpresaIds.join(",")}::${filtroAnios.join(",")}::${filtroMeses.join(",")}::${pageSize}`;
+    const key = `${scope}::${filtroTenant}::${filtroEmpresaIds.join(",")}::${filtroAnios.join(",")}::${filtroMeses.join(",")}::${filtroPeriodos}::${pageSize}`;
     if (filterKeyRef.current === key) return;
     filterKeyRef.current = key;
 
@@ -241,6 +254,7 @@ export function useMedidasTable<T>({
     filtroEmpresaIds,
     filtroAnios,
     filtroMeses,
+    filtroPeriodos,
     pageSize,
     handleLoadData,
   ]);
@@ -333,6 +347,9 @@ export function useMedidasTable<T>({
     setFiltroAnios,
     filtroMeses,
     setFiltroMeses,
+    filtroPeriodos,
+    setFiltroPeriodos,
+    ultimoPeriodo,
 
     opcionesEmpresa,
     opcionesAnio,

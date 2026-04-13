@@ -6,7 +6,7 @@ from typing import Any, Optional, cast
 
 from fastapi import APIRouter, Body, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_active_superuser, get_current_user
@@ -69,6 +69,35 @@ def _merge_single_and_multi(
     return values
 
 
+def _parse_periodos(periodos: str | None) -> list[tuple[int, int]]:
+    """Parsea 'periodos' con formato '2025-10,2025-11,2026-01' a lista de (anio, mes)."""
+    if not periodos:
+        return []
+    result: list[tuple[int, int]] = []
+    for part in periodos.split(","):
+        s = part.strip()
+        if "-" not in s:
+            continue
+        try:
+            a, m = s.split("-", 1)
+            result.append((int(a), int(m)))
+        except (ValueError, TypeError):
+            continue
+    return result
+
+
+def _apply_period_filter(query: Any, model: Any, periodos_list: list[tuple[int, int]], anios_list: list[int], meses_list: list[int]) -> Any:
+    """Aplica filtro de periodos (pares año-mes exactos) o filtros separados de años y meses."""
+    if periodos_list:
+        conditions = [and_(model.anio == a, model.mes == m) for a, m in periodos_list]
+        return query.filter(or_(*conditions))
+    if anios_list:
+        query = query.filter(model.anio.in_(anios_list))
+    if meses_list:
+        query = query.filter(model.mes.in_(meses_list))
+    return query
+
+
 def _sanitize_value(value: Any) -> Any:
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
@@ -86,7 +115,6 @@ def _sanitize_medida(medida_obj: Any) -> dict[str, Any]:
     for k, v in list(data.items()):
         data[k] = _sanitize_value(v)
 
-    # ── Totales de tarifas calculados (2.0TD + 3.0TD + 3.0TDVE + 6.1TD) ──
     def _f(key: str) -> float:
         val = data.get(key)
         if val is None:
@@ -385,7 +413,7 @@ def medidas_ps_filters(
     tenant_id = int(cast(int, current_user.tenant_id))
     allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
     if not allowed_empresa_ids:
-        return {"empresas": [], "anios": [], "meses": [], "tarifas": []}
+        return {"empresas": [], "anios": [], "meses": [], "tarifas": [], "ultimo_periodo": None}
     empresas_rows = (
         db.query(Empresa)
         .join(MedidaPS, MedidaPS.empresa_id == Empresa.id)
@@ -460,7 +488,19 @@ def medidas_ps_filters(
         tarifas.append("63td")
     if _has_any(MedidaPS.energia_tarifa_64td_kwh, MedidaPS.cups_tarifa_64td, MedidaPS.importe_tarifa_64td_eur):
         tarifas.append("64td")
-    return {"empresas": empresas, "anios": anios, "meses": meses, "tarifas": tarifas}
+
+    ultimo = (
+        db.query(MedidaPS.anio, MedidaPS.mes)
+        .filter(
+            MedidaPS.tenant_id == tenant_id,
+            MedidaPS.empresa_id.in_(allowed_empresa_ids),
+        )
+        .order_by(MedidaPS.anio.desc(), MedidaPS.mes.desc())
+        .first()
+    )
+    ultimo_periodo = {"anio": ultimo[0], "mes": ultimo[1]} if ultimo else None
+
+    return {"empresas": empresas, "anios": anios, "meses": meses, "tarifas": tarifas, "ultimo_periodo": ultimo_periodo}
 
 
 @router.get("/all/filters")
@@ -527,7 +567,15 @@ def medidas_ps_filters_all(
         tarifas.append("63td")
     if _has_any_global(MedidaPS.energia_tarifa_64td_kwh, MedidaPS.cups_tarifa_64td, MedidaPS.importe_tarifa_64td_eur):
         tarifas.append("64td")
-    return {"empresas": empresas, "anios": anios, "meses": meses, "tarifas": tarifas}
+
+    ultimo = (
+        db.query(MedidaPS.anio, MedidaPS.mes)
+        .order_by(MedidaPS.anio.desc(), MedidaPS.mes.desc())
+        .first()
+    )
+    ultimo_periodo = {"anio": ultimo[0], "mes": ultimo[1]} if ultimo else None
+
+    return {"empresas": empresas, "anios": anios, "meses": meses, "tarifas": tarifas, "ultimo_periodo": ultimo_periodo}
 
 
 @router.get("/page")
@@ -541,6 +589,7 @@ def listar_medidas_ps_page(
     empresa_ids: str | None = Query(default=None),
     anios: str | None = Query(default=None),
     meses: str | None = Query(default=None),
+    periodos: str | None = Query(default=None, description="Pares año-mes exactos: 2025-10,2025-11,2026-01"),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, Any]:
@@ -557,9 +606,8 @@ def listar_medidas_ps_page(
     empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
     anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
     meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+    periodos_list = _parse_periodos(periodos)
 
-    # ── Si vienen empresas filtrarlas contra las permitidas;
-    #    si no viene ninguna → usar todas las permitidas (igual que General)
     if empresa_ids_list:
         empresa_ids_list = [eid for eid in empresa_ids_list if eid in allowed_empresa_ids]
     if not empresa_ids_list:
@@ -577,10 +625,7 @@ def listar_medidas_ps_page(
     )
     if empresa_ids_list:
         base = base.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        base = base.filter(MedidaPS.anio.in_(anios_list))
-    if meses_list:
-        base = base.filter(MedidaPS.mes.in_(meses_list))
+    base = _apply_period_filter(base, MedidaPS, periodos_list, anios_list, meses_list)
     if tarifa:
         base = _ps_tarifa_filter(base, tarifa)
 
@@ -590,10 +635,7 @@ def listar_medidas_ps_page(
     )
     if empresa_ids_list:
         total_q = total_q.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        total_q = total_q.filter(MedidaPS.anio.in_(anios_list))
-    if meses_list:
-        total_q = total_q.filter(MedidaPS.mes.in_(meses_list))
+    total_q = _apply_period_filter(total_q, MedidaPS, periodos_list, anios_list, meses_list)
     if tarifa:
         total_q = _ps_tarifa_filter(total_q, tarifa)
 
@@ -636,6 +678,7 @@ def listar_medidas_ps_all_page(
     empresa_ids: str | None = Query(default=None),
     anios: str | None = Query(default=None),
     meses: str | None = Query(default=None),
+    periodos: str | None = Query(default=None, description="Pares año-mes exactos: 2025-10,2025-11,2026-01"),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, Any]:
@@ -644,6 +687,8 @@ def listar_medidas_ps_all_page(
     empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
     anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
     meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+    periodos_list = _parse_periodos(periodos)
+
     base = db.query(MedidaPS, Empresa).join(Empresa, MedidaPS.empresa_id == Empresa.id)
     if tenant_ids_list:
         base = base.filter(
@@ -652,23 +697,19 @@ def listar_medidas_ps_all_page(
         )
     if empresa_ids_list:
         base = base.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        base = base.filter(MedidaPS.anio.in_(anios_list))
-    if meses_list:
-        base = base.filter(MedidaPS.mes.in_(meses_list))
+    base = _apply_period_filter(base, MedidaPS, periodos_list, anios_list, meses_list)
     if tarifa:
         base = _ps_tarifa_filter(base, tarifa)
+
     total_q = db.query(func.count(MedidaPS.id))
     if tenant_ids_list:
         total_q = total_q.filter(MedidaPS.tenant_id.in_(tenant_ids_list))
     if empresa_ids_list:
         total_q = total_q.filter(MedidaPS.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        total_q = total_q.filter(MedidaPS.anio.in_(anios_list))
-    if meses_list:
-        total_q = total_q.filter(MedidaPS.mes.in_(meses_list))
+    total_q = _apply_period_filter(total_q, MedidaPS, periodos_list, anios_list, meses_list)
     if tarifa:
         total_q = _ps_tarifa_filter(total_q, tarifa)
+
     total_int = int(total_q.scalar() or 0)
     pg = _paginate(total_int, page, page_size)
     filas = (

@@ -193,6 +193,8 @@ export default function MedidasGeneralSection({
     filtroEmpresaIds, setFiltroEmpresaIds,
     filtroAnios, setFiltroAnios,
     filtroMeses, setFiltroMeses,
+    filtroPeriodos, setFiltroPeriodos,
+    ultimoPeriodo,
     opcionesEmpresa, opcionesAnio, opcionesMes, opcionesTenant, opcionesEmpresaFiltradas,
     pageSize, setPageSize, page, setPage,
     totalFilas, totalPages, currentPage, startIndex, endIndex,
@@ -355,6 +357,8 @@ export default function MedidasGeneralSection({
         filtroEmpresaIds={filtroEmpresaIds} setFiltroEmpresaIds={setFiltroEmpresaIds}
         filtroAnios={filtroAnios} setFiltroAnios={setFiltroAnios}
         filtroMeses={filtroMeses} setFiltroMeses={setFiltroMeses}
+        filtroPeriodos={filtroPeriodos} setFiltroPeriodos={setFiltroPeriodos}
+        ultimoPeriodo={ultimoPeriodo}
         opcionesTenant={opcionesTenant}
         empresaOptions={empresaOptions} anioOptions={anioOptions} mesOptions={mesOptions}
         empresaPlaceholder="Todas" anioPlaceholder="Todos" mesPlaceholder="Todos"

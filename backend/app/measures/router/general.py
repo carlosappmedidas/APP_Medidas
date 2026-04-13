@@ -4,7 +4,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Body, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, and_, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_active_superuser, get_current_user
@@ -69,6 +69,35 @@ def _merge_single_and_multi(
     if single_value is not None and single_value not in values:
         values.append(single_value)
     return values
+
+
+def _parse_periodos(periodos: str | None) -> list[tuple[int, int]]:
+    """Parsea 'periodos' con formato '2025-10,2025-11,2026-01' a lista de (anio, mes)."""
+    if not periodos:
+        return []
+    result: list[tuple[int, int]] = []
+    for part in periodos.split(","):
+        s = part.strip()
+        if "-" not in s:
+            continue
+        try:
+            a, m = s.split("-", 1)
+            result.append((int(a), int(m)))
+        except (ValueError, TypeError):
+            continue
+    return result
+
+
+def _apply_period_filter(query: Any, model: Any, periodos_list: list[tuple[int, int]], anios_list: list[int], meses_list: list[int]) -> Any:
+    """Aplica filtro de periodos (pares año-mes exactos) o filtros separados de años y meses."""
+    if periodos_list:
+        conditions = [and_(model.anio == a, model.mes == m) for a, m in periodos_list]
+        return query.filter(or_(*conditions))
+    if anios_list:
+        query = query.filter(model.anio.in_(anios_list))
+    if meses_list:
+        query = query.filter(model.mes.in_(meses_list))
+    return query
 
 
 def _deep_delete_by_file_ids(
@@ -283,7 +312,7 @@ def medidas_general_filters(
     allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
 
     if not allowed_empresa_ids:
-        return {"empresas": [], "anios": [], "meses": []}
+        return {"empresas": [], "anios": [], "meses": [], "ultimo_periodo": None}
 
     empresas_rows = (
         db.query(Empresa)
@@ -338,7 +367,18 @@ def medidas_general_filters(
         if r and r[0] is not None
     ]
 
-    return {"empresas": empresas, "anios": anios, "meses": meses}
+    ultimo = (
+        db.query(MedidaGeneral.anio, MedidaGeneral.mes)
+        .filter(
+            MedidaGeneral.tenant_id == tenant_id,
+            MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
+        )
+        .order_by(MedidaGeneral.anio.desc(), MedidaGeneral.mes.desc())
+        .first()
+    )
+    ultimo_periodo = {"anio": ultimo[0], "mes": ultimo[1]} if ultimo else None
+
+    return {"empresas": empresas, "anios": anios, "meses": meses, "ultimo_periodo": ultimo_periodo}
 
 
 @router.get("/all/filters")
@@ -388,7 +428,14 @@ def medidas_general_filters_all(
         if r and r[0] is not None
     ]
 
-    return {"empresas": empresas, "anios": anios, "meses": meses}
+    ultimo = (
+        db.query(MedidaGeneral.anio, MedidaGeneral.mes)
+        .order_by(MedidaGeneral.anio.desc(), MedidaGeneral.mes.desc())
+        .first()
+    )
+    ultimo_periodo = {"anio": ultimo[0], "mes": ultimo[1]} if ultimo else None
+
+    return {"empresas": empresas, "anios": anios, "meses": meses, "ultimo_periodo": ultimo_periodo}
 
 
 @router.get("/page")
@@ -401,6 +448,7 @@ def listar_medidas_generales_page(
     empresa_ids: str | None = Query(default=None),
     anios: str | None = Query(default=None),
     meses: str | None = Query(default=None),
+    periodos: str | None = Query(default=None, description="Pares año-mes exactos: 2025-10,2025-11,2026-01"),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, Any]:
@@ -419,6 +467,7 @@ def listar_medidas_generales_page(
     empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
     anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
     meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+    periodos_list = _parse_periodos(periodos)
 
     if empresa_ids_list:
         empresa_ids_list = [eid for eid in empresa_ids_list if eid in allowed_empresa_ids]
@@ -444,10 +493,7 @@ def listar_medidas_generales_page(
 
     if empresa_ids_list:
         base = base.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        base = base.filter(MedidaGeneral.anio.in_(anios_list))
-    if meses_list:
-        base = base.filter(MedidaGeneral.mes.in_(meses_list))
+    base = _apply_period_filter(base, MedidaGeneral, periodos_list, anios_list, meses_list)
 
     total = db.query(func.count(MedidaGeneral.id)).filter(
         MedidaGeneral.tenant_id == tenant_id,
@@ -455,10 +501,7 @@ def listar_medidas_generales_page(
     )
     if empresa_ids_list:
         total = total.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        total = total.filter(MedidaGeneral.anio.in_(anios_list))
-    if meses_list:
-        total = total.filter(MedidaGeneral.mes.in_(meses_list))
+    total = _apply_period_filter(total, MedidaGeneral, periodos_list, anios_list, meses_list)
 
     total_int = int(total.scalar() or 0)
     pg = paginate(total_int, page, page_size)
@@ -501,6 +544,7 @@ def listar_medidas_generales_all_page(
     empresa_ids: str | None = Query(default=None),
     anios: str | None = Query(default=None),
     meses: str | None = Query(default=None),
+    periodos: str | None = Query(default=None, description="Pares año-mes exactos: 2025-10,2025-11,2026-01"),
     page: int = Query(default=0, ge=0),
     page_size: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, Any]:
@@ -510,6 +554,7 @@ def listar_medidas_generales_all_page(
     empresa_ids_list = _merge_single_and_multi(single_value=empresa_id, multi_value=empresa_ids)
     anios_list = _merge_single_and_multi(single_value=anio, multi_value=anios)
     meses_list = _merge_single_and_multi(single_value=mes, multi_value=meses)
+    periodos_list = _parse_periodos(periodos)
 
     base = db.query(MedidaGeneral, Empresa).join(Empresa, MedidaGeneral.empresa_id == Empresa.id)
 
@@ -520,20 +565,14 @@ def listar_medidas_generales_all_page(
         )
     if empresa_ids_list:
         base = base.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        base = base.filter(MedidaGeneral.anio.in_(anios_list))
-    if meses_list:
-        base = base.filter(MedidaGeneral.mes.in_(meses_list))
+    base = _apply_period_filter(base, MedidaGeneral, periodos_list, anios_list, meses_list)
 
     total_q = db.query(func.count(MedidaGeneral.id))
     if tenant_ids_list:
         total_q = total_q.filter(MedidaGeneral.tenant_id.in_(tenant_ids_list))
     if empresa_ids_list:
         total_q = total_q.filter(MedidaGeneral.empresa_id.in_(empresa_ids_list))
-    if anios_list:
-        total_q = total_q.filter(MedidaGeneral.anio.in_(anios_list))
-    if meses_list:
-        total_q = total_q.filter(MedidaGeneral.mes.in_(meses_list))
+    total_q = _apply_period_filter(total_q, MedidaGeneral, periodos_list, anios_list, meses_list)
 
     total_int = int(total_q.scalar() or 0)
     pg = paginate(total_int, page, page_size)
