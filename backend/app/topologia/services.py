@@ -839,6 +839,13 @@ def calcular_asociacion_ct(
             id_ct_cups = linea_a_ct.get(linea.id_tramo)
             if id_ct_cups:
                 break
+        if not id_ct_cups:
+            for linea in nudo_a_lineas_ini.get(nudo, []):
+                if not _es_bt(linea):
+                    continue
+                id_ct_cups = linea_a_ct.get(linea.id_tramo)
+                if id_ct_cups:
+                    break
         if id_ct_cups:
             cups.id_ct_asignado       = id_ct_cups
             cups.metodo_asignacion_ct = "nudo_linea"
