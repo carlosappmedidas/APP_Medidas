@@ -350,6 +350,7 @@ export function useMedidasTable<T>({
     filtroPeriodos,
     setFiltroPeriodos,
     ultimoPeriodo,
+    
 
     opcionesEmpresa,
     opcionesAnio,

@@ -269,6 +269,32 @@ class CupsTablaRead(BaseModel):
 
 # ── Mapa — CT ─────────────────────────────────────────────────────────────────
 
+# ── Tabla CTs — para la vista de gestión ──────────────────────────────────────
+
+class CtTablaRead(BaseModel):
+    id_ct:            str
+    nombre:           str
+    cini:             Optional[str]
+    codigo_ccuu:      Optional[str]
+    potencia_kva:     Optional[float]
+    tension_kv:       Optional[float]
+    nudo_alta:        Optional[str]
+    nudo_baja:        Optional[str]
+    municipio_ine:    Optional[str]
+    zona:             Optional[str]
+    estado:           Optional[int]
+    punto_frontera:   Optional[int]
+    fecha_aps:        Optional[date]
+    propiedad:        Optional[str]
+    num_trafos:       Optional[int] = None
+    num_celdas:       Optional[int] = None
+    num_cups:         Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+
 class CtMapaRead(BaseModel):
     id_ct:        str
     nombre:       str

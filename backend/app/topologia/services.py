@@ -1401,3 +1401,68 @@ def list_transformadores_ct(
         .order_by(CtTransformador.id_transformador)
         .all()
     )
+
+def list_cts_tabla(
+    db: Session, tenant_id: int, empresa_id: int,
+    limit: int = 500, offset: int = 0,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Devuelve CTs paginados con contadores de trafos, celdas y CUPS."""
+    from sqlalchemy import func
+
+    q = (
+        db.query(CtInventario)
+        .filter(
+            CtInventario.tenant_id  == tenant_id,
+            CtInventario.empresa_id == empresa_id,
+        )
+    )
+    total = q.count()
+    cts   = q.order_by(CtInventario.nombre).offset(offset).limit(limit).all()
+
+    # Contadores por CT
+    trafos_count = dict(
+        db.query(CtTransformador.id_ct, func.count())
+        .filter(CtTransformador.tenant_id == tenant_id, CtTransformador.empresa_id == empresa_id)
+        .group_by(CtTransformador.id_ct)
+        .all()
+    )
+    celdas_count = dict(
+        db.query(CtCelda.id_ct, func.count())
+        .filter(CtCelda.tenant_id == tenant_id, CtCelda.empresa_id == empresa_id)
+        .group_by(CtCelda.id_ct)
+        .all()
+    )
+    cups_count = dict(
+        db.query(CupsTopologia.id_ct_asignado, func.count())
+        .filter(
+            CupsTopologia.tenant_id == tenant_id,
+            CupsTopologia.empresa_id == empresa_id,
+            CupsTopologia.id_ct_asignado.isnot(None),
+        )
+        .group_by(CupsTopologia.id_ct_asignado)
+        .all()
+    )
+
+    items = []
+    for ct in cts:
+        items.append({
+            "id_ct":          ct.id_ct,
+            "nombre":         ct.nombre,
+            "cini":           ct.cini,
+            "codigo_ccuu":    ct.codigo_ccuu,
+            "potencia_kva":   float(ct.potencia_kva) if ct.potencia_kva is not None else None,
+            "tension_kv":     float(ct.tension_kv) if ct.tension_kv is not None else None,
+            "nudo_alta":      ct.nudo_alta,
+            "nudo_baja":      ct.nudo_baja,
+            "municipio_ine":  ct.municipio_ine,
+            "zona":           ct.zona,
+            "estado":         ct.estado,
+            "punto_frontera": ct.punto_frontera,
+            "fecha_aps":      ct.fecha_aps,
+            "propiedad":      ct.propiedad,
+            "num_trafos":     trafos_count.get(ct.id_ct, 0),
+            "num_celdas":     celdas_count.get(ct.id_ct, 0),
+            "num_cups":       cups_count.get(ct.id_ct, 0),
+        })
+
+    return items, total

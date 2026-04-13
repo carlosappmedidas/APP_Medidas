@@ -18,6 +18,7 @@ from app.topologia.schemas import (
     CalcAsignacionCtMtResponse,
     CalcAsignacionCtResponse,
     CeldaTablaRead,
+    CtTablaRead,
     CtCeldaRead,
     CtDetalleRead,
     CtInventarioRead,
@@ -313,6 +314,25 @@ def get_tabla_celdas(
 
 
 # ── Mapa — CTs ────────────────────────────────────────────────────────────────
+
+# ── Tabla de CTs — paginación servidor ────────────────────────────────────────
+
+@router.get("/tabla/cts")
+def get_tabla_cts(
+    empresa_id:   int     = Query(...),
+    limit:        int     = Query(50, ge=1, le=500),
+    offset:       int     = Query(0, ge=0),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> Dict[str, Any]:
+    _assert_not_viewer(current_user)
+    items, total = services.list_cts_tabla(
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+        limit=limit, offset=offset,
+    )
+    return {"items": [CtTablaRead(**item) for item in items], "total": total}
+
+
 
 @router.get("/mapa/cts", response_model=List[CtMapaRead])
 def get_cts_mapa(
