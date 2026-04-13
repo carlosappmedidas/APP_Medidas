@@ -351,7 +351,8 @@ interface Props {
   cups:              CupsMapa[];
   tramos:            TramoMapa[];
   mostrarCts:        boolean;
-  mostrarCups:       boolean;
+  mostrarCupsBT:     boolean;
+  mostrarCupsMT:     boolean;
   mostrarLineas:     boolean;
   lineaSeleccionada: string | null;
   tooltipLineas:     TooltipLineasConfig;
@@ -629,7 +630,7 @@ function buildTooltipCups(c: CupsMapa, cfg: TooltipCupsConfig): string {
 
 export default function MapaLeaflet({
   cts, ctsTodos, cups, tramos,
-  mostrarCts, mostrarCups, mostrarLineas,
+  mostrarCts, mostrarCupsBT, mostrarCupsMT, mostrarLineas,
   lineaSeleccionada,
   tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
   onLineaClick, onReasignarCt, onReasignarFase,
@@ -641,7 +642,9 @@ export default function MapaLeaflet({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ctLayerRef         = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cupsLayerRef       = useRef<any>(null);
+  const cupsBTLayerRef       = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cupsMTLayerRef     = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lineasLayerRef     = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -696,7 +699,8 @@ export default function MapaLeaflet({
       lineasLayerRef.current     = L.layerGroup().addTo(map);
       marcadoresLayerRef.current = L.layerGroup().addTo(map);
       ctLayerRef.current         = L.layerGroup().addTo(map);
-      cupsLayerRef.current       = L.layerGroup().addTo(map);
+      cupsBTLayerRef.current     = L.layerGroup().addTo(map);
+      cupsMTLayerRef.current     = L.layerGroup().addTo(map);
       mapaInstancia.current      = map;
       setTimeout(() => map.invalidateSize(), 200);
       const container = mapRef.current!;
@@ -723,7 +727,7 @@ export default function MapaLeaflet({
         (mapaInstancia as any)._cleanup?.();
         mapaInstancia.current.remove();
         mapaInstancia.current = null;
-        ctLayerRef.current = null; cupsLayerRef.current = null;
+        ctLayerRef.current = null; cupsBTLayerRef.current = null; cupsMTLayerRef.current = null;
         lineasLayerRef.current = null; marcadoresLayerRef.current = null;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -824,32 +828,40 @@ export default function MapaLeaflet({
     });
   }, [cts, mostrarCts, tooltipCts, coloresCt, modoMultiCt]);
 
-  // ── Pintar CUPS ───────────────────────────────────────────────────────────
+  // ── Pintar CUPS (BT + MT en capas separadas) ──────────────────────────────
   useEffect(() => {
-    if (!cupsLayerRef.current) return;
+    if (!cupsBTLayerRef.current || !cupsMTLayerRef.current) return;
     import("leaflet").then(L => {
-      cupsLayerRef.current.clearLayers();
-      if (!mostrarCups) return;
-      cups.forEach(c => {
-        if (c.lat === null || c.lon === null) return;
-        // Color del marcador: si tiene fase asignada usa el color de la fase
-        const color = c.fase && FASE_COLOR[c.fase] ? FASE_COLOR[c.fase] : "#378ADD";
+      cupsBTLayerRef.current.clearLayers();
+      cupsMTLayerRef.current.clearLayers();
+
+      const allValid = cups.filter(c => c.lat !== null && c.lon !== null);
+
+      allValid.forEach(c => {
+        const esBT = c.tension_kv === null || c.tension_kv <= 1;
+        const visible = esBT ? mostrarCupsBT : mostrarCupsMT;
+        if (!visible) return;
+
+        const colorDefault = esBT ? "#378ADD" : "#7C3AED";
+        const color = c.fase && FASE_COLOR[c.fase] ? FASE_COLOR[c.fase] : colorDefault;
         const iconCups = L.divIcon({
           className: "",
           html: `<div style="width:7px;height:7px;border-radius:50%;background:${color};border:1px solid rgba(255,255,255,0.9);box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`,
           iconSize: [7, 7], iconAnchor: [3, 3],
         });
-        L.marker([c.lat, c.lon], { icon: iconCups })
-          .bindPopup(buildTooltipCups(c, tooltipCups), { maxWidth: 300 })
-          .addTo(cupsLayerRef.current);
+        const marker = L.marker([c.lat!, c.lon!], { icon: iconCups })
+          .bindPopup(buildTooltipCups(c, tooltipCups), { maxWidth: 300 });
+
+        if (esBT) marker.addTo(cupsBTLayerRef.current);
+        else marker.addTo(cupsMTLayerRef.current);
       });
-      const validos = cups.filter(c => c.lat !== null && c.lon !== null);
-      if (validos.length > 0 && mapaInstancia.current) {
-        const bounds = L.latLngBounds(validos.map(c => [c.lat!, c.lon!] as [number, number]));
+
+      if (allValid.length > 0 && mapaInstancia.current) {
+        const bounds = L.latLngBounds(allValid.map(c => [c.lat!, c.lon!] as [number, number]));
         mapaInstancia.current.fitBounds(bounds, { padding: [40, 40] });
       }
     });
-  }, [cups, mostrarCups, tooltipCups]);
+  }, [cups, mostrarCupsBT, mostrarCupsMT, tooltipCups]);
 
   return (
     <>

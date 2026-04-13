@@ -167,7 +167,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [loadingCups,   setLoadingCups]   = useState(false);
   const [loadingTramos, setLoadingTramos] = useState(false);
   const [mostrarCts,  setMostrarCts]  = useState(true);
-  const [mostrarCups, setMostrarCups] = useState(true);
+  const [mostrarCupsBT, setMostrarCupsBT] = useState(true);
+  const [mostrarCupsMT, setMostrarCupsMT] = useState(true);
   const [mostrarBT,   setMostrarBT]   = useState(true);
   const [mostrarMT,   setMostrarMT]   = useState(true);
 
@@ -381,6 +382,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const tramosFiltrados = tramos.filter(t => esBTTramo(t) ? mostrarBT : mostrarMT);
   const numBT = tramos.filter(t =>  esBTTramo(t)).length;
   const numMT = tramos.filter(t => !esBTTramo(t)).length;
+  const numCupsBT = cups.filter(c => c.tension_kv === null || c.tension_kv <= 1).length;
+  const numCupsMT = cups.filter(c => c.tension_kv !== null && c.tension_kv > 1).length;
 
   const esBTLinea = (id: string): boolean => {
     const tension = tensionPorLinea.get(id);
@@ -689,10 +692,15 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                         <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", display: "inline-block" }} />
                         CTs {loadingCts ? "…" : `(${cts.length})`}
                       </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-                        <input type="checkbox" checked={mostrarCups} onChange={e => setMostrarCups(e.target.checked)} />
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
+                        <input type="checkbox" checked={mostrarCupsBT} onChange={e => setMostrarCupsBT(e.target.checked)} />
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#378ADD", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
-                        CUPS {loadingCups ? "…" : `(${cups.length})`}
+                        CUPS BT {loadingCups ? "…" : `(${numCupsBT})`}
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+                        <input type="checkbox" checked={mostrarCupsMT} onChange={e => setMostrarCupsMT(e.target.checked)} />
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#7C3AED", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
+                        CUPS MT {loadingCups ? "…" : `(${numCupsMT})`}
                       </label>
                     </>
                   )}
@@ -778,7 +786,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       <div style={{ marginTop: 4 }}>
                         {[
                           { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
-                          { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",      radius: "50%" as const },
+                          { color: "#378ADD", w: 7,  h: 7,  label: "CUPS BT",      radius: "50%" as const },
+                          { color: "#7C3AED", w: 7,  h: 7,  label: "CUPS MT",      radius: "50%" as const },
                         ].map(({ color, w, h, label, radius, border }) => (
                           <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
                             <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
@@ -792,7 +801,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       { color: "#A855F7", w: 16, h: 3,  label: "Línea MT",                radius: 2 },
                       { color: "#F59E0B", w: 16, h: 3,  label: "Línea BT",                radius: 2 },
                       { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
-                      { color: "#378ADD", w: 7,  h: 7,  label: "Punto de suministro",     radius: "50%" as const },
+                      { color: "#378ADD", w: 7,  h: 7,  label: "CUPS BT",     radius: "50%" as const },
+                      { color: "#7C3AED", w: 7,  h: 7,  label: "CUPS MT",     radius: "50%" as const },
                     ].map(({ color, w, h, label, radius, border }) => (
                       <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
                         <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
@@ -815,7 +825,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   cups={cups}
                   tramos={tramosFiltrados}
                   mostrarCts={mostrarCts}
-                  mostrarCups={mostrarCups}
+                  mostrarCupsBT={mostrarCupsBT}
+                  mostrarCupsMT={mostrarCupsMT}
                   mostrarLineas={mostrarLineas}
                   lineaSeleccionada={lineaSeleccionada}
                   tooltipLineas={tooltipLineas}
