@@ -29,6 +29,8 @@ from app.topologia.schemas import (
     ImportarTopologiaResponse,
     LineaTablaRead,
     TramoMapaRead,
+    TramoTablaRead,
+
 )
 
 router = APIRouter(prefix="/topologia", tags=["topologia"])
@@ -331,6 +333,24 @@ def get_tabla_cts(
         limit=limit, offset=offset,
     )
     return {"items": [CtTablaRead(**item) for item in items], "total": total}
+
+# ── Tabla de Tramos — paginación servidor ─────────────────────────────────────
+
+@router.get("/tabla/tramos")
+def get_tabla_tramos(
+    empresa_id:   int           = Query(...),
+    id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado a la línea"),
+    limit:        int           = Query(50, ge=1, le=500),
+    offset:       int           = Query(0, ge=0),
+    db:           Session       = Depends(get_db),
+    current_user: User          = Depends(get_current_user),
+) -> Dict[str, Any]:
+    _assert_not_viewer(current_user)
+    items, total = services.list_tramos_tabla(
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+        id_ct=id_ct, limit=limit, offset=offset,
+    )
+    return {"items": [TramoTablaRead(**item) for item in items], "total": total}
 
 
 

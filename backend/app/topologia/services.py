@@ -1485,3 +1485,52 @@ def list_cts_tabla(
             "num_cups":               cups_count.get(ct.id_ct, 0),
         })
     return items, total
+
+def list_tramos_tabla(
+    db: Session, tenant_id: int, empresa_id: int,
+    id_ct: Optional[str] = None,
+    limit: int = 500, offset: int = 0,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Devuelve tramos GIS paginados con datos de LineaInventario via join."""
+    q = (
+        db.query(LineaTramo, LineaInventario)
+        .outerjoin(
+            LineaInventario,
+            (LineaInventario.id_tramo   == LineaTramo.id_linea) &
+            (LineaInventario.tenant_id  == LineaTramo.tenant_id) &
+            (LineaInventario.empresa_id == LineaTramo.empresa_id),
+        )
+        .filter(
+            LineaTramo.tenant_id  == tenant_id,
+            LineaTramo.empresa_id == empresa_id,
+        )
+    )
+    if id_ct:
+        q = q.filter(LineaInventario.id_ct == id_ct)
+
+    total = q.count()
+    filas = q.order_by(LineaTramo.id_linea, LineaTramo.orden).offset(offset).limit(limit).all()
+
+    items = []
+    for tramo, linea in filas:
+        items.append({
+            "id_tramo":    tramo.id_tramo,
+            "id_linea":    tramo.id_linea,
+            "orden":       tramo.orden,
+            "num_tramo":   tramo.num_tramo,
+            "lat_ini":     tramo.lat_ini,
+            "lon_ini":     tramo.lon_ini,
+            "lat_fin":     tramo.lat_fin,
+            "lon_fin":     tramo.lon_fin,
+            "cini":                 linea.cini                 if linea else None,
+            "codigo_ccuu":          linea.codigo_ccuu          if linea else None,
+            "nudo_inicio":          linea.nudo_inicio          if linea else None,
+            "nudo_fin":             linea.nudo_fin             if linea else None,
+            "ccaa_1":               linea.ccaa_1               if linea else None,
+            "ccaa_2":               linea.ccaa_2               if linea else None,
+            "tension_kv":           float(linea.tension_kv) if linea and linea.tension_kv is not None else None,
+            "longitud_km":          float(linea.longitud_km) if linea and linea.longitud_km is not None else None,
+            "id_ct":                linea.id_ct                if linea else None,
+            "metodo_asignacion_ct": linea.metodo_asignacion_ct if linea else None,
+        })
+    return items, total

@@ -315,6 +315,33 @@ class CupsTablaRead(BaseModel):
         from_attributes = True
 
 
+# ── Tabla Tramos (B11) — para la vista de gestión ────────────────────────────
+
+class TramoTablaRead(BaseModel):
+    id_tramo:    str
+    id_linea:    Optional[str]
+    orden:       Optional[int]
+    num_tramo:   Optional[int]
+    lat_ini:     Optional[float]
+    lon_ini:     Optional[float]
+    lat_fin:     Optional[float]
+    lon_fin:     Optional[float]
+    # Campos de LineaInventario (join)
+    cini:                    Optional[str]    = None
+    codigo_ccuu:             Optional[str]    = None
+    nudo_inicio:             Optional[str]    = None
+    nudo_fin:                Optional[str]    = None
+    ccaa_1:                  Optional[str]    = None
+    ccaa_2:                  Optional[str]    = None
+    tension_kv:              Optional[float]  = None
+    longitud_km:             Optional[float]  = None
+    id_ct:                   Optional[str]    = None
+    metodo_asignacion_ct:    Optional[str]    = None
+
+    class Config:
+        from_attributes = True
+
+
 # ── Mapa — CT ─────────────────────────────────────────────────────────────────
 
 # ── Tabla CTs — para la vista de gestión ──────────────────────────────────────

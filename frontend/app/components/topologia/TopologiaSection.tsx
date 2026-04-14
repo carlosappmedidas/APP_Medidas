@@ -108,6 +108,15 @@ interface CtTabla {
   num_trafos: number | null; num_celdas: number | null; num_cups: number | null;
 }
 
+interface TramoTabla {
+  [key: string]: unknown;
+  id_tramo: string; id_linea: string | null; orden: number | null; num_tramo: number | null;
+  lat_ini: number | null; lon_ini: number | null; lat_fin: number | null; lon_fin: number | null;
+  cini: string | null; codigo_ccuu: string | null; nudo_inicio: string | null; nudo_fin: string | null;
+  ccaa_1: string | null; ccaa_2: string | null; tension_kv: number | null; longitud_km: number | null;
+  id_ct: string | null; metodo_asignacion_ct: string | null;
+}
+
 interface Props {
   token: string | null; currentUser: User | null;
   tooltipLineas: TooltipLineasConfig; tooltipTramos: TooltipTramosConfig;
@@ -232,7 +241,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [busquedaLineaPendiente, setBusquedaLineaPendiente] = useState<string>("");
   const inputBusquedaLineaRef = useRef<HTMLInputElement>(null);
 
-  const [tablaActiva,    setTablaActiva]    = useState<"lineas" | "cups" | "celdas" | "cts">("lineas");
+  const [tablaActiva,    setTablaActiva]    = useState<"lineas" | "cups" | "celdas" | "cts" | "tramos">("lineas");
   const [calcCt,         setCalcCt]         = useState(false);
   const [calcCtResult,   setCalcCtResult]   = useState<CalcCtResult | null>(null);
   const [calcCtError,    setCalcCtError]    = useState<string | null>(null);
@@ -248,6 +257,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [pageSizeCts,    setPageSizeCts]    = useState(50);
   const tablaCtsRef = useRef<HTMLDivElement>(null);
   const [minHCts,        setMinHCts]        = useState<number | undefined>(undefined);
+  const [tramosTabla,    setTramosTabla]    = useState<TramoTabla[]>([]);
+  const [totalTramos2,   setTotalTramos2]   = useState(0);
+  const [pageTramos,     setPageTramos]     = useState(0);
+  const [pageSizeTramos, setPageSizeTramos] = useState(50);
+  const tablaTramosRef = useRef<HTMLDivElement>(null);
+  const [minHTramos,     setMinHTramos]     = useState<number | undefined>(undefined);
   const [loadingTabla,   setLoadingTabla]   = useState(false);
   const [hasLoadedTabla, setHasLoadedTabla] = useState(false);
   const [filtroCtTabla,  setFiltroCtTabla]  = useState<string>("");
@@ -413,6 +428,23 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     finally { setLoadingTabla(false); setMinHCts(undefined); }
   }, [token, empresaId, pageCts, pageSizeCts]);
 
+    const cargarTablaTramos = useCallback(async (page = pageTramos, size = pageSizeTramos) => {
+    if (!token || !empresaId) return;
+    if (tablaTramosRef.current) setMinHTramos(tablaTramosRef.current.offsetHeight);
+    setLoadingTabla(true);
+    try {
+      const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
+      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      const res = await fetch(`${API_BASE_URL}/topologia/tabla/tramos?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setTramosTabla(data.items ?? []);
+      setTotalTramos2(data.total ?? 0);
+      setHasLoadedTabla(true);
+    } catch { setTramosTabla([]); setTotalTramos2(0); }
+    finally { setLoadingTabla(false); setMinHTramos(undefined); }
+  }, [token, empresaId, filtroCtTabla, pageTramos, pageSizeTramos]);
+
   useEffect(() => {
     if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -428,8 +460,10 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       if (tablaActiva === "lineas") cargarTablaLineas(0, pageSizeLineas);
       else if (tablaActiva === "cups") cargarTablaCups(0, pageSizeCups);
       else if (tablaActiva === "celdas") cargarTablaCeldas(0, pageSizeCeldas);
-      else cargarTablaCts(0, pageSizeCts);
+      else if (tablaActiva === "cts") cargarTablaCts(0, pageSizeCts);
+      else if (tablaActiva === "tramos") cargarTablaTramos(0, pageSizeTramos);
     }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId, panelTablasOpen, tablaActiva]);
 
@@ -456,6 +490,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       cargarTablaCts(pageCts, pageSizeCts);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageCts, pageSizeCts]);
+
+  useEffect(() => {
+    if (empresaId && panelTablasOpen && tablaActiva === "tramos" && hasLoadedTabla)
+      cargarTablaTramos(pageTramos, pageSizeTramos);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageTramos, pageSizeTramos]);
 
   const tramosFiltrados = tramos.filter(t => esBTTramo(t) ? mostrarBT : mostrarMT);
   const numBT = tramos.filter(t =>  esBTTramo(t)).length;
@@ -493,6 +533,9 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const totalPagCts    = Math.max(1, Math.ceil(totalCts / pageSizeCts));
   const startCts       = pageCts * pageSizeCts + 1;
   const endCts         = Math.min(pageCts * pageSizeCts + ctsTabla.length, totalCts);
+  const totalPagTramos = Math.max(1, Math.ceil(totalTramos2 / pageSizeTramos));
+  const startTramos    = pageTramos * pageSizeTramos + 1;
+  const endTramos      = Math.min(pageTramos * pageSizeTramos + tramosTabla.length, totalTramos2);
 
   const toggleCt = (id: string) => {
     setCtsSeleccionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -653,15 +696,15 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   type ColDef<T> = { cfgKey: string; label: string; render: (row: T) => React.ReactNode; special?: boolean };
 
   const LINEAS_COLS: ColDef<LineaTabla>[] = [
-    { cfgKey: "id_tramo",             label: "ID Tramo",       render: r => <span style={{ fontFamily: "monospace" }}>{r.id_tramo}</span> },
+    { cfgKey: "identificador_tramo",  label: "ID Tramo",       render: r => <span style={{ fontFamily: "monospace" }}>{r.id_tramo}</span> },
     { cfgKey: "cini",                 label: "CINI",           render: r => r.cini ?? "—" },
     { cfgKey: "codigo_ccuu",          label: "CCUU",           render: r => r.codigo_ccuu ?? "—" },
-    { cfgKey: "nudo_inicio",          label: "Nudo inicio",    render: r => r.nudo_inicio ?? "—" },
-    { cfgKey: "nudo_fin",             label: "Nudo fin",       render: r => r.nudo_fin ?? "—" },
+    { cfgKey: "nudo_inicial",         label: "Nudo inicio",    render: r => r.nudo_inicio ?? "—" },
+    { cfgKey: "nudo_final",           label: "Nudo fin",       render: r => r.nudo_fin ?? "—" },
     { cfgKey: "ccaa_1",               label: "CCAA 1",         render: r => r.ccaa_1 ?? "—" },
     { cfgKey: "ccaa_2",               label: "CCAA 2",         render: r => r.ccaa_2 ?? "—" },
     { cfgKey: "propiedad",            label: "Propiedad",      render: r => r.propiedad ?? "—" },
-    { cfgKey: "tension",              label: "Tensión",        render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
+    { cfgKey: "tension_explotacion",  label: "Tensión",        render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
     { cfgKey: "tension_construccion", label: "T. construcc.",  render: r => r.tension_construccion_kv != null ? `${r.tension_construccion_kv} kV` : "—" },
     { cfgKey: "longitud",             label: "Long.",          render: r => r.longitud_km != null ? `${r.longitud_km.toFixed(3)} km` : "—" },
     { cfgKey: "resistencia",          label: "R (Ω)",          render: r => r.resistencia_ohm ?? "—" },
@@ -682,9 +725,9 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     { cfgKey: "im_trabajos",          label: "IM Trab.",       render: r => r.im_trabajos ?? "—" },
     { cfgKey: "valor_auditado",       label: "V. auditado",   render: r => r.valor_auditado ?? "—" },
     { cfgKey: "financiado",           label: "Financ.",        render: r => r.financiado ?? "—" },
-    { cfgKey: "subv_europeas",        label: "Subv. EU",       render: r => r.subvenciones_europeas ?? "—" },
-    { cfgKey: "subv_nacionales",      label: "Subv. nac.",     render: r => r.subvenciones_nacionales ?? "—" },
-    { cfgKey: "subv_prtr",            label: "Subv. PRTR",     render: r => r.subvenciones_prtr ?? "—" },
+    { cfgKey: "subvenciones_europeas",   label: "Subv. EU",    render: r => r.subvenciones_europeas ?? "—" },
+    { cfgKey: "subvenciones_nacionales", label: "Subv. nac.",  render: r => r.subvenciones_nacionales ?? "—" },
+    { cfgKey: "subvenciones_prtr",       label: "Subv. PRTR",  render: r => r.subvenciones_prtr ?? "—" },
     { cfgKey: "cuenta",               label: "Cuenta",         render: r => r.cuenta ?? "—" },
     { cfgKey: "avifauna",             label: "Avifauna",       render: r => r.avifauna ?? "—" },
     { cfgKey: "identificador_baja",   label: "ID baja",        render: r => r.identificador_baja ?? "—" },
@@ -742,43 +785,61 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   ];
 
   const CTS_COLS: ColDef<CtTabla>[] = [
-    { cfgKey: "nombre",               label: "Nombre",         render: r => <span style={{ fontWeight: 600 }}>{r.nombre}</span> },
-    { cfgKey: "id_ct",                label: "ID CT",          render: r => <span style={{ fontFamily: "monospace" }}>{r.id_ct}</span> },
-    { cfgKey: "cini",                 label: "CINI",           render: r => r.cini ?? "—" },
-    { cfgKey: "codigo_ccuu",          label: "CCUU",           render: r => r.codigo_ccuu ?? "—" },
-    { cfgKey: "tension",              label: "Tensión",        render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
-    { cfgKey: "tension_construccion", label: "T. construcc.",  render: r => r.tension_construccion_kv != null ? `${r.tension_construccion_kv} kV` : "—" },
-    { cfgKey: "potencia",             label: "Potencia",       render: r => r.potencia_kva != null ? `${r.potencia_kva} kVA` : "—" },
-    { cfgKey: "nudo_alta",            label: "Nudo alta",      render: r => r.nudo_alta ?? "—" },
-    { cfgKey: "nudo_baja",            label: "Nudo baja",      render: r => r.nudo_baja ?? "—" },
-    { cfgKey: "municipio",            label: "Municipio",      render: r => r.municipio_ine ?? "—" },
-    { cfgKey: "provincia",            label: "Provincia",      render: r => r.provincia ?? "—" },
-    { cfgKey: "ccaa",                 label: "CCAA",           render: r => r.ccaa ?? "—" },
-    { cfgKey: "zona",                 label: "Zona",           render: r => r.zona ?? "—" },
-    { cfgKey: "propiedad",            label: "Propiedad",      render: r => r.propiedad ?? "—" },
-    { cfgKey: "estado",               label: "Estado",         render: r => r.estado ?? "—" },
-    { cfgKey: "modelo",               label: "Modelo",         render: r => r.modelo ?? "—" },
-    { cfgKey: "punto_frontera",       label: "Pto front.",     render: r => r.punto_frontera === 1 ? "✅" : "—" },
-    { cfgKey: "fecha_aps",            label: "APS",            render: r => r.fecha_aps ?? "—" },
-    { cfgKey: "causa_baja",           label: "Causa baja",     render: r => r.causa_baja ?? "—" },
-    { cfgKey: "fecha_baja",           label: "F. baja",        render: r => r.fecha_baja ?? "—" },
-    { cfgKey: "fecha_ip",             label: "F. IP",          render: r => r.fecha_ip ?? "—" },
-    { cfgKey: "tipo_inversion",       label: "Tipo inv.",      render: r => r.tipo_inversion ?? "—" },
-    { cfgKey: "motivacion",           label: "Motivación",     render: r => r.motivacion ?? "—" },
-    { cfgKey: "im_tramites",          label: "IM Trám.",       render: r => r.im_tramites ?? "—" },
-    { cfgKey: "im_construccion",      label: "IM Constr.",     render: r => r.im_construccion ?? "—" },
-    { cfgKey: "im_trabajos",          label: "IM Trab.",       render: r => r.im_trabajos ?? "—" },
-    { cfgKey: "valor_auditado",       label: "V. auditado",   render: r => r.valor_auditado ?? "—" },
-    { cfgKey: "financiado",           label: "Financ.",        render: r => r.financiado ?? "—" },
-    { cfgKey: "subv_europeas",        label: "Subv. EU",       render: r => r.subvenciones_europeas ?? "—" },
-    { cfgKey: "subv_nacionales",      label: "Subv. nac.",     render: r => r.subvenciones_nacionales ?? "—" },
-    { cfgKey: "subv_prtr",            label: "Subv. PRTR",     render: r => r.subvenciones_prtr ?? "—" },
-    { cfgKey: "cuenta",               label: "Cuenta",         render: r => r.cuenta ?? "—" },
-    { cfgKey: "avifauna",             label: "Avifauna",       render: r => r.avifauna ?? "—" },
-    { cfgKey: "identificador_baja",   label: "ID baja",        render: r => r.identificador_baja ?? "—" },
-    { cfgKey: "num_trafos",           label: "Trafos",         render: r => r.num_trafos ?? 0 },
-    { cfgKey: "num_celdas",           label: "Celdas",         render: r => r.num_celdas ?? 0 },
-    { cfgKey: "num_cups",             label: "CUPS",           render: r => r.num_cups ?? 0 },
+    { cfgKey: "nombre",                label: "Nombre",         render: r => <span style={{ fontWeight: 600 }}>{r.nombre}</span> },
+    { cfgKey: "identificador_ct",      label: "ID CT",          render: r => <span style={{ fontFamily: "monospace" }}>{r.id_ct}</span> },
+    { cfgKey: "cini",                  label: "CINI",           render: r => r.cini ?? "—" },
+    { cfgKey: "codigo_ccuu",           label: "CCUU",           render: r => r.codigo_ccuu ?? "—" },
+    { cfgKey: "tension_explotacion",   label: "Tensión",        render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
+    { cfgKey: "tension_construccion",  label: "T. construcc.",  render: r => r.tension_construccion_kv != null ? `${r.tension_construccion_kv} kV` : "—" },
+    { cfgKey: "potencia",              label: "Potencia",       render: r => r.potencia_kva != null ? `${r.potencia_kva} kVA` : "—" },
+    { cfgKey: "nudo_alta",             label: "Nudo alta",      render: r => r.nudo_alta ?? "—" },
+    { cfgKey: "nudo_baja",             label: "Nudo baja",      render: r => r.nudo_baja ?? "—" },
+    { cfgKey: "municipio",             label: "Municipio",      render: r => r.municipio_ine ?? "—" },
+    { cfgKey: "provincia",             label: "Provincia",      render: r => r.provincia ?? "—" },
+    { cfgKey: "ccaa",                  label: "CCAA",           render: r => r.ccaa ?? "—" },
+    { cfgKey: "zona",                  label: "Zona",           render: r => r.zona ?? "—" },
+    { cfgKey: "propiedad",             label: "Propiedad",      render: r => r.propiedad ?? "—" },
+    { cfgKey: "estado",                label: "Estado",         render: r => r.estado ?? "—" },
+    { cfgKey: "modelo",                label: "Modelo",         render: r => r.modelo ?? "—" },
+    { cfgKey: "punto_frontera",        label: "Pto front.",     render: r => r.punto_frontera === 1 ? "✅" : "—" },
+    { cfgKey: "fecha_aps",             label: "APS",            render: r => r.fecha_aps ?? "—" },
+    { cfgKey: "causa_baja",            label: "Causa baja",     render: r => r.causa_baja ?? "—" },
+    { cfgKey: "fecha_baja",            label: "F. baja",        render: r => r.fecha_baja ?? "—" },
+    { cfgKey: "fecha_ip",              label: "F. IP",          render: r => r.fecha_ip ?? "—" },
+    { cfgKey: "tipo_inversion",        label: "Tipo inv.",      render: r => r.tipo_inversion ?? "—" },
+    { cfgKey: "motivacion",            label: "Motivación",     render: r => r.motivacion ?? "—" },
+    { cfgKey: "im_tramites",           label: "IM Trám.",       render: r => r.im_tramites ?? "—" },
+    { cfgKey: "im_construccion",       label: "IM Constr.",     render: r => r.im_construccion ?? "—" },
+    { cfgKey: "im_trabajos",           label: "IM Trab.",       render: r => r.im_trabajos ?? "—" },
+    { cfgKey: "valor_auditado",        label: "V. auditado",   render: r => r.valor_auditado ?? "—" },
+    { cfgKey: "financiado",            label: "Financ.",        render: r => r.financiado ?? "—" },
+    { cfgKey: "subvenciones_europeas",   label: "Subv. EU",    render: r => r.subvenciones_europeas ?? "—" },
+    { cfgKey: "subvenciones_nacionales", label: "Subv. nac.",  render: r => r.subvenciones_nacionales ?? "—" },
+    { cfgKey: "subvenciones_prtr",       label: "Subv. PRTR",  render: r => r.subvenciones_prtr ?? "—" },
+    { cfgKey: "cuenta",                label: "Cuenta",         render: r => r.cuenta ?? "—" },
+    { cfgKey: "avifauna",              label: "Avifauna",       render: r => r.avifauna ?? "—" },
+    { cfgKey: "identificador_baja",    label: "ID baja",        render: r => r.identificador_baja ?? "—" },
+    { cfgKey: "num_trafos",            label: "Trafos",         render: r => r.num_trafos ?? 0 },
+    { cfgKey: "num_celdas",            label: "Celdas",         render: r => r.num_celdas ?? 0 },
+    { cfgKey: "num_cups",              label: "CUPS",           render: r => r.num_cups ?? 0 },
+  ];
+
+    const TRAMOS_COLS: ColDef<TramoTabla>[] = [
+    { cfgKey: "identificador_tramo",  label: "ID Tramo",    render: r => <span style={{ fontFamily: "monospace" }}>{r.id_tramo}</span> },
+    { cfgKey: "id_linea",             label: "ID Línea",    render: r => r.id_linea ?? "—" },
+    { cfgKey: "orden",                label: "Orden",       render: r => r.orden ?? "—" },
+    { cfgKey: "num_tramo",            label: "Nº tramo",    render: r => r.num_tramo ?? "—" },
+    { cfgKey: "coordenadas",          label: "GPS ini",     render: r => r.lat_ini != null ? `${r.lat_ini.toFixed(5)}, ${r.lon_ini?.toFixed(5)}` : "—" },
+    { cfgKey: "cini",                 label: "CINI",        render: r => r.cini ?? "—" },
+    { cfgKey: "codigo_ccuu",          label: "CCUU",        render: r => r.codigo_ccuu ?? "—" },
+    { cfgKey: "nudo_inicial",         label: "Nudo ini",    render: r => r.nudo_inicio ?? "—" },
+    { cfgKey: "nudo_final",           label: "Nudo fin",    render: r => r.nudo_fin ?? "—" },
+    { cfgKey: "ccaa_1",               label: "CCAA 1",      render: r => r.ccaa_1 ?? "—" },
+    { cfgKey: "ccaa_2",               label: "CCAA 2",      render: r => r.ccaa_2 ?? "—" },
+    { cfgKey: "tension_explotacion",  label: "Tensión",     render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
+    { cfgKey: "longitud",             label: "Long.",       render: r => r.longitud_km != null ? `${r.longitud_km.toFixed(3)} km` : "—" },
+    { cfgKey: "ct_asignado",          label: "CT",          render: r => r.id_ct ? (cts.find(c => c.id_ct === r.id_ct)?.nombre ?? r.id_ct) : "—" },
+    { cfgKey: "metodo_asignacion",    label: "Método",      render: r => <BadgeMetodo metodo={r.metodo_asignacion_ct} /> },
   ];
 
   return (
@@ -1112,17 +1173,18 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             )}
 
             <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--card-border)" }}>
-              {(["lineas", "cups", "celdas", "cts"] as const).map(tab => (
+              {(["lineas", "cups", "celdas", "cts", "tramos"] as const).map(tab => (
                 <button key={tab} type="button"
                   onClick={() => {
                     setTablaActiva(tab); setHasLoadedTabla(false);
                     if (tab === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
                     else if (tab === "cups") { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
                     else if (tab === "celdas") { setPageCeldas(0); cargarTablaCeldas(0, pageSizeCeldas); }
-                    else { setPageCts(0); cargarTablaCts(0, pageSizeCts); }
+                    else if (tab === "cts") { setPageCts(0); cargarTablaCts(0, pageSizeCts); }
+                    else { setPageTramos(0); cargarTablaTramos(0, pageSizeTramos); }
                   }}
                   style={{ padding: "6px 16px", fontSize: 11, fontWeight: 600, background: "none", border: "none", cursor: "pointer", borderBottom: tablaActiva === tab ? "2px solid var(--primary)" : "2px solid transparent", color: tablaActiva === tab ? "var(--primary)" : "var(--text-muted)" }}>
-                  {tab === "lineas" ? `Líneas → CT (${totalLineas.toLocaleString()})` : tab === "cups" ? `CUPS → CT (${totalCups.toLocaleString()})` : tab === "celdas" ? `Celdas (${totalCeldas.toLocaleString()})` : `CTs (${totalCts.toLocaleString()})`}
+                  {tab === "lineas" ? `Líneas → CT (${totalLineas.toLocaleString()})` : tab === "cups" ? `CUPS → CT (${totalCups.toLocaleString()})` : tab === "celdas" ? `Celdas (${totalCeldas.toLocaleString()})` : tab === "cts" ? `CTs (${totalCts.toLocaleString()})` : `Tramos (${totalTramos2.toLocaleString()})`}
                 </button>
               ))}
             </div>
@@ -1360,6 +1422,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 ) : null}
               </div>
             )}
+
             {/* ── Tabla CTs ── */}
             {tablaActiva === "cts" && (
               <div style={{ overflowX: "auto" }}>
@@ -1395,6 +1458,47 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       setPageSize={v => { setPageSizeCts(v); setPageCts(0); }}
                       currentPage={pageCts} totalPages={totalPagCts}
                       setPage={p => setPageCts(p)}
+                      compact />
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* ── Tabla Tramos ── */}
+            {tablaActiva === "tramos" && (
+              <div style={{ overflowX: "auto" }}>
+                {!hasLoadedTabla && loadingTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                ) : tramosTabla.length === 0 && hasLoadedTabla ? (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
+                ) : tramosTabla.length > 0 ? (
+                  <div ref={tablaTramosRef} style={{ position: "relative", opacity: loadingTabla ? 0.45 : 1, transition: "opacity 0.18s ease", minHeight: minHTramos }}>
+                    {loadingTabla && <TableLoadingOverlay />}
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
+                          {TRAMOS_COLS.map(c => (
+                            <th key={c.cfgKey} style={thStyle}>{c.label}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tramosTabla.map(t => (
+                          <tr key={t.id_tramo} style={{ borderBottom: "1px solid var(--card-border)" }}>
+                            {TRAMOS_COLS.map(col => (
+                              <td key={col.cfgKey} style={tdStyle}>{col.render(t)}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <TablePaginationFooter
+                      loading={loadingTabla} hasLoadedOnce={hasLoadedTabla}
+                      totalFilas={totalTramos2} startIndex={startTramos - 1} endIndex={endTramos}
+                      pageSize={pageSizeTramos}
+                      setPageSize={v => { setPageSizeTramos(v); setPageTramos(0); }}
+                      currentPage={pageTramos} totalPages={totalPagTramos}
+                      setPage={p => setPageTramos(p)}
                       compact />
                   </div>
                 ) : null}
