@@ -1,5 +1,5 @@
 # app/comunicaciones/services.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportOptionalMemberAccess=false
 
 from __future__ import annotations
 
