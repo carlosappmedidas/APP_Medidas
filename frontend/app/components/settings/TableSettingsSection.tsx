@@ -219,6 +219,14 @@ function ColumnsPanel({
         </div>
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5, marginBottom: 3, padding: "0 8px" }}>
+        {[0, 1, 2].map(i => (
+          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0, paddingRight: 20 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", width: 30, textAlign: "center", letterSpacing: "0.03em" }}>Visible</span>
+            <span style={{ width: 16 }} />
+          </div>
+        ))}
+      </div>
       <div
         style={{
           display: "grid",
@@ -242,42 +250,31 @@ function ColumnsPanel({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                padding: "6px 8px",
+                padding: "5px 8px",
                 borderRadius: 6,
-                border: "1px solid var(--card-border)",
-                background: "var(--card-bg)",
+                background: "var(--field-bg-soft)",
                 cursor: "grab",
-                opacity: isVisible ? 1 : 0.45,
+                opacity: isVisible ? 1 : 0.4,
               }}
             >
-              {/* checkbox */}
-              <input
-                type="checkbox"
-                className="ui-checkbox"
-                checked={isVisible}
-                onChange={() => toggleVisible(col.id)}
-                onClick={(e) => e.stopPropagation()}
-                style={{ flexShrink: 0 }}
-              />
               {/* label */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    color: "var(--text)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {col.label}
-                </div>
-              </div>
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: isVisible ? "var(--text)" : "var(--text-muted)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {col.label}
+              </span>
               {/* badge de grupo */}
               <span
                 style={{
-                  fontSize: 8,
+                  fontSize: 9,
                   padding: "1px 5px",
                   borderRadius: 4,
                   flexShrink: 0,
@@ -286,8 +283,16 @@ function ColumnsPanel({
               >
                 {col.group}
               </span>
+              {/* checkbox */}
+              <input
+                type="checkbox"
+                checked={isVisible}
+                onChange={() => toggleVisible(col.id)}
+                onClick={(e) => e.stopPropagation()}
+                style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+              />
               {/* handle arrastre */}
-              <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>☰</span>
+              <span style={{ color: "var(--text-muted)", cursor: "grab", fontSize: 10, marginLeft: 2 }}>⠿</span>
             </div>
           );
         })}
@@ -415,30 +420,32 @@ export default function TableSettingsSection({
         </div>
       </div>
 
+      {/* Separador visual */}
+      <div style={{ borderTop: "1px solid var(--card-border)" }} />
+
       {/* SECCIÓN: COLUMNAS */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
-          Columnas y orden
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Columnas y orden</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Controla qué columnas se muestran en las tablas de medidas. Arrastra para reordenar.</div>
         </div>
 
         {/* Tabs General / PS */}
-        <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--card-border)" }}>
           {(["general", "ps"] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setActiveTable(t)}
               style={{
-                padding: "5px 14px",
-                borderRadius: 7,
-                fontSize: 12,
-                fontWeight: activeTable === t ? 500 : 400,
+                padding: "6px 14px",
+                fontSize: 11,
+                fontWeight: 600,
                 cursor: "pointer",
-                border: activeTable === t
-                  ? "1px solid var(--btn-secondary-bg)"
-                  : "1px solid var(--card-border)",
-                background: activeTable === t ? "var(--nav-item-bg)" : "transparent",
-                color: activeTable === t ? "var(--text)" : "var(--text-muted)",
+                background: "none",
+                border: "none",
+                borderBottom: activeTable === t ? "2px solid var(--primary)" : "2px solid transparent",
+                color: activeTable === t ? "var(--primary)" : "var(--text-muted)",
               }}
             >
               {t === "general" ? "Medidas General" : "Medidas PS"}
