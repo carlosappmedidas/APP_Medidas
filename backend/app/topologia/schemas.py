@@ -341,6 +341,54 @@ class TramoTablaRead(BaseModel):
     class Config:
         from_attributes = True
 
+# ── Crear CT manual ───────────────────────────────────────────────────────────
+
+class CtCreateRequest(BaseModel):
+    """Payload para crear un CT manualmente — todos los campos del B2."""
+    id_ct:                  str
+    nombre:                 str
+    cini:                   Optional[str]   = None
+    codigo_ccuu:            Optional[str]   = None
+    nudo_alta:              Optional[str]   = None
+    nudo_baja:              Optional[str]   = None
+    tension_kv:             Optional[float] = None
+    tension_construccion_kv: Optional[float] = None
+    potencia_kva:           Optional[float] = None
+    lat:                    Optional[float] = None
+    lon:                    Optional[float] = None
+    municipio_ine:          Optional[str]   = None
+    provincia:              Optional[str]   = None
+    ccaa:                   Optional[str]   = None
+    zona:                   Optional[str]   = None
+    propiedad:              Optional[str]   = None
+    estado:                 Optional[int]   = None
+    modelo:                 Optional[str]   = None
+    punto_frontera:         Optional[int]   = None
+    fecha_aps:              Optional[date]  = None
+    causa_baja:             Optional[int]   = None
+    fecha_baja:             Optional[date]  = None
+    fecha_ip:               Optional[date]  = None
+    tipo_inversion:         Optional[int]   = None
+    financiado:             Optional[float] = None
+    im_tramites:            Optional[float] = None
+    im_construccion:        Optional[float] = None
+    im_trabajos:            Optional[float] = None
+    subvenciones_europeas:  Optional[float] = None
+    subvenciones_nacionales: Optional[float] = None
+    subvenciones_prtr:      Optional[float] = None
+    valor_auditado:         Optional[float] = None
+    cuenta:                 Optional[str]   = None
+    motivacion:             Optional[str]   = None
+    avifauna:               Optional[int]   = None
+    identificador_baja:     Optional[str]   = None
+
+
+class CtCreateResponse(BaseModel):
+    """Respuesta tras crear un CT."""
+    ok:     bool
+    id_ct:  str
+    accion: str  # "insertado"
+
 
 # ── Mapa — CT ─────────────────────────────────────────────────────────────────
 

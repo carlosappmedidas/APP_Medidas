@@ -157,8 +157,8 @@ def parsear_b1(contenido: str) -> list[dict[str, Any]]:
             "nudo_fin":    _get(campos, 4)  or None,
             "ccaa_1":      _get(campos, 5)  or None,
 
-            # Nivel tensión (campo 6 en práctica contiene 07/08)
-            "nivel_tension": _get(campos, 6) or None,
+            # CCAA_2 — segunda comunidad autónoma (campo 6 de la circular)
+            "ccaa_2": _get(campos, 6) or None,
 
             # Características eléctricas
             "propiedad":              _int(_get(campos, 7)),

@@ -10,6 +10,7 @@ import type {
 } from "./MapaLeaflet";
 import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./MapaLeaflet";
 import TablePaginationFooter from "../ui/TablePaginationFooter";
+import CrearCtModal from "./CrearCtModal";
 import type { TablaLineasConfig, TablaCupsConfig, TablaCeldasConfig, TablaCtsConfig, TablaTramosConfig } from "../settings/TopologiaSettingsSection";
 import { DEFAULT_TABLA_LINEAS, DEFAULT_TABLA_CUPS, DEFAULT_TABLA_CELDAS, DEFAULT_TABLA_CTS, DEFAULT_TABLA_TRAMOS } from "../settings/TopologiaSettingsSection";
 
@@ -291,6 +292,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [minHLineas, setMinHLineas] = useState<number | undefined>(undefined);
   const [minHCups,   setMinHCups]   = useState<number | undefined>(undefined);
   const [minHCeldas, setMinHCeldas] = useState<number | undefined>(undefined);
+
+  const [showCrearCt, setShowCrearCt] = useState(false);
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
@@ -1175,7 +1178,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--card-border)" }}>
+            <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--card-border)", alignItems: "center" }}>
               {(["lineas", "cups", "celdas", "cts", "tramos"] as const).map(tab => (
                 <button key={tab} type="button"
                   onClick={() => {
@@ -1190,6 +1193,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   {tab === "lineas" ? `Líneas → CT (${totalLineas.toLocaleString()})` : tab === "cups" ? `CUPS → CT (${totalCups.toLocaleString()})` : tab === "celdas" ? `Celdas (${totalCeldas.toLocaleString()})` : tab === "cts" ? `CTs (${totalCts.toLocaleString()})` : `Tramos (${totalTramos2.toLocaleString()})`}
                 </button>
               ))}
+              {tablaActiva === "cts" && empresaId && (
+                <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ marginLeft: "auto", fontSize: 10, height: 24 }}
+                  onClick={() => setShowCrearCt(true)}>
+                  + Añadir CT
+                </button>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -1510,6 +1519,14 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
           </div>
         )}
       </div>
+      {showCrearCt && token && empresaId && (
+        <CrearCtModal
+          token={token}
+          empresaId={empresaId as number}
+          onClose={() => setShowCrearCt(false)}
+          onCreated={() => { cargarCts(); cargarTablaCts(0, pageSizeCts); }}
+        />
+      )}
     </div>            
   );
 }

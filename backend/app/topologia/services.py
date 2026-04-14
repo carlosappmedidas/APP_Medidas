@@ -1092,6 +1092,79 @@ def reasignar_fase_cups(
     db.refresh(obj)
     return obj
 
+# ── Crear CT manual ───────────────────────────────────────────────────────────
+
+def crear_ct(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    datos: Dict[str, Any],
+) -> CtInventario:
+    """
+    Crea un nuevo CT manualmente.
+    Lanza ValueError si ya existe un CT con el mismo id_ct para esa empresa.
+    """
+    existente = (
+        db.query(CtInventario)
+        .filter(
+            CtInventario.tenant_id  == tenant_id,
+            CtInventario.empresa_id == empresa_id,
+            CtInventario.id_ct      == datos["id_ct"],
+        )
+        .first()
+    )
+    if existente is not None:
+        raise ValueError(f"Ya existe un CT con id_ct '{datos['id_ct']}' en esta empresa")
+
+    obj = CtInventario(
+        tenant_id  = tenant_id,
+        empresa_id = empresa_id,
+        created_at = _now(),
+        updated_at = _now(),
+    )
+    obj.id_ct                   = datos["id_ct"]
+    obj.nombre                  = datos["nombre"]
+    obj.cini                    = datos.get("cini")
+    obj.codigo_ccuu             = datos.get("codigo_ccuu")
+    obj.nudo_alta               = datos.get("nudo_alta")
+    obj.nudo_baja               = datos.get("nudo_baja")
+    obj.tension_kv              = datos.get("tension_kv")
+    obj.tension_construccion_kv = datos.get("tension_construccion_kv")
+    obj.potencia_kva            = datos.get("potencia_kva")
+    obj.lat                     = datos.get("lat")
+    obj.lon                     = datos.get("lon")
+    obj.municipio_ine           = datos.get("municipio_ine")
+    obj.provincia               = datos.get("provincia")
+    obj.ccaa                    = datos.get("ccaa")
+    obj.zona                    = datos.get("zona")
+    obj.propiedad               = datos.get("propiedad")
+    obj.estado                  = datos.get("estado")
+    obj.modelo                  = datos.get("modelo")
+    obj.punto_frontera          = datos.get("punto_frontera")
+    obj.fecha_aps               = datos.get("fecha_aps")
+    obj.causa_baja              = datos.get("causa_baja")
+    obj.fecha_baja              = datos.get("fecha_baja")
+    obj.fecha_ip                = datos.get("fecha_ip")
+    obj.tipo_inversion          = datos.get("tipo_inversion")
+    obj.financiado              = datos.get("financiado")
+    obj.im_tramites             = datos.get("im_tramites")
+    obj.im_construccion         = datos.get("im_construccion")
+    obj.im_trabajos             = datos.get("im_trabajos")
+    obj.subvenciones_europeas   = datos.get("subvenciones_europeas")
+    obj.subvenciones_nacionales = datos.get("subvenciones_nacionales")
+    obj.subvenciones_prtr       = datos.get("subvenciones_prtr")
+    obj.valor_auditado          = datos.get("valor_auditado")
+    obj.cuenta                  = datos.get("cuenta")
+    obj.motivacion              = datos.get("motivacion")
+    obj.avifauna                = datos.get("avifauna")
+    obj.identificador_baja      = datos.get("identificador_baja")
+
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
 
 # ── Servicio principal de importación ─────────────────────────────────────────
 

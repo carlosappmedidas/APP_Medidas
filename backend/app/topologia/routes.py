@@ -18,6 +18,8 @@ from app.topologia.schemas import (
     CalcAsignacionCtMtResponse,
     CalcAsignacionCtResponse,
     CeldaTablaRead,
+    CtCreateRequest,
+    CtCreateResponse,
     CtTablaRead,
     CtCeldaRead,
     CtDetalleRead,
@@ -30,7 +32,6 @@ from app.topologia.schemas import (
     LineaTablaRead,
     TramoMapaRead,
     TramoTablaRead,
-
 )
 
 router = APIRouter(prefix="/topologia", tags=["topologia"])
@@ -147,6 +148,31 @@ def calcular_ct_mt(
             detail=f"Error calculando asociación CT MT: {str(exc)[:300]}",
         ) from exc
     return CalcAsignacionCtMtResponse(**resultado)
+
+# ── Crear CT manual ───────────────────────────────────────────────────────────
+
+@router.post("/cts", response_model=CtCreateResponse, status_code=status.HTTP_201_CREATED)
+def crear_ct(
+    payload:      CtCreateRequest,
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> CtCreateResponse:
+    """Crea un nuevo CT manualmente con todos los campos del B2."""
+    _assert_not_viewer(current_user)
+    try:
+        services.crear_ct(
+            db=db,
+            tenant_id=_tenant_id(current_user),
+            empresa_id=empresa_id,
+            datos=payload.model_dump(),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return CtCreateResponse(ok=True, id_ct=payload.id_ct, accion="insertado")
 
 
 # ── Detalle de CT (datos + transformadores + celdas) ─────────────────────────
