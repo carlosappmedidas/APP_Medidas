@@ -104,6 +104,7 @@ def explorar_path(config_id: int, path: str = Query("/"), filtro_nombre: Optiona
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
@@ -127,6 +128,7 @@ def descargar_ficheros(config_id: int, payload: DescargarConPathPayload,
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
@@ -143,6 +145,7 @@ def descargar_archivo_navegador(config_id: int, path: str = Query(...), fichero:
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
     return StreamingResponse(io.BytesIO(contenido), media_type="application/octet-stream",
                              headers={"Content-Disposition": f'attachment; filename="{fichero}"'})
@@ -200,6 +203,7 @@ def ejecutar_regla_manual(rule_id: int, db: Session = Depends(get_db), current_u
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
