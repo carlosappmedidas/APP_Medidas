@@ -826,22 +826,23 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     { cfgKey: "num_cups",              label: "CUPS",           render: r => r.num_cups ?? 0 },
   ];
 
-    const TRAMOS_COLS: ColDef<TramoTabla>[] = [
-    { cfgKey: "identificador_tramo",  label: "ID Tramo",    render: r => <span style={{ fontFamily: "monospace" }}>{r.id_tramo}</span> },
-    { cfgKey: "id_linea",             label: "ID Línea",    render: r => r.id_linea ?? "—" },
-    { cfgKey: "orden",                label: "Orden",       render: r => r.orden ?? "—" },
-    { cfgKey: "num_tramo",            label: "Nº tramo",    render: r => r.num_tramo ?? "—" },
-    { cfgKey: "coordenadas",          label: "GPS ini",     render: r => r.lat_ini != null ? `${r.lat_ini.toFixed(5)}, ${r.lon_ini?.toFixed(5)}` : "—" },
-    { cfgKey: "cini",                 label: "CINI",        render: r => r.cini ?? "—" },
-    { cfgKey: "codigo_ccuu",          label: "CCUU",        render: r => r.codigo_ccuu ?? "—" },
-    { cfgKey: "nudo_inicial",         label: "Nudo ini",    render: r => r.nudo_inicio ?? "—" },
-    { cfgKey: "nudo_final",           label: "Nudo fin",    render: r => r.nudo_fin ?? "—" },
-    { cfgKey: "ccaa_1",               label: "CCAA 1",      render: r => r.ccaa_1 ?? "—" },
-    { cfgKey: "ccaa_2",               label: "CCAA 2",      render: r => r.ccaa_2 ?? "—" },
-    { cfgKey: "tension_explotacion",  label: "Tensión",     render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
-    { cfgKey: "longitud",             label: "Long.",       render: r => r.longitud_km != null ? `${r.longitud_km.toFixed(3)} km` : "—" },
-    { cfgKey: "ct_asignado",          label: "CT",          render: r => r.id_ct ? (cts.find(c => c.id_ct === r.id_ct)?.nombre ?? r.id_ct) : "—" },
-    { cfgKey: "metodo_asignacion",    label: "Método",      render: r => <BadgeMetodo metodo={r.metodo_asignacion_ct} /> },
+  const TRAMOS_COLS: ColDef<TramoTabla>[] = [
+    { cfgKey: "segmento",            label: "ID Tramo",    render: r => <span style={{ fontFamily: "monospace" }}>{r.id_tramo}</span> },
+    { cfgKey: "identificador_tramo", label: "ID Línea",    render: r => r.id_linea ?? "—" },
+    { cfgKey: "orden_segmento",      label: "Orden",       render: r => r.orden ?? "—" },
+    { cfgKey: "n_segmentos",         label: "Nº tramo",    render: r => r.num_tramo ?? "—" },
+    { cfgKey: "coordenadas_1",       label: "GPS ini",     render: r => r.lat_ini != null ? `${r.lat_ini.toFixed(5)}, ${r.lon_ini?.toFixed(5)}` : "—" },
+    { cfgKey: "coordenadas_2",       label: "GPS fin",     render: r => r.lat_fin != null ? `${r.lat_fin.toFixed(5)}, ${r.lon_fin?.toFixed(5)}` : "—" },
+    { cfgKey: "longitud_segmento",   label: "Long.",       render: r => r.longitud_km != null ? `${r.longitud_km.toFixed(3)} km` : "—" },
+    { cfgKey: "cini",                label: "CINI",        render: r => r.cini ?? "—" },
+    { cfgKey: "codigo_ccuu",         label: "CCUU",        render: r => r.codigo_ccuu ?? "—" },
+    { cfgKey: "nudo_inicial",        label: "Nudo ini",    render: r => r.nudo_inicio ?? "—" },
+    { cfgKey: "nudo_final",          label: "Nudo fin",    render: r => r.nudo_fin ?? "—" },
+    { cfgKey: "ccaa_1",              label: "CCAA 1",      render: r => r.ccaa_1 ?? "—" },
+    { cfgKey: "ccaa_2",              label: "CCAA 2",      render: r => r.ccaa_2 ?? "—" },
+    { cfgKey: "tension_explotacion", label: "Tensión",     render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
+    { cfgKey: "ct_asignado",         label: "CT",          render: r => r.id_ct ? (cts.find(c => c.id_ct === r.id_ct)?.nombre ?? r.id_ct) : "—" },
+    { cfgKey: "metodo_asignacion",   label: "Método",      render: r => <BadgeMetodo metodo={r.metodo_asignacion_ct} /> },
   ];
 
   return (
@@ -1479,7 +1480,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                          {TRAMOS_COLS.map(c => (
+                          {TRAMOS_COLS.filter(c => tablaTramosConfig[c.cfgKey] !== false).map(c => (
                             <th key={c.cfgKey} style={thStyle}>{c.label}</th>
                           ))}
                         </tr>
@@ -1487,7 +1488,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       <tbody>
                         {tramosTabla.map(t => (
                           <tr key={t.id_tramo} style={{ borderBottom: "1px solid var(--card-border)" }}>
-                            {TRAMOS_COLS.map(col => (
+                            {TRAMOS_COLS.filter(col => tablaTramosConfig[col.cfgKey] !== false).map(col => (
                               <td key={col.cfgKey} style={tdStyle}>{col.render(t)}</td>
                             ))}
                           </tr>

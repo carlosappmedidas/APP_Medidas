@@ -72,15 +72,23 @@ const CAMPOS_LINEAS: CampoDef[] = [
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const CAMPOS_TRAMOS: CampoDef[] = [
-  { key: "segmento",               label: "SEGMENTO",                    tooltipKey: "mostrar_id_tramo" },
-  { key: "identificador_tramo",    label: "IDENTIFICADOR_TRAMO",         tooltipKey: "mostrar_id_linea" },
-  { key: "orden_segmento",         label: "ORDEN_SEGMENTO",              tooltipKey: "mostrar_orden" },
-  { key: "n_segmentos",            label: "N_SEGMENTOS",                 tooltipKey: "mostrar_num_tramo" },
-  { key: "coordenadas_1",          label: "COORDENADAS_1 (X,Y,Z)",      tooltipKey: "mostrar_coordenadas_1" },
-  { key: "coordenadas_2",          label: "COORDENADAS_2 (X,Y,Z)",      tooltipKey: "mostrar_coordenadas_2" },
-  { key: "longitud_segmento",      label: "Longitud segmento (m)",       tooltipKey: "mostrar_longitud_segmento", calculado: true },
+  { key: "segmento",            label: "SEGMENTO",              tooltipKey: "mostrar_id_tramo" },
+  { key: "identificador_tramo", label: "IDENTIFICADOR_TRAMO",   tooltipKey: "mostrar_id_linea" },
+  { key: "orden_segmento",      label: "ORDEN_SEGMENTO",        tooltipKey: "mostrar_orden" },
+  { key: "n_segmentos",         label: "N_SEGMENTOS",           tooltipKey: "mostrar_num_tramo" },
+  { key: "coordenadas_1",       label: "COORDENADAS_1 (X,Y,Z)", tooltipKey: "mostrar_coordenadas_1" },
+  { key: "coordenadas_2",       label: "COORDENADAS_2 (X,Y,Z)", tooltipKey: "mostrar_coordenadas_2" },
+  { key: "longitud_segmento",   label: "Longitud segmento (m)", tooltipKey: "mostrar_longitud_segmento", calculado: true },
+  { key: "cini",                label: "CINI",                  calculado: true },
+  { key: "codigo_ccuu",         label: "CODIGO_CCUU",           calculado: true },
+  { key: "nudo_inicial",        label: "NUDO_INICIAL",          calculado: true },
+  { key: "nudo_final",          label: "NUDO_FINAL",            calculado: true },
+  { key: "ccaa_1",              label: "CCAA_1",                calculado: true },
+  { key: "ccaa_2",              label: "CCAA_2",                calculado: true },
+  { key: "tension_explotacion", label: "TENSION_EXPLOTACION",   calculado: true },
+  { key: "ct_asignado",         label: "CT asignado",           calculado: true },
+  { key: "metodo_asignacion",   label: "Método asignación",     calculado: true },
 ];
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // B2 — CTs (34 campos CNMC + 3 calculados = 37)
 // ═══════════════════════════════════════════════════════════════════════════════
