@@ -251,7 +251,7 @@ class LineaInventario(TenantMixin, TimestampMixin, Base):
     nudo_inicio    = Column(String,     nullable=True)
     nudo_fin       = Column(String,     nullable=True)
     ccaa_1         = Column(String(2),  nullable=True)
-    nivel_tension  = Column(String(10), nullable=True)
+    ccaa_2         = Column(String(2),  nullable=True)
 
     propiedad               = Column(Integer, nullable=True)
     tension_kv              = Column(Float,   nullable=True)

@@ -214,16 +214,43 @@ class CalcAsignacionCtMtResponse(BaseModel):
 # ── Tabla líneas — para la vista de gestión ───────────────────────────────────
 
 class LineaTablaRead(BaseModel):
-    id_tramo:             str
-    nudo_inicio:          Optional[str]
-    nudo_fin:             Optional[str]
-    tension_kv:           Optional[float]
-    longitud_km:          Optional[float]
-    codigo_ccuu:          Optional[str]
-    operacion:            Optional[int]
-    fecha_aps:            Optional[date]
-    id_ct:                Optional[str]
-    metodo_asignacion_ct: Optional[str]
+    id_tramo:               str
+    cini:                   Optional[str]
+    codigo_ccuu:            Optional[str]
+    nudo_inicio:            Optional[str]
+    nudo_fin:               Optional[str]
+    ccaa_1:                 Optional[str]
+    ccaa_2:                 Optional[str]
+    propiedad:              Optional[int]
+    tension_kv:             Optional[float]
+    tension_construccion_kv: Optional[float]
+    longitud_km:            Optional[float]
+    resistencia_ohm:        Optional[float]
+    reactancia_ohm:         Optional[float]
+    intensidad_a:           Optional[float]
+    estado:                 Optional[int]
+    punto_frontera:         Optional[int]
+    modelo:                 Optional[str]
+    operacion:              Optional[int]
+    fecha_aps:              Optional[date]
+    causa_baja:             Optional[int]
+    fecha_baja:             Optional[date]
+    fecha_ip:               Optional[date]
+    tipo_inversion:         Optional[int]
+    motivacion:             Optional[str]
+    im_tramites:            Optional[float]
+    im_construccion:        Optional[float]
+    im_trabajos:            Optional[float]
+    valor_auditado:         Optional[float]
+    financiado:             Optional[float]
+    subvenciones_europeas:  Optional[float]
+    subvenciones_nacionales: Optional[float]
+    subvenciones_prtr:      Optional[float]
+    cuenta:                 Optional[str]
+    avifauna:               Optional[int]
+    identificador_baja:     Optional[str]
+    id_ct:                  Optional[str]
+    metodo_asignacion_ct:   Optional[str]
 
     class Config:
         from_attributes = True
@@ -252,16 +279,37 @@ class CeldaTablaRead(BaseModel):
 # ── Tabla CUPS — para la vista de gestión ─────────────────────────────────────
 
 class CupsTablaRead(BaseModel):
-    cups:                 str
-    id_ct:                Optional[str]
-    tarifa:               Optional[str]
-    tension_kv:           Optional[float]
-    potencia_contratada_kw: Optional[float]
-    municipio:            Optional[str]
-    conexion:             Optional[str]
-    id_ct_asignado:       Optional[str]
-    metodo_asignacion_ct: Optional[str]
-    fase:                 Optional[str]
+    cups:                     str
+    id_ct:                    Optional[str]
+    cnae:                     Optional[str]
+    tarifa:                   Optional[str]
+    municipio:                Optional[str]
+    provincia:                Optional[str]
+    zona:                     Optional[str]
+    conexion:                 Optional[str]
+    tension_kv:               Optional[float]
+    estado_contrato:          Optional[int]
+    potencia_contratada_kw:   Optional[float]
+    potencia_adscrita_kw:     Optional[float]
+    energia_activa_kwh:       Optional[float]
+    energia_reactiva_kvarh:   Optional[float]
+    autoconsumo:              Optional[int]
+    cini_contador:            Optional[str]
+    fecha_alta:               Optional[date]
+    lecturas:                 Optional[int]
+    baja_suministro:          Optional[int]
+    cambio_titularidad:       Optional[int]
+    facturas_estimadas:       Optional[int]
+    facturas_total:           Optional[int]
+    cau:                      Optional[str]
+    cod_auto:                 Optional[str]
+    cod_generacion_auto:      Optional[int]
+    conexion_autoconsumo:     Optional[int]
+    energia_autoconsumida_kwh: Optional[float]
+    energia_excedentaria_kwh:  Optional[float]
+    id_ct_asignado:           Optional[str]
+    metodo_asignacion_ct:     Optional[str]
+    fase:                     Optional[str]
 
     class Config:
         from_attributes = True
@@ -272,23 +320,43 @@ class CupsTablaRead(BaseModel):
 # ── Tabla CTs — para la vista de gestión ──────────────────────────────────────
 
 class CtTablaRead(BaseModel):
-    id_ct:            str
-    nombre:           str
-    cini:             Optional[str]
-    codigo_ccuu:      Optional[str]
-    potencia_kva:     Optional[float]
-    tension_kv:       Optional[float]
-    nudo_alta:        Optional[str]
-    nudo_baja:        Optional[str]
-    municipio_ine:    Optional[str]
-    zona:             Optional[str]
-    estado:           Optional[int]
-    punto_frontera:   Optional[int]
-    fecha_aps:        Optional[date]
-    propiedad:        Optional[str]
-    num_trafos:       Optional[int] = None
-    num_celdas:       Optional[int] = None
-    num_cups:         Optional[int] = None
+    id_ct:                  str
+    nombre:                 str
+    cini:                   Optional[str]
+    codigo_ccuu:            Optional[str]
+    nudo_alta:              Optional[str]
+    nudo_baja:              Optional[str]
+    tension_kv:             Optional[float]
+    tension_construccion_kv: Optional[float]
+    potencia_kva:           Optional[float]
+    municipio_ine:          Optional[str]
+    provincia:              Optional[str]
+    ccaa:                   Optional[str]
+    zona:                   Optional[str]
+    propiedad:              Optional[str]
+    estado:                 Optional[int]
+    modelo:                 Optional[str]
+    punto_frontera:         Optional[int]
+    fecha_aps:              Optional[date]
+    causa_baja:             Optional[int]
+    fecha_baja:             Optional[date]
+    fecha_ip:               Optional[date]
+    tipo_inversion:         Optional[int]
+    financiado:             Optional[float]
+    im_tramites:            Optional[float]
+    im_construccion:        Optional[float]
+    im_trabajos:            Optional[float]
+    subvenciones_europeas:  Optional[float]
+    subvenciones_nacionales: Optional[float]
+    subvenciones_prtr:      Optional[float]
+    valor_auditado:         Optional[float]
+    cuenta:                 Optional[str]
+    motivacion:             Optional[str]
+    avifauna:               Optional[int]
+    identificador_baja:     Optional[str]
+    num_trafos:             Optional[int] = None
+    num_celdas:             Optional[int] = None
+    num_cups:               Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -395,6 +463,7 @@ class TramoMapaRead(BaseModel):
     nudo_inicio:             Optional[str]
     nudo_fin:                Optional[str]
     ccaa_1:                  Optional[str]
+    ccaa_2:                  Optional[str]
     tension_kv:              Optional[float]
     tension_construccion_kv: Optional[float]
     longitud_km:             Optional[float]

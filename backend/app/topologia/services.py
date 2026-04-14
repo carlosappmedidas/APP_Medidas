@@ -317,7 +317,7 @@ def _upsert_linea(
     obj.nudo_inicio   = registro.get("nudo_inicio")
     obj.nudo_fin      = registro.get("nudo_fin")
     obj.ccaa_1        = registro.get("ccaa_1")
-    obj.nivel_tension = registro.get("nivel_tension")
+    obj.ccaa_2 = registro.get("ccaa_2")
     obj.propiedad               = registro.get("propiedad")
     obj.tension_kv              = registro.get("tension_kv")
     obj.tension_construccion_kv = registro.get("tension_construccion_kv")
@@ -1446,23 +1446,42 @@ def list_cts_tabla(
     items = []
     for ct in cts:
         items.append({
-            "id_ct":          ct.id_ct,
-            "nombre":         ct.nombre,
-            "cini":           ct.cini,
-            "codigo_ccuu":    ct.codigo_ccuu,
-            "potencia_kva":   float(ct.potencia_kva) if ct.potencia_kva is not None else None,
-            "tension_kv":     float(ct.tension_kv) if ct.tension_kv is not None else None,
-            "nudo_alta":      ct.nudo_alta,
-            "nudo_baja":      ct.nudo_baja,
-            "municipio_ine":  ct.municipio_ine,
-            "zona":           ct.zona,
-            "estado":         ct.estado,
-            "punto_frontera": ct.punto_frontera,
-            "fecha_aps":      ct.fecha_aps,
-            "propiedad":      ct.propiedad,
-            "num_trafos":     trafos_count.get(ct.id_ct, 0),
-            "num_celdas":     celdas_count.get(ct.id_ct, 0),
-            "num_cups":       cups_count.get(ct.id_ct, 0),
+            "id_ct":                  ct.id_ct,
+            "nombre":                 ct.nombre,
+            "cini":                   ct.cini,
+            "codigo_ccuu":            ct.codigo_ccuu,
+            "nudo_alta":              ct.nudo_alta,
+            "nudo_baja":              ct.nudo_baja,
+            "tension_kv":             float(ct.tension_kv) if ct.tension_kv is not None else None,
+            "tension_construccion_kv": float(ct.tension_construccion_kv) if ct.tension_construccion_kv is not None else None,
+            "potencia_kva":           float(ct.potencia_kva) if ct.potencia_kva is not None else None,
+            "municipio_ine":          ct.municipio_ine,
+            "provincia":              ct.provincia,
+            "ccaa":                   ct.ccaa,
+            "zona":                   ct.zona,
+            "propiedad":              ct.propiedad,
+            "estado":                 ct.estado,
+            "modelo":                 ct.modelo,
+            "punto_frontera":         ct.punto_frontera,
+            "fecha_aps":              ct.fecha_aps,
+            "causa_baja":             ct.causa_baja,
+            "fecha_baja":             ct.fecha_baja,
+            "fecha_ip":               ct.fecha_ip,
+            "tipo_inversion":         ct.tipo_inversion,
+            "financiado":             ct.financiado,
+            "im_tramites":            ct.im_tramites,
+            "im_construccion":        ct.im_construccion,
+            "im_trabajos":            ct.im_trabajos,
+            "subvenciones_europeas":  ct.subvenciones_europeas,
+            "subvenciones_nacionales": ct.subvenciones_nacionales,
+            "subvenciones_prtr":      ct.subvenciones_prtr,
+            "valor_auditado":         ct.valor_auditado,
+            "cuenta":                 ct.cuenta,
+            "motivacion":             ct.motivacion,
+            "avifauna":               ct.avifauna,
+            "identificador_baja":     ct.identificador_baja,
+            "num_trafos":             trafos_count.get(ct.id_ct, 0),
+            "num_celdas":             celdas_count.get(ct.id_ct, 0),
+            "num_cups":               cups_count.get(ct.id_ct, 0),
         })
-
     return items, total

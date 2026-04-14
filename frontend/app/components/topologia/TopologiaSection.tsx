@@ -10,6 +10,8 @@ import type {
 } from "./MapaLeaflet";
 import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./MapaLeaflet";
 import TablePaginationFooter from "../ui/TablePaginationFooter";
+import type { TablaLineasConfig, TablaCupsConfig, TablaCeldasConfig, TablaCtsConfig } from "../settings/TopologiaSettingsSection";
+import { DEFAULT_TABLA_LINEAS, DEFAULT_TABLA_CUPS, DEFAULT_TABLA_CELDAS, DEFAULT_TABLA_CTS } from "../settings/TopologiaSettingsSection";
 
 const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
   ssr: false,
@@ -38,21 +40,43 @@ interface CalcCtResult {
 }
 
 interface LineaTabla {
-  id_tramo: string; nudo_inicio: string | null; nudo_fin: string | null;
-  tension_kv: number | null; longitud_km: number | null; codigo_ccuu: string | null;
+  [key: string]: unknown;
+  id_tramo: string; cini: string | null; codigo_ccuu: string | null;
+  nudo_inicio: string | null; nudo_fin: string | null;
+  ccaa_1: string | null; ccaa_2: string | null;
+  propiedad: number | null; tension_kv: number | null;
+  tension_construccion_kv: number | null; longitud_km: number | null;
+  resistencia_ohm: number | null; reactancia_ohm: number | null; intensidad_a: number | null;
+  estado: number | null; punto_frontera: number | null; modelo: string | null;
   operacion: number | null; fecha_aps: string | null;
+  causa_baja: number | null; fecha_baja: string | null; fecha_ip: string | null;
+  tipo_inversion: number | null; motivacion: string | null;
+  im_tramites: number | null; im_construccion: number | null; im_trabajos: number | null;
+  valor_auditado: number | null; financiado: number | null;
+  subvenciones_europeas: number | null; subvenciones_nacionales: number | null; subvenciones_prtr: number | null;
+  cuenta: string | null; avifauna: number | null; identificador_baja: string | null;
   id_ct: string | null; metodo_asignacion_ct: string | null;
 }
 
 interface CupsTabla {
-  cups: string; id_ct: string | null; tarifa: string | null;
-  tension_kv: number | null; potencia_contratada_kw: number | null;
-  municipio: string | null; conexion: string | null;
-  id_ct_asignado: string | null; metodo_asignacion_ct: string | null;
-  fase: string | null;
+  [key: string]: unknown;
+  cups: string; id_ct: string | null; cnae: string | null; tarifa: string | null;
+  municipio: string | null; provincia: string | null; zona: string | null; conexion: string | null;
+  tension_kv: number | null; estado_contrato: number | null;
+  potencia_contratada_kw: number | null; potencia_adscrita_kw: number | null;
+  energia_activa_kwh: number | null; energia_reactiva_kvarh: number | null;
+  autoconsumo: number | null; cini_contador: string | null;
+  fecha_alta: string | null; lecturas: number | null;
+  baja_suministro: number | null; cambio_titularidad: number | null;
+  facturas_estimadas: number | null; facturas_total: number | null;
+  cau: string | null; cod_auto: string | null; cod_generacion_auto: number | null;
+  conexion_autoconsumo: number | null;
+  energia_autoconsumida_kwh: number | null; energia_excedentaria_kwh: number | null;
+  id_ct_asignado: string | null; metodo_asignacion_ct: string | null; fase: string | null;
 }
 
 interface CeldaTabla {
+  [key: string]: unknown;
   id_ct: string;
   id_celda: string;
   id_transformador: string | null;
@@ -69,12 +93,18 @@ interface CeldaTabla {
 
 
 interface CtTabla {
+  [key: string]: unknown;
   id_ct: string; nombre: string; cini: string | null; codigo_ccuu: string | null;
-  potencia_kva: number | null; tension_kv: number | null;
   nudo_alta: string | null; nudo_baja: string | null;
-  municipio_ine: string | null; zona: string | null;
-  estado: number | null; punto_frontera: number | null;
-  fecha_aps: string | null; propiedad: string | null;
+  tension_kv: number | null; tension_construccion_kv: number | null; potencia_kva: number | null;
+  municipio_ine: string | null; provincia: string | null; ccaa: string | null; zona: string | null;
+  propiedad: string | null; estado: number | null; modelo: string | null; punto_frontera: number | null;
+  fecha_aps: string | null; causa_baja: number | null; fecha_baja: string | null; fecha_ip: string | null;
+  tipo_inversion: number | null; financiado: number | null;
+  im_tramites: number | null; im_construccion: number | null; im_trabajos: number | null;
+  subvenciones_europeas: number | null; subvenciones_nacionales: number | null; subvenciones_prtr: number | null;
+  valor_auditado: number | null; cuenta: string | null; motivacion: string | null;
+  avifauna: number | null; identificador_baja: string | null;
   num_trafos: number | null; num_celdas: number | null; num_cups: number | null;
 }
 
@@ -82,6 +112,10 @@ interface Props {
   token: string | null; currentUser: User | null;
   tooltipLineas: TooltipLineasConfig; tooltipTramos: TooltipTramosConfig;
   tooltipCts: TooltipCtsConfig; tooltipCups: TooltipCupsConfig;
+  tablaLineas?: TablaLineasConfig;
+  tablaCups?: TablaCupsConfig;
+  tablaCeldas?: TablaCeldasConfig;
+  tablaCts?: TablaCtsConfig;
 }
 
 function esBTTramo(t: TramoMapa): boolean {
@@ -153,7 +187,11 @@ type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 const METODO_LABEL: Record<string, string> = { bfs: "Topológico", proximidad: "Proximidad", nudo_linea: "Nudo→Línea", manual: "Manual" };
 const METODO_COLOR: Record<string, string> = { bfs: "#1D9E75", proximidad: "#F59E0B", nudo_linea: "#378ADD", manual: "#A855F7" };
 
-export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, tooltipCts, tooltipCups }: Props) {
+export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, tooltipCts, tooltipCups, tablaLineas: tablaLineasProp, tablaCups: tablaCupsProp, tablaCeldas: tablaCeldasProp, tablaCts: tablaCtsProp }: Props) {
+  const tablaLineasCfg = tablaLineasProp ?? DEFAULT_TABLA_LINEAS;
+  const tablaCupsCfg   = tablaCupsProp   ?? DEFAULT_TABLA_CUPS;
+  const tablaCeldasCfg = tablaCeldasProp ?? DEFAULT_TABLA_CELDAS;
+  const tablaCtsCfg    = tablaCtsProp    ?? DEFAULT_TABLA_CTS;
 
   const [panelImportOpen, setPanelImportOpen] = useState(false);
   const [panelMapaOpen,   setPanelMapaOpen]   = useState(true);
@@ -607,6 +645,142 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     );
   };
 
+
+    // ── Definición de columnas dinámicas ──────────────────────────────────────
+  const thStyle: React.CSSProperties = { padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" };
+  const tdStyle: React.CSSProperties = { padding: "5px 8px", fontSize: 10 };
+
+  type ColDef<T> = { cfgKey: string; label: string; render: (row: T) => React.ReactNode; special?: boolean };
+
+  const LINEAS_COLS: ColDef<LineaTabla>[] = [
+    { cfgKey: "id_tramo",             label: "ID Tramo",       render: r => <span style={{ fontFamily: "monospace" }}>{r.id_tramo}</span> },
+    { cfgKey: "cini",                 label: "CINI",           render: r => r.cini ?? "—" },
+    { cfgKey: "codigo_ccuu",          label: "CCUU",           render: r => r.codigo_ccuu ?? "—" },
+    { cfgKey: "nudo_inicio",          label: "Nudo inicio",    render: r => r.nudo_inicio ?? "—" },
+    { cfgKey: "nudo_fin",             label: "Nudo fin",       render: r => r.nudo_fin ?? "—" },
+    { cfgKey: "ccaa_1",               label: "CCAA 1",         render: r => r.ccaa_1 ?? "—" },
+    { cfgKey: "ccaa_2",               label: "CCAA 2",         render: r => r.ccaa_2 ?? "—" },
+    { cfgKey: "propiedad",            label: "Propiedad",      render: r => r.propiedad ?? "—" },
+    { cfgKey: "tension",              label: "Tensión",        render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
+    { cfgKey: "tension_construccion", label: "T. construcc.",  render: r => r.tension_construccion_kv != null ? `${r.tension_construccion_kv} kV` : "—" },
+    { cfgKey: "longitud",             label: "Long.",          render: r => r.longitud_km != null ? `${r.longitud_km.toFixed(3)} km` : "—" },
+    { cfgKey: "resistencia",          label: "R (Ω)",          render: r => r.resistencia_ohm ?? "—" },
+    { cfgKey: "reactancia",           label: "X (Ω)",          render: r => r.reactancia_ohm ?? "—" },
+    { cfgKey: "intensidad",           label: "I (A)",          render: r => r.intensidad_a ?? "—" },
+    { cfgKey: "estado",               label: "Estado",         render: r => r.estado ?? "—" },
+    { cfgKey: "punto_frontera",       label: "Pto front.",     render: r => r.punto_frontera === 1 ? "✅" : "—" },
+    { cfgKey: "modelo",               label: "Modelo",         render: r => r.modelo ?? "—" },
+    { cfgKey: "operacion",            label: "Op.",            render: r => r.operacion === 1 ? "✅" : r.operacion === 0 ? "⚠️" : "—" },
+    { cfgKey: "fecha_aps",            label: "APS",            render: r => r.fecha_aps ?? "—" },
+    { cfgKey: "causa_baja",           label: "Causa baja",     render: r => r.causa_baja ?? "—" },
+    { cfgKey: "fecha_baja",           label: "F. baja",        render: r => r.fecha_baja ?? "—" },
+    { cfgKey: "fecha_ip",             label: "F. IP",          render: r => r.fecha_ip ?? "—" },
+    { cfgKey: "tipo_inversion",       label: "Tipo inv.",      render: r => r.tipo_inversion ?? "—" },
+    { cfgKey: "motivacion",           label: "Motivación",     render: r => r.motivacion ?? "—" },
+    { cfgKey: "im_tramites",          label: "IM Trám.",       render: r => r.im_tramites ?? "—" },
+    { cfgKey: "im_construccion",      label: "IM Constr.",     render: r => r.im_construccion ?? "—" },
+    { cfgKey: "im_trabajos",          label: "IM Trab.",       render: r => r.im_trabajos ?? "—" },
+    { cfgKey: "valor_auditado",       label: "V. auditado",   render: r => r.valor_auditado ?? "—" },
+    { cfgKey: "financiado",           label: "Financ.",        render: r => r.financiado ?? "—" },
+    { cfgKey: "subv_europeas",        label: "Subv. EU",       render: r => r.subvenciones_europeas ?? "—" },
+    { cfgKey: "subv_nacionales",      label: "Subv. nac.",     render: r => r.subvenciones_nacionales ?? "—" },
+    { cfgKey: "subv_prtr",            label: "Subv. PRTR",     render: r => r.subvenciones_prtr ?? "—" },
+    { cfgKey: "cuenta",               label: "Cuenta",         render: r => r.cuenta ?? "—" },
+    { cfgKey: "avifauna",             label: "Avifauna",       render: r => r.avifauna ?? "—" },
+    { cfgKey: "identificador_baja",   label: "ID baja",        render: r => r.identificador_baja ?? "—" },
+    { cfgKey: "ct_asignado",          label: "CT asignado",    render: () => null, special: true },
+    { cfgKey: "metodo_asignacion",    label: "Método",         render: () => null, special: true },
+  ];
+
+  const CUPS_COLS: ColDef<CupsTabla>[] = [
+    { cfgKey: "cups",                  label: "CUPS",           render: r => <span style={{ fontFamily: "monospace" }}>{r.cups}</span> },
+    { cfgKey: "id_ct",                 label: "CT origen",      render: r => r.id_ct ?? "—" },
+    { cfgKey: "tarifa",                label: "Tarifa",         render: r => r.tarifa ?? "—" },
+    { cfgKey: "cnae",                  label: "CNAE",           render: r => r.cnae ?? "—" },
+    { cfgKey: "tension",               label: "Tensión",        render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
+    { cfgKey: "potencia",              label: "Potencia",       render: r => r.potencia_contratada_kw != null ? `${r.potencia_contratada_kw} kW` : "—" },
+    { cfgKey: "potencia_adscrita",     label: "Pot. adscr.",    render: r => r.potencia_adscrita_kw ?? "—" },
+    { cfgKey: "energia_activa",        label: "E. activa",      render: r => r.energia_activa_kwh ?? "—" },
+    { cfgKey: "energia_reactiva",      label: "E. reactiva",    render: r => r.energia_reactiva_kvarh ?? "—" },
+    { cfgKey: "autoconsumo",           label: "Autocons.",      render: r => r.autoconsumo ?? "—" },
+    { cfgKey: "municipio",             label: "Municipio",      render: r => r.municipio ?? "—" },
+    { cfgKey: "provincia",             label: "Provincia",      render: r => r.provincia ?? "—" },
+    { cfgKey: "zona",                  label: "Zona",           render: r => r.zona ?? "—" },
+    { cfgKey: "conexion",              label: "Conexión",       render: r => r.conexion ?? "—" },
+    { cfgKey: "estado_contrato",       label: "Est. contrato",  render: r => r.estado_contrato ?? "—" },
+    { cfgKey: "fecha_alta",            label: "F. alta",        render: r => r.fecha_alta ?? "—" },
+    { cfgKey: "cini",                  label: "CINI",           render: r => r.cini_contador ?? "—" },
+    { cfgKey: "lecturas",              label: "Lecturas",       render: r => r.lecturas ?? "—" },
+    { cfgKey: "baja_suministro",       label: "Baja sum.",      render: r => r.baja_suministro ?? "—" },
+    { cfgKey: "cambio_titularidad",    label: "Cambio tit.",    render: r => r.cambio_titularidad ?? "—" },
+    { cfgKey: "facturas_estimadas",    label: "Fact. estim.",   render: r => r.facturas_estimadas ?? "—" },
+    { cfgKey: "facturas_total",        label: "Fact. total",    render: r => r.facturas_total ?? "—" },
+    { cfgKey: "cau",                   label: "CAU",            render: r => r.cau ?? "—" },
+    { cfgKey: "cod_auto",              label: "Cód. auto",      render: r => r.cod_auto ?? "—" },
+    { cfgKey: "cod_generacion",        label: "Tec. gen.",      render: r => r.cod_generacion_auto ?? "—" },
+    { cfgKey: "conexion_autoconsumo",  label: "Con. autoc.",    render: r => r.conexion_autoconsumo ?? "—" },
+    { cfgKey: "energia_autoconsumida", label: "E. autoc.",      render: r => r.energia_autoconsumida_kwh ?? "—" },
+    { cfgKey: "energia_excedentaria",  label: "E. exced.",      render: r => r.energia_excedentaria_kwh ?? "—" },
+    { cfgKey: "ct_asignado",           label: "CT asignado",    render: () => null, special: true },
+    { cfgKey: "metodo_asignacion",     label: "Método",         render: () => null, special: true },
+    { cfgKey: "fase",                  label: "Fase",           render: () => null, special: true },
+  ];
+
+  const CELDAS_COLS: ColDef<CeldaTabla>[] = [
+    { cfgKey: "id_ct",                  label: "CT",             render: r => cts.find(ct => ct.id_ct === r.id_ct)?.nombre ?? r.id_ct },
+    { cfgKey: "id_celda",               label: "Celda",          render: r => <span style={{ fontFamily: "monospace" }}>{r.id_celda}</span> },
+    { cfgKey: "cini_p7_funcion",        label: "Función",        render: r => <BadgeFuncion funcion={r.cini_p7_funcion} /> },
+    { cfgKey: "cini_p5_tipo_posicion",  label: "Tipo pos.",      render: r => r.cini_p5_tipo_posicion ?? "—" },
+    { cfgKey: "cini_p6_ubicacion",      label: "Ubicación",      render: r => r.cini_p6_ubicacion ?? "—" },
+    { cfgKey: "cini_p8_tension_nom",    label: "Tensión",        render: r => r.cini_p8_tension_nominal ?? "—" },
+    { cfgKey: "id_transformador",       label: "Trafo",          render: r => r.id_transformador ?? "—" },
+    { cfgKey: "cini",                   label: "CINI",           render: r => r.cini ?? "—" },
+    { cfgKey: "anio_ps",                label: "Año",            render: r => r.anio_instalacion ?? "—" },
+    { cfgKey: "cini_p4_tension",        label: "Tensión rango",  render: r => r.cini_p4_tension_rango ?? "—" },
+    { cfgKey: "interruptor",            label: "Posición",       render: r => r.posicion ?? "—" },
+    { cfgKey: "propiedad",              label: "En servicio",    render: r => r.en_servicio === 1 ? "✅" : "—" },
+  ];
+
+  const CTS_COLS: ColDef<CtTabla>[] = [
+    { cfgKey: "nombre",               label: "Nombre",         render: r => <span style={{ fontWeight: 600 }}>{r.nombre}</span> },
+    { cfgKey: "id_ct",                label: "ID CT",          render: r => <span style={{ fontFamily: "monospace" }}>{r.id_ct}</span> },
+    { cfgKey: "cini",                 label: "CINI",           render: r => r.cini ?? "—" },
+    { cfgKey: "codigo_ccuu",          label: "CCUU",           render: r => r.codigo_ccuu ?? "—" },
+    { cfgKey: "tension",              label: "Tensión",        render: r => r.tension_kv != null ? `${r.tension_kv} kV` : "—" },
+    { cfgKey: "tension_construccion", label: "T. construcc.",  render: r => r.tension_construccion_kv != null ? `${r.tension_construccion_kv} kV` : "—" },
+    { cfgKey: "potencia",             label: "Potencia",       render: r => r.potencia_kva != null ? `${r.potencia_kva} kVA` : "—" },
+    { cfgKey: "nudo_alta",            label: "Nudo alta",      render: r => r.nudo_alta ?? "—" },
+    { cfgKey: "nudo_baja",            label: "Nudo baja",      render: r => r.nudo_baja ?? "—" },
+    { cfgKey: "municipio",            label: "Municipio",      render: r => r.municipio_ine ?? "—" },
+    { cfgKey: "provincia",            label: "Provincia",      render: r => r.provincia ?? "—" },
+    { cfgKey: "ccaa",                 label: "CCAA",           render: r => r.ccaa ?? "—" },
+    { cfgKey: "zona",                 label: "Zona",           render: r => r.zona ?? "—" },
+    { cfgKey: "propiedad",            label: "Propiedad",      render: r => r.propiedad ?? "—" },
+    { cfgKey: "estado",               label: "Estado",         render: r => r.estado ?? "—" },
+    { cfgKey: "modelo",               label: "Modelo",         render: r => r.modelo ?? "—" },
+    { cfgKey: "punto_frontera",       label: "Pto front.",     render: r => r.punto_frontera === 1 ? "✅" : "—" },
+    { cfgKey: "fecha_aps",            label: "APS",            render: r => r.fecha_aps ?? "—" },
+    { cfgKey: "causa_baja",           label: "Causa baja",     render: r => r.causa_baja ?? "—" },
+    { cfgKey: "fecha_baja",           label: "F. baja",        render: r => r.fecha_baja ?? "—" },
+    { cfgKey: "fecha_ip",             label: "F. IP",          render: r => r.fecha_ip ?? "—" },
+    { cfgKey: "tipo_inversion",       label: "Tipo inv.",      render: r => r.tipo_inversion ?? "—" },
+    { cfgKey: "motivacion",           label: "Motivación",     render: r => r.motivacion ?? "—" },
+    { cfgKey: "im_tramites",          label: "IM Trám.",       render: r => r.im_tramites ?? "—" },
+    { cfgKey: "im_construccion",      label: "IM Constr.",     render: r => r.im_construccion ?? "—" },
+    { cfgKey: "im_trabajos",          label: "IM Trab.",       render: r => r.im_trabajos ?? "—" },
+    { cfgKey: "valor_auditado",       label: "V. auditado",   render: r => r.valor_auditado ?? "—" },
+    { cfgKey: "financiado",           label: "Financ.",        render: r => r.financiado ?? "—" },
+    { cfgKey: "subv_europeas",        label: "Subv. EU",       render: r => r.subvenciones_europeas ?? "—" },
+    { cfgKey: "subv_nacionales",      label: "Subv. nac.",     render: r => r.subvenciones_nacionales ?? "—" },
+    { cfgKey: "subv_prtr",            label: "Subv. PRTR",     render: r => r.subvenciones_prtr ?? "—" },
+    { cfgKey: "cuenta",               label: "Cuenta",         render: r => r.cuenta ?? "—" },
+    { cfgKey: "avifauna",             label: "Avifauna",       render: r => r.avifauna ?? "—" },
+    { cfgKey: "identificador_baja",   label: "ID baja",        render: r => r.identificador_baja ?? "—" },
+    { cfgKey: "num_trafos",           label: "Trafos",         render: r => r.num_trafos ?? 0 },
+    { cfgKey: "num_celdas",           label: "Celdas",         render: r => r.num_celdas ?? 0 },
+    { cfgKey: "num_cups",             label: "CUPS",           render: r => r.num_cups ?? 0 },
+  ];
+
   return (
     <div className="text-sm">
 
@@ -1006,20 +1180,21 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                          {["ID Tramo", "Tensión", "Long.", "Op.", "APS", "CT asignado", "Método", ""].map(h => (
-                            <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          {LINEAS_COLS.filter(c => !c.special && tablaLineasCfg[c.cfgKey] !== false).map(c => (
+                            <th key={c.cfgKey} style={thStyle}>{c.label}</th>
                           ))}
+                          {tablaLineasCfg.ct_asignado !== false && <th style={thStyle}>CT asignado</th>}
+                          {tablaLineasCfg.metodo_asignacion !== false && <th style={thStyle}>Método</th>}
+                          <th style={thStyle}></th>
                         </tr>
                       </thead>
                       <tbody>
                         {lineasTabla.map(linea => (
                           <tr key={linea.id_tramo} style={{ borderBottom: "1px solid var(--card-border)" }}>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{linea.id_tramo}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{linea.tension_kv != null ? `${linea.tension_kv} kV` : "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{linea.longitud_km != null ? `${linea.longitud_km.toFixed(3)} km` : "—"}</td>
-                            <td style={{ padding: "5px 8px" }}>{linea.operacion === 1 ? "✅" : linea.operacion === 0 ? "⚠️" : "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{linea.fecha_aps ?? "—"}</td>
-                            <td style={{ padding: "5px 8px" }}>
+                            {LINEAS_COLS.filter(c => !c.special && tablaLineasCfg[c.cfgKey] !== false).map(c => (
+                              <td key={c.cfgKey} style={tdStyle}>{c.render(linea)}</td>
+                            ))}
+                            {tablaLineasCfg.ct_asignado !== false && <td style={tdStyle}>
                               {editandoLinea === linea.id_tramo ? (
                                 <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 160 }} value={editValor} onChange={e => setEditValor(e.target.value)}>
                                   <option value="">— Sin CT —</option>
@@ -1030,8 +1205,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                                   {linea.id_ct ? (cts.find(c => c.id_ct === linea.id_ct)?.nombre ?? linea.id_ct) : "—"}
                                 </span>
                               )}
-                            </td>
-                            <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={linea.metodo_asignacion_ct} /></td>
+                            </td>}
+                            {tablaLineasCfg.metodo_asignacion !== false && <td style={tdStyle}><BadgeMetodo metodo={linea.metodo_asignacion_ct} /></td>}
                             <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                               {editandoLinea === linea.id_tramo ? (
                                 <div style={{ display: "flex", gap: 4 }}>
@@ -1072,20 +1247,22 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                          {["CUPS", "Tarifa", "Tensión", "Potencia", "Municipio", "CT asignado", "Método", "Fase", ""].map(h => (
-                            <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          {CUPS_COLS.filter(c => !c.special && tablaCupsCfg[c.cfgKey] !== false).map(c => (
+                            <th key={c.cfgKey} style={thStyle}>{c.label}</th>
                           ))}
+                          {tablaCupsCfg.ct_asignado !== false && <th style={thStyle}>CT asignado</th>}
+                          {tablaCupsCfg.metodo_asignacion !== false && <th style={thStyle}>Método</th>}
+                          {tablaCupsCfg.fase !== false && <th style={thStyle}>Fase</th>}
+                          <th style={thStyle}></th>
                         </tr>
                       </thead>
                       <tbody>
                         {cupsTabla.map(c => (
                           <tr key={c.cups} style={{ borderBottom: "1px solid var(--card-border)" }}>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{c.cups}</td>
-                            <td style={{ padding: "5px 8px" }}>{c.tarifa ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{c.tension_kv != null ? `${c.tension_kv} kV` : "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{c.potencia_contratada_kw != null ? `${c.potencia_contratada_kw} kW` : "—"}</td>
-                            <td style={{ padding: "5px 8px" }}>{c.municipio ?? "—"}</td>
-                            <td style={{ padding: "5px 8px" }}>
+                            {CUPS_COLS.filter(col => !col.special && tablaCupsCfg[col.cfgKey] !== false).map(col => (
+                              <td key={col.cfgKey} style={tdStyle}>{col.render(c)}</td>
+                            ))}
+                            {tablaCupsCfg.ct_asignado !== false && <td style={tdStyle}>
                               {editandoCups === c.cups ? (
                                 <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 160 }} value={editValor} onChange={e => setEditValor(e.target.value)}>
                                   <option value="">— Sin CT —</option>
@@ -1096,21 +1273,18 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                                   {c.id_ct_asignado ? (cts.find(ct => ct.id_ct === c.id_ct_asignado)?.nombre ?? c.id_ct_asignado) : "—"}
                                 </span>
                               )}
-                            </td>
-                            <td style={{ padding: "5px 8px" }}><BadgeMetodo metodo={c.metodo_asignacion_ct} /></td>
-                            <td style={{ padding: "5px 8px" }}>
+                            </td>}
+                            {tablaCupsCfg.metodo_asignacion !== false && <td style={tdStyle}><BadgeMetodo metodo={c.metodo_asignacion_ct} /></td>}
+                            {tablaCupsCfg.fase !== false && <td style={tdStyle}>
                               {editandoFase === c.cups ? (
                                 <select className="ui-select" style={{ fontSize: 10, height: 24, minWidth: 80 }} value={editFaseValor} onChange={e => setEditFaseValor(e.target.value)}>
                                   <option value="">— —</option>
-                                  <option value="R">R</option>
-                                  <option value="S">S</option>
-                                  <option value="T">T</option>
-                                  <option value="RST">RST</option>
+                                  <option value="R">R</option><option value="S">S</option><option value="T">T</option><option value="RST">RST</option>
                                 </select>
                               ) : (
                                 <BadgeFase fase={c.fase} />
                               )}
-                            </td>
+                            </td>}
                             <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                               {editandoCups === c.cups ? (
                                 <div style={{ display: "flex", gap: 4 }}>
@@ -1159,27 +1333,17 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                          {["CT", "Celda", "Función", "Tipo posición", "Ubicación", "Tensión", "Trafo asociado", "CINI", "Año"].map(h => (
-                            <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          {CELDAS_COLS.filter(c => tablaCeldasCfg[c.cfgKey] !== false).map(c => (
+                            <th key={c.cfgKey} style={thStyle}>{c.label}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {celdasTabla.map(c => (
                           <tr key={c.id_celda} style={{ borderBottom: "1px solid var(--card-border)" }}>
-                            <td style={{ padding: "5px 8px", fontSize: 10 }}>
-                              {cts.find(ct => ct.id_ct === c.id_ct)?.nombre ?? c.id_ct}
-                            </td>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{c.id_celda}</td>
-                            <td style={{ padding: "5px 8px" }}><BadgeFuncion funcion={c.cini_p7_funcion} /></td>
-                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{c.cini_p5_tipo_posicion ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{c.cini_p6_ubicacion ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap" }}>{c.cini_p8_tension_nominal ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10, color: c.id_transformador ? "var(--text)" : "var(--text-muted)" }}>
-                              {c.id_transformador ?? "—"}
-                            </td>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{c.cini ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{c.anio_instalacion ?? "—"}</td>
+                            {CELDAS_COLS.filter(col => tablaCeldasCfg[col.cfgKey] !== false).map(col => (
+                              <td key={col.cfgKey} style={tdStyle}>{col.render(c)}</td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>
@@ -1209,27 +1373,17 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
-                          {["Nombre", "ID CT", "Tensión", "Potencia", "Nudo Alta", "Nudo Baja", "Municipio", "Zona", "Pto Frontera", "APS", "Trafos", "Celdas", "CUPS"].map(h => (
-                            <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          {CTS_COLS.filter(c => tablaCtsCfg[c.cfgKey] !== false).map(c => (
+                            <th key={c.cfgKey} style={thStyle}>{c.label}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {ctsTabla.map(ct => (
                           <tr key={ct.id_ct} style={{ borderBottom: "1px solid var(--card-border)" }}>
-                            <td style={{ padding: "5px 8px", fontWeight: 600, fontSize: 10 }}>{ct.nombre}</td>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{ct.id_ct}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{ct.tension_kv != null ? `${ct.tension_kv} kV` : "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{ct.potencia_kva != null ? `${ct.potencia_kva} kVA` : "—"}</td>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{ct.nudo_alta ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", fontFamily: "monospace", fontSize: 10 }}>{ct.nudo_baja ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{ct.municipio_ine ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", fontSize: 10 }}>{ct.zona ?? "—"}</td>
-                            <td style={{ padding: "5px 8px" }}>{ct.punto_frontera === 1 ? "✅" : "—"}</td>
-                            <td style={{ padding: "5px 8px", whiteSpace: "nowrap", fontSize: 10 }}>{ct.fecha_aps ?? "—"}</td>
-                            <td style={{ padding: "5px 8px", textAlign: "center" }}>{ct.num_trafos ?? 0}</td>
-                            <td style={{ padding: "5px 8px", textAlign: "center" }}>{ct.num_celdas ?? 0}</td>
-                            <td style={{ padding: "5px 8px", textAlign: "center" }}>{ct.num_cups ?? 0}</td>
+                            {CTS_COLS.filter(col => tablaCtsCfg[col.cfgKey] !== false).map(col => (
+                              <td key={col.cfgKey} style={tdStyle}>{col.render(ct)}</td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>

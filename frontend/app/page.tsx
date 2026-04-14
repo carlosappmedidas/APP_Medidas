@@ -506,6 +506,10 @@ export default function HomePage() {
             tooltipTramos={tooltipTramos}
             tooltipCts={tooltipCts}
             tooltipCups={tooltipCups}
+            tablaLineas={tablaLineas}
+            tablaCups={tablaCups}
+            tablaCeldas={tablaCeldas}
+            tablaCts={tablaCts}
           />
         )}
 

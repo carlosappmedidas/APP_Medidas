@@ -434,6 +434,7 @@ def get_tramos_mapa(
             nudo_inicio             = linea.nudo_inicio             if linea else None,
             nudo_fin                = linea.nudo_fin                if linea else None,
             ccaa_1                  = linea.ccaa_1                  if linea else None,
+            ccaa_2                  = linea.ccaa_2                  if linea else None,
             tension_kv              = linea.tension_kv              if linea else None,
             tension_construccion_kv = linea.tension_construccion_kv if linea else None,
             longitud_km             = linea.longitud_km             if linea else None,
