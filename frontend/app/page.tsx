@@ -165,8 +165,25 @@ export default function HomePage() {
       } catch { setCurrentUser(null); }
     };
     load();
-  }, [token]);
 
+    // Interceptor global: cualquier 401 en cualquier fetch → logout
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const res = await originalFetch(...args);
+      if (res.status === 401) {
+        const url = typeof args[0] === "string" ? args[0] : args[0] instanceof Request ? args[0].url : "";
+        const isLoginCall = url.includes("/auth/login");
+        if (!isLoginCall) {
+          try { localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY); } catch { /* */ }
+          setCurrentUser(null);
+          setToken(null);
+        }
+      }
+      return res;
+    };
+    
+    return () => { window.fetch = originalFetch; };
+  }, [token]);
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
   useEffect(() => { if (activeTab === "alertas") setShowAlertasGeneral(false); }, [activeTab]);
 

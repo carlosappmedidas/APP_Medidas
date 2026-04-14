@@ -96,14 +96,14 @@ export type ColumnDefPs = {
 
 const STICKY_COLUMN_IDS_PS = ["empresa_id", "empresa_codigo", "anio", "mes"];
 const STICKY_WIDTHS_PS: Record<string, number> = {
-  empresa_id: 64, empresa_codigo: 110, anio: 52, mes: 44,
+  empresa_id: 110, empresa_codigo: 110, anio: 52, mes: 44,
 };
 
 // Fondo sólido para bandas alternas: rgba(30,58,95,0.18) sobre #1a2e45 (card-bg)
 const STRIPE_BG = "rgb(27,48,74)";
 
 const ALL_COLUMNS_PS: ColumnDefPs[] = [
-  { id: "empresa_id",    label: "Empresa ID",    align: "left",  group: "Identificación", render: (m) => m.empresa_id },
+  { id: "empresa_id",    label: "Empresa",       align: "left",  group: "Identificación", render: (m) => m.empresa_id },
   { id: "empresa_codigo",label: "Código empresa",align: "left",  group: "Identificación", render: (m) => m.empresa_codigo ?? "-" },
   { id: "anio",          label: "Año",           align: "left",  group: "Identificación", render: (m) => m.anio },
   { id: "mes",           label: "Mes",           align: "left",  group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
@@ -225,10 +225,22 @@ export default function MedidasPsSection({
     []
   );
 
-  const baseColumns = useMemo(
-    () => (isSistema ? [systemTenantColumn, ...ALL_COLUMNS_PS] : ALL_COLUMNS_PS),
-    [isSistema, systemTenantColumn]
-  );
+  const empresaNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const e of opcionesEmpresa) {
+      if (e.nombre) map.set(e.id, e.nombre);
+    }
+    return map;
+  }, [opcionesEmpresa]);
+
+  const baseColumns = useMemo(() => {
+    const cols = ALL_COLUMNS_PS.map(col =>
+      col.id === "empresa_id"
+        ? { ...col, render: (m: any) => empresaNameMap.get(m.empresa_id) ?? m.empresa_id }
+        : col
+    );
+    return isSistema ? [systemTenantColumn, ...cols] : cols;
+  }, [isSistema, systemTenantColumn, empresaNameMap]);
 
   const empresaOptions = useMemo(() => {
     const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;

@@ -103,14 +103,14 @@ export type ColumnDefGeneral = {
 
 const STICKY_COLUMN_IDS = ["empresa_id", "empresa_codigo", "punto_id", "anio", "mes"];
 const STICKY_WIDTHS: Record<string, number> = {
-  empresa_id: 64, empresa_codigo: 110, punto_id: 64, anio: 52, mes: 44,
+  empresa_id: 110, empresa_codigo: 110, punto_id: 64, anio: 52, mes: 44,
 };
 
 // Fondo sólido para bandas alternas: rgba(30,58,95,0.18) sobre #1a2e45 (card-bg)
 const STRIPE_BG = "rgb(27,48,74)";
 
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
-  { id: "empresa_id",      label: "Empresa ID",     align: "left",  group: "Identificación", render: (m) => m.empresa_id },
+  { id: "empresa_id",      label: "Empresa",        align: "left",  group: "Identificación", render: (m) => m.empresa_id },
   { id: "empresa_codigo",  label: "Código empresa", align: "left",  group: "Identificación", render: (m) => (m as any).empresa_codigo ?? "-" },
   { id: "punto_id",        label: "Punto",          align: "left",  group: "Identificación", render: (m) => m.punto_id },
   { id: "anio",            label: "Año",            align: "left",  group: "Identificación", render: (m) => m.anio },
@@ -236,10 +236,22 @@ export default function MedidasGeneralSection({
     []
   );
 
-  const baseColumns = useMemo(
-    () => (isSistema ? [systemTenantColumn, ...ALL_COLUMNS_GENERAL] : ALL_COLUMNS_GENERAL),
-    [isSistema, systemTenantColumn]
-  );
+  const empresaNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const e of opcionesEmpresa) {
+      if (e.nombre) map.set(e.id, e.nombre);
+    }
+    return map;
+  }, [opcionesEmpresa]);
+
+  const baseColumns = useMemo(() => {
+    const cols = ALL_COLUMNS_GENERAL.map(col =>
+      col.id === "empresa_id"
+        ? { ...col, render: (m: any) => empresaNameMap.get(m.empresa_id) ?? m.empresa_id }
+        : col
+    );
+    return isSistema ? [systemTenantColumn, ...cols] : cols;
+  }, [isSistema, systemTenantColumn, empresaNameMap]);
 
   const empresaOptions = useMemo(() => {
     const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;

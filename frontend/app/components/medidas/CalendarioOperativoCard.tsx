@@ -51,8 +51,10 @@ function getEstadoLabel(estado: CalendarioOperativoItem["estado"]): string {
 }
 
 export default function CalendarioOperativoCard({ token, anioActivo }: Props) {
-  const [categoriaFiltro, setCategoriaFiltro]             = useState<string>("todas");
-  const [estadoFiltro, setEstadoFiltro]                   = useState<string>("todos");
+  const [categoriaFiltro, setCategoriaFiltro]             = useState<string[]>([]);
+  const [estadoFiltro, setEstadoFiltro]                   = useState<string[]>([]);
+  const [catOpen, setCatOpen]                             = useState(false);
+  const [estOpen, setEstOpen]                             = useState(false);
   const [textoFiltro, setTextoFiltro]                     = useState<string>("");
   const [textoFiltroDebounced, setTextoFiltroDebounced]   = useState<string>("");
   const [page, setPage]                                   = useState<number>(1);
@@ -90,8 +92,8 @@ export default function CalendarioOperativoCard({ token, anioActivo }: Props) {
     try {
       const searchParams = new URLSearchParams();
       if (anioActivo) searchParams.set("anio", String(anioActivo));
-      if (categoriaFiltro !== "todas") searchParams.set("categoria", categoriaFiltro);
-      if (estadoFiltro !== "todos") searchParams.set("estado", estadoFiltro);
+      if (categoriaFiltro.length > 0) searchParams.set("categoria", categoriaFiltro.join(","));
+      if (estadoFiltro.length > 0) searchParams.set("estado", estadoFiltro.join(","));
       const search = textoFiltroDebounced.trim();
       if (search) searchParams.set("search", search);
       searchParams.set("page", String(page));
@@ -266,28 +268,81 @@ export default function CalendarioOperativoCard({ token, anioActivo }: Props) {
               Filtros
             </div>
             <div className="flex flex-col gap-2.5">
-              <div>
+              <div style={{ position: "relative" }}>
                 <label className="ui-label">Categoría</label>
-                <select className="ui-select w-full" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
-                  <option value="todas">Todas</option>
-                  <option value="M+1">M+1</option>
-                  <option value="M+2">M+2</option>
-                  <option value="Intermedio">Intermedio</option>
-                  <option value="Provisional">Provisional</option>
-                  <option value="Definitivo">Definitivo</option>
-                  <option value="Art. 15">Art. 15</option>
-                </select>
+                <button type="button" className="ui-select w-full" style={{ textAlign: "left", cursor: "pointer", fontSize: 11 }}
+                  onClick={() => { setCatOpen(v => !v); setEstOpen(false); }}>
+                  {categoriaFiltro.length === 0 ? "Todas" : categoriaFiltro.join(", ")}
+                  {categoriaFiltro.length > 0 && <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>({categoriaFiltro.length})</span>}
+                </button>
+                {catOpen && (
+                  <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 2, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "6px 8px", display: "flex", flexDirection: "column", gap: 2, boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+                    {[
+                      { value: "M+1", label: "M+1" },
+                      { value: "M+2", label: "M+2" },
+                      { value: "Intermedio", label: "Intermedio" },
+                      { value: "Provisional", label: "Provisional" },
+                      { value: "Definitivo", label: "Definitivo" },
+                      { value: "Art. 15", label: "Art. 15" },
+                    ].map(opt => (
+                      <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", padding: "3px 4px", borderRadius: 4 }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                        <input type="checkbox"
+                          checked={categoriaFiltro.includes(opt.value)}
+                          onChange={() => setCategoriaFiltro(prev =>
+                            prev.includes(opt.value) ? prev.filter(v => v !== opt.value) : [...prev, opt.value]
+                          )}
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                    {categoriaFiltro.length > 0 && (
+                      <button type="button" style={{ fontSize: 10, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "3px 4px" }}
+                        onClick={() => setCategoriaFiltro([])}>
+                        ✕ Limpiar
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              <div>
+              <div style={{ position: "relative" }}>
                 <label className="ui-label">Estado</label>
-                <select className="ui-select w-full" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
-                  <option value="todos">Todos</option>
-                  <option value="pendiente">Pendiente</option>
-                  <option value="proximo">Próximo</option>
-                  <option value="hoy">Hoy</option>
-                  <option value="cerrado">Cerrado</option>
-                </select>
+                <button type="button" className="ui-select w-full" style={{ textAlign: "left", cursor: "pointer", fontSize: 11 }}
+                  onClick={() => { setEstOpen(v => !v); setCatOpen(false); }}>
+                  {estadoFiltro.length === 0 ? "Todos" : estadoFiltro.map(e => e === "proximo" ? "Próximo" : e.charAt(0).toUpperCase() + e.slice(1)).join(", ")}
+                  {estadoFiltro.length > 0 && <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>({estadoFiltro.length})</span>}
+                </button>
+                {estOpen && (
+                  <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 2, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "6px 8px", display: "flex", flexDirection: "column", gap: 2, boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+                    {[
+                      { value: "pendiente", label: "Pendiente" },
+                      { value: "proximo", label: "Próximo" },
+                      { value: "hoy", label: "Hoy" },
+                      { value: "cerrado", label: "Cerrado" },
+                    ].map(opt => (
+                      <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", padding: "3px 4px", borderRadius: 4 }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                        <input type="checkbox"
+                          checked={estadoFiltro.includes(opt.value)}
+                          onChange={() => setEstadoFiltro(prev =>
+                            prev.includes(opt.value) ? prev.filter(v => v !== opt.value) : [...prev, opt.value]
+                          )}
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                    {estadoFiltro.length > 0 && (
+                      <button type="button" style={{ fontSize: 10, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "3px 4px" }}
+                        onClick={() => setEstadoFiltro([])}>
+                        ✕ Limpiar
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="ui-label">Buscar</label>
                 <input

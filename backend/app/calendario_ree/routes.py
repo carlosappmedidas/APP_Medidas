@@ -156,7 +156,10 @@ def _matches_estado_filter(
 ) -> bool:
     if not estado_filter or estado_filter == "todos":
         return True
-    return estado_value == estado_filter
+    estados = [e.strip() for e in estado_filter.split(",") if e.strip()]
+    if not estados:
+        return True
+    return estado_value in estados
 
 
 def _is_open_estado(estado_value: str) -> bool:
@@ -545,7 +548,11 @@ def _apply_operativo_filters(
     search: str | None,
 ) -> SAQuery:
     if categoria and categoria != "todas":
-        query = query.filter(ReeCalendarEvent.categoria == categoria)
+        cats = [c.strip() for c in categoria.split(",") if c.strip()]
+        if len(cats) == 1:
+            query = query.filter(ReeCalendarEvent.categoria == cats[0])
+        elif len(cats) > 1:
+            query = query.filter(ReeCalendarEvent.categoria.in_(cats))
 
     if search:
         search_value = f"%{search.strip()}%"
@@ -1033,6 +1040,21 @@ def get_calendar_operativo(
             estado,
         )
     ]
+
+    # Ordenar: abiertos primero por fecha asc, cerrados al final por fecha desc
+    abiertos = [
+        item for item in estado_filtered_items
+        if _estado_from_fecha(cast(date, _event_any(item).fecha)) != "cerrado"
+    ]
+    cerrados = [
+        item for item in estado_filtered_items
+        if _estado_from_fecha(cast(date, _event_any(item).fecha)) == "cerrado"
+    ]
+    cerrados.sort(
+        key=lambda item: cast(date, _event_any(item).fecha),
+        reverse=True,
+    )
+    estado_filtered_items = abiertos + cerrados
 
     total = len(estado_filtered_items)
     pages = max(1, (total + page_size - 1) // page_size)
