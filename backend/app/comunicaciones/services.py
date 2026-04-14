@@ -719,13 +719,16 @@ def _actualizar_tiempos_regla(db: Session, rule: FtpSyncRule) -> None:
 def _log(db: Session, *, tenant_id: int, empresa_id: int, config_id: Optional[int],
          rule_id: Optional[int], origen: str, nombre_fichero: str, tamanio: Optional[int],
          estado: str, mensaje_error: Optional[str] = None, fecha_ftp: Optional[str] = None) -> None:
-    entry = FtpSyncLog(
-        tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
-        rule_id=rule_id, origen=origen, nombre_fichero=nombre_fichero,
-        tamanio=tamanio, estado=estado, mensaje_error=mensaje_error, fecha_ftp=fecha_ftp,
-    )
-    db.add(entry)
-    db.commit()
+    try:
+        entry = FtpSyncLog(
+            tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+            rule_id=rule_id, origen=origen, nombre_fichero=nombre_fichero,
+            tamanio=tamanio, estado=estado, mensaje_error=mensaje_error, fecha_ftp=fecha_ftp,
+        )
+        db.add(entry)
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 _MESES_EN = {
