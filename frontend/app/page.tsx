@@ -19,17 +19,9 @@ import ClientesSection from "./components/admin/ClientesSection";
 import MedidasPsSection, { COLUMNS_PS_META } from "./components/medidas/MedidasPsSection";
 import AppearanceSettingsSection from "./components/settings/AppearanceSettingsSection";
 import TableSettingsSection from "./components/settings/TableSettingsSection";
-import TopologiaSettingsSection, {
-  DEFAULT_TABLA_LINEAS, DEFAULT_TABLA_TRAMOS, DEFAULT_TABLA_CTS,
-  DEFAULT_TABLA_CUPS, DEFAULT_TABLA_CELDAS, DEFAULT_TABLA_TRAFOS,
-} from "./components/settings/TopologiaSettingsSection";
-import type {
-  TablaLineasConfig, TablaTramosConfig, TablaCtsConfig,
-  TablaCupsConfig, TablaCeldasConfig, TablaTrafosConfig,
-} from "./components/settings/TopologiaSettingsSection";
+import TopologiaSettingsSection from "./components/settings/TopologiaSettingsSection";
 import { useTableSettings } from "./components/settings/hooks/useTableSettings";
-import type { TooltipLineasConfig, TooltipTramosConfig, TooltipCtsConfig, TooltipCupsConfig } from "./components/topologia/MapaLeaflet";
-import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./components/topologia/MapaLeaflet";
+import { useTopologiaSettings } from "./components/settings/hooks/useTopologiaSettings";
 import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
@@ -105,16 +97,6 @@ const AUTH_TOKEN_STORAGE_KEY         = "auth_token";
 const MEDIDAS_OPEN_STORAGE_KEY       = "ui_medidas_open";
 const TABLAS_OPEN_STORAGE_KEY        = "ui_tablas_open";
 const PERDIDAS_OPEN_STORAGE_KEY      = "ui_perdidas_open";
-const TOOLTIP_LINEAS_STORAGE_KEY     = "ui_topologia_tooltip_lineas";
-const TOOLTIP_TRAMOS_STORAGE_KEY     = "ui_topologia_tooltip_tramos";
-const TOOLTIP_CTS_STORAGE_KEY        = "ui_topologia_tooltip_cts";
-const TOOLTIP_CUPS_STORAGE_KEY       = "ui_topologia_tooltip_cups";
-const TABLA_LINEAS_STORAGE_KEY       = "ui_topologia_tabla_lineas";
-const TABLA_TRAMOS_STORAGE_KEY       = "ui_topologia_tabla_tramos";
-const TABLA_CTS_STORAGE_KEY          = "ui_topologia_tabla_cts";
-const TABLA_CUPS_STORAGE_KEY         = "ui_topologia_tabla_cups";
-const TABLA_CELDAS_STORAGE_KEY       = "ui_topologia_tabla_celdas";
-const TABLA_TRAFOS_STORAGE_KEY       = "ui_topologia_tabla_trafos";
 
 const PERDIDAS_TABS: MainTab[] = ["perdidas", "topologia"];
 
@@ -138,26 +120,19 @@ export default function HomePage() {
   const [showTopologia,   setShowTopologia]   = useState(false);
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
 
-  // ── Tooltips topología ─────────────────────────────────────────────────
-  const [tooltipLineas, setTooltipLineas] = useState<TooltipLineasConfig>(DEFAULT_TOOLTIP_LINEAS);
-  const [tooltipTramos, setTooltipTramos] = useState<TooltipTramosConfig>(DEFAULT_TOOLTIP_TRAMOS);
-  const [tooltipCts,    setTooltipCts]    = useState<TooltipCtsConfig>(DEFAULT_TOOLTIP_CTS);
-  const [tooltipCups,   setTooltipCups]   = useState<TooltipCupsConfig>(DEFAULT_TOOLTIP_CUPS);
-
-  // ── Tabla topología (columnas visibles en Panel 3) ─────────────────────
-  const [tablaLineas, setTablaLineas] = useState<TablaLineasConfig>(DEFAULT_TABLA_LINEAS);
-  const [tablaTramos, setTablaTramos] = useState<TablaTramosConfig>(DEFAULT_TABLA_TRAMOS);
-  const [tablaCts,    setTablaCts]    = useState<TablaCtsConfig>(DEFAULT_TABLA_CTS);
-  const [tablaCups,   setTablaCups]   = useState<TablaCupsConfig>(DEFAULT_TABLA_CUPS);
-  const [tablaCeldas, setTablaCeldas] = useState<TablaCeldasConfig>(DEFAULT_TABLA_CELDAS);
-  const [tablaTrafos, setTablaTrafos] = useState<TablaTrafosConfig>(DEFAULT_TABLA_TRAFOS);
-
   const {
     appearance, setAppearance,
     generalColumnOrder, generalHiddenColumns, setGeneralColumnOrder, setGeneralHiddenColumns,
     psColumnOrder, psHiddenColumns, setPsColumnOrder, setPsHiddenColumns,
     resetAll: resetTableSettings,
   } = useTableSettings({ token, defaultGeneralOrder: DEFAULT_GENERAL_ORDER, defaultPsOrder: DEFAULT_PS_ORDER });
+
+  const {
+    tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
+    setTooltipLineas, setTooltipTramos, setTooltipCts, setTooltipCups,
+    tablaLineas, tablaTramos, tablaCts, tablaCups, tablaCeldas, tablaTrafos,
+    setTablaLineas, setTablaTramos, setTablaCts, setTablaCups, setTablaCeldas, setTablaTrafos,
+  } = useTopologiaSettings(token);
 
   useEffect(() => {
     try {
@@ -167,26 +142,6 @@ export default function HomePage() {
       if (localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1") setMedidasOpen(true);
       if (localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1") setTablasOpen(true);
       if (localStorage.getItem(PERDIDAS_OPEN_STORAGE_KEY) === "1") setPerdidasOpen(true);
-      const sl = localStorage.getItem(TOOLTIP_LINEAS_STORAGE_KEY);
-      if (sl) { try { setTooltipLineas({ ...DEFAULT_TOOLTIP_LINEAS, ...JSON.parse(sl) }); } catch { /* */ } }
-      const st = localStorage.getItem(TOOLTIP_TRAMOS_STORAGE_KEY);
-      if (st) { try { setTooltipTramos({ ...DEFAULT_TOOLTIP_TRAMOS, ...JSON.parse(st) }); } catch { /* */ } }
-      const sc = localStorage.getItem(TOOLTIP_CTS_STORAGE_KEY);
-      if (sc) { try { setTooltipCts({ ...DEFAULT_TOOLTIP_CTS, ...JSON.parse(sc) }); } catch { /* */ } }
-      const su = localStorage.getItem(TOOLTIP_CUPS_STORAGE_KEY);
-      if (su) { try { setTooltipCups({ ...DEFAULT_TOOLTIP_CUPS, ...JSON.parse(su) }); } catch { /* */ } }
-      const tl = localStorage.getItem(TABLA_LINEAS_STORAGE_KEY);
-      if (tl) { try { setTablaLineas({ ...DEFAULT_TABLA_LINEAS, ...JSON.parse(tl) }); } catch { /* */ } }
-      const tt = localStorage.getItem(TABLA_TRAMOS_STORAGE_KEY);
-      if (tt) { try { setTablaTramos({ ...DEFAULT_TABLA_TRAMOS, ...JSON.parse(tt) }); } catch { /* */ } }
-      const tc = localStorage.getItem(TABLA_CTS_STORAGE_KEY);
-      if (tc) { try { setTablaCts({ ...DEFAULT_TABLA_CTS, ...JSON.parse(tc) }); } catch { /* */ } }
-      const tu = localStorage.getItem(TABLA_CUPS_STORAGE_KEY);
-      if (tu) { try { setTablaCups({ ...DEFAULT_TABLA_CUPS, ...JSON.parse(tu) }); } catch { /* */ } }
-      const tce = localStorage.getItem(TABLA_CELDAS_STORAGE_KEY);
-      if (tce) { try { setTablaCeldas({ ...DEFAULT_TABLA_CELDAS, ...JSON.parse(tce) }); } catch { /* */ } }
-      const ttr = localStorage.getItem(TABLA_TRAFOS_STORAGE_KEY);
-      if (ttr) { try { setTablaTrafos({ ...DEFAULT_TABLA_TRAFOS, ...JSON.parse(ttr) }); } catch { /* */ } }
     } catch { /* ignore */ }
     finally { setAuthReady(true); }
   }, []);
@@ -196,16 +151,6 @@ export default function HomePage() {
   useEffect(() => { try { localStorage.setItem(TABLAS_OPEN_STORAGE_KEY, tablasOpen ? "1" : "0"); } catch { /* */ } }, [tablasOpen]);
   useEffect(() => { try { localStorage.setItem(PERDIDAS_OPEN_STORAGE_KEY, perdidasOpen ? "1" : "0"); } catch { /* */ } }, [perdidasOpen]);
   useEffect(() => { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0"); } catch { /* */ } }, [sidebarCollapsed]);
-  useEffect(() => { try { localStorage.setItem(TOOLTIP_LINEAS_STORAGE_KEY, JSON.stringify(tooltipLineas)); } catch { /* */ } }, [tooltipLineas]);
-  useEffect(() => { try { localStorage.setItem(TOOLTIP_TRAMOS_STORAGE_KEY, JSON.stringify(tooltipTramos)); } catch { /* */ } }, [tooltipTramos]);
-  useEffect(() => { try { localStorage.setItem(TOOLTIP_CTS_STORAGE_KEY,    JSON.stringify(tooltipCts));    } catch { /* */ } }, [tooltipCts]);
-  useEffect(() => { try { localStorage.setItem(TOOLTIP_CUPS_STORAGE_KEY,   JSON.stringify(tooltipCups));   } catch { /* */ } }, [tooltipCups]);
-  useEffect(() => { try { localStorage.setItem(TABLA_LINEAS_STORAGE_KEY,   JSON.stringify(tablaLineas));   } catch { /* */ } }, [tablaLineas]);
-  useEffect(() => { try { localStorage.setItem(TABLA_TRAMOS_STORAGE_KEY,   JSON.stringify(tablaTramos));   } catch { /* */ } }, [tablaTramos]);
-  useEffect(() => { try { localStorage.setItem(TABLA_CTS_STORAGE_KEY,      JSON.stringify(tablaCts));      } catch { /* */ } }, [tablaCts]);
-  useEffect(() => { try { localStorage.setItem(TABLA_CUPS_STORAGE_KEY,     JSON.stringify(tablaCups));     } catch { /* */ } }, [tablaCups]);
-  useEffect(() => { try { localStorage.setItem(TABLA_CELDAS_STORAGE_KEY,   JSON.stringify(tablaCeldas));   } catch { /* */ } }, [tablaCeldas]);
-  useEffect(() => { try { localStorage.setItem(TABLA_TRAFOS_STORAGE_KEY,   JSON.stringify(tablaTrafos));   } catch { /* */ } }, [tablaTrafos]);
 
   useEffect(() => {
     if (!token) { setCurrentUser(null); return; }

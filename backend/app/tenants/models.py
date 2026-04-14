@@ -28,8 +28,9 @@ class User(TimestampMixin, Base):
     is_active    = Column(Boolean, nullable=False, default=True)
     is_superuser = Column(Boolean, nullable=False, default=False)
     # Configuración de UI — persiste en BD
-    ui_theme_overrides = Column(JSON, nullable=True)   # tema de color (ya existía)
-    ui_table_settings  = Column(JSON, nullable=True)   # ← NUEVO: config de tablas
+    ui_theme_overrides    = Column(JSON, nullable=True)   # tema de color (ya existía)
+    ui_table_settings     = Column(JSON, nullable=True)   # config de tablas
+    ui_topologia_settings = Column(JSON, nullable=True)   # config topología (tabla + tooltip)
 
     tenant = relationship("Tenant", back_populates="usuarios")
     empresas_permitidas = relationship(
