@@ -161,6 +161,10 @@ export interface TooltipLineasConfig {
   mostrar_cuenta:               boolean;
   mostrar_avifauna:             boolean;
   mostrar_identificador_baja:   boolean;
+  mostrar_identificador_tramo:  boolean;
+  mostrar_ccaa_2:               boolean;
+  mostrar_ct_asignado:          boolean;
+  mostrar_metodo_asignacion:    boolean;
 }
 
 export interface TooltipTramosConfig {
@@ -169,6 +173,8 @@ export interface TooltipTramosConfig {
   mostrar_orden:             boolean;
   mostrar_num_tramo:         boolean;
   mostrar_longitud_segmento: boolean;
+  mostrar_coordenadas_1:  boolean;
+  mostrar_coordenadas_2:  boolean;
 }
 
 export interface TooltipCtsConfig {
@@ -203,6 +209,13 @@ export interface TooltipCtsConfig {
   mostrar_motivacion:           boolean;
   mostrar_avifauna:             boolean;
   mostrar_identificador_baja:   boolean;
+  mostrar_identificador_ct:  boolean;
+  mostrar_denominacion:      boolean;
+  mostrar_coordenadas:       boolean;
+  mostrar_propiedad:         boolean;
+  mostrar_num_trafos:        boolean;
+  mostrar_num_celdas:        boolean;
+  mostrar_num_cups:          boolean;
 }
 
 export interface TooltipCupsConfig {
@@ -232,6 +245,12 @@ export interface TooltipCupsConfig {
   mostrar_conexion_autoconsumo: boolean;
   mostrar_energia_autoconsumida: boolean;
   mostrar_energia_excedentaria:  boolean;
+  mostrar_nudo:                    boolean;
+  mostrar_coordenadas:             boolean;
+  mostrar_cups:                    boolean;
+  mostrar_ct_asignado_cups:        boolean;
+  mostrar_metodo_asignacion_cups:  boolean;
+  mostrar_fase:                    boolean;
 }
 
 // ─── Valores por defecto ──────────────────────────────────────────────────────
@@ -270,6 +289,10 @@ export const DEFAULT_TOOLTIP_LINEAS: TooltipLineasConfig = {
   mostrar_cuenta:               false,
   mostrar_avifauna:             false,
   mostrar_identificador_baja:   false,
+  mostrar_identificador_tramo:  false,
+  mostrar_ccaa_2:               false,
+  mostrar_ct_asignado:          false,
+  mostrar_metodo_asignacion:    false,
 };
 
 export const DEFAULT_TOOLTIP_TRAMOS: TooltipTramosConfig = {
@@ -278,6 +301,8 @@ export const DEFAULT_TOOLTIP_TRAMOS: TooltipTramosConfig = {
   mostrar_orden:             true,
   mostrar_num_tramo:         false,
   mostrar_longitud_segmento: true,
+  mostrar_coordenadas_1:     false,
+  mostrar_coordenadas_2:     false,
 };
 
 export const DEFAULT_TOOLTIP_CTS: TooltipCtsConfig = {
@@ -312,6 +337,13 @@ export const DEFAULT_TOOLTIP_CTS: TooltipCtsConfig = {
   mostrar_motivacion:           false,
   mostrar_avifauna:             false,
   mostrar_identificador_baja:   false,
+  mostrar_identificador_ct:  false,
+  mostrar_denominacion:      false,
+  mostrar_coordenadas:       false,
+  mostrar_propiedad:         false,
+  mostrar_num_trafos:        false,
+  mostrar_num_celdas:        false,
+  mostrar_num_cups:          false,
 };
 
 export const DEFAULT_TOOLTIP_CUPS: TooltipCupsConfig = {
@@ -341,6 +373,12 @@ export const DEFAULT_TOOLTIP_CUPS: TooltipCupsConfig = {
   mostrar_conexion_autoconsumo: false,
   mostrar_energia_autoconsumida: false,
   mostrar_energia_excedentaria:  false,
+  mostrar_nudo:                    false,
+  mostrar_coordenadas:             false,
+  mostrar_cups:                    false,
+  mostrar_ct_asignado_cups:        false,
+  mostrar_metodo_asignacion_cups:  false,
+  mostrar_fase:                    false,
 };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
