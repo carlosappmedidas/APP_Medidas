@@ -510,6 +510,7 @@ export default function HomePage() {
             tablaCups={tablaCups}
             tablaCeldas={tablaCeldas}
             tablaCts={tablaCts}
+            tablaTramos={tablaTramos}
           />
         )}
 

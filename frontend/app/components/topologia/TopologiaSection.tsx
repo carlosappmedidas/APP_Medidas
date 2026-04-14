@@ -10,8 +10,8 @@ import type {
 } from "./MapaLeaflet";
 import { DEFAULT_TOOLTIP_LINEAS, DEFAULT_TOOLTIP_TRAMOS, DEFAULT_TOOLTIP_CTS, DEFAULT_TOOLTIP_CUPS } from "./MapaLeaflet";
 import TablePaginationFooter from "../ui/TablePaginationFooter";
-import type { TablaLineasConfig, TablaCupsConfig, TablaCeldasConfig, TablaCtsConfig } from "../settings/TopologiaSettingsSection";
-import { DEFAULT_TABLA_LINEAS, DEFAULT_TABLA_CUPS, DEFAULT_TABLA_CELDAS, DEFAULT_TABLA_CTS } from "../settings/TopologiaSettingsSection";
+import type { TablaLineasConfig, TablaCupsConfig, TablaCeldasConfig, TablaCtsConfig, TablaTramosConfig } from "../settings/TopologiaSettingsSection";
+import { DEFAULT_TABLA_LINEAS, DEFAULT_TABLA_CUPS, DEFAULT_TABLA_CELDAS, DEFAULT_TABLA_CTS, DEFAULT_TABLA_TRAMOS } from "../settings/TopologiaSettingsSection";
 
 const MapaLeaflet = dynamic(() => import("./MapaLeaflet"), {
   ssr: false,
@@ -125,6 +125,7 @@ interface Props {
   tablaCups?: TablaCupsConfig;
   tablaCeldas?: TablaCeldasConfig;
   tablaCts?: TablaCtsConfig;
+  tablaTramos?: TablaTramosConfig;
 }
 
 function esBTTramo(t: TramoMapa): boolean {
@@ -196,11 +197,12 @@ type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 const METODO_LABEL: Record<string, string> = { bfs: "Topológico", proximidad: "Proximidad", nudo_linea: "Nudo→Línea", manual: "Manual" };
 const METODO_COLOR: Record<string, string> = { bfs: "#1D9E75", proximidad: "#F59E0B", nudo_linea: "#378ADD", manual: "#A855F7" };
 
-export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, tooltipCts, tooltipCups, tablaLineas: tablaLineasProp, tablaCups: tablaCupsProp, tablaCeldas: tablaCeldasProp, tablaCts: tablaCtsProp }: Props) {
+export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, tooltipCts, tooltipCups, tablaLineas: tablaLineasProp, tablaCups: tablaCupsProp, tablaCeldas: tablaCeldasProp, tablaCts: tablaCtsProp, tablaTramos: tablaTramosProp }: Props) {
   const tablaLineasCfg = tablaLineasProp ?? DEFAULT_TABLA_LINEAS;
   const tablaCupsCfg   = tablaCupsProp   ?? DEFAULT_TABLA_CUPS;
   const tablaCeldasCfg = tablaCeldasProp ?? DEFAULT_TABLA_CELDAS;
   const tablaCtsCfg    = tablaCtsProp    ?? DEFAULT_TABLA_CTS;
+  const tablaTramosConfig = tablaTramosProp ?? DEFAULT_TABLA_TRAMOS;
 
   const [panelImportOpen, setPanelImportOpen] = useState(false);
   const [panelMapaOpen,   setPanelMapaOpen]   = useState(true);
