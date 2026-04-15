@@ -267,7 +267,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const tablaTramosRef = useRef<HTMLDivElement>(null);
   const [minHTramos,     setMinHTramos]     = useState<number | undefined>(undefined);
   const [loadingTabla,   setLoadingTabla]   = useState(false);
-  const [hasLoadedTabla, setHasLoadedTabla] = useState(false);
+  const [hasLoadedTabla, setHasLoadedTabla] = useState(true);
   const [filtroCtTabla,  setFiltroCtTabla]  = useState<string>("");
   const [filtroSinCt,    setFiltroSinCt]    = useState(false);
   const [filtroMetodo,   setFiltroMetodo]   = useState<string>("");
@@ -294,6 +294,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [minHCeldas, setMinHCeldas] = useState<number | undefined>(undefined);
 
   const [showCrearCt, setShowCrearCt] = useState(false);
+  const [mapaBase, setMapaBase] = useState<string>("osm");
+  const [ddCtOpen, setDdCtOpen] = useState(false);
+  const [ddLineaOpen, setDdLineaOpen] = useState(false);
+  const [ddCapasOpen, setDdCapasOpen] = useState(false);
+  const mapaToolbarRef = useRef<HTMLDivElement>(null);
 
   const mostrarLineas = mostrarBT || mostrarMT;
 
@@ -302,6 +307,17 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) })
       .then(r => r.ok ? r.json() : []).then(setEmpresas).catch(() => {});
   }, [token]);
+  
+    // Cerrar dropdowns del mapa al pulsar fuera
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (mapaToolbarRef.current && !mapaToolbarRef.current.contains(e.target as Node)) {
+        setDdCtOpen(false); setDdLineaOpen(false); setDdCapasOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const cargarCts = useCallback(async () => {
     if (!token || !empresaId) return;
@@ -881,7 +897,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 <div key={key} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{desc}</div>
-                  <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }} onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
+                  <input type="file" accept=".txt,.csv" className="ui-file" style={{ fontSize: 10 }} onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
                   {ficheros[key] && <div style={{ fontSize: 10, color: "#1D9E75", marginTop: 4 }}>✓ {ficheros[key]!.name}</div>}
                 </div>
               ))}
@@ -891,7 +907,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 <div key={key} style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 8, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{desc}</div>
-                  <input type="file" accept=".txt,.csv" style={{ fontSize: 10 }} onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
+                  <input type="file" accept=".txt,.csv" className="ui-file" style={{ fontSize: 10 }} onChange={e => setFicheros(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))} />
                   {ficheros[key] && <div style={{ fontSize: 10, color: "#1D9E75", marginTop: 4 }}>✓ {ficheros[key]!.name}</div>}
                 </div>
               ))}
@@ -924,205 +940,221 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
         )}
       </div>
 
-      {/* ══ PANEL 2 — MAPA ══ */}
-      <div style={mapaPanelStyle}>
+ {/* ══ PANEL 2 — MAPA ══ */}
+      <div style={mapaPanelStyle} ref={mapaToolbarRef}>
         <div style={panelHeaderStyle} onClick={() => setPanelMapaOpen(v => !v)}>
           <div>
-            <div style={panelTitleStyle}>🗺️ Mapa topológico</div>
-            <div style={panelDescStyle}>
-              {cts.length > 0 || cups.length > 0 || tramos.length > 0
-                ? `${cts.length} CTs · ${cups.length} CUPS · ${numBT} seg. BT · ${numMT} seg. MT · ${lineas.length} líneas`
-                : "Selecciona una empresa para cargar el mapa"}
-            </div>
+            <div style={panelTitleStyle}>Mapa topológico</div>
+            <div style={panelDescStyle}>Visualización geográfica de la red de distribución</div>
           </div>
           <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={e => { e.stopPropagation(); setPanelMapaOpen(v => !v); }}>{panelMapaOpen ? "Ocultar" : "Mostrar"}</button>
         </div>
 
         {panelMapaOpen && (
-          <div style={{ borderTop: "1px solid var(--card-border)" }}>
-            <div style={{ display: "flex", height: 580 }}>
-              <div style={{ width: 230, flexShrink: 0, borderRight: "1px solid var(--card-border)", padding: "14px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ borderTop: "1px solid var(--card-border)", overflow: "visible" }}>
+            {/* ── Toolbar horizontal ── */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid var(--card-border)", background: "var(--field-bg-soft)", gap: 10, flexWrap: "wrap", position: "relative", zIndex: 1001 }}>
+              {/* Empresa */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Empresa</span>
+                <select className="ui-select" style={{ fontSize: 11, height: 32, minWidth: 180 }} value={empresaId}
+                  onChange={e => {
+                    setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
+                    setCtsSeleccionados([]); setLineaSeleccionada(null);
+                    setBusquedaLinea(""); setBusquedaLineaPendiente(""); setBusquedaCtFiltro("");
+                    setCts([]); setCups([]); setTramos([]); setLineas([]); setTensionPorLinea(new Map());
+                  }}>
+                  <option value="">Selecciona empresa</option>
+                  {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
+                </select>
+              </div>
 
-                <div>
-                  <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Empresa</label>
-                  <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={empresaId}
-                    onChange={e => {
-                      setEmpresaId(e.target.value === "" ? "" : Number(e.target.value));
-                      setCtsSeleccionados([]); setLineaSeleccionada(null);
-                      setBusquedaLinea(""); setBusquedaLineaPendiente(""); setBusquedaCtFiltro("");
-                      setCts([]); setCups([]); setTramos([]); setLineas([]); setTensionPorLinea(new Map());
-                    }}>
-                    <option value="">Selecciona empresa</option>
-                    {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
-                  </select>
+              {/* KPIs inline */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#E24B4A", display: "inline-block" }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "#E24B4A" }}>{cts.length}</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>CTs</span>
                 </div>
-
-                <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
-                  <SeccionLabel label="Capas" open={capasOpen} onToggle={() => setCapasOpen(v => !v)} />
-                  {capasOpen && (
-                    <>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
-                        <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} />
-                        <span style={{ width: 16, height: 3, background: "#A855F7", display: "inline-block", borderRadius: 2 }} />
-                        Red MT {loadingTramos ? "…" : `(${numMT})`}
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
-                        <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} />
-                        <span style={{ width: 16, height: 3, background: "#F59E0B", display: "inline-block", borderRadius: 2 }} />
-                        Red BT {loadingTramos ? "…" : `(${numBT})`}
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
-                        <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} />
-                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E24B4A", border: "2px solid #fff", display: "inline-block" }} />
-                        CTs {loadingCts ? "…" : `(${cts.length})`}
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 6 }}>
-                        <input type="checkbox" checked={mostrarCupsBT} onChange={e => setMostrarCupsBT(e.target.checked)} />
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#378ADD", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
-                        CUPS BT {loadingCups ? "…" : `(${numCupsBT})`}
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-                        <input type="checkbox" checked={mostrarCupsMT} onChange={e => setMostrarCupsMT(e.target.checked)} />
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#7C3AED", border: "1px solid rgba(255,255,255,0.8)", display: "inline-block" }} />
-                        CUPS MT {loadingCups ? "…" : `(${numCupsMT})`}
-                      </label>
-                    </>
-                  )}
+                <div style={{ width: 1, height: 14, background: "var(--card-border)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#378ADD", display: "inline-block" }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "#378ADD" }}>{numCupsBT.toLocaleString()}</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>CUPS BT</span>
                 </div>
+                <div style={{ width: 1, height: 14, background: "var(--card-border)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#7C3AED", display: "inline-block" }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "#7C3AED" }}>{numCupsMT.toLocaleString()}</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>CUPS MT</span>
+                </div>
+                <div style={{ width: 1, height: 14, background: "var(--card-border)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 10, height: 2, background: "#F59E0B", display: "inline-block", borderRadius: 1 }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "#F59E0B" }}>{numBT.toLocaleString()}</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>BT</span>
+                </div>
+                <div style={{ width: 1, height: 14, background: "var(--card-border)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 10, height: 2, background: "#A855F7", display: "inline-block", borderRadius: 1 }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "#A855F7" }}>{numMT.toLocaleString()}</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>MT</span>
+                </div>
+                <div style={{ width: 1, height: 14, background: "var(--card-border)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>{lineas.length}</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>líneas</span>
+                </div>
+              </div>
 
-                {lineasFiltradas.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Seleccionar línea</div>
-                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                      <input ref={inputBusquedaLineaRef} className="ui-input" style={{ flex: 1, fontSize: 11, height: 28, fontFamily: "monospace" }}
-                        placeholder="Buscar ID..." value={busquedaLineaPendiente}
-                        onChange={e => setBusquedaLineaPendiente(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") handleBuscarLinea(); }} />
-                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28, padding: "0 8px", fontSize: 13 }} onClick={handleBuscarLinea}>🔍</button>
+              {/* Botones filtro */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {/* Filtrar CT */}
+                <div style={{ position: "relative" }}>
+                  <button type="button" onClick={() => { setDdCtOpen(v => !v); setDdLineaOpen(false); setDdCapasOpen(false); }}
+                    style={{ fontSize: 10, height: 26, padding: "0 10px", cursor: "pointer", borderRadius: 6, border: ctsSeleccionados.length > 0 ? "1px solid rgba(226,75,74,0.3)" : "1px solid var(--card-border)", background: ctsSeleccionados.length > 0 ? "rgba(226,75,74,0.12)" : "var(--card-bg)", color: ctsSeleccionados.length > 0 ? "#E24B4A" : "var(--text-muted)" }}>
+                    Filtrar CT{ctsSeleccionados.length > 0 ? ` (${ctsSeleccionados.length})` : ""}
+                  </button>
+                  {ddCtOpen && (
+                    <div style={{ position: "absolute", top: 30, right: 0, width: 210, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: 8, zIndex: 1000, boxShadow: "0 4px 12px rgba(0,0,0,0.12)" }}>
+                      <input className="ui-input" style={{ width: "100%", fontSize: 10, height: 24, marginBottom: 6 }}
+                        placeholder="Buscar CT..." value={busquedaCtFiltro}
+                        onChange={e => setBusquedaCtFiltro(e.target.value)} />
+                      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                        <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 9, flex: 1 }} onClick={() => setCtsSeleccionados([])}>Todos</button>
+                        <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 9, flex: 1 }} onClick={() => setCtsSeleccionados(cts.map(c => c.id_ct))}>Ninguno</button>
+                      </div>
+                      <div style={{ maxHeight: 160, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                        {ctsFiltradosLista.map(ct => {
+                          const sel = ctsSeleccionados.includes(ct.id_ct);
+                          const colorCt = ctsSeleccionados.length >= 2 && sel ? coloresCt[ct.id_ct] : undefined;
+                          return (
+                            <label key={ct.id_ct} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "3px 4px", borderRadius: 4, background: sel ? "var(--field-bg-soft)" : "transparent" }}>
+                              <input type="checkbox" checked={sel} onChange={() => toggleCt(ct.id_ct)} style={{ flexShrink: 0, width: 11, height: 11 }} />
+                              {colorCt && <span style={{ width: 6, height: 6, borderRadius: "50%", background: colorCt, flexShrink: 0 }} />}
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: sel ? "var(--text)" : "var(--text-muted)" }}>{ct.nombre}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {ctsSeleccionados.length > 0 && (
+                        <button type="button" style={{ fontSize: 9, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", marginTop: 4, padding: "2px 0" }}
+                          onClick={() => { setCtsSeleccionados([]); setBusquedaCtFiltro(""); }}>
+                          Limpiar selección
+                        </button>
+                      )}
                     </div>
-                    {busquedaLinea && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{lineasEnSelect.length} resultado{lineasEnSelect.length !== 1 ? "s" : ""}</div>}
-                    <select className="ui-select" style={{ width: "100%", fontSize: 11, height: 30 }} value={lineaSeleccionada ?? ""} onChange={e => setLineaSeleccionada(e.target.value || null)}>
-                      <option value="">Todas las líneas</option>
-                      {lineasEnSelect.map(id => <option key={id} value={id}>{id}</option>)}
-                    </select>
-                    {(lineaSeleccionada || busquedaLinea) && (
-                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }} onClick={handleLimpiarLinea}>✕ Limpiar</button>
-                    )}
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {cts.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
-                    <SeccionLabel
-                      label={`Filtrar por CT${ctsSeleccionados.length > 0 ? ` (${ctsSeleccionados.length})` : ""}`}
-                      open={ctListaOpen}
-                      onToggle={() => setCtListaOpen(v => !v)}
-                    />
-                    {ctListaOpen && (
-                      <>
-                        <input className="ui-input" style={{ width: "100%", fontSize: 10, height: 26, marginBottom: 6 }}
-                          placeholder="Buscar CT..." value={busquedaCtFiltro}
-                          onChange={e => setBusquedaCtFiltro(e.target.value)} />
-                        <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 9, flex: 1 }} onClick={() => setCtsSeleccionados([])}>Todos</button>
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 9, flex: 1 }} onClick={() => setCtsSeleccionados(cts.map(c => c.id_ct))}>Ninguno</button>
-                        </div>
-                        {ctsSeleccionados.length >= 2 && (
-                          <div style={{ fontSize: 9, color: "#1D9E75", fontWeight: 600, marginBottom: 6 }}>● Modo multi-CT activo</div>
-                        )}
-                        <div style={{ maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-                          {ctsFiltradosLista.map(ct => {
-                            const sel = ctsSeleccionados.includes(ct.id_ct);
-                            const colorCt = ctsSeleccionados.length >= 2 && sel ? coloresCt[ct.id_ct] : undefined;
-                            return (
-                              <label key={ct.id_ct} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 4px", borderRadius: 4, background: sel ? "var(--field-bg-soft)" : "transparent" }}>
-                                <input type="checkbox" checked={sel} onChange={() => toggleCt(ct.id_ct)} style={{ flexShrink: 0 }} />
-                                {colorCt && <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorCt, flexShrink: 0 }} />}
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: sel ? "var(--text)" : "var(--text-muted)" }}>{ct.nombre}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                        {ctsSeleccionados.length > 0 && (
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ marginTop: 6, fontSize: 10 }}
-                            onClick={() => { setCtsSeleccionados([]); setBusquedaCtFiltro(""); }}>
-                            ✕ Limpiar selección
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Leyenda</div>
-                  {ctsSeleccionados.length >= 2 ? (
-                    <>
-                      {ctsSeleccionados.map(id => {
-                        const ct = cts.find(c => c.id_ct === id);
-                        return (
-                          <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>
-                            <span style={{ width: 16, height: 3, background: coloresCt[id], display: "inline-block", borderRadius: 2 }} />
-                            {ct?.nombre ?? id}
-                          </div>
-                        );
-                      })}
-                      <div style={{ marginTop: 4 }}>
-                        {[
-                          { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
-                          { color: "#378ADD", w: 7,  h: 7,  label: "CUPS BT",      radius: "50%" as const },
-                          { color: "#7C3AED", w: 7,  h: 7,  label: "CUPS MT",      radius: "50%" as const },
-                        ].map(({ color, w, h, label, radius, border }) => (
-                          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                            <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
-                            {label}
-                          </div>
-                        ))}
+                {/* Filtrar línea */}
+                <div style={{ position: "relative" }}>
+                  <button type="button" onClick={() => { setDdLineaOpen(v => !v); setDdCtOpen(false); setDdCapasOpen(false); }}
+                    style={{ fontSize: 10, height: 26, padding: "0 10px", cursor: "pointer", borderRadius: 6, border: lineaSeleccionada ? "1px solid rgba(37,99,235,0.3)" : "1px solid var(--card-border)", background: lineaSeleccionada ? "rgba(37,99,235,0.12)" : "var(--card-bg)", color: lineaSeleccionada ? "#378ADD" : "var(--text-muted)" }}>
+                    Filtrar línea{lineaSeleccionada ? " (1)" : ""}
+                  </button>
+                  {ddLineaOpen && (
+                    <div style={{ position: "absolute", top: 30, right: 0, width: 200, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, padding: 8, zIndex: 1000, boxShadow: "0 4px 12px rgba(0,0,0,0.12)" }}>
+                      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                        <input ref={inputBusquedaLineaRef} className="ui-input" style={{ flex: 1, fontSize: 10, height: 24, fontFamily: "monospace" }}
+                          placeholder="ID línea..." value={busquedaLineaPendiente}
+                          onChange={e => setBusquedaLineaPendiente(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") handleBuscarLinea(); }} />
+                        <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 24, padding: "0 8px", fontSize: 10 }} onClick={handleBuscarLinea}>Ir</button>
                       </div>
-                    </>
-                  ) : (
-                    [
-                      { color: "#A855F7", w: 16, h: 3,  label: "Línea MT",                radius: 2 },
-                      { color: "#F59E0B", w: 16, h: 3,  label: "Línea BT",                radius: 2 },
-                      { color: "#E24B4A", w: 10, h: 10, label: "Centro de transformación", radius: "50%" as const, border: "2px solid #fff" },
-                      { color: "#378ADD", w: 7,  h: 7,  label: "CUPS BT",     radius: "50%" as const },
-                      { color: "#7C3AED", w: 7,  h: 7,  label: "CUPS MT",     radius: "50%" as const },
-                    ].map(({ color, w, h, label, radius, border }) => (
-                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                        <span style={{ width: w, height: h, background: color, display: "inline-block", borderRadius: radius, border }} />
-                        {label}
-                      </div>
-                    ))
+                      <select className="ui-select" style={{ width: "100%", fontSize: 10, height: 28, marginBottom: 4 }} value={lineaSeleccionada ?? ""} onChange={e => setLineaSeleccionada(e.target.value || null)}>
+                        <option value="">Todas las líneas</option>
+                        {lineasEnSelect.map(id => <option key={id} value={id}>{id}</option>)}
+                      </select>
+                      {(lineaSeleccionada || busquedaLinea) && (
+                        <button type="button" style={{ fontSize: 9, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "2px 0" }} onClick={handleLimpiarLinea}>Limpiar</button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
+            </div>
 
-              <div style={{ flex: 1, position: "relative", minHeight: 580 }}>
-                {!empresaId && (
-                  <div style={{ position: "absolute", inset: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.85)", fontSize: 12, color: "var(--text-muted)", borderRadius: "0 10px 10px 0" }}>
-                    Selecciona una empresa para cargar el mapa
+            {/* ── Mapa + controles flotantes ── */}
+            <div style={{ position: "relative", height: 580 }}>
+              {!empresaId && (
+                <div style={{ position: "absolute", inset: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", fontSize: 12, color: "#ccc", borderRadius: "0 0 10px 10px" }}>
+                  Selecciona una empresa para cargar el mapa
+                </div>
+              )}
+
+              {/* Botón capas flotante */}
+              <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000 }}>
+                <button type="button" onClick={() => { setDdCapasOpen(v => !v); setDdCtOpen(false); setDdLineaOpen(false); }}
+                  style={{ width: 30, height: 30, borderRadius: 6, background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 14 }}>
+                  ☰
+                </button>
+                {ddCapasOpen && (
+                  <div style={{ position: "absolute", top: 34, right: 0, width: 165, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column" }}>
+                    {/* Mapa base */}
+                    <div style={{ padding: "8px 10px 6px" }}>
+                      <div style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 5 }}>Mapa base</div>
+                      {([["osm", "OpenStreetMap"], ["pnoa", "PNOA (Ortofoto)"], ["ign", "IGN Base"], ["catastro", "Catastro"]] as const).map(([val, label]) => (
+                        <label key={val} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                          <input type="radio" name="mapaBase" checked={mapaBase === val} onChange={() => setMapaBase(val)} style={{ width: 11, height: 11, margin: 0 }} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <div style={{ height: 1, background: "var(--card-border)" }} />
+                    {/* Datos */}
+                    <div style={{ padding: "6px 10px 8px" }}>
+                      <div style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 5 }}>Datos</div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                        <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                        <span style={{ width: 10, height: 2, background: "#A855F7", display: "inline-block", borderRadius: 1 }} />
+                        Red MT
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                        <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                        <span style={{ width: 10, height: 2, background: "#F59E0B", display: "inline-block", borderRadius: 1 }} />
+                        Red BT
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                        <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A", border: "1.5px solid #fff", display: "inline-block" }} />
+                        CTs
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                        <input type="checkbox" checked={mostrarCupsBT} onChange={e => setMostrarCupsBT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#378ADD", display: "inline-block" }} />
+                        CUPS BT
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                        <input type="checkbox" checked={mostrarCupsMT} onChange={e => setMostrarCupsMT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#7C3AED", display: "inline-block" }} />
+                        CUPS MT
+                      </label>
+                    </div>
                   </div>
                 )}
-                <MapaLeaflet
-                  cts={ctsPintados}
-                  ctsTodos={cts}
-                  cups={cups}
-                  tramos={tramosFiltrados}
-                  mostrarCts={mostrarCts}
-                  mostrarCupsBT={mostrarCupsBT}
-                  mostrarCupsMT={mostrarCupsMT}
-                  mostrarLineas={mostrarLineas}
-                  lineaSeleccionada={lineaSeleccionada}
-                  tooltipLineas={tooltipLineas}
-                  tooltipTramos={tooltipTramos}
-                  tooltipCts={tooltipCts}
-                  tooltipCups={tooltipCups}
-                  onLineaClick={handleLineaClick}
-                  onReasignarCt={handleReasignarCtMapa}
-                  onReasignarFase={handleReasignarFaseMapa}
-                  coloresCt={coloresCt}
-                />
               </div>
+
+              <MapaLeaflet
+                cts={ctsPintados}
+                ctsTodos={cts}
+                cups={cups}
+                tramos={tramosFiltrados}
+                mostrarCts={mostrarCts}
+                mostrarCupsBT={mostrarCupsBT}
+                mostrarCupsMT={mostrarCupsMT}
+                mostrarLineas={mostrarLineas}
+                lineaSeleccionada={lineaSeleccionada}
+                tooltipLineas={tooltipLineas}
+                tooltipTramos={tooltipTramos}
+                tooltipCts={tooltipCts}
+                tooltipCups={tooltipCups}
+                onLineaClick={handleLineaClick}
+                onReasignarCt={handleReasignarCtMapa}
+                onReasignarFase={handleReasignarFaseMapa}
+                coloresCt={coloresCt}
+                mapaBase={mapaBase}
+              />
             </div>
           </div>
         )}
@@ -1179,10 +1211,10 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             )}
 
             <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--card-border)", alignItems: "center" }}>
-              {(["lineas", "cups", "celdas", "cts", "tramos"] as const).map(tab => (
+              {(["cts", "celdas", "lineas", "tramos", "cups"] as const).map(tab => (
                 <button key={tab} type="button"
                   onClick={() => {
-                    setTablaActiva(tab); setHasLoadedTabla(false);
+                    setTablaActiva(tab);
                     if (tab === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
                     else if (tab === "cups") { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
                     else if (tab === "celdas") { setPageCeldas(0); cargarTablaCeldas(0, pageSizeCeldas); }
@@ -1190,7 +1222,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                     else { setPageTramos(0); cargarTablaTramos(0, pageSizeTramos); }
                   }}
                   style={{ padding: "6px 16px", fontSize: 11, fontWeight: 600, background: "none", border: "none", cursor: "pointer", borderBottom: tablaActiva === tab ? "2px solid var(--primary)" : "2px solid transparent", color: tablaActiva === tab ? "var(--primary)" : "var(--text-muted)" }}>
-                  {tab === "lineas" ? `Líneas → CT (${totalLineas.toLocaleString()})` : tab === "cups" ? `CUPS → CT (${totalCups.toLocaleString()})` : tab === "celdas" ? `Celdas (${totalCeldas.toLocaleString()})` : tab === "cts" ? `CTs (${totalCts.toLocaleString()})` : `Tramos (${totalTramos2.toLocaleString()})`}
+                  {tab === "lineas" ? `Líneas → CT${tablaActiva === "lineas" ? ` (${totalLineas.toLocaleString()})` : ""}` : tab === "cups" ? `CUPS → CT${tablaActiva === "cups" ? ` (${totalCups.toLocaleString()})` : ""}` : tab === "celdas" ? `Celdas${tablaActiva === "celdas" ? ` (${totalCeldas.toLocaleString()})` : ""}` : tab === "cts" ? `CTs${tablaActiva === "cts" ? ` (${totalCts.toLocaleString()})` : ""}` : `Tramos${tablaActiva === "tramos" ? ` (${totalTramos2.toLocaleString()})` : ""}`}
                 </button>
               ))}
               {tablaActiva === "cts" && empresaId && (
@@ -1245,7 +1277,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             {tablaActiva === "lineas" && (
               <div style={{ overflowX: "auto" }}>
                 {!hasLoadedTabla && loadingTabla ? (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 0" }}>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} style={{ height: 28, borderRadius: 6, background: "var(--field-bg-soft)", opacity: 0.6 - i * 0.05 }} />
+                    ))}
+                  </div>
                 ) : lineasTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : lineasTabla.length > 0 ? (
@@ -1312,7 +1348,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             {tablaActiva === "cups" && (
               <div style={{ overflowX: "auto" }}>
                 {!hasLoadedTabla && loadingTabla ? (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 0" }}>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} style={{ height: 28, borderRadius: 6, background: "var(--field-bg-soft)", opacity: 0.6 - i * 0.05 }} />
+                    ))}
+                  </div>
                 ) : cupsTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : cupsTabla.length > 0 ? (
@@ -1398,7 +1438,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             {tablaActiva === "celdas" && (
               <div style={{ overflowX: "auto" }}>
                 {!hasLoadedTabla && loadingTabla ? (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 0" }}>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} style={{ height: 28, borderRadius: 6, background: "var(--field-bg-soft)", opacity: 0.6 - i * 0.05 }} />
+                    ))}
+                  </div>
                 ) : celdasTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : celdasTabla.length > 0 ? (
@@ -1439,7 +1483,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             {tablaActiva === "cts" && (
               <div style={{ overflowX: "auto" }}>
                 {!hasLoadedTabla && loadingTabla ? (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 0" }}>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} style={{ height: 28, borderRadius: 6, background: "var(--field-bg-soft)", opacity: 0.6 - i * 0.05 }} />
+                    ))}
+                  </div>
                 ) : ctsTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : ctsTabla.length > 0 ? (
@@ -1480,7 +1528,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
             {tablaActiva === "tramos" && (
               <div style={{ overflowX: "auto" }}>
                 {!hasLoadedTabla && loadingTabla ? (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Cargando...</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 0" }}>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} style={{ height: 28, borderRadius: 6, background: "var(--field-bg-soft)", opacity: 0.6 - i * 0.05 }} />
+                    ))}
+                  </div>
                 ) : tramosTabla.length === 0 && hasLoadedTabla ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "20px 0" }}>Sin resultados</div>
                 ) : tramosTabla.length > 0 ? (

@@ -399,8 +399,9 @@ interface Props {
   tooltipCups:       TooltipCupsConfig;
   onLineaClick:      (id_linea: string | null) => void;
   onReasignarCt:     (id_tramo: string, id_ct: string | null) => void;
-  onReasignarFase:   (cups: string, fase: string | null) => void;   // ← NUEVO
+  onReasignarFase:   (cups: string, fase: string | null) => void;
   coloresCt:         Record<string, string>;
+  mapaBase?:         string;
 }
 
 // ─── Color y nivel ────────────────────────────────────────────────────────────
@@ -673,6 +674,7 @@ export default function MapaLeaflet({
   tooltipLineas, tooltipTramos, tooltipCts, tooltipCups,
   onLineaClick, onReasignarCt, onReasignarFase,
   coloresCt,
+  mapaBase = "osm",
 }: Props) {
   const mapRef             = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -687,6 +689,10 @@ export default function MapaLeaflet({
   const lineasLayerRef     = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresLayerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tileLayerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tileLayersRef = useRef<Record<string, any>>({});
 
   const onReasignarCtRef   = useRef(onReasignarCt);
   const onReasignarFaseRef = useRef(onReasignarFase);
@@ -728,7 +734,8 @@ export default function MapaLeaflet({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const capaCatastro = L.tileLayer.wms("https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx", { layers: "Catastro", format: "image/png", transparent: true, attribution: '© <a href="https://www.catastro.meh.es">Catastro</a>', maxZoom: 19 } as any);
       capaOSM.addTo(map);
-      L.control.layers({ "OpenStreetMap": capaOSM, "PNOA (Ortofoto IGN)": capaPNOA, "IGN Base": capaIGNBase, "Catastro": capaCatastro }, {}, { position: "topright", collapsed: true }).addTo(map);
+      tileLayerRef.current = capaOSM;
+      tileLayersRef.current = { osm: capaOSM, pnoa: capaPNOA, ign: capaIGNBase, catastro: capaCatastro };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapAny = map as any;
       if (mapAny.touchZoom) mapAny.touchZoom.disable();
@@ -774,6 +781,16 @@ export default function MapaLeaflet({
       delete (window as any).__reasignarFase;
     };
   }, []);
+
+    // ── Cambiar mapa base ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapaInstancia.current || !tileLayersRef.current) return;
+    const newLayer = tileLayersRef.current[mapaBase];
+    if (!newLayer || newLayer === tileLayerRef.current) return;
+    if (tileLayerRef.current) mapaInstancia.current.removeLayer(tileLayerRef.current);
+    newLayer.addTo(mapaInstancia.current);
+    tileLayerRef.current = newLayer;
+  }, [mapaBase]);
 
   // ── Pintar líneas ─────────────────────────────────────────────────────────
   useEffect(() => {

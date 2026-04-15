@@ -764,3 +764,29 @@ body {
 .ui-main:has(.leaflet-container:hover) {
   overflow-y: hidden !important;
 }
+
+/* =========================================================
+   19) Leaflet z-index reset — dropdowns sobre el mapa
+   ========================================================= */
+.leaflet-pane {
+  z-index: 0 !important;
+}
+.leaflet-tile-pane {
+  z-index: 0 !important;
+}
+.leaflet-overlay-pane {
+  z-index: 1 !important;
+}
+.leaflet-marker-pane {
+  z-index: 2 !important;
+}
+.leaflet-tooltip-pane {
+  z-index: 3 !important;
+}
+.leaflet-popup-pane {
+  z-index: 4 !important;
+}
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 5 !important;
+}
