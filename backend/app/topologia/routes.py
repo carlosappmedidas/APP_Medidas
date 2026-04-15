@@ -285,6 +285,7 @@ def reasignar_fase_cups(
 @router.get("/tabla/lineas")
 def get_tabla_lineas(
     empresa_id:   int           = Query(...),
+    busqueda:     Optional[str] = Query(None, description="Buscar por ID de línea"),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
     sin_ct:       bool          = Query(False, description="Mostrar solo líneas sin CT"),
     metodo:       Optional[str] = Query(None, description="Filtrar por método: bfs/proximidad/nudo_alta/manual"),
@@ -296,7 +297,7 @@ def get_tabla_lineas(
     _assert_not_viewer(current_user)
     lineas, total = services.list_lineas_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
-        id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, limit=limit, offset=offset,
+        id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, busqueda=busqueda, limit=limit, offset=offset,
     )
     return {"items": [LineaTablaRead.model_validate(linea) for linea in lineas], "total": total}
 
@@ -306,6 +307,7 @@ def get_tabla_lineas(
 @router.get("/tabla/cups")
 def get_tabla_cups(
     empresa_id:   int           = Query(...),
+    busqueda:     Optional[str] = Query(None, description="Buscar por CUPS"),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado"),
     sin_ct:       bool          = Query(False, description="Mostrar solo CUPS sin CT"),
     metodo:       Optional[str] = Query(None, description="Filtrar por método: nudo_linea/nudo_linea_mt/manual"),
@@ -317,7 +319,7 @@ def get_tabla_cups(
     _assert_not_viewer(current_user)
     cups, total = services.list_cups_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
-        id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, limit=limit, offset=offset,
+        id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, busqueda=busqueda, limit=limit, offset=offset,
     )
     return {"items": [CupsTablaRead.model_validate(c) for c in cups], "total": total}
 
@@ -327,6 +329,7 @@ def get_tabla_cups(
 @router.get("/tabla/celdas")
 def get_tabla_celdas(
     empresa_id:   int           = Query(...),
+    busqueda:     Optional[str] = Query(None, description="Buscar por nombre de CT"),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT"),
     limit:        int           = Query(50, ge=1, le=500),
     offset:       int           = Query(0, ge=0),
@@ -336,7 +339,7 @@ def get_tabla_celdas(
     _assert_not_viewer(current_user)
     celdas, total = services.list_celdas_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
-        id_ct=id_ct, limit=limit, offset=offset,
+        id_ct=id_ct, busqueda=busqueda, limit=limit, offset=offset,
     )
     return {"items": [CeldaTablaRead.model_validate(c) for c in celdas], "total": total}
 
@@ -347,16 +350,17 @@ def get_tabla_celdas(
 
 @router.get("/tabla/cts")
 def get_tabla_cts(
-    empresa_id:   int     = Query(...),
-    limit:        int     = Query(50, ge=1, le=500),
-    offset:       int     = Query(0, ge=0),
+    empresa_id:   int           = Query(...),
+    busqueda:     Optional[str] = Query(None, description="Buscar por nombre de CT"),
+    limit:        int           = Query(50, ge=1, le=500),
+    offset:       int           = Query(0, ge=0),
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
     items, total = services.list_cts_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
-        limit=limit, offset=offset,
+        busqueda=busqueda, limit=limit, offset=offset,
     )
     return {"items": [CtTablaRead(**item) for item in items], "total": total}
 
@@ -365,6 +369,7 @@ def get_tabla_cts(
 @router.get("/tabla/tramos")
 def get_tabla_tramos(
     empresa_id:   int           = Query(...),
+    busqueda:     Optional[str] = Query(None, description="Buscar por ID de tramo"),
     id_ct:        Optional[str] = Query(None, description="Filtrar por CT asignado a la línea"),
     limit:        int           = Query(50, ge=1, le=500),
     offset:       int           = Query(0, ge=0),
@@ -374,7 +379,7 @@ def get_tabla_tramos(
     _assert_not_viewer(current_user)
     items, total = services.list_tramos_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
-        id_ct=id_ct, limit=limit, offset=offset,
+        id_ct=id_ct, busqueda=busqueda, limit=limit, offset=offset,
     )
     return {"items": [TramoTablaRead(**item) for item in items], "total": total}
 

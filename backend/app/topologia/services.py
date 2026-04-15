@@ -1333,7 +1333,8 @@ def list_tramos_mapa(
 def list_lineas_tabla(
     db: Session, tenant_id: int, empresa_id: int,
     id_ct: Optional[str] = None, sin_ct: bool = False,
-    metodo: Optional[str] = None, limit: int = 500, offset: int = 0,
+    metodo: Optional[str] = None, busqueda: Optional[str] = None,
+    limit: int = 500, offset: int = 0,
 ) -> Tuple[List[LineaInventario], int]:
     q = (
         db.query(LineaInventario)
@@ -1342,6 +1343,8 @@ def list_lineas_tabla(
             LineaInventario.empresa_id == empresa_id,
         )
     )
+    if busqueda:
+        q = q.filter(LineaInventario.id_tramo.ilike(f"%{busqueda}%"))
     if id_ct:
         q = q.filter(LineaInventario.id_ct == id_ct)
     if sin_ct:
@@ -1356,7 +1359,8 @@ def list_lineas_tabla(
 def list_cups_tabla(
     db: Session, tenant_id: int, empresa_id: int,
     id_ct: Optional[str] = None, sin_ct: bool = False,
-    metodo: Optional[str] = None, limit: int = 500, offset: int = 0,
+    metodo: Optional[str] = None, busqueda: Optional[str] = None,
+    limit: int = 500, offset: int = 0,
 ) -> Tuple[List[CupsTopologia], int]:
     q = (
         db.query(CupsTopologia)
@@ -1365,6 +1369,8 @@ def list_cups_tabla(
             CupsTopologia.empresa_id == empresa_id,
         )
     )
+    if busqueda:
+        q = q.filter(CupsTopologia.cups.ilike(f"%{busqueda}%"))
     if id_ct:
         q = q.filter(CupsTopologia.id_ct_asignado == id_ct)
     if sin_ct:
@@ -1377,7 +1383,8 @@ def list_cups_tabla(
 
 def list_celdas_tabla(
     db: Session, tenant_id: int, empresa_id: int,
-    id_ct: Optional[str] = None, limit: int = 500, offset: int = 0,
+    id_ct: Optional[str] = None, busqueda: Optional[str] = None,
+    limit: int = 500, offset: int = 0,
 ) -> Tuple[List[CtCelda], int]:
     """Devuelve celdas paginadas, opcionalmente filtradas por CT."""
     q = (
@@ -1387,6 +1394,8 @@ def list_celdas_tabla(
             CtCelda.empresa_id == empresa_id,
         )
     )
+    if busqueda:
+        q = q.join(CtInventario, (CtInventario.id_ct == CtCelda.id_ct) & (CtInventario.tenant_id == CtCelda.tenant_id) & (CtInventario.empresa_id == CtCelda.empresa_id)).filter(CtInventario.nombre.ilike(f"%{busqueda}%"))
     if id_ct:
         q = q.filter(CtCelda.id_ct == id_ct)
     total  = q.count()
@@ -1427,7 +1436,7 @@ def list_transformadores_ct(
 
 def list_cts_tabla(
     db: Session, tenant_id: int, empresa_id: int,
-    limit: int = 500, offset: int = 0,
+    busqueda: Optional[str] = None, limit: int = 500, offset: int = 0,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """Devuelve CTs paginados con contadores de trafos, celdas y CUPS."""
     from sqlalchemy import func
@@ -1439,6 +1448,8 @@ def list_cts_tabla(
             CtInventario.empresa_id == empresa_id,
         )
     )
+    if busqueda:
+        q = q.filter(CtInventario.nombre.ilike(f"%{busqueda}%"))
     total = q.count()
     cts   = q.order_by(CtInventario.nombre).offset(offset).limit(limit).all()
 
@@ -1552,7 +1563,7 @@ def list_tramos_mapa_baja(
 
 def list_tramos_tabla(
     db: Session, tenant_id: int, empresa_id: int,
-    id_ct: Optional[str] = None,
+    id_ct: Optional[str] = None, busqueda: Optional[str] = None,
     limit: int = 500, offset: int = 0,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """Devuelve tramos GIS paginados con datos de LineaInventario via join."""
@@ -1569,6 +1580,8 @@ def list_tramos_tabla(
             LineaTramo.empresa_id == empresa_id,
         )
     )
+    if busqueda:
+        q = q.filter(LineaTramo.id_tramo.ilike(f"%{busqueda}%"))
     if id_ct:
         q = q.filter(LineaInventario.id_ct == id_ct)
 
