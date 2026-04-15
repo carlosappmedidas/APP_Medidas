@@ -1,5 +1,5 @@
 # app/topologia/services.py
-# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
+# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportAssignmentType=false
 
 from __future__ import annotations
 
@@ -874,19 +874,17 @@ def calcular_asociacion_ct_mt(
     empresa_id: int,
 ) -> Dict[str, Any]:
     """
-    Calcula y persiste la asociación CT → línea MT y CT → CUPS MT.
+    Líneas MT: nunca se asignan a CT — se limpian las asignaciones automáticas previas.
+    CUPS MT: se asignan al CT más cercano por distancia Haversine (GPS).
     No sobreescribe asignaciones manuales (metodo='manual').
-
-    PASO 1 — BFS MT desde nudo_alta de cada CT.
-              Se detiene al llegar al nudo_alta de otro CT (frontera).
-    PASO 2 — Persistir líneas MT asignadas.
-    PASO 3 — CUPS MT: buscar en líneas MT que tocan su nudo.
     """
     cts = (
         db.query(CtInventario)
         .filter(
             CtInventario.tenant_id  == tenant_id,
             CtInventario.empresa_id == empresa_id,
+            CtInventario.lat.isnot(None),
+            CtInventario.lon.isnot(None),
         )
         .all()
     )
@@ -899,60 +897,22 @@ def calcular_asociacion_ct_mt(
         .all()
     )
 
-    # Todos los nudos_alta son fronteras del BFS MT
-    nudos_ct: set = {ct.nudo_alta for ct in cts if ct.nudo_alta}
-
-    nudo_a_lineas_ini: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
-    nudo_a_lineas_fin: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
-    for linea in lineas:
-        if linea.nudo_inicio:
-            nudo_a_lineas_ini[linea.nudo_inicio].append(linea)
-        if linea.nudo_fin:
-            nudo_a_lineas_fin[linea.nudo_fin].append(linea)
-
-    linea_a_ct_mt: Dict[str, str] = {}
-    metodo_mt:     Dict[str, str] = {}
-
-    # ── PASO 1: BFS MT desde nudo_alta de cada CT ─────────────────────────────
-    for ct in cts:
-        if not ct.nudo_alta:
-            continue
-        _bfs_mt(
-            [ct.nudo_alta],
-            nudo_a_lineas_ini,
-            nudo_a_lineas_fin,
-            ct.id_ct,
-            linea_a_ct_mt,
-            metodo_mt,
-            nudos_ct,
-        )
-
-    # ── PASO 2: Persistir líneas MT ───────────────────────────────────────────
-    lineas_mt_asignadas = 0
-    lineas_mt_sin_asoc  = 0
+    # ── PASO 1: Limpiar líneas MT con asignación automática previa ────────────
+    lineas_mt_limpiadas = 0
     for linea in lineas:
         if not _es_mt(linea):
             continue
         if linea.metodo_asignacion_ct == "manual":
             continue
-        id_ct_calc  = linea_a_ct_mt.get(linea.id_tramo)
-        metodo_calc = metodo_mt.get(linea.id_tramo)
-        if id_ct_calc:
-            linea.id_ct                = id_ct_calc
-            linea.metodo_asignacion_ct = metodo_calc
+        if linea.id_ct is not None:
+            linea.id_ct                = None
+            linea.metodo_asignacion_ct = None
             linea.updated_at           = _now()
-            lineas_mt_asignadas += 1
-        else:
-            # Limpiar asignación automática previa si ya no corresponde
-            if linea.id_ct is not None and linea.metodo_asignacion_ct != "manual":
-                linea.id_ct                = None
-                linea.metodo_asignacion_ct = None
-                linea.updated_at           = _now()
-            lineas_mt_sin_asoc += 1
+            lineas_mt_limpiadas += 1
 
     db.flush()
 
-    # ── PASO 3: CUPS MT → CT via nudo → línea MT ──────────────────────────────
+    # ── PASO 2: CUPS MT → CT por proximidad GPS (Haversine) ──────────────────
     cups_lista = (
         db.query(CupsTopologia)
         .filter(
@@ -966,32 +926,23 @@ def calcular_asociacion_ct_mt(
     for cups in cups_lista:
         if cups.metodo_asignacion_ct == "manual":
             continue
-        # Solo CUPS MT
         if cups.tension_kv is None or float(cups.tension_kv) <= 1.0:
             continue
-        nudo = cups.id_ct
-        if not nudo:
+        if cups.lat is None or cups.lon is None:
             cups_mt_sin_asoc += 1
             continue
-        id_ct_cups = None
-        # Buscar en líneas MT que terminan en el nudo del CUPS
-        for linea in nudo_a_lineas_fin.get(nudo, []):
-            if not _es_mt(linea):
-                continue
-            id_ct_cups = linea_a_ct_mt.get(linea.id_tramo)
-            if id_ct_cups:
-                break
-        # Fallback: líneas MT que arrancan desde el nudo
-        if not id_ct_cups:
-            for linea in nudo_a_lineas_ini.get(nudo, []):
-                if not _es_mt(linea):
-                    continue
-                id_ct_cups = linea_a_ct_mt.get(linea.id_tramo)
-                if id_ct_cups:
-                    break
-        if id_ct_cups:
-            cups.id_ct_asignado       = id_ct_cups
-            cups.metodo_asignacion_ct = "nudo_linea_mt"
+
+        mejor_ct:   Optional[str] = None
+        mejor_dist: float         = float("inf")
+        for ct in cts:
+            dist = _haversine_m(cups.lat, cups.lon, ct.lat, ct.lon)
+            if dist < mejor_dist:
+                mejor_dist = dist
+                mejor_ct   = ct.id_ct
+
+        if mejor_ct:
+            cups.id_ct_asignado       = mejor_ct
+            cups.metodo_asignacion_ct = "proximidad_gps_mt"
             cups.updated_at           = _now()
             cups_mt_asignados += 1
         else:
@@ -999,8 +950,7 @@ def calcular_asociacion_ct_mt(
 
     db.commit()
     return {
-        "lineas_mt_asignadas": lineas_mt_asignadas,
-        "lineas_mt_sin_asoc":  lineas_mt_sin_asoc,
+        "lineas_mt_limpiadas": lineas_mt_limpiadas,
         "lineas_mt_total":     sum(1 for ln in lineas if _es_mt(ln)),
         "cups_mt_asignados":   cups_mt_asignados,
         "cups_mt_sin_asoc":    cups_mt_sin_asoc,
@@ -1558,6 +1508,47 @@ def list_cts_tabla(
             "num_cups":               cups_count.get(ct.id_ct, 0),
         })
     return items, total
+
+def list_cts_mapa_baja(db: Session, tenant_id: int, empresa_id: int) -> List[CtInventario]:
+    """CTs con fecha_baja IS NOT NULL y coordenadas GPS."""
+    return (
+        db.query(CtInventario)
+        .filter(
+            CtInventario.tenant_id  == tenant_id,
+            CtInventario.empresa_id == empresa_id,
+            CtInventario.lat.isnot(None),
+            CtInventario.lon.isnot(None),
+            CtInventario.fecha_baja.isnot(None),
+        )
+        .order_by(CtInventario.nombre)
+        .all()
+    )
+
+
+def list_tramos_mapa_baja(
+    db: Session, tenant_id: int, empresa_id: int,
+) -> List[LineaTramo]:
+    """Tramos GIS cuya línea tiene fecha_baja IS NOT NULL."""
+    return (
+        db.query(LineaTramo)
+        .join(
+            LineaInventario,
+            (LineaInventario.id_tramo   == LineaTramo.id_linea) &
+            (LineaInventario.tenant_id  == LineaTramo.tenant_id) &
+            (LineaInventario.empresa_id == LineaTramo.empresa_id),
+        )
+        .filter(
+            LineaTramo.tenant_id  == tenant_id,
+            LineaTramo.empresa_id == empresa_id,
+            LineaTramo.lat_ini.isnot(None),
+            LineaTramo.lon_ini.isnot(None),
+            LineaTramo.lat_fin.isnot(None),
+            LineaTramo.lon_fin.isnot(None),
+            LineaInventario.fecha_baja.isnot(None),
+        )
+        .order_by(LineaTramo.id_linea, LineaTramo.orden)
+        .all()
+    )
 
 def list_tramos_tabla(
     db: Session, tenant_id: int, empresa_id: int,

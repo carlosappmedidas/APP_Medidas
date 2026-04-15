@@ -221,6 +221,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [cts,    setCts]    = useState<CtMapa[]>([]);
   const [cups,   setCups]   = useState<CupsMapa[]>([]);
   const [tramos, setTramos] = useState<TramoMapa[]>([]);
+  const [ctsBaja,    setCtsBaja]    = useState<CtMapa[]>([]);
+  const [tramosBaja, setTramosBaja] = useState<TramoMapa[]>([]);
   const [tensionPorLinea, setTensionPorLinea] = useState<Map<string, number | null>>(new Map());
   const [lineas,          setLineas]          = useState<string[]>([]);
 
@@ -230,6 +232,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [mostrarCts,  setMostrarCts]  = useState(true);
   const [mostrarCupsBT, setMostrarCupsBT] = useState(true);
   const [mostrarCupsMT, setMostrarCupsMT] = useState(true);
+  const [mostrarBTBaja,  setMostrarBTBaja]  = useState(false);
+  const [mostrarMTBaja,  setMostrarMTBaja]  = useState(false);
+  const [mostrarCtsBaja, setMostrarCtsBaja] = useState(false);
+  const [capasMapaBaseOpen,  setCapasMapaBaseOpen]  = useState(true);
+  const [capasAltaOpen,      setCapasAltaOpen]      = useState(true);
+  const [capasBajaOpen,      setCapasBajaOpen]      = useState(false);
   const [mostrarBT,   setMostrarBT]   = useState(true);
   const [mostrarMT,   setMostrarMT]   = useState(true);
 
@@ -378,6 +386,19 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     } catch { setTramos([]); } finally { setLoadingTramos(false); }
   }, [token, empresaId, ctsSeleccionados]);
 
+  const cargarBaja = useCallback(async () => {
+    if (!token || !empresaId) return;
+    try {
+      const [resCts, resTramos] = await Promise.all([
+        fetch(`${API_BASE_URL}/topologia/mapa/cts/baja?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) }),
+        fetch(`${API_BASE_URL}/topologia/mapa/tramos/baja?empresa_id=${empresaId}`, { headers: getAuthHeaders(token) }),
+      ]);
+      setCtsBaja(resCts.ok ? await resCts.json() : []);
+      setTramosBaja(resTramos.ok ? await resTramos.json() : []);
+    } catch { setCtsBaja([]); setTramosBaja([]); }
+  }, [token, empresaId]);
+
+
   const cargarTablaLineas = useCallback(async (page = pageLineas, size = pageSizeLineas) => {
     if (!token || !empresaId) return;
     if (tablaLineasRef.current) setMinHLineas(tablaLineasRef.current.offsetHeight);
@@ -467,7 +488,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   }, [token, empresaId, filtroCtTabla, pageTramos, pageSizeTramos]);
 
   useEffect(() => {
-    if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); }
+    if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); cargarBaja(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId]);
 
@@ -1090,47 +1111,97 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   ☰
                 </button>
                 {ddCapasOpen && (
-                  <div style={{ position: "absolute", top: 34, right: 0, width: 165, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column" }}>
-                    {/* Mapa base */}
-                    <div style={{ padding: "8px 10px 6px" }}>
-                      <div style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 5 }}>Mapa base</div>
-                      {([["osm", "OpenStreetMap"], ["pnoa", "PNOA (Ortofoto)"], ["ign", "IGN Base"], ["catastro", "Catastro"]] as const).map(([val, label]) => (
-                        <label key={val} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
-                          <input type="radio" name="mapaBase" checked={mapaBase === val} onChange={() => setMapaBase(val)} style={{ width: 11, height: 11, margin: 0 }} />
-                          {label}
-                        </label>
-                      ))}
+                  <div style={{ position: "absolute", top: 34, right: 0, width: 175, background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column" }}>
+
+                    {/* ── Mapa base ── */}
+                    <div style={{ padding: "6px 10px" }}>
+                      <button type="button" onClick={() => setCapasMapaBaseOpen(v => !v)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "2px 0", marginBottom: capasMapaBaseOpen ? 4 : 0 }}>
+                        <span style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Mapa base</span>
+                        <span style={{ fontSize: 9, color: "var(--text-muted)" }}>{capasMapaBaseOpen ? "▾" : "▸"}</span>
+                      </button>
+                      {capasMapaBaseOpen && (
+                        <>
+                          {([["osm", "OpenStreetMap"], ["pnoa", "PNOA (Ortofoto)"], ["ign", "IGN Base"], ["catastro", "Catastro"]] as const).map(([val, label]) => (
+                            <label key={val} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                              <input type="radio" name="mapaBase" checked={mapaBase === val} onChange={() => setMapaBase(val)} style={{ width: 11, height: 11, margin: 0 }} />
+                              {label}
+                            </label>
+                          ))}
+                        </>
+                      )}
                     </div>
+
                     <div style={{ height: 1, background: "var(--card-border)" }} />
-                    {/* Datos */}
-                    <div style={{ padding: "6px 10px 8px" }}>
-                      <div style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 5 }}>Datos</div>
-                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
-                        <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
-                        <span style={{ width: 10, height: 2, background: "#A855F7", display: "inline-block", borderRadius: 1 }} />
-                        Red MT
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
-                        <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
-                        <span style={{ width: 10, height: 2, background: "#F59E0B", display: "inline-block", borderRadius: 1 }} />
-                        Red BT
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
-                        <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A", border: "1.5px solid #fff", display: "inline-block" }} />
-                        CTs
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
-                        <input type="checkbox" checked={mostrarCupsBT} onChange={e => setMostrarCupsBT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
-                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#378ADD", display: "inline-block" }} />
-                        CUPS BT
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
-                        <input type="checkbox" checked={mostrarCupsMT} onChange={e => setMostrarCupsMT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
-                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#7C3AED", display: "inline-block" }} />
-                        CUPS MT
-                      </label>
+
+                    {/* ── Activos de alta ── */}
+                    <div style={{ padding: "6px 10px" }}>
+                      <button type="button" onClick={() => setCapasAltaOpen(v => !v)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "2px 0", marginBottom: capasAltaOpen ? 4 : 0 }}>
+                        <span style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Activos de alta</span>
+                        <span style={{ fontSize: 9, color: "var(--text-muted)" }}>{capasAltaOpen ? "▾" : "▸"}</span>
+                      </button>
+                      {capasAltaOpen && (
+                        <>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarMT} onChange={e => setMostrarMT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 10, height: 2, background: "#A855F7", display: "inline-block", borderRadius: 1 }} />
+                            Red MT
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarBT} onChange={e => setMostrarBT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 10, height: 2, background: "#F59E0B", display: "inline-block", borderRadius: 1 }} />
+                            Red BT
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarCts} onChange={e => setMostrarCts(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A", border: "1.5px solid #fff", display: "inline-block" }} />
+                            CTs
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarCupsBT} onChange={e => setMostrarCupsBT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#378ADD", display: "inline-block" }} />
+                            CUPS BT
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarCupsMT} onChange={e => setMostrarCupsMT(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#7C3AED", display: "inline-block" }} />
+                            CUPS MT
+                          </label>
+                        </>
+                      )}
                     </div>
+
+                    <div style={{ height: 1, background: "var(--card-border)" }} />
+
+                    {/* ── Activos de baja ── */}
+                    <div style={{ padding: "6px 10px 8px" }}>
+                      <button type="button" onClick={() => setCapasBajaOpen(v => !v)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "2px 0", marginBottom: capasBajaOpen ? 4 : 0 }}>
+                        <span style={{ fontSize: 9, fontWeight: 600, color: "#B45309", textTransform: "uppercase", letterSpacing: "0.04em" }}>Activos de baja</span>
+                        <span style={{ fontSize: 9, color: "var(--text-muted)" }}>{capasBajaOpen ? "▾" : "▸"}</span>
+                      </button>
+                      {capasBajaOpen && (
+                        <>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarMTBaja} onChange={e => setMostrarMTBaja(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 10, height: 2, background: "#888780", display: "inline-block", borderRadius: 1, borderTop: "1px dashed #5F5E5A" }} />
+                            Red MT baja
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarBTBaja} onChange={e => setMostrarBTBaja(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 10, height: 2, background: "#888780", display: "inline-block", borderRadius: 1, borderTop: "1px dashed #5F5E5A" }} />
+                            Red BT baja
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, cursor: "pointer", padding: "2px 0" }}>
+                            <input type="checkbox" checked={mostrarCtsBaja} onChange={e => setMostrarCtsBaja(e.target.checked)} style={{ width: 11, height: 11, margin: 0 }} />
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#888780", border: "1.5px dashed #5F5E5A", display: "inline-block" }} />
+                            CTs baja
+                          </label>
+                        </>
+                      )}
+                    </div>
+
                   </div>
                 )}
               </div>
@@ -1154,6 +1225,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 onReasignarFase={handleReasignarFaseMapa}
                 coloresCt={coloresCt}
                 mapaBase={mapaBase}
+                ctsBaja={ctsBaja}
+                tramosBaja={tramosBaja}
+                mostrarCtsBaja={mostrarCtsBaja}
+                mostrarBTBaja={mostrarBTBaja}
+                mostrarMTBaja={mostrarMTBaja}
               />
             </div>
           </div>

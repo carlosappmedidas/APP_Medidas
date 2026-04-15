@@ -552,3 +552,92 @@ def get_cts(
     return services.list_cts(  # type: ignore[return-value]
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
     )
+
+
+# ── Mapa — CTs de baja ────────────────────────────────────────────────────────
+
+@router.get("/mapa/cts/baja", response_model=List[CtMapaRead])
+def get_cts_mapa_baja(
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> List[CtMapaRead]:
+    """CTs con fecha_baja IS NOT NULL."""
+    _assert_not_viewer(current_user)
+    return services.list_cts_mapa_baja(  # type: ignore[return-value]
+        db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
+    )
+
+
+# ── Mapa — Tramos de baja ─────────────────────────────────────────────────────
+
+@router.get("/mapa/tramos/baja", response_model=List[TramoMapaRead])
+def get_tramos_mapa_baja(
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> List[TramoMapaRead]:
+    """Tramos GIS cuya línea tiene fecha_baja IS NOT NULL."""
+    _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+    tramos = services.list_tramos_mapa_baja(
+        db=db, tenant_id=tid, empresa_id=empresa_id,
+    )
+    resultado = []
+    for tramo in tramos:
+        linea = (
+            db.query(LineaInventario)
+            .filter(
+                LineaInventario.tenant_id  == tid,
+                LineaInventario.empresa_id == empresa_id,
+                LineaInventario.id_tramo   == tramo.id_linea,
+            )
+            .first()
+        )
+        resultado.append(TramoMapaRead(
+            id_tramo  = tramo.id_tramo,
+            id_linea  = tramo.id_linea,
+            orden     = tramo.orden,
+            num_tramo = tramo.num_tramo,
+            lat_ini   = tramo.lat_ini,
+            lon_ini   = tramo.lon_ini,
+            lat_fin   = tramo.lat_fin,
+            lon_fin   = tramo.lon_fin,
+            cini                    = linea.cini                    if linea else None,
+            codigo_ccuu             = linea.codigo_ccuu             if linea else None,
+            nudo_inicio             = linea.nudo_inicio             if linea else None,
+            nudo_fin                = linea.nudo_fin                if linea else None,
+            ccaa_1                  = linea.ccaa_1                  if linea else None,
+            ccaa_2                  = linea.ccaa_2                  if linea else None,
+            tension_kv              = linea.tension_kv              if linea else None,
+            tension_construccion_kv = linea.tension_construccion_kv if linea else None,
+            longitud_km             = linea.longitud_km             if linea else None,
+            resistencia_ohm         = linea.resistencia_ohm         if linea else None,
+            reactancia_ohm          = linea.reactancia_ohm          if linea else None,
+            intensidad_a            = linea.intensidad_a            if linea else None,
+            propiedad               = linea.propiedad               if linea else None,
+            estado                  = linea.estado                  if linea else None,
+            operacion               = linea.operacion               if linea else None,
+            punto_frontera          = linea.punto_frontera          if linea else None,
+            modelo                  = linea.modelo                  if linea else None,
+            causa_baja              = linea.causa_baja              if linea else None,
+            fecha_aps               = linea.fecha_aps               if linea else None,
+            fecha_baja              = linea.fecha_baja              if linea else None,
+            fecha_ip                = linea.fecha_ip                if linea else None,
+            tipo_inversion          = linea.tipo_inversion          if linea else None,
+            motivacion              = linea.motivacion              if linea else None,
+            im_tramites             = linea.im_tramites             if linea else None,
+            im_construccion         = linea.im_construccion         if linea else None,
+            im_trabajos             = linea.im_trabajos             if linea else None,
+            valor_auditado          = linea.valor_auditado          if linea else None,
+            financiado              = linea.financiado              if linea else None,
+            subvenciones_europeas   = linea.subvenciones_europeas   if linea else None,
+            subvenciones_nacionales = linea.subvenciones_nacionales if linea else None,
+            subvenciones_prtr       = linea.subvenciones_prtr       if linea else None,
+            cuenta                  = linea.cuenta                  if linea else None,
+            avifauna                = linea.avifauna                if linea else None,
+            identificador_baja      = linea.identificador_baja      if linea else None,
+            id_ct                   = linea.id_ct                   if linea else None,
+            metodo_asignacion_ct    = linea.metodo_asignacion_ct    if linea else None,
+        ))
+    return resultado

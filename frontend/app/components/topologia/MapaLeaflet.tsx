@@ -402,6 +402,11 @@ interface Props {
   onReasignarFase:   (cups: string, fase: string | null) => void;
   coloresCt:         Record<string, string>;
   mapaBase?:         string;
+  ctsBaja?:          CtMapa[];
+  tramosBaja?:       TramoMapa[];
+  mostrarCtsBaja?:   boolean;
+  mostrarBTBaja?:    boolean;
+  mostrarMTBaja?:    boolean;
 }
 
 // ─── Color y nivel ────────────────────────────────────────────────────────────
@@ -675,6 +680,8 @@ export default function MapaLeaflet({
   onLineaClick, onReasignarCt, onReasignarFase,
   coloresCt,
   mapaBase = "osm",
+  ctsBaja = [], tramosBaja = [],
+  mostrarCtsBaja = false, mostrarBTBaja = false, mostrarMTBaja = false,
 }: Props) {
   const mapRef             = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -693,6 +700,10 @@ export default function MapaLeaflet({
   const tileLayerRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tileLayersRef = useRef<Record<string, any>>({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctsBajaLayerRef     = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lineasBajaLayerRef  = useRef<any>(null);
 
   const onReasignarCtRef   = useRef(onReasignarCt);
   const onReasignarFaseRef = useRef(onReasignarFase);
@@ -746,6 +757,8 @@ export default function MapaLeaflet({
       ctLayerRef.current         = L.layerGroup().addTo(map);
       cupsBTLayerRef.current     = L.layerGroup().addTo(map);
       cupsMTLayerRef.current     = L.layerGroup().addTo(map);
+      ctsBajaLayerRef.current    = L.layerGroup().addTo(map);
+      lineasBajaLayerRef.current = L.layerGroup().addTo(map);
       mapaInstancia.current      = map;
       setTimeout(() => map.invalidateSize(), 200);
       const container = mapRef.current!;
@@ -774,6 +787,7 @@ export default function MapaLeaflet({
         mapaInstancia.current = null;
         ctLayerRef.current = null; cupsBTLayerRef.current = null; cupsMTLayerRef.current = null;
         lineasLayerRef.current = null; marcadoresLayerRef.current = null;
+        ctsBajaLayerRef.current = null; lineasBajaLayerRef.current = null;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (window as any).__reasignarCt;
@@ -917,6 +931,48 @@ export default function MapaLeaflet({
       }
     });
   }, [cups, mostrarCupsBT, mostrarCupsMT, tooltipCups]);
+
+  // ── Pintar CTs de baja ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!ctsBajaLayerRef.current) return;
+    import("leaflet").then(L => {
+      ctsBajaLayerRef.current.clearLayers();
+      if (!mostrarCtsBaja) return;
+      ctsBaja.forEach(ct => {
+        if (ct.lat === null || ct.lon === null) return;
+        const iconCt = L.divIcon({
+          className: "",
+          html: `<div style="width:14px;height:14px;border-radius:50%;background:#888780;border:2px dashed #5F5E5A;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
+          iconSize: [14, 14], iconAnchor: [7, 7],
+        });
+        L.marker([ct.lat, ct.lon], { icon: iconCt })
+          .bindPopup(buildTooltipCt(ct, tooltipCts))
+          .addTo(ctsBajaLayerRef.current);
+      });
+    });
+  }, [ctsBaja, mostrarCtsBaja, tooltipCts]);
+
+  // ── Pintar líneas de baja ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!lineasBajaLayerRef.current) return;
+    import("leaflet").then(L => {
+      lineasBajaLayerRef.current.clearLayers();
+      const mostrarAlguna = mostrarBTBaja || mostrarMTBaja;
+      if (!mostrarAlguna) return;
+      tramosBaja.forEach(t => {
+        if (t.lat_ini === null || t.lon_ini === null || t.lat_fin === null || t.lon_fin === null) return;
+        const esBT = t.tension_kv === null || t.tension_kv <= 1;
+        if (esBT && !mostrarBTBaja) return;
+        if (!esBT && !mostrarMTBaja) return;
+        const poly = L.polyline(
+          [[t.lat_ini, t.lon_ini], [t.lat_fin, t.lon_fin]],
+          { color: "#888780", weight: esBT ? 1.5 : 2.5, opacity: 0.8, dashArray: "6 4" }
+        );
+        poly.bindPopup(buildTooltipLinea(t, tooltipLineas, tooltipTramos, "#888780", esBT ? "BT baja" : "MT baja", ctsTodos), { maxWidth: 320 });
+        poly.addTo(lineasBajaLayerRef.current);
+      });
+    });
+  }, [tramosBaja, mostrarBTBaja, mostrarMTBaja, tooltipLineas, tooltipTramos, ctsTodos]);
 
   return (
     <>

@@ -204,8 +204,7 @@ class CalcAsignacionCtResponse(BaseModel):
 
 class CalcAsignacionCtMtResponse(BaseModel):
     """Resultado del cálculo automático de asociación CT MT."""
-    lineas_mt_asignadas: int
-    lineas_mt_sin_asoc:  int
+    lineas_mt_limpiadas: int
     lineas_mt_total:     int
     cups_mt_asignados:   int
     cups_mt_sin_asoc:    int
