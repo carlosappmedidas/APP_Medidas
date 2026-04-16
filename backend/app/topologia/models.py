@@ -317,3 +317,26 @@ class LineaTramo(TenantMixin, TimestampMixin, Base):
     lon_ini = Column(Float, nullable=True)
     lat_fin = Column(Float, nullable=True)
     lon_fin = Column(Float, nullable=True)
+
+
+class CtCuadroBT(TenantMixin, TimestampMixin, Base):
+    """
+    Cuadro BT precalculado de un CT — embarrados y salidas BT con CUPS.
+    Se recalcula al importar B1/B11 y al ejecutar calcular_asociacion_ct.
+    """
+    __tablename__ = "ct_cuadro_bt"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "empresa_id", "id_ct", "linea_bt",
+            name="uq_ct_cuadro_bt_tenant_empresa_ct_linea",
+        ),
+    )
+
+    id         = Column(Integer, primary_key=True)
+    empresa_id = Column(Integer, nullable=False, index=True)
+
+    id_ct      = Column(String,  nullable=False, index=True)
+    nudo_baja  = Column(String,  nullable=True)
+    embarrado  = Column(String,  nullable=True)
+    linea_bt   = Column(String,  nullable=False)
+    num_cups   = Column(Integer, nullable=False, default=0)

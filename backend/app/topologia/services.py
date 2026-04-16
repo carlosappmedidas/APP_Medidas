@@ -13,6 +13,7 @@ from sqlalchemy import cast, String as SAString
 
 from app.topologia.models import (
     CtCelda,
+    CtCuadroBT,
     CtInventario,
     CtTransformador,
     CupsTopologia,
@@ -856,6 +857,14 @@ def calcular_asociacion_ct(
             cups_sin_asoc += 1
 
     db.commit()
+
+    # Precalcular cuadro BT para todos los CTs
+    for ct in cts:
+        try:
+            calcular_cuadro_bt(db, tenant_id, empresa_id, ct.id_ct)
+        except Exception:
+            pass
+
     return {
         "lineas_bfs":        lineas_bfs,
         "lineas_proximidad": lineas_prox,
@@ -1840,10 +1849,8 @@ def calcular_cuadro_bt(
     id_ct: str,
 ) -> Dict[str, Any]:
     """
-    Calcula el cuadro BT de un CT:
-    - Embarrados: líneas BT modelo M sin fecha_aps y sin fecha_baja
-    - Salidas: líneas BT con fecha_aps y sin fecha_baja, cuyos nudos
-      forman parte del grafo de embarrados del cuadro BT.
+    Calcula el cuadro BT de un CT, guarda en ct_cuadro_bt y devuelve
+    el resultado con num_cups por salida.
     """
     ct = (
         db.query(CtInventario)
@@ -1857,7 +1864,7 @@ def calcular_cuadro_bt(
     if ct is None or not ct.nudo_baja:
         return {"nudo_baja": None, "num_salidas": 0, "salidas": []}
 
-    # Cargar todas las líneas BT sin fecha_baja
+    # Líneas BT del CT sin fecha_baja
     lineas_bt = (
         db.query(LineaInventario)
         .filter(
@@ -1865,6 +1872,7 @@ def calcular_cuadro_bt(
             LineaInventario.empresa_id == empresa_id,
             LineaInventario.tension_kv <= 1,
             LineaInventario.fecha_baja.is_(None),
+            LineaInventario.id_ct      == id_ct,
         )
         .all()
     )
@@ -1878,7 +1886,7 @@ def calcular_cuadro_bt(
         if linea_bt.nudo_fin:
             por_nudo_fin[linea_bt.nudo_fin].append(linea_bt)
 
-    # BFS desde nudo_baja siguiendo embarrados (modelo M, sin APS)
+    # BFS embarrado desde nudo_baja (modelo M, sin APS)
     visitados: set = set()
     cola = [ct.nudo_baja]
     salidas_raw: List[LineaInventario] = []
@@ -1888,8 +1896,7 @@ def calcular_cuadro_bt(
         if nudo in visitados:
             continue
         visitados.add(nudo)
-
-        for linea in por_nudo_ini.get(nudo, []) + por_nudo_fin.get(nudo, []):
+        for linea in (por_nudo_ini.get(nudo, []) + por_nudo_fin.get(nudo, [])):
             if linea.modelo == "M" and not linea.fecha_aps:
                 otro = linea.nudo_fin if linea.nudo_inicio == nudo else linea.nudo_inicio
                 if otro and otro not in visitados:
@@ -1898,29 +1905,113 @@ def calcular_cuadro_bt(
                 if linea not in salidas_raw:
                     salidas_raw.append(linea)
 
-    # Para cada salida, encontrar el embarrado B* que conecta con su nudo
     nudos_con_salida = {sal.nudo_inicio for sal in salidas_raw} | {sal.nudo_fin for sal in salidas_raw}
-    nudos_con_salida &= visitados  # solo nudos que forman parte del cuadro
+    nudos_con_salida &= visitados
 
-    # Filtrar salidas cuyos nudos están en el cuadro
     salidas_validas = [
         sal for sal in salidas_raw
         if sal.nudo_inicio in visitados or sal.nudo_fin in visitados
     ]
 
     # Emparejar cada salida con su embarrado B*
-    resultado = []
+    salidas_con_emb: List[Dict[str, Any]] = []
     for salida in salidas_validas:
         nudo_salida = salida.nudo_inicio if salida.nudo_inicio in visitados else salida.nudo_fin
         embarrado_id = None
-        for emb in por_nudo_ini.get(nudo_salida, []) + por_nudo_fin.get(nudo_salida, []):
+        for emb in (por_nudo_ini.get(nudo_salida, []) + por_nudo_fin.get(nudo_salida, [])):
             if emb.modelo == "M" and not emb.fecha_aps and not emb.fecha_baja:
                 embarrado_id = emb.id_tramo
                 break
-        resultado.append({
+        salidas_con_emb.append({
             "embarrado": embarrado_id or "",
             "linea_bt":  salida.id_tramo,
+            "nudo_ini":  salida.nudo_inicio,
+            "nudo_fin":  salida.nudo_fin,
         })
+
+    # CUPS del CT — índice nudo → count
+    cups_lista = (
+        db.query(CupsTopologia)
+        .filter(
+            CupsTopologia.tenant_id    == tenant_id,
+            CupsTopologia.empresa_id   == empresa_id,
+            CupsTopologia.id_ct_asignado == id_ct,
+        )
+        .all()
+    )
+    cups_por_nudo: Dict[str, int] = collections.defaultdict(int)
+    for cups in cups_lista:
+        if cups.id_ct:
+            cups_por_nudo[cups.id_ct] += 1
+
+    # BFS completo por cada salida para contar CUPS
+    resultado: List[Dict[str, Any]] = []
+    nudos_embarrado = visitados  # ya calculados arriba
+
+    for sal in salidas_con_emb:
+        cola_sal = [
+            n for n in [sal["nudo_ini"], sal["nudo_fin"]]
+            if n and n not in nudos_embarrado
+        ]
+        visitados_sal: set = set()
+        num_cups = 0
+
+        while cola_sal:
+            nudo = cola_sal.pop()
+            if nudo in visitados_sal:
+                continue
+            visitados_sal.add(nudo)
+            num_cups += cups_por_nudo.get(nudo, 0)
+            for linea in (por_nudo_ini.get(nudo, []) + por_nudo_fin.get(nudo, [])):
+                otro = linea.nudo_inicio if linea.nudo_fin == nudo else linea.nudo_fin
+                if otro and otro not in visitados_sal and otro not in nudos_embarrado:
+                    cola_sal.append(otro)
+
+        resultado.append({
+            "embarrado": sal["embarrado"],
+            "linea_bt":  sal["linea_bt"],
+            "num_cups":  num_cups,
+        })
+
+    # Upsert en BD
+    for sal in resultado:
+        obj = (
+            db.query(CtCuadroBT)
+            .filter(
+                CtCuadroBT.tenant_id  == tenant_id,
+                CtCuadroBT.empresa_id == empresa_id,
+                CtCuadroBT.id_ct      == id_ct,
+                CtCuadroBT.linea_bt   == sal["linea_bt"],
+            )
+            .first()
+        )
+        if obj is None:
+            obj = CtCuadroBT(
+                tenant_id  = tenant_id,
+                empresa_id = empresa_id,
+                id_ct      = id_ct,
+                created_at = _now(),
+            )
+            db.add(obj)
+        obj.nudo_baja  = ct.nudo_baja
+        obj.embarrado  = sal["embarrado"]
+        obj.linea_bt   = sal["linea_bt"]
+        obj.num_cups   = sal["num_cups"]
+        obj.updated_at = _now()
+
+    # Borrar salidas que ya no existen
+    lineas_actuales = {sal["linea_bt"] for sal in resultado}
+    (
+        db.query(CtCuadroBT)
+        .filter(
+            CtCuadroBT.tenant_id  == tenant_id,
+            CtCuadroBT.empresa_id == empresa_id,
+            CtCuadroBT.id_ct      == id_ct,
+            CtCuadroBT.linea_bt.notin_(lineas_actuales) if lineas_actuales else False,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
 
     return {
         "nudo_baja":   ct.nudo_baja,
@@ -1928,6 +2019,37 @@ def calcular_cuadro_bt(
         "salidas":     resultado,
     }
 
+
+
+def get_cuadro_bt_bd(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    id_ct: str,
+) -> Dict[str, Any]:
+    """Lee el cuadro BT precalculado de BD. Si no existe, lo calcula."""
+    filas = (
+        db.query(CtCuadroBT)
+        .filter(
+            CtCuadroBT.tenant_id  == tenant_id,
+            CtCuadroBT.empresa_id == empresa_id,
+            CtCuadroBT.id_ct      == id_ct,
+        )
+        .all()
+    )
+    if not filas:
+        return calcular_cuadro_bt(db, tenant_id, empresa_id, id_ct)
+
+    nudo_baja = filas[0].nudo_baja
+    salidas = [
+        {"embarrado": f.embarrado, "linea_bt": f.linea_bt, "num_cups": f.num_cups}
+        for f in filas
+    ]
+    return {
+        "nudo_baja":   nudo_baja,
+        "num_salidas": len(salidas),
+        "salidas":     salidas,
+    }
 
 
 def list_tramos_mapa_baja(

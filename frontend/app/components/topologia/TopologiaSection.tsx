@@ -439,7 +439,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [unifilarCt,  setUnifilarCt]  = useState<null | {
     ct: { id_ct: string; nombre: string; potencia_kva: number | null; tension_kv: number | null };
     celdas: { id_celda: string; cini: string|null; cini_p7_funcion: string|null; cini_p6_ubicacion: string|null; posicion: number|null; en_servicio: number|null; cini_p8_tension_nominal: string|null }[];
-    cuadroBT: { nudo_baja: string; num_salidas: number; salidas: { embarrado: string; linea_bt: string }[] };
+    cuadroBT: { nudo_baja: string; num_salidas: number; salidas: { embarrado: string; linea_bt: string; num_cups?: number }[] };
   }>(null);
   const [loadingUnifilar, setLoadingUnifilar] = useState(false);
   const [mapaBase, setMapaBase] = useState<string>("osm");
@@ -2111,7 +2111,9 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
               <div style={{ border: "1px solid rgba(245,158,11,0.35)", borderRadius: 8, overflow: "hidden" }}>
                 <div style={{ background: "rgba(245,158,11,0.12)", borderBottom: "0.5px solid rgba(245,158,11,0.25)", padding: "5px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ fontSize: 10, fontWeight: 600, color: "#f59e0b" }}>Cuadro BT · {unifilarCt.cuadroBT.nudo_baja} · 400 V</div>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{unifilarCt.cuadroBT.num_salidas} salidas</div>
+                  <div style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                    {unifilarCt.cuadroBT.num_salidas} salidas · {unifilarCt.cuadroBT.salidas.reduce((acc, s) => acc + (s.num_cups ?? 0), 0)} CUPS
+                  </div>
                 </div>
                 <div style={{ height: 5, background: "#f59e0b", opacity: 0.6, margin: "6px 10px 2px" }} />
                 <div style={{ textAlign: "center", fontSize: 9, color: "var(--text-muted)", marginBottom: 6 }}>Barra colectora BT 400 V</div>
@@ -2121,6 +2123,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                       <div style={{ width: 1.5, height: 8, background: "#f59e0b", opacity: 0.6, marginBottom: 2 }} />
                       <div style={{ fontSize: 8, color: "var(--text-muted)", fontFamily: "monospace" }}>{s.embarrado}</div>
                       <div style={{ fontSize: 8, color: "#f59e0b", fontFamily: "monospace", opacity: 0.8 }}>{s.linea_bt}</div>
+                      <div style={{ marginTop: 3, background: "rgba(59,130,246,0.1)", border: "0.5px solid rgba(59,130,246,0.3)", borderRadius: 10, padding: "1px 5px", fontSize: 7, color: "#3b82f6", fontWeight: 500 }}>{s.num_cups ?? 0} CUPS</div>
                     </div>
                   ))}
                 </div>
