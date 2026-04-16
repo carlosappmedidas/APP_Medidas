@@ -429,8 +429,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   // ── Estado envío SFTP ─────────────────────────────────────────────────────
   const [sftpModalOpen,    setSftpModalOpen]    = useState(false);
   const [sftpFichero,      setSftpFichero]      = useState<string | null>(null);
-  const [sftpConfigs,      setSftpConfigs]      = useState<{id: number; nombre: string; host: string}[]>([]);
-  const [sftpConfigId,     setSftpConfigId]     = useState<number | null>(null);
+  const [sftpConfigs,      setSftpConfigs]      = useState<{id: number; nombre: string; host: string; directorio_remoto: string}[]>([]);  const [sftpConfigId,     setSftpConfigId]     = useState<number | null>(null);
   const [sftpPath,         setSftpPath]         = useState<string>("/");
   const [sftpCarpetas,     setSftpCarpetas]     = useState<{nombre: string; path: string}[]>([]);
   const [sftpLoadingPath,  setSftpLoadingPath]  = useState(false);
@@ -596,7 +595,9 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
       setSftpConfigs(cs);
       if (cs.length === 1) {
         setSftpConfigId(cs[0].id);
-        await cargarCarpetasSftp(cs[0].id, "/");
+        const pathInicial = cs[0].directorio_remoto || "/";
+        setSftpPath(pathInicial);
+        await cargarCarpetasSftp(cs[0].id, pathInicial);
       }
     } catch { setSftpConfigs([]); }
     setSftpModalOpen(true);
@@ -606,8 +607,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     if (!token) return;
     setSftpLoadingPath(true);
     try {
-      const params = new URLSearchParams({ config_id: String(configId), path });
-      const res = await fetch(`${API_BASE_URL}/comunicaciones/listar?${params}`, { headers: getAuthHeaders(token) });
+      const res = await fetch(`${API_BASE_URL}/ftp/explorar/${configId}?path=${encodeURIComponent(path)}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       const data = await res.json();
       setSftpCarpetas(data.carpetas ?? []);
@@ -1092,9 +1092,13 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                   onChange={async (e) => {
                     const id = Number(e.target.value);
                     setSftpConfigId(id);
-                    setSftpPath("/"); setSftpCarpetas([]);
-                    await cargarCarpetasSftp(id, "/");
+                    const cfg = sftpConfigs.find(c => c.id === id);
+                    const pathInicial = cfg?.directorio_remoto || "/";
+                    setSftpPath(pathInicial);
+                    setSftpCarpetas([]);
+                    await cargarCarpetasSftp(id, pathInicial);
                   }}>
+
                   <option value="">Selecciona conexión...</option>
                   {sftpConfigs.map(c => (
                     <option key={c.id} value={c.id}>{c.nombre} — {c.host}</option>
@@ -1106,20 +1110,28 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
             {sftpConfigId && (
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Carpeta destino</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, background: "var(--field-bg-soft)", borderRadius: 6, padding: "6px 10px" }}>
-                  <span style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text)", flex: 1 }}>{sftpPath}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <input
+                    type="text"
+                    className="ui-input"
+                    style={{ fontSize: 11, fontFamily: "monospace", flex: 1 }}
+                    value={sftpPath}
+                    onChange={(e) => setSftpPath(e.target.value)}
+                    placeholder="/ruta/destino"
+                  />
                   {sftpPath !== "/" && (
-                    <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }}
+                    <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10, whiteSpace: "nowrap" }}
                       onClick={() => {
-                        const padre = sftpPath.split("/").slice(0, -1).join("/") || "/";
-                        cargarCarpetasSftp(sftpConfigId, padre);
+                        const padre = sftpPath.split("/").filter(Boolean).slice(0, -1).join("/");
+                        const nuevaRuta = padre ? `/${padre}` : "/";
+                        cargarCarpetasSftp(sftpConfigId, nuevaRuta);
                       }}>← Subir</button>
                   )}
                 </div>
                 {sftpLoadingPath ? (
                   <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "6px 0" }}>Cargando carpetas...</div>
                 ) : sftpCarpetas.length === 0 ? (
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "6px 0" }}>Sin subcarpetas — se enviará aquí</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "6px 0" }}>Sin subcarpetas — se enviará a la ruta indicada</div>
                 ) : (
                   <div style={{ maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
                     {sftpCarpetas.map(c => (
