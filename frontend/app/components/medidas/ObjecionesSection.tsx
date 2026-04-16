@@ -588,8 +588,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
     setSftpError(null); setSftpOk(null);
     setSftpConfigId(null); setSftpPath("/"); setSftpCarpetas([]);
     try {
-      const res = await fetch(`${API_BASE_URL}/comunicaciones/configs`, { headers: getAuthHeaders(token) });
-      if (!res.ok) throw new Error();
+      const res = await fetch(`${API_BASE_URL}/ftp/configs`, { headers: getAuthHeaders(token) });      if (!res.ok) throw new Error();
       const configs = await res.json();
       const cs = configs.filter((c: {nombre: string; activo: boolean; empresa_id: number}) =>
         c.activo && c.nombre && c.nombre.toUpperCase().startsWith("CS") && c.empresa_id === empresaIdGestion
