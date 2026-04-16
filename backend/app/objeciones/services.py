@@ -28,6 +28,16 @@ def _dec(value: str) -> Optional[Decimal]:
         return None
 
 
+def _num(value) -> str:
+    """Convierte Decimal a entero si no tiene decimales, o string vacío si es None."""
+    if value is None:
+        return ""
+    from decimal import Decimal
+    d = Decimal(str(value))
+    if d == d.to_integral_value():
+        return str(int(d))
+    return str(d)
+
 def _str(value: str) -> Optional[str]:
     v = (value or "").strip()
     return v if v else None
@@ -309,8 +319,8 @@ def _agrecl_row_to_list(r: ObjecionAGRECL) -> List:
         r.tarifa_acceso or "", r.disc_horaria or "", r.tipo_punto or "",
         r.provincia or "", r.tipo_demanda or "", r.periodo or "",
         r.motivo or "", r.magnitud or "",
-        r.e_publicada if r.e_publicada is not None else "",
-        r.e_propuesta if r.e_propuesta is not None else "",
+        _num(r.e_publicada),
+        _num(r.e_propuesta),
         r.comentario_emisor or "", r.autoobjecion or "",
         r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
     ]
@@ -464,10 +474,10 @@ def generate_reobjeincl(db: Session, *, tenant_id: int, empresa_id: int, nombre_
             inicio, fin = periodo_str, ""
         data.append([
             r.cups or "", inicio, fin, r.motivo or "",
-            r.ae_publicada if r.ae_publicada is not None else "",
-            r.ae_propuesta if r.ae_propuesta is not None else "",
-            r.as_publicada if r.as_publicada is not None else "",
-            r.as_propuesta if r.as_propuesta is not None else "",
+            _num(r.ae_publicada),
+            _num(r.ae_propuesta),
+            _num(r.as_publicada),
+            _num(r.as_propuesta),
             r.comentario_emisor or "", r.autoobjecion or "",
             r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
         ])
@@ -576,8 +586,8 @@ def generate_reobcups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fi
     rows = list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     data = [[
         r.cups or "", r.periodo or "", r.motivo or "",
-        r.e_publicada if r.e_publicada is not None else "",
-        r.e_propuesta if r.e_propuesta is not None else "",
+        _num(r.e_publicada),
+        _num(r.e_propuesta),
         r.comentario_emisor or "", r.autoobjecion or "",
         r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
         r.magnitud or "",
@@ -687,12 +697,12 @@ def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fic
     rows = list_cil(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     data = [[
         r.cil or "", r.periodo or "", r.motivo or "",
-        r.eas_publicada if r.eas_publicada is not None else "",
-        r.eas_propuesta if r.eas_propuesta is not None else "",
-        r.eq2_publicada if r.eq2_publicada is not None else "",
-        r.eq2_propuesta if r.eq2_propuesta is not None else "",
-        r.eq3_publicada if r.eq3_publicada is not None else "",
-        r.eq3_propuesta if r.eq3_propuesta is not None else "",
+        _num(r.eas_publicada),
+        _num(r.eas_propuesta),
+        _num(r.eq2_publicada),
+        _num(r.eq2_propuesta),
+        _num(r.eq3_publicada),
+        _num(r.eq3_propuesta),
         r.comentario_emisor or "", r.autoobjecion or "",
         r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
     ] for r in rows]
