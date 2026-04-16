@@ -63,7 +63,19 @@ const GROUPS = [...new Set(CAMPOS.map(c => c.group))];
 
 export default function CrearCtModal({ token, empresaId, onClose, onCreated }: Props) {
   const [form, setForm] = useState<FormData>({});
-  const [saving, setSaving] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+  // ── Estado envío SFTP ─────────────────────────────────────────────────────
+  const [sftpModalOpen,    setSftpModalOpen]    = useState(false);
+  const [sftpFichero,      setSftpFichero]      = useState<string | null>(null);
+  const [sftpConfigs,      setSftpConfigs]      = useState<{id: number; nombre: string; host: string}[]>([]);
+  const [sftpConfigId,     setSftpConfigId]     = useState<number | null>(null);
+  const [sftpPath,         setSftpPath]         = useState<string>("/");
+  const [sftpCarpetas,     setSftpCarpetas]     = useState<{nombre: string; path: string}[]>([]);
+  const [sftpLoadingPath,  setSftpLoadingPath]  = useState(false);
+  const [sftpEnviando,     setSftpEnviando]     = useState(false);
+  const [sftpError,        setSftpError]        = useState<string | null>(null);
+  const [sftpOk,           setSftpOk]           = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));

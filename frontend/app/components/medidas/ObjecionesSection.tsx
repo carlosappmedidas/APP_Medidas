@@ -269,6 +269,11 @@ const IconChevron = () => (
     <polyline points="9 18 15 12 9 6" />
   </svg>
 );
+const IconSend = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+  </svg>
+);
 
 // ─── Estilos panel (estilo Configuración) ─────────────────────────────────────
 
@@ -421,6 +426,18 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const [filaIdx, setFilaIdx]             = useState<number | null>(null);
   const [saving, setSaving]               = useState(false);
 
+  // ── Estado envío SFTP ─────────────────────────────────────────────────────
+  const [sftpModalOpen,    setSftpModalOpen]    = useState(false);
+  const [sftpFichero,      setSftpFichero]      = useState<string | null>(null);
+  const [sftpConfigs,      setSftpConfigs]      = useState<{id: number; nombre: string; host: string}[]>([]);
+  const [sftpConfigId,     setSftpConfigId]     = useState<number | null>(null);
+  const [sftpPath,         setSftpPath]         = useState<string>("/");
+  const [sftpCarpetas,     setSftpCarpetas]     = useState<{nombre: string; path: string}[]>([]);
+  const [sftpLoadingPath,  setSftpLoadingPath]  = useState(false);
+  const [sftpEnviando,     setSftpEnviando]     = useState(false);
+  const [sftpError,        setSftpError]        = useState<string | null>(null);
+  const [sftpOk,           setSftpOk]           = useState<string | null>(null);
+
   const fileInputRef  = useRef<HTMLInputElement>(null);
   const tab           = TABS.find((t) => t.id === activeTab)!;
   const ruta          = TIPO_RUTA[activeTab];
@@ -562,6 +579,72 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
       setError(e instanceof Error ? e.message : "Error generando fichero individual");
     } finally { setGeneratingOne(null); }
   };
+  
+    // ── Abrir modal SFTP ──────────────────────────────────────────────────────
+
+  const abrirSftpModal = async (nombreFichero: string) => {
+    if (!token || !empresaIdGestion) return;
+    setSftpFichero(nombreFichero);
+    setSftpError(null); setSftpOk(null);
+    setSftpConfigId(null); setSftpPath("/"); setSftpCarpetas([]);
+    try {
+      const res = await fetch(`${API_BASE_URL}/comunicaciones/configs`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      const configs = await res.json();
+      const cs = configs.filter((c: {nombre: string; activo: boolean; empresa_id: number}) =>
+        c.activo && c.nombre && c.nombre.toUpperCase().startsWith("CS") && c.empresa_id === empresaIdGestion
+      );
+      setSftpConfigs(cs);
+      if (cs.length === 1) {
+        setSftpConfigId(cs[0].id);
+        await cargarCarpetasSftp(cs[0].id, "/");
+      }
+    } catch { setSftpConfigs([]); }
+    setSftpModalOpen(true);
+  };
+
+  const cargarCarpetasSftp = async (configId: number, path: string) => {
+    if (!token) return;
+    setSftpLoadingPath(true);
+    try {
+      const params = new URLSearchParams({ config_id: String(configId), path });
+      const res = await fetch(`${API_BASE_URL}/comunicaciones/listar?${params}`, { headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setSftpCarpetas(data.carpetas ?? []);
+      setSftpPath(path);
+    } catch { setSftpCarpetas([]); }
+    finally { setSftpLoadingPath(false); }
+  };
+
+  const handleEnviarSftp = async () => {
+    if (!token || !empresaIdGestion || !sftpFichero || !sftpConfigId) return;
+    setSftpEnviando(true); setSftpError(null); setSftpOk(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/enviar-sftp`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          empresa_id: empresaIdGestion,
+          nombre_fichero: sftpFichero,
+          config_id: sftpConfigId,
+          directorio_destino: sftpPath,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as {detail?: string}).detail || `Error ${res.status}`);
+      }
+      const data = await res.json();
+      setSftpOk(`✅ Enviado: ${data.filename}`);
+    } catch (e: unknown) {
+      setSftpError(e instanceof Error ? e.message : "Error enviando");
+    } finally { setSftpEnviando(false); }
+  };
+
+
+
+
 
   // ── Borrar fichero completo ───────────────────────────────────────────────
 
@@ -840,6 +923,12 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                                   <IconDownload />
                                   {TIPO_GENERA_ZIP[activeTab] ? "Generar ZIP" : "Generar REOB"}
                                 </button>
+                                <button type="button" onClick={() => abrirSftpModal(f.nombre_fichero)}
+                                  className="ui-btn ui-btn-outline ui-btn-xs"
+                                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, borderColor: "rgba(29,158,117,0.4)", color: "#1D9E75" }}>
+                                  <IconSend />
+                                  Enviar
+                                </button>
                                 <button type="button" onClick={() => handleDeleteFichero(f.nombre_fichero)}
                                   disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs"
                                   style={{ padding: "4px 7px", display: "flex", alignItems: "center" }}>
@@ -977,6 +1066,91 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
           </div>
         )}
       </div>
+
+            {/* ── Modal envío SFTP ──────────────────────────────────────────── */}
+      {sftpModalOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setSftpModalOpen(false); }}>
+          <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 12, padding: 20, width: 460, maxHeight: "80vh", overflowY: "auto" }}
+            onMouseDown={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Enviar al concentrador secundario</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, fontFamily: "monospace" }}>{sftpFichero}</div>
+              </div>
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" onClick={() => setSftpModalOpen(false)}>✕</button>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Conexión SFTP (concentrador secundario)</label>
+              {sftpConfigs.length === 0 ? (
+                <div style={{ fontSize: 11, color: "#E24B4A", padding: "8px 10px", background: "rgba(226,75,74,0.08)", borderRadius: 6 }}>
+                  No hay conexiones CS configuradas para esta empresa
+                </div>
+              ) : (
+                <select className="ui-select" style={{ fontSize: 11, width: "100%" }}
+                  value={sftpConfigId ?? ""}
+                  onChange={async (e) => {
+                    const id = Number(e.target.value);
+                    setSftpConfigId(id);
+                    setSftpPath("/"); setSftpCarpetas([]);
+                    await cargarCarpetasSftp(id, "/");
+                  }}>
+                  <option value="">Selecciona conexión...</option>
+                  {sftpConfigs.map(c => (
+                    <option key={c.id} value={c.id}>{c.nombre} — {c.host}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {sftpConfigId && (
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Carpeta destino</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, background: "var(--field-bg-soft)", borderRadius: 6, padding: "6px 10px" }}>
+                  <span style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text)", flex: 1 }}>{sftpPath}</span>
+                  {sftpPath !== "/" && (
+                    <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }}
+                      onClick={() => {
+                        const padre = sftpPath.split("/").slice(0, -1).join("/") || "/";
+                        cargarCarpetasSftp(sftpConfigId, padre);
+                      }}>← Subir</button>
+                  )}
+                </div>
+                {sftpLoadingPath ? (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "6px 0" }}>Cargando carpetas...</div>
+                ) : sftpCarpetas.length === 0 ? (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "6px 0" }}>Sin subcarpetas — se enviará aquí</div>
+                ) : (
+                  <div style={{ maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                    {sftpCarpetas.map(c => (
+                      <button key={c.path} type="button"
+                        onClick={() => cargarCarpetasSftp(sftpConfigId, c.path)}
+                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 5, border: "none", background: "var(--field-bg-soft)", cursor: "pointer", textAlign: "left", fontSize: 11, color: "var(--text)" }}>
+                        📁 {c.nombre}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sftpError && <div style={{ fontSize: 11, color: "#E24B4A", padding: "8px 10px", background: "rgba(226,75,74,0.08)", borderRadius: 6, marginBottom: 10 }}>{sftpError}</div>}
+            {sftpOk    && <div style={{ fontSize: 11, color: "#1D9E75", padding: "8px 10px", background: "rgba(29,158,117,0.08)", borderRadius: 6, marginBottom: 10 }}>{sftpOk}</div>}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" onClick={() => setSftpModalOpen(false)}>Cancelar</button>
+              <button type="button" className="ui-btn ui-btn-primary ui-btn-xs"
+                disabled={!sftpConfigId || sftpEnviando}
+                onClick={handleEnviarSftp}
+                style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <IconSend />
+                {sftpEnviando ? "Enviando..." : "Enviar al SFTP"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ObjecionDetalleModal
         open={modalOpen}

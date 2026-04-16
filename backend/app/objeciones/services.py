@@ -1,5 +1,5 @@
 # app/objeciones/services.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportAttributeAccessIssue=false
 
 from __future__ import annotations
 
@@ -698,3 +698,75 @@ def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fic
     ] for r in rows]
     nombre_bz2 = f"REOBCIL_{dddd}_{cccc}_9999_{aaaamm}_{fecha}.0.bz2"
     return _csv_to_bz2(data), nombre_bz2
+
+
+# ── Envío SFTP ─────────────────────────────────────────────────────────────────
+
+def enviar_al_sftp(
+    db: Session, *,
+    tipo: str,
+    tenant_id: int,
+    empresa_id: int,
+    nombre_fichero: str,
+    config_id: int,
+    directorio_destino: str,
+) -> str:
+    from app.comunicaciones.services import _get_config_by_id_activa, _conectar_en_path
+    import io as _io
+    import zipfile as _zipfile
+
+    config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
+    ahora = datetime.utcnow()
+
+    if tipo == "agrecl":
+        # agrecl genera un ZIP con un .bz2 por ID — subimos cada .bz2 por separado
+        zip_content, _ = generate_reobagrecl_zip(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+        ftp = _conectar_en_path(config, directorio_destino)
+        ficheros_subidos = []
+        try:
+            with _zipfile.ZipFile(_io.BytesIO(zip_content)) as zf:
+                for nombre_bz2 in zf.namelist():
+                    datos_bz2 = zf.read(nombre_bz2)
+                    ftp.storbinary(f"STOR {nombre_bz2}", _io.BytesIO(datos_bz2))
+                    ficheros_subidos.append(nombre_bz2)
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                pass
+        db.query(ObjecionAGRECL).filter(
+            ObjecionAGRECL.tenant_id == tenant_id,
+            ObjecionAGRECL.empresa_id == empresa_id,
+            ObjecionAGRECL.nombre_fichero == nombre_fichero,
+        ).update({"enviado_sftp_at": ahora, "enviado_sftp_config_id": config_id}, synchronize_session=False)
+        db.commit()
+        return ", ".join(ficheros_subidos) if ficheros_subidos else "sin ficheros"
+
+    else:
+        if tipo == "incl":
+            content, filename = generate_reobjeincl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+            model = ObjecionINCL
+        elif tipo == "cups":
+            content, filename = generate_reobcups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+            model = ObjecionCUPS
+        elif tipo == "cil":
+            content, filename = generate_reobcil(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+            model = ObjecionCIL
+        else:
+            raise ValueError(f"Tipo desconocido: {tipo}")
+
+        ftp = _conectar_en_path(config, directorio_destino)
+        try:
+            ftp.storbinary(f"STOR {filename}", _io.BytesIO(content))
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                pass
+        db.query(model).filter(
+            model.tenant_id == tenant_id,
+            model.empresa_id == empresa_id,
+            model.nombre_fichero == nombre_fichero,
+        ).update({"enviado_sftp_at": ahora, "enviado_sftp_config_id": config_id}, synchronize_session=False)
+        db.commit()
+        return filename

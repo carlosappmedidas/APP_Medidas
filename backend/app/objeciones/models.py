@@ -3,6 +3,7 @@
 
 from sqlalchemy import (
     Column,
+    DateTime,
     ForeignKey,
     Integer,
     Numeric,
@@ -55,6 +56,10 @@ class ObjecionAGRECL(TimestampMixin, Base):
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)  # 0/1
 
+    # ── Envío SFTP ────────────────────────────────────────────────────────
+    enviado_sftp_at        = Column(DateTime, nullable=True)
+    enviado_sftp_config_id = Column(Integer, nullable=True)
+
     __table_args__ = (
         Index("ix_objeciones_agrecl_tenant_empresa_periodo",
               "tenant_id", "empresa_id", "periodo"),
@@ -95,6 +100,10 @@ class ObjecionINCL(TimestampMixin, Base):
     motivo_no_aceptacion   = Column(String(50), nullable=True)
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)
+
+    # ── Envío SFTP ────────────────────────────────────────────────────────
+    enviado_sftp_at        = Column(DateTime, nullable=True)
+    enviado_sftp_config_id = Column(Integer, nullable=True)
 
     __table_args__ = (
         Index("ix_objeciones_incl_tenant_empresa_cups",
@@ -137,6 +146,10 @@ class ObjecionCUPS(TimestampMixin, Base):
     motivo_no_aceptacion   = Column(String(50), nullable=True)
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)
+
+    # ── Envío SFTP ────────────────────────────────────────────────────────
+    enviado_sftp_at        = Column(DateTime, nullable=True)
+    enviado_sftp_config_id = Column(Integer, nullable=True)
 
     __table_args__ = (
         Index("ix_objeciones_cups_tenant_empresa_periodo",
@@ -181,6 +194,10 @@ class ObjecionCIL(TimestampMixin, Base):
     motivo_no_aceptacion   = Column(String(50), nullable=True)
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)
+
+    # ── Envío SFTP ────────────────────────────────────────────────────────
+    enviado_sftp_at        = Column(DateTime, nullable=True)
+    enviado_sftp_config_id = Column(Integer, nullable=True)
 
     __table_args__ = (
         Index("ix_objeciones_cil_tenant_empresa_periodo",

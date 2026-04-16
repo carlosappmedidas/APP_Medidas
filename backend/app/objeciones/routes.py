@@ -639,6 +639,55 @@ def bulk_delete_cil(
     deleted = services.delete_cil(db, ids=payload.ids, tenant_id=_effective_tenant(current_user), empresa_id=eid)
     return DeleteResponse(deleted=deleted)
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENVÍO SFTP (todos los tipos)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class EnviarSftpPayload(BaseModel):
+    empresa_id: int
+    nombre_fichero: str
+    config_id: int
+    directorio_destino: str
+
+class EnviarSftpResponse(BaseModel):
+    ok: bool
+    filename: str
+    config_id: int
+    directorio_destino: str
+
+@router.post("/{tipo}/enviar-sftp", response_model=EnviarSftpResponse)
+def enviar_sftp(
+    tipo: str,
+    payload: EnviarSftpPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Genera el REOB y lo sube al SFTP del concentrador secundario."""
+    TIPOS_VALIDOS = {"agrecl", "incl", "cups", "cil"}
+    if tipo not in TIPOS_VALIDOS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Tipo '{tipo}' no válido")
+    eid = _get_empresa_id_verificado(db, payload.empresa_id, current_user)
+    try:
+        filename = services.enviar_al_sftp(
+            db,
+            tipo=tipo,
+            tenant_id=_effective_tenant(current_user),
+            empresa_id=eid,
+            nombre_fichero=payload.nombre_fichero,
+            config_id=payload.config_id,
+            directorio_destino=payload.directorio_destino,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error SFTP: {str(exc)[:300]}") from exc
+    return EnviarSftpResponse(
+        ok=True,
+        filename=filename,
+        config_id=payload.config_id,
+        directorio_destino=payload.directorio_destino,
+    )
+
 
 @router.post("/cil/generate")
 def generate_cil(
