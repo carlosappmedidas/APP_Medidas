@@ -28,9 +28,37 @@ interface ObjecionDetalleModalProps {
 
 // ─── Tooltip códigos REE (placeholder — rellenar cuando se disponga) ──────────
 
-const CODIGOS_REE_PLACEHOLDER = "Próximamente: códigos de respuesta aceptados por REE.";
+const CODIGOS_MOTIVO: Record<string, string> = {
+  AOBAGRECL: `0 / nulo — La objeción ha sido aceptada.
+1 — Tras análisis a nivel de punto frontera, la información inicial es correcta.
+2 — Otros. Se indica en comentario de respuesta.`,
 
-function TooltipREE() {
+  OBJEINCL: `0 / nulo — La objeción ha sido aceptada.
+01 — El distribuidor dispone de medida real.
+02 — Expediente abierto.
+03 — Expediente cerrado.
+04 — Acuerdo previo entre distribuidor y comercializador.
+99 — Otros. Se indica en comentario de respuesta.
+Nota: si el motivo es "expediente", indicar el nº de expediente en el comentario de respuesta.`,
+
+  AOBCUPS: `00 / nulo — La objeción ha sido aceptada.
+01 — El distribuidor dispone de medida real.
+02 — Expediente abierto.
+03 — Expediente cerrado.
+04 — Acuerdo previo entre distribuidor y comercializador.
+99 — Otros. Se indica en comentario de respuesta.
+Nota: si el motivo es "expediente", indicar el nº de expediente en el comentario de respuesta.`,
+
+  AOBCIL: `00 / nulo — La objeción ha sido aceptada.
+01 — El distribuidor dispone de medida real.
+02 — Expediente abierto.
+03 — Expediente cerrado.
+04 — Acuerdo previo entre distribuidor y representante.
+99 — Otros. Se indica en el comentario de respuesta.
+Nota: si el motivo es "expediente", indicar el nº de expediente en el comentario de respuesta.`,
+};
+
+function TooltipREE({ tipo }: { tipo: string }) {
   const [visible, setVisible] = useState(false);
 
   return (
@@ -59,9 +87,9 @@ function TooltipREE() {
           flexShrink: 0,
         }}
         aria-label="Ver códigos de respuesta REE"
-      >
-        i
-      </button>
+        >
+          i
+        </button>
       {visible && (
         <span
           style={{
@@ -70,8 +98,8 @@ function TooltipREE() {
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 200,
-            minWidth: 240,
-            maxWidth: 320,
+            minWidth: 300,
+            maxWidth: 400,
             borderRadius: 10,
             border: "1px solid var(--popover-border)",
             background: "var(--popover-bg)",
@@ -83,8 +111,7 @@ function TooltipREE() {
             pointerEvents: "none",
           }}
         >
-          {CODIGOS_REE_PLACEHOLDER}
-        </span>
+          {CODIGOS_MOTIVO[tipo] ?? "Sin información disponible."}        </span>
       )}
     </span>
   );
@@ -273,7 +300,7 @@ export default function ObjecionDetalleModal({
               }}
             >
               Motivo de no aceptación
-              <TooltipREE />
+              <TooltipREE tipo={config.tipo} />
             </label>
             <input
               type="text"

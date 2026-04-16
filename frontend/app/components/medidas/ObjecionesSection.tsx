@@ -97,6 +97,7 @@ const TABS: TabConfig[] = [
       { id: "aceptacion",       label: "Aceptada",               align: "left"  },
     ],
     camposLectura: [
+      { id: "nombre_fichero",   label: "Fichero"                   },
       { id: "id_objecion",      label: "ID objeción"               },
       { id: "distribuidor",     label: "Distribuidor"              },
       { id: "comercializador",  label: "Comercializador"           },
@@ -131,6 +132,7 @@ const TABS: TabConfig[] = [
       { id: "aceptacion",       label: "Aceptada",                  align: "left"  },
     ],
     camposLectura: [
+      { id: "nombre_fichero",   label: "Fichero"                   },
       { id: "cups",             label: "CUPS"                       },
       { id: "periodo",          label: "Periodo de la objeción"     },
       { id: "motivo",           label: "Motivo"                     },
@@ -160,6 +162,7 @@ const TABS: TabConfig[] = [
       { id: "magnitud",            label: "Magnitud",                  align: "left"  },
     ],
     camposLectura: [
+      { id: "nombre_fichero",    label: "Fichero"                        },
       { id: "id_objecion",       label: "ID objeción"                    },
       { id: "cups",              label: "CUPS"                           },
       { id: "periodo",           label: "Periodo de cierre objetado"     },
@@ -190,6 +193,7 @@ const TABS: TabConfig[] = [
       { id: "aceptacion",   label: "Aceptada",                     align: "left"  },
     ],
     camposLectura: [
+      { id: "nombre_fichero",label: "Fichero"                        },
       { id: "id_objecion",   label: "ID objeción"                    },
       { id: "cil",           label: "CIL"                            },
       { id: "periodo",       label: "Periodo de cierre objetado"     },
@@ -523,27 +527,30 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !token || !empresaIdGestion) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length || !token || !empresaIdGestion) return;
     setImporting(true); setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/import?empresa_id=${empresaIdGestion}`, {
-        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+    const errores: string[] = [];
+    for (const file of files) {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/import?empresa_id=${empresaIdGestion}`, {
+          method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          errores.push(`${file.name}: ${(err as { detail?: string }).detail || `Error ${res.status}`}`);
+        }
+      } catch (e: unknown) {
+        errores.push(`${file.name}: ${e instanceof Error ? e.message : "Error desconocido"}`);
       }
-      await cargarFicheros();
-      await cargarDash();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error importando fichero");
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+    await cargarFicheros();
+    await cargarDash();
+    if (errores.length) setError(errores.join(" | "));
+    setImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // ── Generar ───────────────────────────────────────────────────────────────
@@ -799,7 +806,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
   return (
     <div className="text-sm">
-      <input ref={fileInputRef} type="file" accept=".0,.csv,.txt" style={{ display: "none" }} onChange={handleFileChange} />
+      <input ref={fileInputRef} type="file" accept=".0,.1,.2,.3,.4,.5,.6,.7,.8,.9,.csv,.txt" multiple style={{ display: "none" }} onChange={handleFileChange} />
       {error && <div className="ui-alert ui-alert--danger mb-3">{error}</div>}
 
       {/* ── PANEL 1: Dashboard ─────────────────────────────────────────── */}

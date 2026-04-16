@@ -67,7 +67,8 @@ def _csv_to_bz2(rows_data: List[List]) -> bytes:
 
 def _parse_nombre_agrecl(nombre: str) -> Tuple[str, str, str]:
     """AOBAGRECL_DDDD_AAAAMM_FFFFFFFF.0 → (dddd, aaaamm, fecha)"""
-    base = nombre.replace(".0", "").replace(".bz2", "")
+    import re as _re
+    base = _re.sub(r'\.\d+(\.bz2)?$', '', nombre).replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
     aaaamm = partes[2] if len(partes) > 2 else "000000"
@@ -77,7 +78,8 @@ def _parse_nombre_agrecl(nombre: str) -> Tuple[str, str, str]:
 
 def _parse_nombre_incl(nombre: str) -> Tuple[str, str, str, str]:
     """OBJEINCL_CCCC_DDDD_AAAAMM_FFFFFFFF.0 → (cccc, dddd, aaaamm, fecha)"""
-    base = nombre.replace(".0", "").replace(".bz2", "")
+    import re as _re
+    base = _re.sub(r'\.\d+(\.bz2)?$', '', nombre).replace(".bz2", "")
     partes = base.split("_")
     cccc   = partes[1] if len(partes) > 1 else "0000"
     dddd   = partes[2] if len(partes) > 2 else "0000"
@@ -88,7 +90,8 @@ def _parse_nombre_incl(nombre: str) -> Tuple[str, str, str, str]:
 
 def _parse_nombre_cups(nombre: str) -> Tuple[str, str, str, str]:
     """AOBCUPS_DDDD_CCCC_AAAAMM_FFFFFFFF.0 → (dddd, cccc, aaaamm, fecha)"""
-    base = nombre.replace(".0", "").replace(".bz2", "")
+    import re as _re
+    base = _re.sub(r'\.\d+(\.bz2)?$', '', nombre).replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
     cccc   = partes[2] if len(partes) > 2 else "0000"
@@ -99,7 +102,8 @@ def _parse_nombre_cups(nombre: str) -> Tuple[str, str, str, str]:
 
 def _parse_nombre_cil(nombre: str) -> Tuple[str, str, str, str]:
     """AOBCIL_DDDD_CCCC_AAAAMM_FFFFFFFF.0 → (dddd, cccc, aaaamm, fecha)"""
-    base = nombre.replace(".0", "").replace(".bz2", "")
+    import re as _re
+    base = _re.sub(r'\.\d+(\.bz2)?$', '', nombre).replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
     cccc   = partes[2] if len(partes) > 2 else "0000"
@@ -146,10 +150,9 @@ def validar_nombre_fichero(
     """
     prefijo = PREFIJOS_VALIDOS.get(tipo_ruta, "")
     nombre_base = nombre
-    for ext in (".0.bz2", ".bz2", ".0"):
-        if nombre_base.endswith(ext):
-            nombre_base = nombre_base[: -len(ext)]
-            break
+    import re as _re
+    nombre_base = _re.sub(r'\.\d+(\.bz2)?$', '', nombre_base)
+    nombre_base = nombre_base.replace(".bz2", "")
 
     if not nombre_base.upper().startswith(prefijo):
         return (
