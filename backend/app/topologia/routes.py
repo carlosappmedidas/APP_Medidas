@@ -576,6 +576,25 @@ def get_tabla_tramos(
 
 
 
+# ── Cuadro BT de un CT ────────────────────────────────────────────────────────
+
+@router.get("/cts/{id_ct}/cuadro-bt")
+def get_cuadro_bt(
+    id_ct:        str,
+    empresa_id:   int     = Query(...),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Devuelve el cuadro BT de un CT: embarrados y salidas reales."""
+    _assert_not_viewer(current_user)
+    return services.calcular_cuadro_bt(
+        db=db,
+        tenant_id=_tenant_id(current_user),
+        empresa_id=empresa_id,
+        id_ct=id_ct,
+    )
+
+
 @router.get("/mapa/cts", response_model=List[CtMapaRead])
 def get_cts_mapa(
     empresa_id:   int     = Query(...),

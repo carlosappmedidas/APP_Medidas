@@ -1831,6 +1831,104 @@ def list_cts_mapa_baja(db: Session, tenant_id: int, empresa_id: int) -> List[CtI
         .all()
     )
 
+# ── Cuadro BT — algoritmo BFS ─────────────────────────────────────────────────
+
+def calcular_cuadro_bt(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    id_ct: str,
+) -> Dict[str, Any]:
+    """
+    Calcula el cuadro BT de un CT:
+    - Embarrados: líneas BT modelo M sin fecha_aps y sin fecha_baja
+    - Salidas: líneas BT con fecha_aps y sin fecha_baja, cuyos nudos
+      forman parte del grafo de embarrados del cuadro BT.
+    """
+    ct = (
+        db.query(CtInventario)
+        .filter(
+            CtInventario.tenant_id  == tenant_id,
+            CtInventario.empresa_id == empresa_id,
+            CtInventario.id_ct      == id_ct,
+        )
+        .first()
+    )
+    if ct is None or not ct.nudo_baja:
+        return {"nudo_baja": None, "num_salidas": 0, "salidas": []}
+
+    # Cargar todas las líneas BT sin fecha_baja
+    lineas_bt = (
+        db.query(LineaInventario)
+        .filter(
+            LineaInventario.tenant_id  == tenant_id,
+            LineaInventario.empresa_id == empresa_id,
+            LineaInventario.tension_kv <= 1,
+            LineaInventario.fecha_baja.is_(None),
+        )
+        .all()
+    )
+
+    # Índices por nudo
+    por_nudo_ini: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
+    por_nudo_fin: Dict[str, List[LineaInventario]] = collections.defaultdict(list)
+    for linea_bt in lineas_bt:
+        if linea_bt.nudo_inicio:
+            por_nudo_ini[linea_bt.nudo_inicio].append(linea_bt)
+        if linea_bt.nudo_fin:
+            por_nudo_fin[linea_bt.nudo_fin].append(linea_bt)
+
+    # BFS desde nudo_baja siguiendo embarrados (modelo M, sin APS)
+    visitados: set = set()
+    cola = [ct.nudo_baja]
+    salidas_raw: List[LineaInventario] = []
+
+    while cola:
+        nudo = cola.pop(0)
+        if nudo in visitados:
+            continue
+        visitados.add(nudo)
+
+        for linea in por_nudo_ini.get(nudo, []) + por_nudo_fin.get(nudo, []):
+            if linea.modelo == "M" and not linea.fecha_aps:
+                otro = linea.nudo_fin if linea.nudo_inicio == nudo else linea.nudo_inicio
+                if otro and otro not in visitados:
+                    cola.append(otro)
+            elif linea.fecha_aps:
+                if linea not in salidas_raw:
+                    salidas_raw.append(linea)
+
+    # Para cada salida, encontrar el embarrado B* que conecta con su nudo
+    nudos_con_salida = {sal.nudo_inicio for sal in salidas_raw} | {sal.nudo_fin for sal in salidas_raw}
+    nudos_con_salida &= visitados  # solo nudos que forman parte del cuadro
+
+    # Filtrar salidas cuyos nudos están en el cuadro
+    salidas_validas = [
+        sal for sal in salidas_raw
+        if sal.nudo_inicio in visitados or sal.nudo_fin in visitados
+    ]
+
+    # Emparejar cada salida con su embarrado B*
+    resultado = []
+    for salida in salidas_validas:
+        nudo_salida = salida.nudo_inicio if salida.nudo_inicio in visitados else salida.nudo_fin
+        embarrado_id = None
+        for emb in por_nudo_ini.get(nudo_salida, []) + por_nudo_fin.get(nudo_salida, []):
+            if emb.modelo == "M" and not emb.fecha_aps and not emb.fecha_baja:
+                embarrado_id = emb.id_tramo
+                break
+        resultado.append({
+            "embarrado": embarrado_id or "",
+            "linea_bt":  salida.id_tramo,
+        })
+
+    return {
+        "nudo_baja":   ct.nudo_baja,
+        "num_salidas": len(resultado),
+        "salidas":     resultado,
+    }
+
+
 
 def list_tramos_mapa_baja(
     db: Session, tenant_id: int, empresa_id: int,

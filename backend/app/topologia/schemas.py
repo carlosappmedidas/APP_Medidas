@@ -572,3 +572,17 @@ class TramoMapaRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── cuadro BT ──────────────────────────────────────────────────────────────
+
+class CuadroBTSalidaRead(BaseModel):
+    embarrado: str
+    linea_bt:  str
+
+class CuadroBTRead(BaseModel):
+    nudo_baja:    str
+    num_salidas:  int
+    salidas:      List[CuadroBTSalidaRead]
+
+    model_config = {"from_attributes": True}  

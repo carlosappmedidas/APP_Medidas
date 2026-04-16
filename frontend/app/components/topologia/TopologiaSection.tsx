@@ -436,6 +436,12 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [minHCeldas, setMinHCeldas] = useState<number | undefined>(undefined);
 
   const [showCrearCt, setShowCrearCt] = useState(false);
+  const [unifilarCt,  setUnifilarCt]  = useState<null | {
+    ct: { id_ct: string; nombre: string; potencia_kva: number | null; tension_kv: number | null };
+    celdas: { id_celda: string; cini: string|null; cini_p7_funcion: string|null; cini_p6_ubicacion: string|null; posicion: number|null; en_servicio: number|null; cini_p8_tension_nominal: string|null }[];
+    cuadroBT: { nudo_baja: string; num_salidas: number; salidas: { embarrado: string; linea_bt: string }[] };
+  }>(null);
+  const [loadingUnifilar, setLoadingUnifilar] = useState(false);
   const [mapaBase, setMapaBase] = useState<string>("osm");
   const [ddCtOpen, setDdCtOpen] = useState(false);
   const [ddLineaOpen, setDdLineaOpen] = useState(false);
@@ -817,6 +823,22 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       if (panelTablasOpen && tablaActiva === "lineas") cargarTablaLineas(pageLineas, pageSizeLineas);
     } catch { console.error("Error reasignando CT desde mapa"); }
   }, [token, empresaId, cargarTramos, panelTablasOpen, tablaActiva, cargarTablaLineas, pageLineas, pageSizeLineas]);
+
+  const handleAbrirUnifilar = useCallback(async (idCt: string, empresaIdVal: number) => {
+    if (!token) return;
+    setLoadingUnifilar(true);
+    try {
+      const [resDetalle, resCuadro] = await Promise.all([
+        fetch(`${API_BASE_URL}/topologia/cts/${encodeURIComponent(idCt)}/detalle?empresa_id=${empresaIdVal}`, { headers: getAuthHeaders(token) }),
+        fetch(`${API_BASE_URL}/topologia/cts/${encodeURIComponent(idCt)}/cuadro-bt?empresa_id=${empresaIdVal}`, { headers: getAuthHeaders(token) }),
+      ]);
+      if (!resDetalle.ok || !resCuadro.ok) throw new Error();
+      const detalle = await resDetalle.json();
+      const cuadro  = await resCuadro.json();
+      setUnifilarCt({ ct: detalle.ct, celdas: detalle.celdas, cuadroBT: cuadro });
+    } catch { /* silencioso */ }
+    finally { setLoadingUnifilar(false); }
+  }, [token]);
 
   const handleReasignarFaseMapa = useCallback(async (cupsId: string, fase: string | null) => {
     if (!token || !empresaId) return;
@@ -1576,6 +1598,9 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 mostrarCtsBaja={mostrarCtsBaja}
                 mostrarBTBaja={mostrarBTBaja}
                 mostrarMTBaja={mostrarMTBaja}
+                empresaId={empresaId}
+                onAbrirUnifilar={handleAbrirUnifilar}
+
               />
             </div>
           </div>
@@ -2041,6 +2066,70 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
           </div>
         )}
       </div>
+      {/* ── Modal unifilar CT ── */}
+      {unifilarCt && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
+          onMouseDown={e => { if (e.target === e.currentTarget) setUnifilarCt(null); }}>
+          <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 12, padding: 20, width: 560, maxHeight: "85vh", overflowY: "auto" }}
+            onMouseDown={e => e.stopPropagation()}>
+            {/* Cabecera */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{unifilarCt.ct.nombre}</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>{unifilarCt.ct.id_ct} · {unifilarCt.ct.tension_kv} kV · {unifilarCt.ct.potencia_kva} kVA</div>
+              </div>
+              <button type="button" onClick={() => setUnifilarCt(null)} style={{ background: "none", border: "none", fontSize: 14, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            </div>
+            {/* Barra MT */}
+            <div style={{ textAlign: "center", fontSize: 9, color: "var(--text-muted)", marginBottom: 2 }}>MT {unifilarCt.ct.tension_kv} kV</div>
+            <div style={{ height: 5, background: "var(--text)", opacity: 0.5, borderRadius: 2, margin: "0 10px 2px" }} />
+            <div style={{ textAlign: "center", fontSize: 9, color: "var(--text-muted)", marginBottom: 8 }}>Barra colectora {unifilarCt.ct.tension_kv} kV</div>
+            {/* Celdas MT */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              {unifilarCt.celdas.map(celda => {
+                const esTrafo = celda.cini_p7_funcion === "Transformación";
+                const posLabel = celda.posicion === 0 ? "Int. automático" : celda.posicion === 1 ? "Int. no automático" : "Sin interruptor";
+                return (
+                  <div key={celda.id_celda} style={{ flex: 1, background: "var(--field-bg-soft)", border: `1px solid ${esTrafo ? "rgba(245,158,11,0.3)" : "rgba(59,130,246,0.3)"}`, borderRadius: 6, overflow: "hidden" }}>
+                    <div style={{ background: esTrafo ? "rgba(245,158,11,0.15)" : "rgba(59,130,246,0.15)", borderBottom: `0.5px solid ${esTrafo ? "rgba(245,158,11,0.3)" : "rgba(59,130,246,0.3)"}`, padding: "4px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: esTrafo ? "#f59e0b" : "#3b82f6" }}>{celda.cini_p7_funcion ?? "—"}</div>
+                      <div style={{ fontSize: 8, color: "var(--text-muted)" }}>{celda.cini} · {celda.cini_p8_tension_nominal}</div>
+                    </div>
+                    <div style={{ padding: "6px 8px", fontSize: 9 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}><span style={{ color: "var(--text-muted)" }}>Ubic.</span><span style={{ color: "var(--text)", fontWeight: 500 }}>{celda.cini_p6_ubicacion ?? "—"}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}><span style={{ color: "var(--text-muted)" }}>Estado</span><span style={{ color: celda.en_servicio === 1 ? "#22c55e" : "#e24b4a", fontWeight: 500 }}>{celda.en_servicio === 1 ? "En servicio" : "Fuera"}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-muted)" }}>Posición</span><span style={{ color: "var(--text)", fontWeight: 500 }}>{posLabel}</span></div>
+                      <div style={{ fontSize: 8, color: "var(--text-muted)", fontFamily: "monospace", marginTop: 4, textAlign: "center" }}>{celda.id_celda}</div>
+                      <div style={{ textAlign: "center", marginTop: 4, fontSize: 9, color: esTrafo ? "#f59e0b" : "var(--text-muted)" }}>{esTrafo ? "→ BT 400V" : "→ Red MT"}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Cuadro BT */}
+            {unifilarCt.cuadroBT.num_salidas > 0 && (
+              <div style={{ border: "1px solid rgba(245,158,11,0.35)", borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ background: "rgba(245,158,11,0.12)", borderBottom: "0.5px solid rgba(245,158,11,0.25)", padding: "5px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "#f59e0b" }}>Cuadro BT · {unifilarCt.cuadroBT.nudo_baja} · 400 V</div>
+                  <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{unifilarCt.cuadroBT.num_salidas} salidas</div>
+                </div>
+                <div style={{ height: 5, background: "#f59e0b", opacity: 0.6, margin: "6px 10px 2px" }} />
+                <div style={{ textAlign: "center", fontSize: 9, color: "var(--text-muted)", marginBottom: 6 }}>Barra colectora BT 400 V</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "0 8px 8px" }}>
+                  {unifilarCt.cuadroBT.salidas.map((s, i) => (
+                    <div key={i} style={{ background: "var(--field-bg-soft)", border: "0.5px solid rgba(245,158,11,0.3)", borderRadius: 4, padding: "4px 6px", display: "flex", flexDirection: "column", alignItems: "center", minWidth: 100 }}>
+                      <div style={{ width: 1.5, height: 8, background: "#f59e0b", opacity: 0.6, marginBottom: 2 }} />
+                      <div style={{ fontSize: 8, color: "var(--text-muted)", fontFamily: "monospace" }}>{s.embarrado}</div>
+                      <div style={{ fontSize: 8, color: "#f59e0b", fontFamily: "monospace", opacity: 0.8 }}>{s.linea_bt}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showCrearCt && token && empresaId && (
         <CrearCtModal
           token={token}

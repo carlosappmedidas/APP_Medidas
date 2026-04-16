@@ -407,6 +407,8 @@ interface Props {
   mostrarCtsBaja?:   boolean;
   mostrarBTBaja?:    boolean;
   mostrarMTBaja?:    boolean;
+  empresaId?:        number | "";
+  onAbrirUnifilar?:  (idCt: string, empresaId: number) => void;
 }
 
 // ─── Color y nivel ────────────────────────────────────────────────────────────
@@ -583,7 +585,7 @@ function buildTooltipLinea(
   </div>`;
 }
 
-function buildTooltipCt(ct: CtMapa, cfg: TooltipCtsConfig): string {
+function buildTooltipCt(ct: CtMapa, cfg: TooltipCtsConfig, empresaId?: number | ""): string {
   const f: string[] = [];
   if (cfg.mostrar_potencia             && ct.potencia_kva              !== null) f.push(fila("Potencia",          `${ct.potencia_kva} kVA`));
   if (cfg.mostrar_tension              && ct.tension_kv                !== null) f.push(fila("Tensión",           `${ct.tension_kv} kV`));
@@ -616,8 +618,15 @@ function buildTooltipCt(ct: CtMapa, cfg: TooltipCtsConfig): string {
   if (cfg.mostrar_motivacion           && ct.motivacion)                         f.push(fila("Motivación",        ct.motivacion));
   if (cfg.mostrar_avifauna             && ct.avifauna                  !== null) f.push(fila("Avifauna",          ct.avifauna === 1 ? "Sí" : "No"));
   if (cfg.mostrar_identificador_baja   && ct.identificador_baja)                 f.push(fila("Id. baja",          ct.identificador_baja));
+  const botonUnifilar = empresaId ? `
+    <button
+      onclick="window.__abrirUnifilar('${ct.id_ct}', ${empresaId})"
+      style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;font-size:9px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:4px;color:#3b82f6;cursor:pointer;font-weight:500;vertical-align:middle">
+      ⚡
+    </button>` : "";
+
   return `<div style="font-size:11px;min-width:180px;max-width:260px;line-height:1.7">
-    <div style="font-weight:700;font-size:12px;margin-bottom:1px">${ct.nombre}</div>
+    <div style="font-weight:700;font-size:12px;margin-bottom:1px">${ct.nombre}${botonUnifilar}</div>
     <div style="color:#888;font-size:10px;font-family:monospace;margin-bottom:4px">${ct.id_ct}</div>
     ${f.join("")}
     ${ct.propiedad === "E" ? `<div style="margin-top:4px;color:#EF9F27;font-size:10px">⚠️ Cedido por tercero</div>` : ""}
@@ -682,6 +691,8 @@ export default function MapaLeaflet({
   mapaBase = "osm",
   ctsBaja = [], tramosBaja = [],
   mostrarCtsBaja = false, mostrarBTBaja = false, mostrarMTBaja = false,
+  empresaId,
+  onAbrirUnifilar,
 }: Props) {
   const mapRef             = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -705,10 +716,13 @@ export default function MapaLeaflet({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lineasBajaLayerRef  = useRef<any>(null);
 
-  const onReasignarCtRef   = useRef(onReasignarCt);
-  const onReasignarFaseRef = useRef(onReasignarFase);
+  const onReasignarCtRef    = useRef(onReasignarCt);
+  const onReasignarFaseRef  = useRef(onReasignarFase);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const onAbrirUnifilarRef  = useRef((_idCt: string, _empresaId: number) => {});
   useEffect(() => { onReasignarCtRef.current   = onReasignarCt;   }, [onReasignarCt]);
   useEffect(() => { onReasignarFaseRef.current = onReasignarFase; }, [onReasignarFase]);
+  useEffect(() => { if (onAbrirUnifilar) onAbrirUnifilarRef.current = onAbrirUnifilar; }, [onAbrirUnifilar]);
 
   const modoMultiCt = Object.keys(coloresCt).length >= 2;
 
@@ -722,6 +736,10 @@ export default function MapaLeaflet({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__reasignarFase = (cups: string, fase: string | null) => {
       onReasignarFaseRef.current(cups, fase || null);
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__abrirUnifilar = (idCt: string, empresaIdVal: number) => {
+      onAbrirUnifilarRef.current(idCt, empresaIdVal);
     };
     import("leaflet").then(L => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -793,6 +811,8 @@ export default function MapaLeaflet({
       delete (window as any).__reasignarCt;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (window as any).__reasignarFase;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__abrirUnifilar;
     };
   }, []);
 
@@ -891,7 +911,7 @@ export default function MapaLeaflet({
           iconSize: [14, 14], iconAnchor: [7, 7],
         });
         L.marker([ct.lat, ct.lon], { icon: iconCt })
-          .bindPopup(buildTooltipCt(ct, tooltipCts))
+          .bindPopup(buildTooltipCt(ct, tooltipCts, empresaId))
           .addTo(ctLayerRef.current);
       });
     });
@@ -946,7 +966,7 @@ export default function MapaLeaflet({
           iconSize: [14, 14], iconAnchor: [7, 7],
         });
         L.marker([ct.lat, ct.lon], { icon: iconCt })
-          .bindPopup(buildTooltipCt(ct, tooltipCts))
+          .bindPopup(buildTooltipCt(ct, tooltipCts, empresaId))
           .addTo(ctsBajaLayerRef.current);
       });
     });
