@@ -198,6 +198,137 @@ type FicheroKey = typeof FICHEROS_CONFIG[number]["key"];
 const METODO_LABEL: Record<string, string> = { bfs: "Topológico", proximidad: "Proximidad", nudo_linea: "Nudo→Línea", manual: "Manual" };
 const METODO_COLOR: Record<string, string> = { bfs: "#1D9E75", proximidad: "#F59E0B", nudo_linea: "#378ADD", manual: "#A855F7" };
 
+// ── Panel de filtros avanzados con buscador de columnas ───────────────────
+
+interface FiltroCol { cfgKey: string; param: string; label: string; filtrable?: boolean; }
+
+function FiltrosAvanzadosPanel({
+  colsActivas, filtrosAvanzados, setFiltrosAvanzados, onAplicar, onLimpiar,
+}: {
+  colsActivas: FiltroCol[];
+  filtrosAvanzados: Record<string, string>;
+  setFiltrosAvanzados: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onAplicar: () => void;
+  onLimpiar: () => void;
+}) {
+  const [busquedaCol, setBusquedaCol] = useState("");
+  const [colSeleccionada, setColSeleccionada] = useState<FiltroCol | null>(null);
+
+  const colsFiltradas = busquedaCol.trim()
+    ? colsActivas.filter(c => c.label.toLowerCase().includes(busquedaCol.toLowerCase()))
+    : colsActivas;
+
+  const filtrosActivos = colsActivas.filter(c => filtrosAvanzados[c.param]?.trim());
+
+  const handleSeleccionarCol = (col: FiltroCol) => {
+    setColSeleccionada(col);
+    setBusquedaCol("");
+  };
+
+  const handleEliminarFiltro = (param: string) => {
+    setFiltrosAvanzados(prev => { const n = { ...prev }; delete n[param]; return n; });
+    if (colSeleccionada?.param === param) setColSeleccionada(null);
+  };
+
+  return (
+    <div style={{
+      position: "absolute", top: 28, right: 0, width: 300,
+      background: "var(--card-bg)", border: "1px solid var(--card-border)",
+      borderRadius: 8, padding: 10, zIndex: 100,
+      boxShadow: "0 4px 16px rgba(0,0,0,0.14)",
+    }}>
+      {filtrosActivos.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>Filtros activos</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {filtrosActivos.map(col => (
+              <div key={col.param} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.2)", borderRadius: 5, padding: "3px 6px" }}>
+                <span style={{ fontSize: 10, color: "#2563EB", fontWeight: 600, minWidth: 70 }}>{col.label}</span>
+                <span style={{ fontSize: 10, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>= {filtrosAvanzados[col.param]}</span>
+                <button type="button" style={{ fontSize: 10, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, flexShrink: 0 }}
+                  onClick={() => handleEliminarFiltro(col.param)}>✕</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ height: 1, background: "var(--card-border)", margin: "8px 0" }} />
+        </div>
+      )}
+
+      {colSeleccionada ? (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
+            Filtrar por: <span style={{ color: "var(--primary)" }}>{colSeleccionada.label}</span>
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input
+              autoFocus
+              className="ui-input"
+              style={{ flex: 1, fontSize: 11, height: 28 }}
+              placeholder={`Valor para ${colSeleccionada.label.toLowerCase()}...`}
+              value={filtrosAvanzados[colSeleccionada.param] ?? ""}
+              onChange={e => setFiltrosAvanzados(prev => ({ ...prev, [colSeleccionada.param]: e.target.value }))}
+              onKeyDown={e => { if (e.key === "Enter") onAplicar(); if (e.key === "Escape") setColSeleccionada(null); }}
+            />
+            <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }}
+              onClick={() => setColSeleccionada(null)}>✕</button>
+          </div>
+          <button type="button" style={{ fontSize: 9, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "3px 0", marginTop: 2 }}
+            onClick={() => setColSeleccionada(null)}>← Elegir otra columna</button>
+          <div style={{ height: 1, background: "var(--card-border)", margin: "8px 0" }} />
+        </div>
+      ) : (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>Añadir filtro por columna</div>
+          <input
+            autoFocus
+            className="ui-input"
+            style={{ width: "100%", fontSize: 11, height: 28, marginBottom: 5 }}
+            placeholder="Buscar columna..."
+            value={busquedaCol}
+            onChange={e => setBusquedaCol(e.target.value)}
+          />
+          <div style={{ maxHeight: 160, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
+            {colsFiltradas.length === 0 && (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "4px 2px" }}>Sin resultados</div>
+            )}
+            {colsFiltradas.map(col => {
+              const tieneValor = col.filtrable && !!filtrosAvanzados[col.param]?.trim();
+              const esFiltrable = col.filtrable !== false;
+              return (
+                <button key={col.cfgKey} type="button"
+                  onClick={() => esFiltrable ? handleSeleccionarCol(col) : undefined}
+                  disabled={!esFiltrable}
+                  title={!esFiltrable ? "Filtro no disponible para esta columna" : undefined}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "4px 6px", borderRadius: 4, border: "none",
+                    cursor: esFiltrable ? "pointer" : "not-allowed", textAlign: "left",
+                    background: tieneValor ? "rgba(37,99,235,0.08)" : "transparent",
+                    color: tieneValor ? "#2563EB" : esFiltrable ? "var(--text)" : "var(--text-muted)",
+                    fontSize: 10, opacity: esFiltrable ? 1 : 0.45,
+                  }}>
+                  <span>{col.label}</span>
+                  {tieneValor && <span style={{ fontSize: 9, color: "#2563EB", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100, marginLeft: 6 }}>{filtrosAvanzados[col.param]}</span>}
+                  {!esFiltrable && <span style={{ fontSize: 8, color: "var(--text-muted)", marginLeft: 4 }}>—</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, borderTop: "1px solid var(--card-border)", paddingTop: 8 }}>
+        <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ flex: 1, fontSize: 10 }} onClick={onAplicar}>
+          🔍 Aplicar
+        </button>
+        <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ fontSize: 10 }} onClick={() => { onLimpiar(); setColSeleccionada(null); setBusquedaCol(""); }}>
+          Limpiar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, tooltipCts, tooltipCups, tablaLineas: tablaLineasProp, tablaCups: tablaCupsProp, tablaCeldas: tablaCeldasProp, tablaCts: tablaCtsProp, tablaTramos: tablaTramosProp }: Props) {
   const tablaLineasCfg = tablaLineasProp ?? DEFAULT_TABLA_LINEAS;
   const tablaCupsCfg   = tablaCupsProp   ?? DEFAULT_TABLA_CUPS;
@@ -279,6 +410,9 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
   const [filtroCtTabla,  setFiltroCtTabla]  = useState<string>("");
   const [filtroSinCt,    setFiltroSinCt]    = useState(false);
   const [filtroMetodo,   setFiltroMetodo]   = useState<string>("");
+  const [filtrosAvanzados, setFiltrosAvanzados] = useState<Record<string, string>>({});
+  const [ddFiltrosOpen,    setDdFiltrosOpen]    = useState(false);
+  const filtrosTablaRef = useRef<HTMLDivElement>(null);
 
   const [pageLineas,     setPageLineas]     = useState(0);
   const [pageSizeLineas, setPageSizeLineas] = useState(50);
@@ -316,11 +450,22 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       .then(r => r.ok ? r.json() : []).then(setEmpresas).catch(() => {});
   }, [token]);
   
-    // Cerrar dropdowns del mapa al pulsar fuera
+  // Cerrar dropdowns del mapa al pulsar fuera
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (mapaToolbarRef.current && !mapaToolbarRef.current.contains(e.target as Node)) {
         setDdCtOpen(false); setDdLineaOpen(false); setDdCapasOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Cerrar panel filtros avanzados al pulsar fuera
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filtrosTablaRef.current && !filtrosTablaRef.current.contains(e.target as Node)) {
+        setDdFiltrosOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -406,6 +551,9 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     try {
       const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
       if (filtroCtTabla) params.set("busqueda", filtroCtTabla);
+      Object.entries(filtrosAvanzados).forEach(([param, val]) => {
+        if (val && val.trim()) params.set(param, val.trim());
+      });
       if (filtroSinCt)   params.set("sin_ct", "true");
       if (filtroMetodo)  params.set("metodo",  filtroMetodo);
       const res = await fetch(`${API_BASE_URL}/topologia/tabla/lineas?${params}`, { headers: getAuthHeaders(token) });
@@ -416,7 +564,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setHasLoadedTabla(true);
     } catch { setLineasTabla([]); setTotalLineas(0); }
     finally { setLoadingTabla(false); setMinHLineas(undefined); }
-  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, pageLineas, pageSizeLineas]);
+  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, filtrosAvanzados, pageLineas, pageSizeLineas]);
 
   const cargarTablaCups = useCallback(async (page = pageCups, size = pageSizeCups) => {
     if (!token || !empresaId) return;
@@ -424,7 +572,10 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     setLoadingTabla(true);
     try {
       const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
-      if (filtroCtTabla) params.set("id_ct",  filtroCtTabla);
+      if (filtroCtTabla) params.set("busqueda", filtroCtTabla);
+      Object.entries(filtrosAvanzados).forEach(([param, val]) => {
+        if (val && val.trim()) params.set(param, val.trim());
+      });
       if (filtroSinCt)   params.set("sin_ct", "true");
       if (filtroMetodo)  params.set("metodo",  filtroMetodo);
       const res = await fetch(`${API_BASE_URL}/topologia/tabla/cups?${params}`, { headers: getAuthHeaders(token) });
@@ -435,7 +586,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setHasLoadedTabla(true);
     } catch { setCupsTabla([]); setTotalCups(0); }
     finally { setLoadingTabla(false); setMinHCups(undefined); }
-  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, pageCups, pageSizeCups]);
+  }, [token, empresaId, filtroCtTabla, filtroSinCt, filtroMetodo, filtrosAvanzados, pageCups, pageSizeCups]);
 
   const cargarTablaCeldas = useCallback(async (page = pageCeldas, size = pageSizeCeldas) => {
     if (!token || !empresaId) return;
@@ -443,7 +594,10 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     setLoadingTabla(true);
     try {
       const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
-      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      if (filtroCtTabla) params.set("busqueda", filtroCtTabla);
+      Object.entries(filtrosAvanzados).forEach(([param, val]) => {
+        if (val && val.trim()) params.set(param, val.trim());
+      });
       const res = await fetch(`${API_BASE_URL}/topologia/tabla/celdas?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -452,7 +606,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setHasLoadedTabla(true);
     } catch { setCeldasTabla([]); setTotalCeldas(0); }
     finally { setLoadingTabla(false); setMinHCeldas(undefined); }
-  }, [token, empresaId, filtroCtTabla, pageCeldas, pageSizeCeldas]);
+  }, [token, empresaId, filtroCtTabla, filtrosAvanzados, pageCeldas, pageSizeCeldas]);
 
   const cargarTablaCts = useCallback(async (page = pageCts, size = pageSizeCts) => {
     if (!token || !empresaId) return;
@@ -460,7 +614,11 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     setLoadingTabla(true);
     try {
       const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
-      const res = await fetch(`${API_BASE_URL}/topologia/tabla/cts?${params}`, { headers: getAuthHeaders(token) });
+      if (filtroCtTabla) params.set("busqueda", filtroCtTabla);
+      Object.entries(filtrosAvanzados).forEach(([param, val]) => {
+        if (val && val.trim()) params.set(param, val.trim());
+      });
+      const res = await fetch(`${API_BASE_URL}/topologia/tabla/cts?${params}`,{ headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       const data = await res.json();
       setCtsTabla(data.items ?? []);
@@ -468,7 +626,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setHasLoadedTabla(true);
     } catch { setCtsTabla([]); setTotalCts(0); }
     finally { setLoadingTabla(false); setMinHCts(undefined); }
-  }, [token, empresaId, pageCts, pageSizeCts]);
+  }, [token, empresaId, filtrosAvanzados, pageCts, pageSizeCts]);
 
     const cargarTablaTramos = useCallback(async (page = pageTramos, size = pageSizeTramos) => {
     if (!token || !empresaId) return;
@@ -476,7 +634,10 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     setLoadingTabla(true);
     try {
       const params = new URLSearchParams({ empresa_id: String(empresaId), limit: String(size), offset: String(page * size) });
-      if (filtroCtTabla) params.set("id_ct", filtroCtTabla);
+      if (filtroCtTabla) params.set("busqueda", filtroCtTabla);
+      Object.entries(filtrosAvanzados).forEach(([param, val]) => {
+        if (val && val.trim()) params.set(param, val.trim());
+      });
       const res = await fetch(`${API_BASE_URL}/topologia/tabla/tramos?${params}`, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -485,7 +646,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
       setHasLoadedTabla(true);
     } catch { setTramosTabla([]); setTotalTramos2(0); }
     finally { setLoadingTabla(false); setMinHTramos(undefined); }
-  }, [token, empresaId, filtroCtTabla, pageTramos, pageSizeTramos]);
+  }, [token, empresaId, filtroCtTabla, filtrosAvanzados, pageTramos, pageSizeTramos]);
 
   useEffect(() => {
     if (empresaId) { cargarCts(); cargarTramos(); cargarCups(); cargarBaja(); }
@@ -884,6 +1045,191 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
     { cfgKey: "ct_asignado",         label: "CT",          render: r => r.id_ct ? (cts.find(c => c.id_ct === r.id_ct)?.nombre ?? r.id_ct) : "—" },
     { cfgKey: "metodo_asignacion",   label: "Método",      render: r => <BadgeMetodo metodo={r.metodo_asignacion_ct} /> },
   ];
+
+  // ── Mapeo cfgKey → parámetro backend f_* ─────────────────────────────────
+  const LINEAS_FILTROS: Record<string, string> = {
+    identificador_tramo:       "busqueda",
+    cini:                      "f_cini",
+    codigo_ccuu:               "f_codigo_ccuu",
+    nudo_inicial:              "f_nudo_inicio",
+    nudo_final:                "f_nudo_fin",
+    ccaa_1:                    "f_ccaa_1",
+    ccaa_2:                    "f_ccaa_2",
+    propiedad:                 "f_propiedad",
+    tension_explotacion:       "f_tension_kv",
+    tension_construccion:      "f_tension_construccion_kv",
+    longitud:                  "f_longitud_km",
+    resistencia:               "f_resistencia_ohm",
+    reactancia:                "f_reactancia_ohm",
+    intensidad:                "f_intensidad_a",
+    estado:                    "f_estado",
+    punto_frontera:            "f_punto_frontera",
+    modelo:                    "f_modelo",
+    operacion:                 "f_operacion",
+    fecha_aps:                 "f_fecha_aps",
+    causa_baja:                "f_causa_baja",
+    fecha_baja:                "f_fecha_baja",
+    fecha_ip:                  "f_fecha_ip",
+    tipo_inversion:            "f_tipo_inversion",
+    motivacion:                "f_motivacion",
+    im_tramites:               "f_im_tramites",
+    im_construccion:           "f_im_construccion",
+    im_trabajos:               "f_im_trabajos",
+    valor_auditado:            "f_valor_auditado",
+    financiado:                "f_financiado",
+    subvenciones_europeas:     "f_subvenciones_europeas",
+    subvenciones_nacionales:   "f_subvenciones_nacionales",
+    subvenciones_prtr:         "f_subvenciones_prtr",
+    cuenta:                    "f_cuenta",
+    avifauna:                  "f_avifauna",
+    identificador_baja:        "f_identificador_baja",
+    ct_asignado:               "f_id_ct",
+    metodo_asignacion:         "f_metodo_asignacion",
+  };
+  const CUPS_FILTROS: Record<string, string> = {
+    cups:                      "busqueda",
+    id_ct:                     "f_id_ct_origen",
+    tarifa:                    "f_tarifa",
+    cnae:                      "f_cnae",
+    tension:                   "f_tension_kv",
+    potencia:                  "f_potencia_contratada",
+    potencia_adscrita:         "f_potencia_adscrita",
+    energia_activa:            "f_energia_activa",
+    energia_reactiva:          "f_energia_reactiva",
+    autoconsumo:               "f_autoconsumo",
+    municipio:                 "f_municipio",
+    provincia:                 "f_provincia",
+    zona:                      "f_zona",
+    conexion:                  "f_conexion",
+    estado_contrato:           "f_estado_contrato",
+    fecha_alta:                "f_fecha_alta",
+    cini:                      "f_cini_contador",
+    lecturas:                  "f_lecturas",
+    baja_suministro:           "f_baja_suministro",
+    cambio_titularidad:        "f_cambio_titularidad",
+    facturas_estimadas:        "f_facturas_estimadas",
+    facturas_total:            "f_facturas_total",
+    cau:                       "f_cau",
+    cod_auto:                  "f_cod_auto",
+    cod_generacion:            "f_cod_generacion",
+    conexion_autoconsumo:      "f_conexion_autoconsumo",
+    energia_autoconsumida:     "f_energia_autoconsumida",
+    energia_excedentaria:      "f_energia_excedentaria",
+    ct_asignado:               "f_id_ct_asignado",
+    metodo_asignacion:         "f_metodo_asignacion",
+    fase:                      "f_fase",
+  };
+  const CTS_FILTROS: Record<string, string> = {
+    nombre:                    "busqueda",
+    identificador_ct:          "f_id_ct",
+    cini:                      "f_cini",
+    codigo_ccuu:               "f_codigo_ccuu",
+    tension_explotacion:       "f_tension_kv",
+    tension_construccion:      "f_tension_construccion",
+    potencia:                  "f_potencia",
+    nudo_alta:                 "f_nudo_alta",
+    nudo_baja:                 "f_nudo_baja",
+    municipio:                 "f_municipio",
+    provincia:                 "f_provincia",
+    ccaa:                      "f_ccaa",
+    zona:                      "f_zona",
+    propiedad:                 "f_propiedad",
+    estado:                    "f_estado",
+    modelo:                    "f_modelo",
+    punto_frontera:            "f_punto_frontera",
+    fecha_aps:                 "f_fecha_aps",
+    causa_baja:                "f_causa_baja",
+    fecha_baja:                "f_fecha_baja",
+    fecha_ip:                  "f_fecha_ip",
+    tipo_inversion:            "f_tipo_inversion",
+    motivacion:                "f_motivacion",
+    im_tramites:               "f_im_tramites",
+    im_construccion:           "f_im_construccion",
+    im_trabajos:               "f_im_trabajos",
+    subvenciones_europeas:     "f_subvenciones_europeas",
+    subvenciones_nacionales:   "f_subvenciones_nacionales",
+    subvenciones_prtr:         "f_subvenciones_prtr",
+    valor_auditado:            "f_valor_auditado",
+    financiado:                "f_financiado",
+    avifauna:                  "f_avifauna",
+    cuenta:                    "f_cuenta",
+    identificador_baja:        "f_identificador_baja",
+  };
+  const CELDAS_FILTROS: Record<string, string> = {
+    id_ct:                     "busqueda",
+    id_celda:                  "f_id_celda",
+    cini_p7_funcion:           "f_funcion",
+    cini_p5_tipo_posicion:     "f_tipo_posicion",
+    cini_p6_ubicacion:         "f_ubicacion",
+    cini_p8_tension_nom:       "f_tension_nominal",
+    id_transformador:          "f_id_transformador",
+    cini:                      "f_cini",
+    anio_ps:                   "f_anio_instalacion",
+    cini_p4_tension:           "f_tension_rango",
+    interruptor:               "f_posicion",
+    propiedad:                 "f_en_servicio",
+  };
+  const TRAMOS_FILTROS: Record<string, string> = {
+    segmento:                  "busqueda",
+    identificador_tramo:       "f_id_linea",
+    orden_segmento:            "f_orden",
+    n_segmentos:               "f_num_tramo",
+    longitud_segmento:         "f_longitud_km",
+    cini:                      "f_cini",
+    codigo_ccuu:               "f_codigo_ccuu",
+    nudo_inicial:              "f_nudo_inicio",
+    nudo_final:                "f_nudo_fin",
+    ccaa_1:                    "f_ccaa_1",
+    ccaa_2:                    "f_ccaa_2",
+    tension_explotacion:       "f_tension_kv",
+    ct_asignado:               "f_id_ct",
+    metodo_asignacion:         "f_metodo_asignacion",
+  };
+
+  const getFiltrosActivos = () => {
+    switch (tablaActiva) {
+      case "lineas":  return LINEAS_FILTROS;
+      case "cups":    return CUPS_FILTROS;
+      case "cts":     return CTS_FILTROS;
+      case "celdas":  return CELDAS_FILTROS;
+      case "tramos":  return TRAMOS_FILTROS;
+    }
+  };
+
+  const getCfgActual = (): Record<string, boolean> => {
+    switch (tablaActiva) {
+      case "lineas":  return tablaLineasCfg;
+      case "cups":    return tablaCupsCfg;
+      case "cts":     return tablaCtsCfg;
+      case "celdas":  return tablaCeldasCfg;
+      case "tramos":  return tablaTramosConfig;
+    }
+  };
+
+  const getColsActivas = (): (FiltroCol & { filtrable: boolean })[] => {
+    const filtrosMap = getFiltrosActivos();
+    const cfg = getCfgActual();
+
+    // Todas las columnas activas de la tabla actual
+    let todasCols: { cfgKey: string; label: string }[] = [];
+    if (tablaActiva === "lineas")  todasCols = LINEAS_COLS.map(c => ({ cfgKey: c.cfgKey, label: c.label }));
+    if (tablaActiva === "cups")    todasCols = CUPS_COLS.map(c => ({ cfgKey: c.cfgKey, label: c.label }));
+    if (tablaActiva === "cts")     todasCols = CTS_COLS.map(c => ({ cfgKey: c.cfgKey, label: c.label }));
+    if (tablaActiva === "celdas")  todasCols = CELDAS_COLS.map(c => ({ cfgKey: c.cfgKey, label: c.label }));
+    if (tablaActiva === "tramos")  todasCols = TRAMOS_COLS.map(c => ({ cfgKey: c.cfgKey, label: c.label }));
+
+    return todasCols
+      .filter(c => cfg[c.cfgKey] !== false)
+      .map(c => ({
+        cfgKey: c.cfgKey,
+        label: c.label,
+        param: filtrosMap[c.cfgKey] ?? "",
+        filtrable: !!filtrosMap[c.cfgKey],
+      }));
+  };
+
+  const numFiltrosAvanzadosActivos = Object.values(filtrosAvanzados).filter(v => v.trim() !== "").length;
+
 
   return (
     <div className="text-sm">
@@ -1291,6 +1637,8 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 <button key={tab} type="button"
                   onClick={() => {
                     setTablaActiva(tab);
+                    setFiltrosAvanzados({});
+                    setFiltroCtTabla("");
                     if (tab === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
                     else if (tab === "cups") { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
                     else if (tab === "celdas") { setFiltroSinCt(false); setFiltroMetodo(""); setPageCeldas(0); cargarTablaCeldas(0, pageSizeCeldas); }
@@ -1307,6 +1655,35 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                   + Añadir CT
                 </button>
               )}
+              <div style={{ marginLeft: tablaActiva === "cts" ? 6 : "auto", position: "relative" }} ref={filtrosTablaRef}>
+                <button type="button"
+                  onClick={() => setDdFiltrosOpen(v => !v)}
+                  style={{
+                    fontSize: 10, height: 24, padding: "0 10px", cursor: "pointer", borderRadius: 6,
+                    border: numFiltrosAvanzadosActivos > 0 ? "1px solid rgba(37,99,235,0.4)" : "1px solid var(--card-border)",
+                    background: numFiltrosAvanzadosActivos > 0 ? "rgba(37,99,235,0.1)" : "var(--card-bg)",
+                    color: numFiltrosAvanzadosActivos > 0 ? "#2563EB" : "var(--text-muted)",
+                  }}>
+                  ⚙ Filtros{numFiltrosAvanzadosActivos > 0 ? ` (${numFiltrosAvanzadosActivos})` : ""}
+                </button>
+                {ddFiltrosOpen && (
+                  <FiltrosAvanzadosPanel
+                    colsActivas={getColsActivas()}
+                    filtrosAvanzados={filtrosAvanzados}
+                    setFiltrosAvanzados={setFiltrosAvanzados}
+                    onAplicar={() => {
+                      setDdFiltrosOpen(false);
+                      setHasLoadedTabla(false);
+                      if (tablaActiva === "lineas") { setPageLineas(0); cargarTablaLineas(0, pageSizeLineas); }
+                      else if (tablaActiva === "cups") { setPageCups(0); cargarTablaCups(0, pageSizeCups); }
+                      else if (tablaActiva === "celdas") { setPageCeldas(0); cargarTablaCeldas(0, pageSizeCeldas); }
+                      else if (tablaActiva === "cts") { setPageCts(0); cargarTablaCts(0, pageSizeCts); }
+                      else { setPageTramos(0); cargarTablaTramos(0, pageSizeTramos); }
+                    }}
+                    onLimpiar={() => setFiltrosAvanzados({})}
+                  />
+                )}
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -1361,7 +1738,7 @@ export default function TopologiaSection({ token, tooltipLineas, tooltipTramos, 
                 🔍 Buscar
               </button>
               <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 28 }}
-                onClick={() => { setFiltroCtTabla(""); setFiltroSinCt(false); setFiltroMetodo(""); }}>
+                onClick={() => { setFiltroCtTabla(""); setFiltroSinCt(false); setFiltroMetodo(""); setFiltrosAvanzados({}); }}>
                 Limpiar
               </button>
             </div>

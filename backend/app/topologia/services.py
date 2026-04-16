@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
+from sqlalchemy import cast, String as SAString
 
 from app.topologia.models import (
     CtCelda,
@@ -1334,6 +1335,26 @@ def list_lineas_tabla(
     db: Session, tenant_id: int, empresa_id: int,
     id_ct: Optional[str] = None, sin_ct: bool = False,
     metodo: Optional[str] = None, busqueda: Optional[str] = None,
+    f_cini: Optional[str] = None, f_codigo_ccuu: Optional[str] = None,
+    f_nudo_inicio: Optional[str] = None, f_nudo_fin: Optional[str] = None,
+    f_tension_kv: Optional[str] = None, f_tension_construccion_kv: Optional[str] = None,
+    f_fecha_baja: Optional[str] = None, f_fecha_aps: Optional[str] = None,
+    f_fecha_ip: Optional[str] = None, f_ccaa_1: Optional[str] = None,
+    f_ccaa_2: Optional[str] = None, f_modelo: Optional[str] = None,
+    f_causa_baja: Optional[str] = None, f_motivacion: Optional[str] = None,
+    f_cuenta: Optional[str] = None, f_identificador_baja: Optional[str] = None,
+    f_id_ct: Optional[str] = None, f_metodo_asignacion: Optional[str] = None,
+    f_propiedad: Optional[str] = None, f_estado: Optional[str] = None,
+    f_punto_frontera: Optional[str] = None, f_operacion: Optional[str] = None,
+    f_tipo_inversion: Optional[str] = None, f_longitud_km: Optional[str] = None,
+    f_im_tramites: Optional[str] = None, f_im_construccion: Optional[str] = None,
+    f_im_trabajos: Optional[str] = None, f_valor_auditado: Optional[str] = None,
+    f_financiado: Optional[str] = None, f_subvenciones_europeas: Optional[str] = None,
+    f_subvenciones_nacionales: Optional[str] = None, f_subvenciones_prtr: Optional[str] = None,
+    f_avifauna: Optional[str] = None,
+    f_resistencia_ohm: Optional[str] = None,
+    f_reactancia_ohm: Optional[str] = None,
+    f_intensidad_a: Optional[str] = None,
     limit: int = 500, offset: int = 0,
 ) -> Tuple[List[LineaInventario], int]:
     q = (
@@ -1351,7 +1372,86 @@ def list_lineas_tabla(
         q = q.filter(LineaInventario.id_ct.is_(None))
     if metodo:
         q = q.filter(LineaInventario.metodo_asignacion_ct == metodo)
+    if f_cini:
+        q = q.filter(LineaInventario.cini.ilike(f"%{f_cini}%"))
+    if f_codigo_ccuu:
+        q = q.filter(LineaInventario.codigo_ccuu.ilike(f"%{f_codigo_ccuu}%"))
+    if f_nudo_inicio:
+        q = q.filter(LineaInventario.nudo_inicio.ilike(f"%{f_nudo_inicio}%"))
+    if f_nudo_fin:
+        q = q.filter(LineaInventario.nudo_fin.ilike(f"%{f_nudo_fin}%"))
+    if f_ccaa_1:
+        q = q.filter(LineaInventario.ccaa_1.ilike(f"%{f_ccaa_1}%"))
+    if f_ccaa_2:
+        q = q.filter(LineaInventario.ccaa_2.ilike(f"%{f_ccaa_2}%"))
+    if f_tension_kv:
+        try:
+            q = q.filter(LineaInventario.tension_kv == float(f_tension_kv))
+        except ValueError:
+            pass
+    if f_tension_construccion_kv:
+        try:
+            q = q.filter(LineaInventario.tension_construccion_kv == float(f_tension_construccion_kv))
+        except ValueError:
+            pass
+    if f_modelo:
+        q = q.filter(LineaInventario.modelo.ilike(f"%{f_modelo}%"))
+    if f_fecha_aps:
+        q = q.filter(LineaInventario.fecha_aps.ilike(f"%{f_fecha_aps}%"))
+    if f_causa_baja:
+        q = q.filter(LineaInventario.causa_baja.ilike(f"%{f_causa_baja}%"))
+    if f_fecha_baja:
+        q = q.filter(LineaInventario.fecha_baja.ilike(f"%{f_fecha_baja}%"))
+    if f_fecha_ip:
+        q = q.filter(LineaInventario.fecha_ip.ilike(f"%{f_fecha_ip}%"))
+    if f_motivacion:
+        q = q.filter(LineaInventario.motivacion.ilike(f"%{f_motivacion}%"))
+    if f_cuenta:
+        q = q.filter(LineaInventario.cuenta.ilike(f"%{f_cuenta}%"))
+    if f_identificador_baja:
+        q = q.filter(LineaInventario.identificador_baja.ilike(f"%{f_identificador_baja}%"))
+    if f_id_ct:
+        q = q.filter(LineaInventario.id_ct.ilike(f"%{f_id_ct}%"))
+    if f_metodo_asignacion:
+        q = q.filter(LineaInventario.metodo_asignacion_ct == f_metodo_asignacion)
+    if f_propiedad:
+        q = q.filter(cast(LineaInventario.propiedad, SAString).ilike(f"%{f_propiedad}%"))
+    if f_estado:
+        q = q.filter(cast(LineaInventario.estado, SAString).ilike(f"%{f_estado}%"))
+    if f_punto_frontera:
+        q = q.filter(cast(LineaInventario.punto_frontera, SAString).ilike(f"%{f_punto_frontera}%"))
+    if f_operacion:
+        q = q.filter(cast(LineaInventario.operacion, SAString).ilike(f"%{f_operacion}%"))
+    if f_tipo_inversion:
+        q = q.filter(cast(LineaInventario.tipo_inversion, SAString).ilike(f"%{f_tipo_inversion}%"))
+    if f_longitud_km:
+        q = q.filter(cast(LineaInventario.longitud_km, SAString).ilike(f"%{f_longitud_km}%"))
+    if f_im_tramites:
+        q = q.filter(cast(LineaInventario.im_tramites, SAString).ilike(f"%{f_im_tramites}%"))
+    if f_im_construccion:
+        q = q.filter(cast(LineaInventario.im_construccion, SAString).ilike(f"%{f_im_construccion}%"))
+    if f_im_trabajos:
+        q = q.filter(cast(LineaInventario.im_trabajos, SAString).ilike(f"%{f_im_trabajos}%"))
+    if f_valor_auditado:
+        q = q.filter(cast(LineaInventario.valor_auditado, SAString).ilike(f"%{f_valor_auditado}%"))
+    if f_financiado:
+        q = q.filter(cast(LineaInventario.financiado, SAString).ilike(f"%{f_financiado}%"))
+    if f_subvenciones_europeas:
+        q = q.filter(cast(LineaInventario.subvenciones_europeas, SAString).ilike(f"%{f_subvenciones_europeas}%"))
+    if f_subvenciones_nacionales:
+        q = q.filter(cast(LineaInventario.subvenciones_nacionales, SAString).ilike(f"%{f_subvenciones_nacionales}%"))
+    if f_subvenciones_prtr:
+        q = q.filter(cast(LineaInventario.subvenciones_prtr, SAString).ilike(f"%{f_subvenciones_prtr}%"))
+    if f_avifauna:
+        q = q.filter(cast(LineaInventario.avifauna, SAString).ilike(f"%{f_avifauna}%"))
+    if f_resistencia_ohm:
+        q = q.filter(cast(LineaInventario.resistencia_ohm, SAString).ilike(f"%{f_resistencia_ohm}%"))
+    if f_reactancia_ohm:
+        q = q.filter(cast(LineaInventario.reactancia_ohm, SAString).ilike(f"%{f_reactancia_ohm}%"))
+    if f_intensidad_a:
+        q = q.filter(cast(LineaInventario.intensidad_a, SAString).ilike(f"%{f_intensidad_a}%"))
     total  = q.count()
+
     lineas = q.order_by(LineaInventario.id_tramo).offset(offset).limit(limit).all()
     return lineas, total
 
@@ -1360,6 +1460,22 @@ def list_cups_tabla(
     db: Session, tenant_id: int, empresa_id: int,
     id_ct: Optional[str] = None, sin_ct: bool = False,
     metodo: Optional[str] = None, busqueda: Optional[str] = None,
+    f_tarifa: Optional[str] = None, f_municipio: Optional[str] = None,
+    f_provincia: Optional[str] = None, f_tension_kv: Optional[str] = None,
+    f_id_ct_asignado: Optional[str] = None, f_fase: Optional[str] = None,
+    f_cnae: Optional[str] = None, f_zona: Optional[str] = None,
+    f_conexion: Optional[str] = None, f_id_ct_origen: Optional[str] = None,
+    f_cini_contador: Optional[str] = None, f_fecha_alta: Optional[str] = None,
+    f_cau: Optional[str] = None, f_cod_auto: Optional[str] = None,
+    f_metodo_asignacion: Optional[str] = None,
+    f_estado_contrato: Optional[str] = None, f_potencia_contratada: Optional[str] = None,
+    f_potencia_adscrita: Optional[str] = None, f_energia_activa: Optional[str] = None,
+    f_energia_reactiva: Optional[str] = None, f_autoconsumo: Optional[str] = None,
+    f_lecturas: Optional[str] = None, f_baja_suministro: Optional[str] = None,
+    f_cambio_titularidad: Optional[str] = None, f_facturas_estimadas: Optional[str] = None,
+    f_facturas_total: Optional[str] = None, f_cod_generacion: Optional[str] = None,
+    f_conexion_autoconsumo: Optional[str] = None, f_energia_autoconsumida: Optional[str] = None,
+    f_energia_excedentaria: Optional[str] = None,
     limit: int = 500, offset: int = 0,
 ) -> Tuple[List[CupsTopologia], int]:
     q = (
@@ -1377,14 +1493,85 @@ def list_cups_tabla(
         q = q.filter(CupsTopologia.id_ct_asignado.is_(None))
     if metodo:
         q = q.filter(CupsTopologia.metodo_asignacion_ct == metodo)
+    if f_tarifa:
+        q = q.filter(CupsTopologia.tarifa.ilike(f"%{f_tarifa}%"))
+    if f_municipio:
+        q = q.filter(CupsTopologia.municipio.ilike(f"%{f_municipio}%"))
+    if f_provincia:
+        q = q.filter(CupsTopologia.provincia.ilike(f"%{f_provincia}%"))
+    if f_tension_kv:
+        try:
+            q = q.filter(CupsTopologia.tension_kv == float(f_tension_kv))
+        except ValueError:
+            pass
+    if f_id_ct_asignado:
+        q = q.filter(CupsTopologia.id_ct_asignado.ilike(f"%{f_id_ct_asignado}%"))
+    if f_fase:
+        q = q.filter(CupsTopologia.fase == f_fase)
+    if f_cnae:
+        q = q.filter(CupsTopologia.cnae.ilike(f"%{f_cnae}%"))
+    if f_zona:
+        q = q.filter(CupsTopologia.zona.ilike(f"%{f_zona}%"))
+    if f_conexion:
+        q = q.filter(CupsTopologia.conexion.ilike(f"%{f_conexion}%"))
+    if f_id_ct_origen:
+        q = q.filter(CupsTopologia.id_ct.ilike(f"%{f_id_ct_origen}%"))
+    if f_cini_contador:
+        q = q.filter(CupsTopologia.cini_contador.ilike(f"%{f_cini_contador}%"))
+    if f_fecha_alta:
+        q = q.filter(CupsTopologia.fecha_alta.ilike(f"%{f_fecha_alta}%"))
+    if f_cau:
+        q = q.filter(CupsTopologia.cau.ilike(f"%{f_cau}%"))
+    if f_cod_auto:
+        q = q.filter(CupsTopologia.cod_auto.ilike(f"%{f_cod_auto}%"))
+    if f_metodo_asignacion:
+        q = q.filter(CupsTopologia.metodo_asignacion_ct == f_metodo_asignacion)
+    if f_estado_contrato:
+        q = q.filter(cast(CupsTopologia.estado_contrato, SAString).ilike(f"%{f_estado_contrato}%"))
+    if f_potencia_contratada:
+        q = q.filter(cast(CupsTopologia.potencia_contratada_kw, SAString).ilike(f"%{f_potencia_contratada}%"))
+    if f_potencia_adscrita:
+        q = q.filter(cast(CupsTopologia.potencia_adscrita_kw, SAString).ilike(f"%{f_potencia_adscrita}%"))
+    if f_energia_activa:
+        q = q.filter(cast(CupsTopologia.energia_activa_kwh, SAString).ilike(f"%{f_energia_activa}%"))
+    if f_energia_reactiva:
+        q = q.filter(cast(CupsTopologia.energia_reactiva_kvarh, SAString).ilike(f"%{f_energia_reactiva}%"))
+    if f_autoconsumo:
+        q = q.filter(cast(CupsTopologia.autoconsumo, SAString).ilike(f"%{f_autoconsumo}%"))
+    if f_lecturas:
+        q = q.filter(cast(CupsTopologia.lecturas, SAString).ilike(f"%{f_lecturas}%"))
+    if f_baja_suministro:
+        q = q.filter(cast(CupsTopologia.baja_suministro, SAString).ilike(f"%{f_baja_suministro}%"))
+    if f_cambio_titularidad:
+        q = q.filter(cast(CupsTopologia.cambio_titularidad, SAString).ilike(f"%{f_cambio_titularidad}%"))
+    if f_facturas_estimadas:
+        q = q.filter(cast(CupsTopologia.facturas_estimadas, SAString).ilike(f"%{f_facturas_estimadas}%"))
+    if f_facturas_total:
+        q = q.filter(cast(CupsTopologia.facturas_total, SAString).ilike(f"%{f_facturas_total}%"))
+    if f_cod_generacion:
+        q = q.filter(cast(CupsTopologia.cod_generacion_auto, SAString).ilike(f"%{f_cod_generacion}%"))
+    if f_conexion_autoconsumo:
+        q = q.filter(cast(CupsTopologia.conexion_autoconsumo, SAString).ilike(f"%{f_conexion_autoconsumo}%"))
+    if f_energia_autoconsumida:
+        q = q.filter(cast(CupsTopologia.energia_autoconsumida_kwh, SAString).ilike(f"%{f_energia_autoconsumida}%"))
+    if f_energia_excedentaria:
+        q = q.filter(cast(CupsTopologia.energia_excedentaria_kwh, SAString).ilike(f"%{f_energia_excedentaria}%"))
     total = q.count()
     cups  = q.order_by(CupsTopologia.cups).offset(offset).limit(limit).all()
     return cups, total
 
+
 def list_celdas_tabla(
     db: Session, tenant_id: int, empresa_id: int,
     id_ct: Optional[str] = None, busqueda: Optional[str] = None,
+    f_funcion: Optional[str] = None, f_tipo_posicion: Optional[str] = None,
+    f_ubicacion: Optional[str] = None, f_cini: Optional[str] = None,
+    f_id_celda: Optional[str] = None, f_id_transformador: Optional[str] = None,
+    f_tension_nominal: Optional[str] = None, f_tension_rango: Optional[str] = None,
+    f_posicion: Optional[str] = None, f_en_servicio: Optional[str] = None,
+    f_anio_instalacion: Optional[str] = None,
     limit: int = 500, offset: int = 0,
+
 ) -> Tuple[List[CtCelda], int]:
     """Devuelve celdas paginadas, opcionalmente filtradas por CT."""
     q = (
@@ -1394,10 +1581,34 @@ def list_celdas_tabla(
             CtCelda.empresa_id == empresa_id,
         )
     )
-    if busqueda:
-        q = q.join(CtInventario, (CtInventario.id_ct == CtCelda.id_ct) & (CtInventario.tenant_id == CtCelda.tenant_id) & (CtInventario.empresa_id == CtCelda.empresa_id)).filter(CtInventario.nombre.ilike(f"%{busqueda}%"))
+    if busqueda or f_funcion or f_tipo_posicion or f_ubicacion:
+        q = q.join(CtInventario, (CtInventario.id_ct == CtCelda.id_ct) & (CtInventario.tenant_id == CtCelda.tenant_id) & (CtInventario.empresa_id == CtCelda.empresa_id))
+        if busqueda:
+            q = q.filter(CtInventario.nombre.ilike(f"%{busqueda}%"))
     if id_ct:
         q = q.filter(CtCelda.id_ct == id_ct)
+    if f_funcion:
+        q = q.filter(CtCelda.cini_p7_funcion.ilike(f"%{f_funcion}%"))
+    if f_tipo_posicion:
+        q = q.filter(CtCelda.cini_p5_tipo_posicion.ilike(f"%{f_tipo_posicion}%"))
+    if f_ubicacion:
+        q = q.filter(CtCelda.cini_p6_ubicacion.ilike(f"%{f_ubicacion}%"))
+    if f_cini:
+        q = q.filter(CtCelda.cini.ilike(f"%{f_cini}%"))
+    if f_id_celda:
+        q = q.filter(CtCelda.id_celda.ilike(f"%{f_id_celda}%"))
+    if f_id_transformador:
+        q = q.filter(CtCelda.id_transformador.ilike(f"%{f_id_transformador}%"))
+    if f_tension_nominal:
+        q = q.filter(CtCelda.cini_p8_tension_nominal.ilike(f"%{f_tension_nominal}%"))
+    if f_tension_rango:
+        q = q.filter(CtCelda.cini_p4_tension_rango.ilike(f"%{f_tension_rango}%"))
+    if f_posicion:
+        q = q.filter(cast(CtCelda.posicion, SAString).ilike(f"%{f_posicion}%"))
+    if f_en_servicio:
+        q = q.filter(cast(CtCelda.en_servicio, SAString).ilike(f"%{f_en_servicio}%"))
+    if f_anio_instalacion:
+        q = q.filter(cast(CtCelda.anio_instalacion, SAString).ilike(f"%{f_anio_instalacion}%"))
     total  = q.count()
     celdas = q.order_by(CtCelda.id_ct, CtCelda.id_celda).offset(offset).limit(limit).all()
     return celdas, total
@@ -1436,7 +1647,24 @@ def list_transformadores_ct(
 
 def list_cts_tabla(
     db: Session, tenant_id: int, empresa_id: int,
-    busqueda: Optional[str] = None, limit: int = 500, offset: int = 0,
+    busqueda: Optional[str] = None,
+    f_municipio: Optional[str] = None, f_provincia: Optional[str] = None,
+    f_tension_kv: Optional[str] = None, f_fecha_baja: Optional[str] = None,
+    f_cini: Optional[str] = None, f_zona: Optional[str] = None,
+    f_codigo_ccuu: Optional[str] = None, f_nudo_alta: Optional[str] = None,
+    f_nudo_baja: Optional[str] = None, f_modelo: Optional[str] = None,
+    f_causa_baja: Optional[str] = None, f_fecha_aps: Optional[str] = None,
+    f_fecha_ip: Optional[str] = None, f_motivacion: Optional[str] = None,
+    f_cuenta: Optional[str] = None, f_identificador_baja: Optional[str] = None,
+    f_ccaa: Optional[str] = None, f_propiedad: Optional[str] = None,
+    f_tension_construccion: Optional[str] = None, f_potencia: Optional[str] = None,
+    f_estado: Optional[str] = None, f_punto_frontera: Optional[str] = None,
+    f_tipo_inversion: Optional[str] = None, f_im_tramites: Optional[str] = None,
+    f_im_construccion: Optional[str] = None, f_im_trabajos: Optional[str] = None,
+    f_subvenciones_europeas: Optional[str] = None, f_subvenciones_nacionales: Optional[str] = None,
+    f_subvenciones_prtr: Optional[str] = None, f_valor_auditado: Optional[str] = None,
+    f_financiado: Optional[str] = None, f_avifauna: Optional[str] = None,
+    limit: int = 500, offset: int = 0,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """Devuelve CTs paginados con contadores de trafos, celdas y CUPS."""
     from sqlalchemy import func
@@ -1450,6 +1678,73 @@ def list_cts_tabla(
     )
     if busqueda:
         q = q.filter(CtInventario.nombre.ilike(f"%{busqueda}%"))
+    if f_municipio:
+        q = q.filter(CtInventario.municipio_ine.ilike(f"%{f_municipio}%"))
+    if f_provincia:
+        q = q.filter(CtInventario.provincia.ilike(f"%{f_provincia}%"))
+    if f_tension_kv:
+        try:
+            q = q.filter(CtInventario.tension_kv == float(f_tension_kv))
+        except ValueError:
+            pass
+    if f_fecha_baja:
+        q = q.filter(CtInventario.fecha_baja.ilike(f"%{f_fecha_baja}%"))
+    if f_cini:
+        q = q.filter(CtInventario.cini.ilike(f"%{f_cini}%"))
+    if f_zona:
+        q = q.filter(CtInventario.zona.ilike(f"%{f_zona}%"))
+    if f_codigo_ccuu:
+        q = q.filter(CtInventario.codigo_ccuu.ilike(f"%{f_codigo_ccuu}%"))
+    if f_nudo_alta:
+        q = q.filter(CtInventario.nudo_alta.ilike(f"%{f_nudo_alta}%"))
+    if f_nudo_baja:
+        q = q.filter(CtInventario.nudo_baja.ilike(f"%{f_nudo_baja}%"))
+    if f_modelo:
+        q = q.filter(CtInventario.modelo.ilike(f"%{f_modelo}%"))
+    if f_causa_baja:
+        q = q.filter(CtInventario.causa_baja.ilike(f"%{f_causa_baja}%"))
+    if f_fecha_aps:
+        q = q.filter(CtInventario.fecha_aps.ilike(f"%{f_fecha_aps}%"))
+    if f_fecha_ip:
+        q = q.filter(CtInventario.fecha_ip.ilike(f"%{f_fecha_ip}%"))
+    if f_motivacion:
+        q = q.filter(CtInventario.motivacion.ilike(f"%{f_motivacion}%"))
+    if f_cuenta:
+        q = q.filter(CtInventario.cuenta.ilike(f"%{f_cuenta}%"))
+    if f_identificador_baja:
+        q = q.filter(CtInventario.identificador_baja.ilike(f"%{f_identificador_baja}%"))
+    if f_ccaa:
+        q = q.filter(CtInventario.ccaa.ilike(f"%{f_ccaa}%"))
+    if f_propiedad:
+        q = q.filter(CtInventario.propiedad.ilike(f"%{f_propiedad}%"))
+    if f_tension_construccion:
+        q = q.filter(cast(CtInventario.tension_construccion_kv, SAString).ilike(f"%{f_tension_construccion}%"))
+    if f_potencia:
+        q = q.filter(cast(CtInventario.potencia_kva, SAString).ilike(f"%{f_potencia}%"))
+    if f_estado:
+        q = q.filter(cast(CtInventario.estado, SAString).ilike(f"%{f_estado}%"))
+    if f_punto_frontera:
+        q = q.filter(cast(CtInventario.punto_frontera, SAString).ilike(f"%{f_punto_frontera}%"))
+    if f_tipo_inversion:
+        q = q.filter(cast(CtInventario.tipo_inversion, SAString).ilike(f"%{f_tipo_inversion}%"))
+    if f_im_tramites:
+        q = q.filter(cast(CtInventario.im_tramites, SAString).ilike(f"%{f_im_tramites}%"))
+    if f_im_construccion:
+        q = q.filter(cast(CtInventario.im_construccion, SAString).ilike(f"%{f_im_construccion}%"))
+    if f_im_trabajos:
+        q = q.filter(cast(CtInventario.im_trabajos, SAString).ilike(f"%{f_im_trabajos}%"))
+    if f_subvenciones_europeas:
+        q = q.filter(cast(CtInventario.subvenciones_europeas, SAString).ilike(f"%{f_subvenciones_europeas}%"))
+    if f_subvenciones_nacionales:
+        q = q.filter(cast(CtInventario.subvenciones_nacionales, SAString).ilike(f"%{f_subvenciones_nacionales}%"))
+    if f_subvenciones_prtr:
+        q = q.filter(cast(CtInventario.subvenciones_prtr, SAString).ilike(f"%{f_subvenciones_prtr}%"))
+    if f_valor_auditado:
+        q = q.filter(cast(CtInventario.valor_auditado, SAString).ilike(f"%{f_valor_auditado}%"))
+    if f_financiado:
+        q = q.filter(cast(CtInventario.financiado, SAString).ilike(f"%{f_financiado}%"))
+    if f_avifauna:
+        q = q.filter(cast(CtInventario.avifauna, SAString).ilike(f"%{f_avifauna}%"))
     total = q.count()
     cts   = q.order_by(CtInventario.nombre).offset(offset).limit(limit).all()
 
@@ -1520,6 +1815,7 @@ def list_cts_tabla(
         })
     return items, total
 
+
 def list_cts_mapa_baja(db: Session, tenant_id: int, empresa_id: int) -> List[CtInventario]:
     """CTs con fecha_baja IS NOT NULL y coordenadas GPS."""
     return (
@@ -1564,6 +1860,13 @@ def list_tramos_mapa_baja(
 def list_tramos_tabla(
     db: Session, tenant_id: int, empresa_id: int,
     id_ct: Optional[str] = None, busqueda: Optional[str] = None,
+    f_id_linea: Optional[str] = None, f_tension_kv: Optional[str] = None,
+    f_cini: Optional[str] = None, f_codigo_ccuu: Optional[str] = None,
+    f_nudo_inicio: Optional[str] = None, f_nudo_fin: Optional[str] = None,
+    f_ccaa_1: Optional[str] = None, f_ccaa_2: Optional[str] = None,
+    f_id_ct: Optional[str] = None, f_metodo_asignacion: Optional[str] = None,
+    f_orden: Optional[str] = None, f_num_tramo: Optional[str] = None,
+    f_longitud_km: Optional[str] = None,
     limit: int = 500, offset: int = 0,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """Devuelve tramos GIS paginados con datos de LineaInventario via join."""
@@ -1584,8 +1887,38 @@ def list_tramos_tabla(
         q = q.filter(LineaTramo.id_tramo.ilike(f"%{busqueda}%"))
     if id_ct:
         q = q.filter(LineaInventario.id_ct == id_ct)
+    if f_id_linea:
+        q = q.filter(LineaTramo.id_linea.ilike(f"%{f_id_linea}%"))
+    if f_tension_kv:
+        try:
+            q = q.filter(LineaInventario.tension_kv == float(f_tension_kv))
+        except ValueError:
+            pass
+    if f_cini:
+        q = q.filter(LineaInventario.cini.ilike(f"%{f_cini}%"))
+    if f_codigo_ccuu:
+        q = q.filter(LineaInventario.codigo_ccuu.ilike(f"%{f_codigo_ccuu}%"))
+    if f_nudo_inicio:
+        q = q.filter(LineaInventario.nudo_inicio.ilike(f"%{f_nudo_inicio}%"))
+    if f_nudo_fin:
+        q = q.filter(LineaInventario.nudo_fin.ilike(f"%{f_nudo_fin}%"))
+    if f_ccaa_1:
+        q = q.filter(LineaInventario.ccaa_1.ilike(f"%{f_ccaa_1}%"))
+    if f_ccaa_2:
+        q = q.filter(LineaInventario.ccaa_2.ilike(f"%{f_ccaa_2}%"))
+    if f_id_ct:
+        q = q.filter(LineaInventario.id_ct.ilike(f"%{f_id_ct}%"))
+    if f_metodo_asignacion:
+        q = q.filter(LineaInventario.metodo_asignacion_ct == f_metodo_asignacion)
+    if f_orden:
+        q = q.filter(cast(LineaTramo.orden, SAString).ilike(f"%{f_orden}%"))
+    if f_num_tramo:
+        q = q.filter(cast(LineaTramo.num_tramo, SAString).ilike(f"%{f_num_tramo}%"))
+    if f_longitud_km:
+        q = q.filter(cast(LineaInventario.longitud_km, SAString).ilike(f"%{f_longitud_km}%"))
 
     total = q.count()
+
     filas = q.order_by(LineaTramo.id_linea, LineaTramo.orden).offset(offset).limit(limit).all()
 
     items = []
