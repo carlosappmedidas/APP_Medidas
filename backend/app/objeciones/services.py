@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.objeciones.models import ObjecionAGRECL, ObjecionCIL, ObjecionCUPS, ObjecionINCL
+from app.objeciones.models import ObjecionAGRECL, ObjecionCIL, ObjecionCUPS, ObjecionINCL, ReobGenerado
 
 
 # ── Helpers generales ─────────────────────────────────────────────────────────
@@ -417,8 +417,7 @@ def list_incl(
         q = q.filter(ObjecionINCL.periodo.ilike(f"%{periodo}%"))
     if nombre_fichero:
         q = q.filter(ObjecionINCL.nombre_fichero == nombre_fichero)
-    return q.order_by(ObjecionINCL.id.desc()).all()
-
+    return q.order_by(ObjecionINCL.cups.asc(), ObjecionINCL.id.asc()).all()
 
 def ficheros_incl(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None) -> List[dict]:
     return _stats_ficheros(db, ObjecionINCL, tenant_id=tenant_id, empresa_id=empresa_id)
@@ -488,7 +487,8 @@ def generate_reobjeincl(db: Session, *, tenant_id: int, empresa_id: int, nombre_
             r.comentario_emisor or "", r.autoobjecion or "",
             r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
         ])
-    nombre_bz2 = f"REOBJEINCL_{dddd}_{cccc}_9999_{aaaamm}_{fecha}.0.bz2"
+    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
+    nombre_bz2 = f"REOBJEINCL_{dddd}_{cccc}_9999_{aaaamm}_{fecha_hoy}.0.bz2"
     return _csv_to_bz2(data), nombre_bz2
 
 
@@ -536,7 +536,7 @@ def list_cups(
         q = q.filter(ObjecionCUPS.periodo == periodo)
     if nombre_fichero:
         q = q.filter(ObjecionCUPS.nombre_fichero == nombre_fichero)
-    return q.order_by(ObjecionCUPS.id.desc()).all()
+    return q.order_by(ObjecionCUPS.id_objecion.asc(), ObjecionCUPS.id.asc()).all()
 
 
 def ficheros_cups(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None) -> List[dict]:
@@ -670,7 +670,7 @@ def list_cil(
         q = q.filter(ObjecionCIL.periodo == periodo)
     if nombre_fichero:
         q = q.filter(ObjecionCIL.nombre_fichero == nombre_fichero)
-    return q.order_by(ObjecionCIL.id.desc()).all()
+    return q.order_by(ObjecionCIL.id_objecion.asc(), ObjecionCIL.id.asc()).all()
 
 
 def ficheros_cil(db: Session, *, tenant_id: int, empresa_id: Optional[int] = None) -> List[dict]:
@@ -736,13 +736,57 @@ def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fic
         r.comentario_emisor or "", r.autoobjecion or "",
         r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
     ] for r in rows]
-    nombre_bz2 = f"REOBCIL_{dddd}_{cccc}_9999_{aaaamm}_{fecha}.0.bz2"
+    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
+    nombre_bz2 = f"REOBCIL_{dddd}_{cccc}_9999_{aaaamm}_{fecha_hoy}.0.bz2"
     return _csv_to_bz2(data), nombre_bz2
+
+def _parse_nombre_reob(nombre_bz2: str) -> tuple:
+    """REOBAGRECL_DDDD_CCCC_9999_AAAAMM_FECHA.0.bz2 → (cccc, aaaamm)"""
+    import re as _re
+    base = _re.sub(r'\.\d+(\.bz2)?$', '', nombre_bz2).replace(".bz2", "")
+    partes = base.split("_")
+    cccc   = partes[2] if len(partes) > 2 else None
+    aaaamm = partes[4] if len(partes) > 4 else None
+    return cccc, aaaamm
 
 
 # ── Envío SFTP ─────────────────────────────────────────────────────────────────
 
+def registrar_reob_enviado(
+    db: Session, *,
+    tenant_id: int,
+    empresa_id: int,
+    tipo: str,
+    nombre_fichero_aob: str,
+    nombre_fichero_reob: str,
+    comercializadora: Optional[str],
+    aaaamm: Optional[str],
+    num_registros: int,
+    config_id: int,
+) -> None:
+    """Registra un fichero REOB enviado por SFTP en la tabla objeciones_reob_generados."""
+    ahora = datetime.utcnow()
+    obj = ReobGenerado(
+        tenant_id=tenant_id,
+        empresa_id=empresa_id,
+        tipo=tipo,
+        nombre_fichero_aob=nombre_fichero_aob,
+        nombre_fichero_reob=nombre_fichero_reob,
+        comercializadora=comercializadora,
+        aaaamm=aaaamm,
+        num_registros=num_registros,
+        generado_at=ahora,
+        enviado_sftp_at=ahora,
+        config_sftp_id=config_id,
+        created_at=ahora,
+        updated_at=ahora,
+    )
+    db.add(obj)
+    db.commit()
+
+
 def toggle_enviado_sftp(
+
     db: Session, *,
     tipo: str,
     tenant_id: int,
@@ -820,6 +864,14 @@ def enviar_al_sftp(
             ObjecionAGRECL.nombre_fichero == nombre_fichero,
         ).update({"enviado_sftp_at": ahora, "enviado_sftp_config_id": config_id}, synchronize_session=False)
         db.commit()
+        # Registrar cada bz2 enviado
+        for nombre_bz2 in ficheros_subidos:
+            cccc, aaaamm = _parse_nombre_reob(nombre_bz2)
+            num = sum(1 for r in list_agrecl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+                      if r.aceptacion in ("S", "N") and _cccc_from_id_objecion(r.id_objecion) == cccc)
+            registrar_reob_enviado(db, tenant_id=tenant_id, empresa_id=empresa_id, tipo="agrecl",
+                nombre_fichero_aob=nombre_fichero, nombre_fichero_reob=nombre_bz2,
+                comercializadora=cccc, aaaamm=aaaamm, num_registros=num, config_id=config_id)
         return ", ".join(ficheros_subidos) if ficheros_subidos else "sin ficheros"
 
     elif tipo == "cups":
@@ -843,6 +895,13 @@ def enviar_al_sftp(
             ObjecionCUPS.nombre_fichero == nombre_fichero,
         ).update({"enviado_sftp_at": ahora, "enviado_sftp_config_id": config_id}, synchronize_session=False)
         db.commit()
+        for nombre_bz2 in ficheros_subidos:
+            cccc, aaaamm = _parse_nombre_reob(nombre_bz2)
+            num = sum(1 for r in list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+                      if r.aceptacion in ("S", "N") and _cccc_from_id_cups(r.id_objecion) == cccc)
+            registrar_reob_enviado(db, tenant_id=tenant_id, empresa_id=empresa_id, tipo="cups",
+                nombre_fichero_aob=nombre_fichero, nombre_fichero_reob=nombre_bz2,
+                comercializadora=cccc, aaaamm=aaaamm, num_registros=num, config_id=config_id)
         return ", ".join(ficheros_subidos) if ficheros_subidos else "sin ficheros"
 
     else:
@@ -869,4 +928,11 @@ def enviar_al_sftp(
             model.nombre_fichero == nombre_fichero,
         ).update({"enviado_sftp_at": ahora, "enviado_sftp_config_id": config_id}, synchronize_session=False)
         db.commit()
+        cccc, aaaamm = _parse_nombre_reob(filename)
+        rows_tipo = (list_incl if tipo == "incl" else list_cil)(
+            db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+        num = sum(1 for r in rows_tipo if r.aceptacion in ("S", "N"))
+        registrar_reob_enviado(db, tenant_id=tenant_id, empresa_id=empresa_id, tipo=tipo,
+            nombre_fichero_aob=nombre_fichero, nombre_fichero_reob=filename,
+            comercializadora=cccc, aaaamm=aaaamm, num_registros=num, config_id=config_id)
         return filename

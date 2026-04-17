@@ -644,6 +644,41 @@ def bulk_delete_cil(
 # ENVÍO SFTP (todos los tipos)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+class ReobGeneradoRead(BaseModel):
+    id: int
+    tipo: str
+    nombre_fichero_aob: str
+    nombre_fichero_reob: str
+    empresa_id: int
+    comercializadora: Optional[str] = None
+    aaaamm: Optional[str] = None
+    num_registros: Optional[int] = None
+    generado_at: Optional[datetime] = None
+    enviado_sftp_at: Optional[datetime] = None
+    config_sftp_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+@router.get("/reob-generados", response_model=List[ReobGeneradoRead])
+def get_reob_generados(
+    empresa_id: Optional[int] = Query(None),
+    tipo: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.objeciones.models import ReobGenerado
+    tenant_id = _effective_tenant(current_user)
+    if empresa_id:
+        _get_empresa_id_verificado(db, empresa_id, current_user)
+    q = db.query(ReobGenerado).filter(ReobGenerado.tenant_id == tenant_id)
+    if empresa_id:
+        q = q.filter(ReobGenerado.empresa_id == empresa_id)
+    if tipo:
+        q = q.filter(ReobGenerado.tipo == tipo)
+    return q.order_by(ReobGenerado.enviado_sftp_at.desc()).all()
+
+
 class ToggleSftpResponse(BaseModel):
     nombre_fichero: str
     enviado_sftp_at: Optional[datetime] = None

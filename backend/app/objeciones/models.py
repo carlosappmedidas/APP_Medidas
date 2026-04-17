@@ -203,3 +203,26 @@ class ObjecionCIL(TimestampMixin, Base):
         Index("ix_objeciones_cil_tenant_empresa_periodo",
               "tenant_id", "empresa_id", "periodo"),
     )
+
+
+class ReobGenerado(TimestampMixin, Base):
+    __tablename__ = "objeciones_reob_generados"
+
+    id                        = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id                 = Column(Integer, ForeignKey("tenants.id"),  nullable=False, index=True)
+    empresa_id                = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+    tipo                      = Column(String(10),  nullable=False)
+    nombre_fichero_aob        = Column(String(200), nullable=False)
+    nombre_fichero_reob       = Column(String(200), nullable=False)
+    comercializadora          = Column(String(10),  nullable=True)
+    aaaamm                    = Column(String(6),   nullable=True)
+    num_registros             = Column(Integer,     nullable=True)
+    generado_at               = Column(DateTime,    nullable=True)
+    descargado_at             = Column(DateTime,    nullable=True)
+    enviado_sftp_at           = Column(DateTime,    nullable=True)
+    config_sftp_id            = Column(Integer,     nullable=True)
+    enviado_comunicaciones_at = Column(DateTime,    nullable=True)
+
+    __table_args__ = (
+        Index("ix_reob_generados_tenant_empresa", "tenant_id", "empresa_id"),
+    )
