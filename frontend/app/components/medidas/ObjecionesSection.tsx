@@ -27,6 +27,7 @@ interface FicheroStats {
   pendientes: number;
   aceptadas: number;
   rechazadas: number;
+  enviado_sftp_at: string | null;
 }
 
 interface DashTipo {
@@ -278,6 +279,11 @@ const IconSend = () => (
     <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
   </svg>
 );
+const IconDotsV = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>
+  </svg>
+);
 
 // ─── Estilos panel (estilo Configuración) ─────────────────────────────────────
 
@@ -441,6 +447,9 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const [sftpError,        setSftpError]        = useState<string | null>(null);
   const [sftpOk,           setSftpOk]           = useState<string | null>(null);
 
+  const [menuAbierto, setMenuAbierto] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{top: number; right: number}>({top: 0, right: 0});
+
   const fileInputRef  = useRef<HTMLInputElement>(null);
   const tab           = TABS.find((t) => t.id === activeTab)!;
   const ruta          = TIPO_RUTA[activeTab];
@@ -453,6 +462,15 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
   useEffect(() => { setSelectedIds(new Set()); }, [ficheiroActivo]);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as Element).closest("[data-menu-container]")) {
+        setMenuAbierto(null);
+      }
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
   // ── Cargar empresas ───────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -651,6 +669,28 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
 
 
+
+  // ── Toggle SFTP manual ────────────────────────────────────────────────────
+
+  const handleToggleSftp = async (nombreFichero: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!token || !empresaIdGestion) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/objeciones/toggle-sftp/${ruta}`, {        method: "PATCH",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ empresa_id: empresaIdGestion, nombre_fichero: nombreFichero }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      setFicheros((prev) => prev.map((f) =>
+        f.nombre_fichero === nombreFichero
+          ? { ...f, enviado_sftp_at: data.enviado_sftp_at }
+          : f
+      ));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error actualizando estado SFTP");
+    }
+  };
 
   // ── Borrar fichero completo ───────────────────────────────────────────────
 
@@ -896,18 +936,19 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                         <th className="ui-th" style={{ textAlign: "center" }}>Pendientes</th>
                         <th className="ui-th" style={{ textAlign: "center" }}>Aceptadas</th>
                         <th className="ui-th" style={{ textAlign: "center" }}>Rechazadas</th>
+                        <th className="ui-th">Estado</th>
                         <th className="ui-th">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {!empresaIdGestion ? (
-                        <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                        <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                           Selecciona una empresa para ver sus ficheros
                         </td></tr>
                       ) : loadingFicheros ? (
-                        <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
+                        <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                       ) : ficheros.length === 0 ? (
-                        <tr className="ui-tr"><td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                        <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                           Sin ficheros importados · Usa &quot;{tab.importLabel}&quot; para cargar
                         </td></tr>
                       ) : (
@@ -920,26 +961,67 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
                             <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.pendientes} variant="neutral" /></td>
                             <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.aceptadas} variant="ok" /></td>
                             <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.rechazadas} variant="err" /></td>
+                            {/* ── Estado ── */}
                             <td className="ui-td" onClick={(e) => e.stopPropagation()}>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button type="button" onClick={() => handleGenerate(f.nombre_fichero)}
-                                  disabled={generating || (f.aceptadas + f.rechazadas) === 0}
-                                  className="ui-btn ui-btn-outline ui-btn-xs"
-                                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
-                                  <IconDownload />
-                                  {TIPO_GENERA_ZIP[activeTab] ? "Generar ZIP" : "Generar REOB"}
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleSftp(f.nombre_fichero, e)}
+                                  title={f.enviado_sftp_at ? `Enviado ${fmtDate(f.enviado_sftp_at)} · Click para desmarcar` : "No enviado · Click para marcar"}
+                                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: "none", border: "none", cursor: "pointer", padding: 2, borderRadius: 3 }}>
+                                  <div style={{ width: 8, height: 8, borderRadius: 2, background: f.enviado_sftp_at ? "#378ADD" : "var(--card-border)" }} />
+                                  <span style={{ fontSize: 8, color: "var(--text-muted)" }}>sftp</span>
                                 </button>
-                                <button type="button" onClick={() => abrirSftpModal(f.nombre_fichero)}
-                                  className="ui-btn ui-btn-outline ui-btn-xs"
-                                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, borderColor: "rgba(29,158,117,0.4)", color: "#1D9E75" }}>
-                                  <IconSend />
-                                  Enviar
-                                </button>
-                                <button type="button" onClick={() => handleDeleteFichero(f.nombre_fichero)}
-                                  disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs"
+                              </div>
+                            </td>
+                            {/* ── Acciones (menú 3 puntos) ── */}
+                            <td className="ui-td" onClick={(e) => e.stopPropagation()}>
+                              <div style={{ position: "relative" }} data-menu-container onClick={(e) => e.stopPropagation()}>
+                                <button type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (menuAbierto === f.nombre_fichero) {
+                                      setMenuAbierto(null);
+                                    } else {
+                                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                      setMenuAbierto(f.nombre_fichero);
+                                    }
+                                  }}
+                                  className="ui-btn ui-btn-ghost ui-btn-xs"
                                   style={{ padding: "4px 7px", display: "flex", alignItems: "center" }}>
-                                  <IconTrash />
+                                  <IconDotsV />
                                 </button>
+                                {menuAbierto === f.nombre_fichero && (
+                                  <div style={{
+                                    position: "fixed", top: menuPos.top, right: menuPos.right, zIndex: 200,
+                                    background: "var(--card-bg)", border: "1px solid var(--card-border)",
+                                    borderRadius: 8, minWidth: 155, overflow: "hidden",
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                  }}>
+                                    <button type="button"
+                                      onClick={() => { setMenuAbierto(null); handleGenerate(f.nombre_fichero); }}
+                                      disabled={generating || (f.aceptadas + f.rechazadas) === 0}
+                                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", fontSize: 11, background: "none", border: "none", cursor: "pointer", color: "var(--text)", textAlign: "left" }}>
+                                      <IconDownload />
+                                      {TIPO_GENERA_ZIP[activeTab] ? "Generar ZIP" : "Generar REOB"}
+                                    </button>
+                                    <button type="button"
+                                      onClick={() => { setMenuAbierto(null); abrirSftpModal(f.nombre_fichero); }}
+                                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", fontSize: 11, background: "none", border: "none", cursor: "pointer", color: "var(--text)", textAlign: "left" }}>
+                                      <IconSend />
+                                      Enviar al SFTP
+                                    </button>
+                                    <div style={{ height: "0.5px", background: "var(--card-border)", margin: "2px 0" }} />
+                                    <button type="button"
+                                      onClick={() => { setMenuAbierto(null); handleDeleteFichero(f.nombre_fichero); }}
+                                      disabled={deleting}
+                                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", fontSize: 11, background: "none", border: "none", cursor: "pointer", color: "#E24B4A", textAlign: "left" }}>
+                                      <IconTrash />
+                                      Eliminar fichero
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </td>
                           </tr>

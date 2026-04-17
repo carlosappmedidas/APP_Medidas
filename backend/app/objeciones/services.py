@@ -193,6 +193,7 @@ def _stats_ficheros(db: Session, model, *, tenant_id: int, empresa_id: Optional[
                 "pendientes": 0,
                 "aceptadas": 0,
                 "rechazadas": 0,
+                "enviado_sftp_at": None,
             }
         f = ficheros[nombre]
         f["total"] += 1
@@ -206,6 +207,9 @@ def _stats_ficheros(db: Session, model, *, tenant_id: int, empresa_id: Optional[
         row_created = getattr(r, "created_at")
         if row_created and (f["created_at"] is None or row_created > f["created_at"]):
             f["created_at"] = row_created
+        enviado = getattr(r, "enviado_sftp_at", None)
+        if enviado and (f["enviado_sftp_at"] is None or enviado > f["enviado_sftp_at"]):
+            f["enviado_sftp_at"] = enviado
 
     return list(ficheros.values())
 
@@ -335,22 +339,22 @@ def generate_reobagrecl_zip(db: Session, *, tenant_id: int, empresa_id: int, nom
     rows = list_agrecl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     rows_con_respuesta = [r for r in rows if r.aceptacion in ("S", "N")]
 
-    por_id: Dict[str, List[ObjecionAGRECL]] = {}
+    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
+    por_cccc: Dict[str, List[ObjecionAGRECL]] = {}
     for r in rows_con_respuesta:
-        id_obj = r.id_objecion or "SIN_ID"
-        if id_obj not in por_id:
-            por_id[id_obj] = []
-        por_id[id_obj].append(r)
+        cccc = _cccc_from_id_objecion(r.id_objecion)
+        if cccc not in por_cccc:
+            por_cccc[cccc] = []
+        por_cccc[cccc].append(r)
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for id_obj, filas in por_id.items():
-            cccc = _cccc_from_id_objecion(id_obj)
-            nombre_bz2 = f"REOBAGRECL_{dddd}_{cccc}_9999_{aaaamm}_{fecha}.0.bz2"
+        for cccc, filas in por_cccc.items():
+            nombre_bz2 = f"REOBAGRECL_{dddd}_{cccc}_9999_{aaaamm}_{fecha_hoy}.0.bz2"
             data = [_agrecl_row_to_list(r) for r in filas]
             zf.writestr(nombre_bz2, _csv_to_bz2(data))
 
-    nombre_zip = f"REOBAGRECL_{dddd}_{aaaamm}_{fecha}.zip"
+    nombre_zip = f"REOBAGRECL_{dddd}_{aaaamm}_{fecha_hoy}.zip"
     return zip_buffer.getvalue(), nombre_zip
 
 
@@ -583,20 +587,43 @@ def delete_cups_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, emp
     return deleted
 
 
+def _cccc_from_id_cups(id_objecion: Optional[str]) -> str:
+    """CU_0750_0336_202507_1044 → 0750"""
+    if not id_objecion:
+        return "0000"
+    partes = id_objecion.split("_")
+    return partes[1] if len(partes) > 1 else "0000"
+
+
 def generate_reobcups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
-    """REOBCUPS — sin cabeceras, sin ID, bz2."""
-    dddd, cccc, aaaamm, fecha = _parse_nombre_cups(nombre_fichero)
+    """ZIP con un .bz2 por comercializadora, con fecha de generación hoy."""
+    dddd, cccc, aaaamm, _ = _parse_nombre_cups(nombre_fichero)
+    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
     rows = list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
-    data = [[
-        r.cups or "", r.periodo or "", r.motivo or "",
-        _num(r.e_publicada),
-        _num(r.e_propuesta),
-        r.comentario_emisor or "", r.autoobjecion or "",
-        r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
-        r.magnitud or "",
-    ] for r in rows]
-    nombre_bz2 = f"REOBCUPS_{dddd}_{cccc}_9999_{aaaamm}_{fecha}.0.bz2"
-    return _csv_to_bz2(data), nombre_bz2
+    rows = [r for r in rows if r.aceptacion in ("S", "N")]
+
+    por_cccc: Dict[str, list] = {}
+    for r in rows:
+        comercializadora = _cccc_from_id_cups(r.id_objecion)
+        if comercializadora not in por_cccc:
+            por_cccc[comercializadora] = []
+        por_cccc[comercializadora].append([
+            r.cups or "", r.periodo or "", r.motivo or "",
+            _num(r.e_publicada),
+            _num(r.e_propuesta),
+            r.comentario_emisor or "", r.autoobjecion or "",
+            r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
+            r.magnitud or "",
+        ])
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for comercializadora, data in por_cccc.items():
+            nombre_bz2 = f"REOBCUPS_{dddd}_{comercializadora}_9999_{aaaamm}_{fecha_hoy}.0.bz2"
+            zf.writestr(nombre_bz2, _csv_to_bz2(data))
+
+    nombre_zip = f"REOBCUPS_{dddd}_{aaaamm}_{fecha_hoy}.zip"
+    return zip_buffer.getvalue(), nombre_zip
 
 
 # ── AOBCIL ────────────────────────────────────────────────────────────────────
@@ -715,6 +742,46 @@ def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fic
 
 # ── Envío SFTP ─────────────────────────────────────────────────────────────────
 
+def toggle_enviado_sftp(
+    db: Session, *,
+    tipo: str,
+    tenant_id: int,
+    empresa_id: int,
+    nombre_fichero: str,
+) -> Optional[datetime]:
+    """Alterna enviado_sftp_at: si tiene valor lo quita, si no tiene pone ahora."""
+    MODELO_MAP = {
+        "agrecl": ObjecionAGRECL,
+        "incl":   ObjecionINCL,
+        "cups":   ObjecionCUPS,
+        "cil":    ObjecionCIL,
+    }
+    model = MODELO_MAP.get(tipo)
+    if model is None:
+        raise ValueError(f"Tipo desconocido: {tipo}")
+
+    rows = db.query(model).filter(
+        model.tenant_id == tenant_id,
+        model.empresa_id == empresa_id,
+        model.nombre_fichero == nombre_fichero,
+    ).all()
+
+    if not rows:
+        raise ValueError(f"Fichero {nombre_fichero} no encontrado")
+
+    # Si alguno tiene enviado_sftp_at, se considera enviado → limpiar
+    ya_enviado = any(getattr(r, "enviado_sftp_at", None) for r in rows)
+    nuevo_valor = None if ya_enviado else datetime.utcnow()
+
+    db.query(model).filter(
+        model.tenant_id == tenant_id,
+        model.empresa_id == empresa_id,
+        model.nombre_fichero == nombre_fichero,
+    ).update({"enviado_sftp_at": nuevo_valor}, synchronize_session=False)
+    db.commit()
+    return nuevo_valor
+
+
 def enviar_al_sftp(
     db: Session, *,
     tipo: str,
@@ -755,13 +822,33 @@ def enviar_al_sftp(
         db.commit()
         return ", ".join(ficheros_subidos) if ficheros_subidos else "sin ficheros"
 
+    elif tipo == "cups":
+        zip_content, _ = generate_reobcups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
+        ftp = _conectar_en_path(config, directorio_destino)
+        ficheros_subidos = []
+        try:
+            with _zipfile.ZipFile(_io.BytesIO(zip_content)) as zf:
+                for nombre_bz2 in zf.namelist():
+                    datos_bz2 = zf.read(nombre_bz2)
+                    ftp.storbinary(f"STOR {nombre_bz2}", _io.BytesIO(datos_bz2))
+                    ficheros_subidos.append(nombre_bz2)
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                pass
+        db.query(ObjecionCUPS).filter(
+            ObjecionCUPS.tenant_id == tenant_id,
+            ObjecionCUPS.empresa_id == empresa_id,
+            ObjecionCUPS.nombre_fichero == nombre_fichero,
+        ).update({"enviado_sftp_at": ahora, "enviado_sftp_config_id": config_id}, synchronize_session=False)
+        db.commit()
+        return ", ".join(ficheros_subidos) if ficheros_subidos else "sin ficheros"
+
     else:
         if tipo == "incl":
             content, filename = generate_reobjeincl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
             model = ObjecionINCL
-        elif tipo == "cups":
-            content, filename = generate_reobcups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
-            model = ObjecionCUPS
         elif tipo == "cil":
             content, filename = generate_reobcil(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
             model = ObjecionCIL

@@ -45,6 +45,7 @@ class FicheroStats(BaseModel):
     pendientes: int
     aceptadas: int
     rechazadas: int
+    enviado_sftp_at: Optional[datetime] = None
 
 class DashTipo(BaseModel):
     tipo: str
@@ -642,6 +643,39 @@ def bulk_delete_cil(
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENVÍO SFTP (todos los tipos)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+class ToggleSftpResponse(BaseModel):
+    nombre_fichero: str
+    enviado_sftp_at: Optional[datetime] = None
+
+class ToggleSftpPayload(BaseModel):
+    empresa_id: int
+    nombre_fichero: str
+
+@router.patch("/toggle-sftp/{tipo}", response_model=ToggleSftpResponse)
+def toggle_sftp(
+    tipo: str,
+    payload: ToggleSftpPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Alterna manualmente el estado enviado_sftp_at de un fichero."""
+    TIPOS_VALIDOS = {"agrecl", "incl", "cups", "cil"}
+    if tipo not in TIPOS_VALIDOS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Tipo '{tipo}' no válido")
+    eid = _get_empresa_id_verificado(db, payload.empresa_id, current_user)
+    try:
+        nuevo_valor = services.toggle_enviado_sftp(
+            db,
+            tipo=tipo,
+            tenant_id=_effective_tenant(current_user),
+            empresa_id=eid,
+            nombre_fichero=payload.nombre_fichero,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return ToggleSftpResponse(nombre_fichero=payload.nombre_fichero, enviado_sftp_at=nuevo_valor)
+
 
 class EnviarSftpPayload(BaseModel):
     empresa_id: int
