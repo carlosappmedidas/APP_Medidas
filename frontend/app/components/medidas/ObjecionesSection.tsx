@@ -390,6 +390,7 @@ function DashboardPanel({
               ) : (
                 (dash?.por_empresa ?? []).map((e) => {
                   const isActive = empresaActiva && e.empresa_id === empresaActiva.id;
+                  const eSftp = (e as DashEmpresa & { enviadas_sftp?: number }).enviadas_sftp ?? 0;
                   return (
                     <div key={e.empresa_id} style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -401,11 +402,27 @@ function DashboardPanel({
                         <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{e.empresa_nombre}</div>
                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{e.empresa_codigo_ree ?? "—"}</div>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
-                        <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9 }}>{e.pendientes} pend.</span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
+                        {/* Fila 1: pendientes + aceptadas + rechazadas */}
                         <div style={{ display: "flex", gap: 2 }}>
+                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9 }}>{e.pendientes} pend.</span>
                           <span className="ui-badge ui-badge--ok" style={{ fontSize: 9 }}>{e.aceptadas}</span>
                           <span className="ui-badge ui-badge--err" style={{ fontSize: 9 }}>{e.rechazadas}</span>
+                        </div>
+                        {/* Fila 2: total + enviadas SFTP */}
+                        <div style={{ display: "flex", gap: 2 }}>
+                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9 }}>{e.total} total</span>
+                          <span
+                            className="ui-badge"
+                            style={{
+                              fontSize: 9,
+                              background: "rgba(55,138,221,0.15)",
+                              color: "#378ADD",
+                              border: "0.5px solid rgba(55,138,221,0.35)",
+                            }}
+                          >
+                            {eSftp} sftp
+                          </span>
                         </div>
                       </div>
                     </div>
