@@ -53,6 +53,7 @@ class DashTipo(BaseModel):
     pendientes: int
     aceptadas: int
     rechazadas: int
+    enviadas_sftp: int = 0
 
 class DashEmpresa(BaseModel):
     empresa_id: int
@@ -62,12 +63,14 @@ class DashEmpresa(BaseModel):
     pendientes: int
     aceptadas: int
     rechazadas: int
+    enviadas_sftp: int = 0
 
 class DashResponse(BaseModel):
     total: int
     pendientes: int
     aceptadas: int
     rechazadas: int
+    enviadas_sftp: int = 0
     por_tipo: List[DashTipo]
     por_empresa: List[DashEmpresa]
 
@@ -144,7 +147,7 @@ def get_dashboard(
         ("AOBCIL",    ObjecionCIL),
     ]
 
-    total_global = pendientes_global = aceptadas_global = rechazadas_global = 0
+    total_global = pendientes_global = aceptadas_global = rechazadas_global = enviadas_sftp_global = 0
     por_tipo: List[DashTipo] = []
     por_empresa_dict: dict = {}
 
@@ -154,7 +157,7 @@ def get_dashboard(
             q = q.filter(model.empresa_id == empresa_id)
         rows = q.all()
 
-        t_total = t_pend = t_ok = t_err = 0
+        t_total = t_pend = t_ok = t_err = t_sftp = 0
         for r in rows:
             t_total += 1
             ac = getattr(r, "aceptacion") or ""
@@ -164,6 +167,8 @@ def get_dashboard(
                 t_err += 1
             else:
                 t_pend += 1
+            if getattr(r, "enviado_sftp_at", None):
+                t_sftp += 1
 
             eid = int(getattr(r, "empresa_id"))
             if eid not in por_empresa_dict:
@@ -172,7 +177,7 @@ def get_dashboard(
                     "empresa_id": eid,
                     "empresa_nombre": getattr(emp, "nombre", "") if emp else f"Empresa {eid}",
                     "empresa_codigo_ree": getattr(emp, "codigo_ree", None) if emp else None,
-                    "total": 0, "pendientes": 0, "aceptadas": 0, "rechazadas": 0,
+                    "total": 0, "pendientes": 0, "aceptadas": 0, "rechazadas": 0, "enviadas_sftp": 0,
                 }
             d = por_empresa_dict[eid]
             d["total"] += 1
@@ -182,17 +187,20 @@ def get_dashboard(
                 d["rechazadas"] += 1
             else:
                 d["pendientes"] += 1
+            if getattr(r, "enviado_sftp_at", None):
+                d["enviadas_sftp"] += 1
 
         if t_total > 0:
             por_tipo.append(DashTipo(
                 tipo=tipo_label, total=t_total,
-                pendientes=t_pend, aceptadas=t_ok, rechazadas=t_err,
+                pendientes=t_pend, aceptadas=t_ok, rechazadas=t_err, enviadas_sftp=t_sftp,
             ))
 
-        total_global      += t_total
-        pendientes_global += t_pend
-        aceptadas_global  += t_ok
-        rechazadas_global += t_err
+        total_global          += t_total
+        pendientes_global     += t_pend
+        aceptadas_global      += t_ok
+        rechazadas_global     += t_err
+        enviadas_sftp_global  += t_sftp
 
     por_empresa = [DashEmpresa(**v) for v in por_empresa_dict.values()]
 
@@ -201,6 +209,7 @@ def get_dashboard(
         pendientes=pendientes_global,
         aceptadas=aceptadas_global,
         rechazadas=rechazadas_global,
+        enviadas_sftp=enviadas_sftp_global,
         por_tipo=por_tipo,
         por_empresa=por_empresa,
     )

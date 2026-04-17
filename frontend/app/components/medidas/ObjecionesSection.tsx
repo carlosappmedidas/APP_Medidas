@@ -66,6 +66,7 @@ interface DashData {
   pendientes: number;
   aceptadas: number;
   rechazadas: number;
+  enviadas_sftp: number;
   por_tipo: DashTipo[];
   por_empresa: DashEmpresa[];
 }
@@ -343,13 +344,12 @@ function DashboardPanel({
         <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "12px 0" }}>Cargando resumen...</div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8, marginBottom: 14 }}>
-            {[
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 8, marginBottom: 14 }}>            {[
               { label: "Total objeciones", val: total, sub: `${dash?.por_tipo.length ?? 0} tipos · ${dash?.por_empresa.length ?? 0} empresa${(dash?.por_empresa.length ?? 0) !== 1 ? "s" : ""}`, color: "var(--text)", bar: null },
               { label: "Pendientes",       val: pend,  sub: `${pct(pend)}% del total`, color: "#BA7517", bar: { pct: pct(pend), bg: "#EF9F27" } },
               { label: "Aceptadas",        val: ok,    sub: `${pct(ok)}% del total`,   color: "#1D9E75", bar: { pct: pct(ok),   bg: "#1D9E75" } },
               { label: "Rechazadas",       val: err,   sub: `${pct(err)}% del total`,  color: "#E24B4A", bar: { pct: pct(err),  bg: "#E24B4A" } },
-            ].map((kpi) => (
+              { label: "Enviadas SFTP",    val: dash?.enviadas_sftp ?? 0, sub: `${pct(dash?.enviadas_sftp ?? 0)}% del total`, color: "#378ADD", bar: { pct: pct(dash?.enviadas_sftp ?? 0), bg: "#378ADD" } },            ].map((kpi) => (
               <div key={kpi.label} style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "11px 13px" }}>
                 <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{kpi.label}</div>
                 <div style={{ fontSize: 22, fontWeight: 500, color: kpi.color }}>{kpi.val}</div>
