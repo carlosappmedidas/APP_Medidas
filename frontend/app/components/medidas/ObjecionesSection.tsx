@@ -363,7 +363,7 @@ function DashboardPanel({
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 10 }}>
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
               <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Por tipo de objeción</div>
               {(dash?.por_tipo ?? []).length === 0 ? (
@@ -394,28 +394,30 @@ function DashboardPanel({
                   return (
                     <div key={e.empresa_id} style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
+                      gap: 8,
                       padding: "5px 6px", marginBottom: 4, borderRadius: 6,
                       background: isActive ? "rgba(55,138,221,0.1)" : "transparent",
                       border: isActive ? "0.5px solid rgba(55,138,221,0.3)" : "0.5px solid transparent",
                     }}>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{e.empresa_nombre}</div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.empresa_nombre}</div>
                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{e.empresa_codigo_ree ?? "—"}</div>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
-                        {/* Fila 1: pendientes + aceptadas + rechazadas */}
-                        <div style={{ display: "flex", gap: 2 }}>
-                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9 }}>{e.pendientes} pend.</span>
-                          <span className="ui-badge ui-badge--ok" style={{ fontSize: 9 }}>{e.aceptadas}</span>
-                          <span className="ui-badge ui-badge--err" style={{ fontSize: 9 }}>{e.rechazadas}</span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", flexShrink: 0 }}>
+                        {/* Fila 1: pendientes + aceptadas + rechazadas (3 columnas iguales) */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, textAlign: "center" }}>{e.pendientes} pend.</span>
+                          <span className="ui-badge ui-badge--ok" style={{ fontSize: 9, textAlign: "center" }}>{e.aceptadas}</span>
+                          <span className="ui-badge ui-badge--err" style={{ fontSize: 9, textAlign: "center" }}>{e.rechazadas}</span>
                         </div>
-                        {/* Fila 2: total + enviadas SFTP */}
-                        <div style={{ display: "flex", gap: 2 }}>
-                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9 }}>{e.total} total</span>
+                        {/* Fila 2: total (span 2 cols) + sftp (1 col) — mismo ancho total que la fila 1 */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, textAlign: "center", gridColumn: "span 2" }}>{e.total} total</span>
                           <span
                             className="ui-badge"
                             style={{
                               fontSize: 9,
+                              textAlign: "center",
                               background: "rgba(55,138,221,0.15)",
                               color: "#378ADD",
                               border: "0.5px solid rgba(55,138,221,0.35)",
