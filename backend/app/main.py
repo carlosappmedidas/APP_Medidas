@@ -22,6 +22,7 @@ from app.measures.routes import router as medidas_router
 from app.medidas_graficos.routes import router as medidas_graficos_router
 from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router
 from app.objeciones.routes import router as objeciones_router
+from app.objeciones.descarga.routes import router as objeciones_descarga_router
 from app.tenants.routes import router as auth_router
 from app.perdidas.routes import router as perdidas_router
 from app.topologia.routes import router as topologia_router
@@ -102,6 +103,7 @@ app.include_router(calendario_ree_router)
 app.include_router(medidas_graficos_router)
 app.include_router(medidas_graficos_ps_router)
 app.include_router(objeciones_router)
+app.include_router(objeciones_descarga_router)
 app.include_router(comunicaciones_router)
 app.include_router(perdidas_router)
 app.include_router(topologia_router)
