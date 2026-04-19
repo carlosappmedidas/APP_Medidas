@@ -19,6 +19,7 @@ class FtpConfigCreate(BaseModel):
     usuario:           str
     password:          str
     directorio_remoto: str  = "/"
+    carpeta_aob:       Optional[str] = None   # feature Descarga en Objeciones
     usar_tls:          bool = True
     activo:            bool = True
 
@@ -30,6 +31,7 @@ class FtpConfigUpdate(BaseModel):
     usuario:           Optional[str]  = None
     password:          Optional[str]  = None
     directorio_remoto: Optional[str]  = None
+    carpeta_aob:       Optional[str]  = None   # feature Descarga en Objeciones
     usar_tls:          Optional[bool] = None
     activo:            Optional[bool] = None
 
@@ -43,6 +45,7 @@ class FtpConfigRead(BaseModel):
     puerto:            int
     usuario:           str
     directorio_remoto: str
+    carpeta_aob:       Optional[str]   # feature Descarga en Objeciones
     usar_tls:          bool
     activo:            bool
 

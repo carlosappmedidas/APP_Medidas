@@ -55,6 +55,7 @@ def create_config(payload: FtpConfigCreate, db: Session = Depends(get_db), curre
         return services.create_config(db, tenant_id=_tenant_id(current_user), empresa_id=payload.empresa_id,
             nombre=payload.nombre, host=payload.host, puerto=payload.puerto, usuario=payload.usuario,
             password=payload.password, directorio_remoto=payload.directorio_remoto,
+            carpeta_aob=payload.carpeta_aob,
             usar_tls=payload.usar_tls, activo=payload.activo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -67,10 +68,10 @@ def update_config(config_id: int, payload: FtpConfigUpdate, db: Session = Depend
         return services.update_config(db, config_id=config_id, tenant_id=_tenant_id(current_user),
             nombre=payload.nombre, host=payload.host, puerto=payload.puerto, usuario=payload.usuario,
             password=payload.password, directorio_remoto=payload.directorio_remoto,
+            carpeta_aob=payload.carpeta_aob,
             usar_tls=payload.usar_tls, activo=payload.activo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
-
 
 @router.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_config(config_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

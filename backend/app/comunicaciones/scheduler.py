@@ -40,8 +40,7 @@ def _ejecutar_reglas_pendientes() -> None:
             for regla in reglas:
                 try:
                     logger.info(f"[Scheduler] Ejecutando regla id={regla.id} — {regla.nombre or regla.directorio}")
-                    descargados, errores, detalle = services.ejecutar_regla(db, rule_id=int(regla.id))
-                    logger.info(f"[Scheduler] Regla id={regla.id} completada — {descargados} descargados, {errores} errores")
+                    descargados, errores, detalle = services.ejecutar_regla(db, rule_id=int(regla.id))  # type: ignore[arg-type]                    logger.info(f"[Scheduler] Regla id={regla.id} completada — {descargados} descargados, {errores} errores")
                 except Exception as e:
                     logger.error(f"[Scheduler] Error en regla id={regla.id}: {e}")
         finally:

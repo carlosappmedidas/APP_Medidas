@@ -20,6 +20,7 @@ class FtpConfig(Base):
     usuario           = Column(String(100), nullable=False)
     password_cifrada  = Column(Text, nullable=False)
     directorio_remoto = Column(String(500), nullable=False, default="/")
+    carpeta_aob       = Column(String(500), nullable=True)   # ← para feature Descarga en Objeciones (admite {mes_actual}/{mes_anterior} o ruta fija)
     usar_tls          = Column(Boolean, nullable=False, default=True)
     activo            = Column(Boolean, nullable=False, default=True)
     created_at        = Column(DateTime, nullable=False, server_default=func.now())
@@ -55,9 +56,10 @@ class FtpSyncLog(Base):
     id             = Column(Integer, primary_key=True, index=True)
     tenant_id      = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     empresa_id     = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True)
-    config_id      = Column(Integer, ForeignKey("ftp_configs.id", ondelete="SET NULL"), nullable=True, index=True)  # ← NUEVO
-    rule_id        = Column(Integer, ForeignKey("ftp_sync_rules.id", ondelete="SET NULL"), nullable=True, index=True)  # ← NUEVO
-    origen         = Column(String(10), nullable=False, default="manual")  # ← NUEVO: "manual" | "auto"
+    config_id      = Column(Integer, ForeignKey("ftp_configs.id", ondelete="SET NULL"), nullable=True, index=True)
+    rule_id        = Column(Integer, ForeignKey("ftp_sync_rules.id", ondelete="SET NULL"), nullable=True, index=True)
+    origen         = Column(String(10), nullable=False, default="manual")   # "manual" | "auto"
+    modulo         = Column(String(30), nullable=True)                      # ← feature Descarga en Objeciones: "comunicaciones" | "objeciones" | NULL (legacy)
     nombre_fichero = Column(String(500), nullable=False)
     tamanio        = Column(Integer, nullable=True)
     estado         = Column(String(10), nullable=False, default="ok")
