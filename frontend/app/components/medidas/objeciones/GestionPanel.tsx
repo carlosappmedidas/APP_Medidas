@@ -6,15 +6,13 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
-import ObjecionDetalleModal from "../ObjecionDetalleModal";
-import type { ObjecionRow, ObjecionDetalleConfig } from "../ObjecionDetalleModal";
+import type { ObjecionRow } from "../ObjecionDetalleModal";
 import type { ObjecionTipo, DashData, EmpresaOption, FicheroStats, TabConfig } from "./shared/types";
-import { TIPO_RUTA, TIPO_GENERA_ZIP, TIPO_GENERA_ONE, TABS } from "./shared/constants";
-import { fmtDate, downloadBlob } from "./shared/helpers";
-import { IconDownload, IconEdit, IconTrash } from "./shared/icons";
-import { BadgeAceptacion } from "./shared/badges";
+import { TIPO_RUTA, TIPO_GENERA_ZIP, TABS } from "./shared/constants";
+import { downloadBlob } from "./shared/helpers";
 import SftpEnvioModal from "./SftpEnvioModal";
 import GestionFicherosLista from "./GestionFicherosLista";
+import GestionObjecionesTabla from "./GestionObjecionesTabla";
 
 // ─── Estilos panel (mismo estilo que los demás paneles de Objeciones) ────────
 
@@ -58,14 +56,9 @@ export default function GestionPanel({
   const [loadingFicheros, setLoadingFicheros] = useState(false);
   const [filas, setFilas]                 = useState<ObjecionRow[]>([]);
   const [loadingFilas, setLoadingFilas]   = useState(false);
-  const [selectedIds, setSelectedIds]     = useState<Set<number>>(new Set());
   const [importing, setImporting]         = useState(false);
   const [generating, setGenerating]       = useState(false);
-  const [generatingOne, setGeneratingOne] = useState<number | null>(null);
   const [deleting, setDeleting]           = useState(false);
-  const [modalOpen, setModalOpen]         = useState(false);
-  const [filaIdx, setFilaIdx]             = useState<number | null>(null);
-  const [saving, setSaving]               = useState(false);
 
   // Modal SFTP (vive aquí dentro desde Fase 0.8a)
   const [sftpModalOpen, setSftpModalOpen] = useState(false);
@@ -78,10 +71,8 @@ export default function GestionPanel({
 
   useEffect(() => {
     setFicheroActivo(null); setFicheros([]); setFilas([]);
-    setSelectedIds(new Set()); onError(null);
+    onError(null);
   }, [activeTab, onError]);
-
-  useEffect(() => { setSelectedIds(new Set()); }, [ficheiroActivo]);
 
   // ── Cargar ficheros ───────────────────────────────────────────────────────
 
@@ -169,7 +160,7 @@ export default function GestionPanel({
   const handleGenerateOne = async (row: ObjecionRow, nombreFichero: string) => {
     if (!token || !empresaIdGestion) return;
     const rowId = Number(row.id);
-    setGeneratingOne(rowId); onError(null);
+    onError(null);
     try {
       const params = new URLSearchParams({
         empresa_id: String(empresaIdGestion),
@@ -181,7 +172,7 @@ export default function GestionPanel({
       await downloadBlob(res, `REOBAGRECL_${rowId}.bz2`);
     } catch (e: unknown) {
       onError(e instanceof Error ? e.message : "Error generando fichero individual");
-    } finally { setGeneratingOne(null); }
+    }
   };
 
   // ── Abrir modal SFTP ──────────────────────────────────────────────────────
@@ -244,7 +235,6 @@ export default function GestionPanel({
       );
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setFilas((prev) => prev.filter((r) => Number(r.id) !== id));
-      setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
       if (ficheiroActivo) await cargarFicheros();
       onDashRefresh();
     } catch (e: unknown) {
@@ -254,18 +244,18 @@ export default function GestionPanel({
 
   // ── Borrado en bloque ─────────────────────────────────────────────────────
 
-  const handleBulkDelete = async () => {
-    if (!token || selectedIds.size === 0 || !empresaIdGestion) return;
+  const handleBulkDelete = async (ids: number[]) => {
+    if (!token || ids.length === 0 || !empresaIdGestion) return;
+    const idsSet = new Set(ids);
     setDeleting(true);
     try {
       const res = await fetch(`${API_BASE_URL}/objeciones/${ruta}/bulk-delete`, {
         method: "POST",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selectedIds), empresa_id: empresaIdGestion }),
+        body: JSON.stringify({ ids, empresa_id: empresaIdGestion }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      setFilas((prev) => prev.filter((r) => !selectedIds.has(Number(r.id))));
-      setSelectedIds(new Set());
+      setFilas((prev) => prev.filter((r) => !idsSet.has(Number(r.id))));
       if (ficheiroActivo) await cargarFicheros();
       onDashRefresh();
     } catch (e: unknown) {
@@ -273,27 +263,13 @@ export default function GestionPanel({
     } finally { setDeleting(false); }
   };
 
-  // ── Selección ─────────────────────────────────────────────────────────────
-
-  const toggleSelect = (id: number) => setSelectedIds((prev) => {
-    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
-  });
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filas.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filas.map((r) => Number(r.id))));
-  };
-  const allSelected  = filas.length > 0 && selectedIds.size === filas.length;
-  const someSelected = selectedIds.size > 0 && selectedIds.size < filas.length;
-
-  // ── Modal detalle ─────────────────────────────────────────────────────────
-
-  const filaSeleccionada = filaIdx !== null ? filas[filaIdx] : null;
-  const modalConfig: ObjecionDetalleConfig = { tipo: activeTab, camposLectura: tab.camposLectura };
-
-  const handleSave = async (respuesta: { aceptacion: string; motivo_no_aceptacion: string; comentario_respuesta: string }) => {
-    if (filaIdx === null || !token || !empresaIdGestion) return;
-    setSaving(true);
-    const fila = filas[filaIdx];
+  const handleSave = async (
+    idx: number,
+    _fila: ObjecionRow,
+    respuesta: { aceptacion: string; motivo_no_aceptacion: string; comentario_respuesta: string },
+  ) => {
+    if (!token || !empresaIdGestion) throw new Error("Sin token o empresa");
+    const fila = filas[idx];
     try {
       const res = await fetch(
         `${API_BASE_URL}/objeciones/${ruta}/${fila.id}?empresa_id=${empresaIdGestion}`,
@@ -305,13 +281,13 @@ export default function GestionPanel({
       );
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const actualizada: ObjecionRow = await res.json();
-      setFilas((prev) => { const c = [...prev]; c[filaIdx] = actualizada; return c; });
+      setFilas((prev) => { const c = [...prev]; c[idx] = actualizada; return c; });
       if (ficheiroActivo) await cargarFicheros();
       onDashRefresh();
-      setModalOpen(false); setFilaIdx(null);
     } catch (e: unknown) {
       onError(e instanceof Error ? e.message : "Error guardando");
-    } finally { setSaving(false); }
+      throw e;  // propagar al nivel 2 para que no cierre el modal
+    }
   };
 
   // ── Tabs con contadores del dashboard ────────────────────────────────────
@@ -424,115 +400,21 @@ export default function GestionPanel({
             {ficheiroActivo !== null && (
               <>
                 {tabBar}
-
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "none", borderBottom: "none" }}>
-                  <button type="button" onClick={() => setFicheroActivo(null)} className="ui-btn ui-btn-outline ui-btn-xs">← Volver</button>
-                  <span className="ui-muted" style={{ fontSize: 11 }}>{activeTab} ›</span>
-                  <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10, color: "var(--text)" }}>{ficheiroActivo}</span>
-                </div>
-
-                <div className="flex items-center justify-between gap-2" style={{ padding: "8px 10px", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderTop: "0.5px solid var(--card-border)", marginBottom: 1 }}>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => handleGenerate(ficheiroActivo)}
-                      disabled={generating || filas.length === 0}
-                      className="ui-btn ui-btn-outline ui-btn-xs"
-                      style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <IconDownload />
-                      {generating ? "Generando..." : TIPO_GENERA_ZIP[activeTab] ? "Generar ZIP (por ID)" : "Generar REOB"}
-                    </button>
-                    {selectedIds.size > 0 && (
-                      <button type="button" onClick={handleBulkDelete} disabled={deleting}
-                        className="ui-btn ui-btn-danger ui-btn-xs"
-                        style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                        <IconTrash />
-                        {deleting ? "Borrando..." : `Borrar ${selectedIds.size} seleccionada${selectedIds.size !== 1 ? "s" : ""}`}
-                      </button>
-                    )}
-                  </div>
-                  <span className="ui-muted" style={{ fontSize: "11px" }}>
-                    {loadingFilas ? "Cargando..." : `${filas.length} objeción${filas.length !== 1 ? "es" : ""}`}
-                  </span>
-                </div>
-
-                <div className="ui-table-wrap">
-                  <table className="ui-table text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
-                    <thead className="ui-thead">
-                      <tr>
-                        <th className="ui-th" style={{ width: 36, padding: "8px 10px", textAlign: "center" }}>
-                          <input type="checkbox" checked={allSelected}
-                            ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                            onChange={toggleSelectAll}
-                            style={{ cursor: "pointer", accentColor: "#1a2332" }} />
-                        </th>
-                        {tab.columns.map((col) => (
-                          <th key={col.id} className={["ui-th", col.align === "right" ? "ui-th-right" : ""].join(" ")} style={{ whiteSpace: "nowrap" }}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loadingFilas ? (
-                        <tr className="ui-tr"><td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
-                      ) : filas.length === 0 ? (
-                        <tr className="ui-tr"><td colSpan={tab.columns.length + 1} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Sin objeciones en este fichero</td></tr>
-                      ) : (
-                        filas.map((row, ri) => {
-                          const rowId = Number(row.id);
-                          const isSel = selectedIds.has(rowId);
-                          const isGeneratingThis = generatingOne === rowId;
-                          const tieneRespuesta = row.aceptacion === "S" || row.aceptacion === "N";
-                          const generaOne = TIPO_GENERA_ONE[activeTab];
-                          return (
-                            <tr key={ri} className="ui-tr" style={{ background: isSel ? "var(--nav-item-hover)" : undefined }}>
-                              <td className="ui-td" style={{ width: 36, padding: "6px 10px", textAlign: "center" }}>
-                                <input type="checkbox" checked={isSel} onChange={() => toggleSelect(rowId)}
-                                  style={{ cursor: "pointer", accentColor: "#1a2332" }} />
-                              </td>
-                              {tab.columns.map((col) => {
-                                if (col.id === "_acciones") return (
-                                  <td key="_acciones" className="ui-td" style={{ width: generaOne ? 88 : 64, padding: "6px 8px" }}>
-                                    <div style={{ display: "flex", gap: 4 }}>
-                                      <button type="button" onClick={() => { setFilaIdx(ri); setModalOpen(true); }}
-                                        className="ui-btn ui-btn-ghost ui-btn-xs"
-                                        style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
-                                        <IconEdit />
-                                      </button>
-                                      {generaOne && (
-                                        <button type="button"
-                                          onClick={() => handleGenerateOne(row, ficheiroActivo)}
-                                          disabled={isGeneratingThis || !tieneRespuesta}
-                                          className="ui-btn ui-btn-outline ui-btn-xs"
-                                          style={{ padding: "4px 6px", display: "flex", alignItems: "center", opacity: tieneRespuesta ? 1 : 0.4 }}>
-                                          {isGeneratingThis ? "…" : <IconDownload />}
-                                        </button>
-                                      )}
-                                      <button type="button" onClick={() => handleDeleteOne(rowId)}
-                                        disabled={deleting} className="ui-btn ui-btn-danger ui-btn-xs"
-                                        style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}>
-                                        <IconTrash />
-                                      </button>
-                                    </div>
-                                  </td>
-                                );
-                                if (col.id === "aceptacion") return (
-                                  <td key={col.id} className="ui-td" style={{ whiteSpace: "nowrap" }}>
-                                    <BadgeAceptacion valor={row.aceptacion ?? ""} />
-                                  </td>
-                                );
-                                return (
-                                  <td key={col.id} className={["ui-td", col.align === "right" ? "ui-td-right" : ""].join(" ")} style={{ whiteSpace: "nowrap" }}>
-                                    {row[col.id] || <span className="ui-muted">—</span>}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <GestionObjecionesTabla
+                  tab={tab}
+                  activeTab={activeTab}
+                  ficheiroActivo={ficheiroActivo}
+                  filas={filas}
+                  loadingFilas={loadingFilas}
+                  generating={generating}
+                  deleting={deleting}
+                  onVolver={() => setFicheroActivo(null)}
+                  onGenerate={handleGenerate}
+                  onGenerateOne={handleGenerateOne}
+                  onDeleteOne={handleDeleteOne}
+                  onBulkDelete={handleBulkDelete}
+                  onSaveRespuesta={handleSave}
+                />
               </>
             )}
           </div>
@@ -547,15 +429,6 @@ export default function GestionPanel({
         ruta={ruta}
         token={token}
         onClose={() => setSftpModalOpen(false)}
-      />
-
-      <ObjecionDetalleModal
-        open={modalOpen}
-        onClose={() => { setModalOpen(false); setFilaIdx(null); }}
-        onSave={handleSave}
-        config={modalConfig}
-        fila={filaSeleccionada}
-        saving={saving}
       />
     </>
   );
