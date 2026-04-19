@@ -20,6 +20,7 @@ import MedidasPsSection, { COLUMNS_PS_META } from "./components/medidas/MedidasP
 import AppearanceSettingsSection from "./components/settings/AppearanceSettingsSection";
 import TableSettingsSection from "./components/settings/TableSettingsSection";
 import TopologiaSettingsSection from "./components/settings/TopologiaSettingsSection";
+import ObjecionesSettingsSection from "./components/settings/ObjecionesSettingsSection";
 import { useTableSettings } from "./components/settings/hooks/useTableSettings";
 import { useTopologiaSettings } from "./components/settings/hooks/useTopologiaSettings";
 import type { User } from "./types";
@@ -118,6 +119,7 @@ export default function HomePage() {
   const [showTablas,      setShowTablas]      = useState(false);
   const [showAlertConfig, setShowAlertConfig] = useState(false);
   const [showTopologia,   setShowTopologia]   = useState(false);
+  const [showObjeciones,  setShowObjeciones]  = useState(false);
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
 
   const {
@@ -565,6 +567,20 @@ export default function HomePage() {
                     onChangeTablaCeldas={setTablaCeldas}
                     onChangeTablaTrafos={setTablaTrafos}
                   />
+                </div>
+              )}
+            </div>
+            <div className="ui-collapsible-card">
+              <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowObjeciones((v) => !v)}>
+                <div>
+                  <div className="ui-collapsible-card__title">CONFIGURACIÓN OBJECIONES</div>
+                  <p className="ui-collapsible-card__subtitle">Define la carpeta SFTP donde buscar ficheros de objeciones (AOB) por cada conexión activa.</p>
+                </div>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showObjeciones ? "Ocultar" : "Mostrar"}</span>
+              </button>
+              {showObjeciones && (
+                <div className="ui-collapsible-card__body">
+                  <ObjecionesSettingsSection token={token} />
                 </div>
               )}
             </div>
