@@ -5,299 +5,38 @@ import type { User } from "../../types";
 import ObjecionDetalleModal from "./ObjecionDetalleModal";
 import type { ObjecionRow, ObjecionDetalleConfig } from "./ObjecionDetalleModal";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
-type ObjecionTipo = "AOBAGRECL" | "OBJEINCL" | "AOBCUPS" | "AOBCIL";
-
-const TIPO_RUTA: Record<ObjecionTipo, string> = {
-  AOBAGRECL: "agrecl", OBJEINCL: "incl", AOBCUPS: "cups", AOBCIL: "cil",
-};
-const TIPO_GENERA_ZIP: Record<ObjecionTipo, boolean> = {
-  AOBAGRECL: true, OBJEINCL: false, AOBCUPS: false, AOBCIL: false,
-};
-const TIPO_GENERA_ONE: Record<ObjecionTipo, boolean> = {
-  AOBAGRECL: true, OBJEINCL: false, AOBCUPS: false, AOBCIL: false,
-};
-
-interface ReobGenerado {
-  id: number;
-  tipo: string;
-  nombre_fichero_aob: string;
-  nombre_fichero_reob: string;
-  empresa_id: number;
-  comercializadora: string | null;
-  aaaamm: string | null;
-  num_registros: number | null;
-  generado_at: string | null;
-  enviado_sftp_at: string | null;
-}
-
-interface FicheroStats {
-  nombre_fichero: string;
-  created_at: string | null;
-  total: number;
-  pendientes: number;
-  aceptadas: number;
-  rechazadas: number;
-  enviado_sftp_at: string | null;
-}
-
-interface DashTipo {
-  tipo: string;
-  total: number;
-  pendientes: number;
-  aceptadas: number;
-  rechazadas: number;
-}
-
-interface DashEmpresa {
-  empresa_id: number;
-  empresa_nombre: string;
-  empresa_codigo_ree: string | null;
-  total: number;
-  pendientes: number;
-  aceptadas: number;
-  rechazadas: number;
-}
-
-interface DashData {
-  total: number;
-  pendientes: number;
-  aceptadas: number;
-  rechazadas: number;
-  enviadas_sftp: number;
-  por_tipo: DashTipo[];
-  por_empresa: DashEmpresa[];
-}
+import type {
+  ObjecionTipo,
+  ReobGenerado,
+  FicheroStats,
+  DashTipo,
+  DashEmpresa,
+  DashData,
+  TabConfig,
+  EmpresaOption,
+} from "./objeciones/shared/types";
+import {
+  TIPO_RUTA,
+  TIPO_GENERA_ZIP,
+  TIPO_GENERA_ONE,
+  TABS,
+} from "./objeciones/shared/constants";
+import { fmtDate, downloadBlob } from "./objeciones/shared/helpers";
+import {
+  IconFolder,
+  IconDownload,
+  IconEdit,
+  IconTrash,
+  IconChevron,
+  IconSend,
+  IconDotsV,
+} from "./objeciones/shared/icons";
+import { BadgeAceptacion, BadgeNum } from "./objeciones/shared/badges";
 
 interface ObjecionesSectionProps {
   token: string | null;
   currentUser: User | null;
 }
-
-interface TabConfig {
-  id: ObjecionTipo;
-  label: string;
-  importLabel: string;
-  columns: { id: string; label: string; align: "left" | "right" }[];
-  camposLectura: { id: string; label: string }[];
-}
-
-type EmpresaOption = { id: number; nombre: string; codigo_ree: string | null };
-
-// ─── Configuración de tabs ────────────────────────────────────────────────────
-
-const TABS: TabConfig[] = [
-  {
-    id: "AOBAGRECL", label: "AOBAGRECL", importLabel: "Importar AOBAGRECL",
-    columns: [
-      { id: "_acciones",        label: "",                       align: "left"  },
-      { id: "id_objecion",      label: "ID objeción",            align: "left"  },
-      { id: "distribuidor",     label: "Distribuidor",           align: "left"  },
-      { id: "comercializador",  label: "Comercializador",        align: "left"  },
-      { id: "nivel_tension",    label: "Nivel tensión",          align: "left"  },
-      { id: "tarifa_acceso",    label: "Tarifa de acceso",       align: "left"  },
-      { id: "disc_horaria",     label: "Disc. horaria",          align: "left"  },
-      { id: "tipo_punto",       label: "Tipo punto",             align: "left"  },
-      { id: "provincia",        label: "Provincia",              align: "left"  },
-      { id: "tipo_demanda",     label: "Tipo demanda",           align: "left"  },
-      { id: "periodo",          label: "Periodo",                align: "left"  },
-      { id: "motivo",           label: "Motivo objeción",        align: "left"  },
-      { id: "magnitud",         label: "Magnitud",               align: "left"  },
-      { id: "e_publicada",      label: "E. publicada (kWh)",     align: "right" },
-      { id: "e_propuesta",      label: "E. propuesta (kWh)",     align: "right" },
-      { id: "comentario_emisor",label: "Comentario emisor",      align: "left"  },
-      { id: "autoobjecion",     label: "Autoobjeción",           align: "left"  },
-      { id: "aceptacion",       label: "Aceptada",               align: "left"  },
-    ],
-    camposLectura: [
-      { id: "nombre_fichero",   label: "Fichero"                   },
-      { id: "id_objecion",      label: "ID objeción"               },
-      { id: "distribuidor",     label: "Distribuidor"              },
-      { id: "comercializador",  label: "Comercializador"           },
-      { id: "nivel_tension",    label: "Nivel de tensión"          },
-      { id: "tarifa_acceso",    label: "Tarifa de acceso"          },
-      { id: "disc_horaria",     label: "Discriminación horaria"    },
-      { id: "tipo_punto",       label: "Tipo de punto"             },
-      { id: "provincia",        label: "Provincia"                 },
-      { id: "tipo_demanda",     label: "Tipo de demanda"           },
-      { id: "periodo",          label: "Periodo"                   },
-      { id: "motivo",           label: "Motivo de objeción"        },
-      { id: "magnitud",         label: "Magnitud"                  },
-      { id: "e_publicada",      label: "E. activa publicada (kWh)" },
-      { id: "e_propuesta",      label: "E. activa propuesta (kWh)"},
-      { id: "comentario_emisor",label: "Comentario del emisor"     },
-      { id: "autoobjecion",     label: "Objeción a autoobjeción"   },
-    ],
-  },
-  {
-    id: "OBJEINCL", label: "OBJEINCL", importLabel: "Importar OBJEINCL",
-    columns: [
-      { id: "_acciones",        label: "",                          align: "left"  },
-      { id: "cups",             label: "CUPS",                      align: "left"  },
-      { id: "periodo",          label: "Periodo",                   align: "left"  },
-      { id: "motivo",           label: "Motivo",                    align: "left"  },
-      { id: "ae_publicada",     label: "AE publicada (kWh)",        align: "right" },
-      { id: "ae_propuesta",     label: "AE propuesta (kWh)",        align: "right" },
-      { id: "as_publicada",     label: "AS publicada (kWh)",        align: "right" },
-      { id: "as_propuesta",     label: "AS propuesta (kWh)",        align: "right" },
-      { id: "comentario_emisor",label: "Comentario",                align: "left"  },
-      { id: "autoobjecion",     label: "Autoobjeción",              align: "left"  },
-      { id: "aceptacion",       label: "Aceptada",                  align: "left"  },
-    ],
-    camposLectura: [
-      { id: "nombre_fichero",   label: "Fichero"                   },
-      { id: "cups",             label: "CUPS"                       },
-      { id: "periodo",          label: "Periodo de la objeción"     },
-      { id: "motivo",           label: "Motivo"                     },
-      { id: "ae_publicada",     label: "AE publicada (kWh)"         },
-      { id: "ae_propuesta",     label: "AE propuesta (kWh)"         },
-      { id: "as_publicada",     label: "AS publicada (kWh)"         },
-      { id: "as_propuesta",     label: "AS propuesta (kWh)"         },
-      { id: "comentario_emisor",label: "Comentario"                 },
-      { id: "autoobjecion",     label: "Objeción a autoobjeción"    },
-    ],
-  },
-  {
-    id: "AOBCUPS", label: "AOBCUPS", importLabel: "Importar AOBCUPS",
-    columns: [
-      { id: "_acciones",           label: "",                          align: "left"  },
-      { id: "id_objecion",         label: "ID objeción",               align: "left"  },
-      { id: "cups",                label: "CUPS",                      align: "left"  },
-      { id: "periodo",             label: "Periodo",                   align: "left"  },
-      { id: "motivo",              label: "Motivo",                    align: "left"  },
-      { id: "e_publicada",         label: "E. publicada (kWh)",        align: "right" },
-      { id: "e_propuesta",         label: "E. propuesta (kWh)",        align: "right" },
-      { id: "comentario_emisor",   label: "Comentario emisor",         align: "left"  },
-      { id: "autoobjecion",        label: "Autoobjeción (S/N)",        align: "left"  },
-      { id: "aceptacion",          label: "Aceptada",                  align: "left"  },
-      { id: "motivo_no_aceptacion",label: "Motivo no acept.",          align: "left"  },
-      { id: "comentario_respuesta",label: "Comentario respuesta",      align: "left"  },
-      { id: "magnitud",            label: "Magnitud",                  align: "left"  },
-    ],
-    camposLectura: [
-      { id: "nombre_fichero",    label: "Fichero"                        },
-      { id: "id_objecion",       label: "ID objeción"                    },
-      { id: "cups",              label: "CUPS"                           },
-      { id: "periodo",           label: "Periodo de cierre objetado"     },
-      { id: "motivo",            label: "Motivo de objeción"             },
-      { id: "e_publicada",       label: "E. activa publicada (kWh)"      },
-      { id: "e_propuesta",       label: "E. activa propuesta (kWh)"      },
-      { id: "comentario_emisor", label: "Comentario del emisor"          },
-      { id: "autoobjecion",      label: "Objeción a autoobjeción (S/N)"  },
-      { id: "magnitud",          label: "Magnitud"                       },
-    ],
-  },
-  {
-    id: "AOBCIL", label: "AOBCIL", importLabel: "Importar AOBCIL",
-    columns: [
-      { id: "_acciones",    label: "",                              align: "left"  },
-      { id: "id_objecion",  label: "ID objeción",                  align: "left"  },
-      { id: "cil",          label: "CIL",                          align: "left"  },
-      { id: "periodo",      label: "Periodo",                      align: "left"  },
-      { id: "motivo",       label: "Motivo",                       align: "left"  },
-      { id: "eas_publicada",label: "E. act. sal. pub. (kWh)",      align: "right" },
-      { id: "eas_propuesta",label: "E. act. sal. prop. (kWh)",     align: "right" },
-      { id: "eq2_publicada",label: "E. react. Q2 pub. (kVArh)",   align: "right" },
-      { id: "eq2_propuesta",label: "E. react. Q2 prop. (kVArh)",  align: "right" },
-      { id: "eq3_publicada",label: "E. react. Q3 pub. (kVArh)",   align: "right" },
-      { id: "eq3_propuesta",label: "E. react. Q3 prop. (kVArh)",  align: "right" },
-      { id: "comentario_emisor",label: "Comentario emisor",        align: "left"  },
-      { id: "autoobjecion", label: "Autoobjeción",                 align: "left"  },
-      { id: "aceptacion",   label: "Aceptada",                     align: "left"  },
-    ],
-    camposLectura: [
-      { id: "nombre_fichero",label: "Fichero"                        },
-      { id: "id_objecion",   label: "ID objeción"                    },
-      { id: "cil",           label: "CIL"                            },
-      { id: "periodo",       label: "Periodo de cierre objetado"     },
-      { id: "motivo",        label: "Motivo de objeción"             },
-      { id: "eas_publicada", label: "E. activa saliente pub. (kWh)"  },
-      { id: "eas_propuesta", label: "E. activa saliente prop. (kWh)" },
-      { id: "eq2_publicada", label: "E. reactiva Q2 pub. (kVArh)"   },
-      { id: "eq2_propuesta", label: "E. reactiva Q2 prop. (kVArh)"  },
-      { id: "eq3_publicada", label: "E. reactiva Q3 pub. (kVArh)"   },
-      { id: "eq3_propuesta", label: "E. reactiva Q3 prop. (kVArh)"  },
-      { id: "comentario_emisor",label: "Comentario del emisor"       },
-      { id: "autoobjecion",  label: "Objeción a autoobjeción"        },
-    ],
-  },
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function BadgeAceptacion({ valor }: { valor: string }) {
-  if (!valor) return <span className="ui-badge ui-badge--neutral">Pendiente</span>;
-  if (valor === "S") return <span className="ui-badge ui-badge--ok">Aceptada</span>;
-  return <span className="ui-badge ui-badge--err">Rechazada</span>;
-}
-
-function BadgeNum({ n, variant }: { n: number; variant: "neutral" | "ok" | "err" }) {
-  if (n === 0) return <span className="ui-muted" style={{ fontSize: 11 }}>—</span>;
-  return <span className={`ui-badge ui-badge--${variant}`}>{n}</span>;
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("es-ES", {
-      day: "2-digit", month: "2-digit", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  } catch { return iso; }
-}
-
-async function downloadBlob(res: Response, fallbackName: string) {
-  const blob = await res.blob();
-  const disposition = res.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename=(.+)/);
-  const filename = match ? match[1] : fallbackName;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ─── Iconos ───────────────────────────────────────────────────────────────────
-
-const IconFolder = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-);
-const IconDownload = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-  </svg>
-);
-const IconEdit = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-  </svg>
-);
-const IconTrash = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-    <path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-  </svg>
-);
-const IconChevron = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
-const IconSend = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-  </svg>
-);
-const IconDotsV = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-    <circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>
-  </svg>
-);
 
 // ─── Estilos panel (estilo Configuración) ─────────────────────────────────────
 
