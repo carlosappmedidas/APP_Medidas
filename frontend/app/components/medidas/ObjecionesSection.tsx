@@ -5,6 +5,7 @@ import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import type { DashData, EmpresaOption } from "./objeciones/shared/types";
 import DashboardPanel from "./objeciones/DashboardPanel";
+import DescargaPanel from "./objeciones/DescargaPanel";
 import GestionPanel from "./objeciones/GestionPanel";
 import HistorialPanel from "./objeciones/HistorialPanel";
 
@@ -109,7 +110,15 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
         )}
       </div>
 
-      {/* ── PANEL 2: Gestión ───────────────────────────────────────────── */}
+      {/* ── PANEL 2: Descarga en Objeciones ──────────────────────────── */}
+      <DescargaPanel
+        token={token}
+        empresas={empresas}
+        onDashRefresh={cargarDash}
+        onError={setError}
+      />
+
+      {/* ── PANEL 3: Gestión ───────────────────────────────────────────── */}
       <GestionPanel
         token={token}
         empresas={empresas}

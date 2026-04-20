@@ -65,3 +65,37 @@ export interface TabConfig {
 }
 
 export type EmpresaOption = { id: number; nombre: string; codigo_ree: string | null };
+
+// ── Descarga en Objeciones (FASE 5) ───────────────────────────────────────────
+
+export type DescargaEstado = "nuevo" | "importado" | "actualizable" | "obsoleta";
+
+export interface BusquedaResult {
+  empresa_id:         number;
+  empresa_nombre:     string;
+  config_id:          number;
+  ruta_sftp:          string;
+  nombre:             string;
+  clave_base:         string;
+  tipo:               ObjecionTipo;
+  periodo:            string;   // YYYYMM
+  version:            number;
+  tamanio:            number;
+  fecha_sftp:         string | null;
+  estado:             DescargaEstado;
+  version_importada:  number | null;
+}
+
+export interface EjecutarDetalleItem {
+  nombre:    string;
+  resultado: "ok" | "reemplazado" | "error";
+  mensaje:   string;
+}
+
+export interface EjecutarResponse {
+  importados:    number;
+  reemplazados:  number;
+  errores:       number;
+  detalle:       EjecutarDetalleItem[];
+}
+
