@@ -1,14 +1,15 @@
 // Panel "Descarga en Objeciones" — explorar SFTP e importar ficheros AOB.
-// FASE 5 · Sub-paso 5.2 — filtros + tabla funcional (sin ejecución todavía).
-// En 5.3 llegan los modales y la conexión a POST /ejecutar.
+// FASE 5 · Sub-paso 5.3 — botón Ejecutar + modales + refresh Dashboard.
 
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
-import type { BusquedaResult, EmpresaOption } from "./shared/types";
+import type { BusquedaResult, EjecutarResponse, EmpresaOption } from "./shared/types";
 import DescargaFiltros from "./DescargaFiltros";
 import DescargaTabla from "./DescargaTabla";
+import DescargaConfirmReemplazoModal from "./DescargaConfirmReemplazoModal";
+import DescargaResultadoModal from "./DescargaResultadoModal";
 
 // ─── Estilos panel (idénticos al resto de paneles de Objeciones) ──────────────
 
@@ -38,6 +39,10 @@ interface DescargaPanelProps {
   onError:       (msg: string | null) => void;
 }
 
+function keyOf(r: BusquedaResult): string {
+  return `${r.empresa_id}|${r.nombre}`;
+}
+
 export default function DescargaPanel({
   token, empresas, onDashRefresh, onError,
 }: DescargaPanelProps) {
@@ -45,8 +50,8 @@ export default function DescargaPanel({
   const [open, setOpen] = useState(false);
 
   // ── Filtros ─────────────────────────────────────────────────────────────
-  const [empresaIds, setEmpresaIds] = useState<number[]>([]);   // [] = todas
-  const [periodo,    setPeriodo]    = useState<string>("");     // "" = últimos 6 meses
+  const [empresaIds, setEmpresaIds] = useState<number[]>([]);
+  const [periodo,    setPeriodo]    = useState<string>("");
   const [nombre,     setNombre]     = useState<string>("");
 
   // ── Resultados ──────────────────────────────────────────────────────────
@@ -55,21 +60,37 @@ export default function DescargaPanel({
   const [buscado,       setBuscado]       = useState(false);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
 
+  // ── Ejecución ───────────────────────────────────────────────────────────
+  const [ejecutando,       setEjecutando]       = useState(false);
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [resultadoModal,   setResultadoModal]   = useState<EjecutarResponse | null>(null);
+
+  // ── Derivados ───────────────────────────────────────────────────────────
+
+  // Lista de items seleccionados en el orden de la tabla.
+  const itemsSeleccionados = useMemo(
+    () => resultados.filter((r) => seleccionados.has(keyOf(r))),
+    [resultados, seleccionados],
+  );
+
+  // Cuántos de los seleccionados son "actualizables" (requieren confirmación).
+  const actualizablesSeleccionados = useMemo(
+    () => itemsSeleccionados.filter((r) => r.estado === "actualizable"),
+    [itemsSeleccionados],
+  );
+
+  const hayActualizables = actualizablesSeleccionados.length > 0;
+
   // ── Buscar ──────────────────────────────────────────────────────────────
   const handleBuscar = async () => {
     if (!token) return;
     setLoading(true);
     onError(null);
-    // Reset de selección cuando se vuelve a buscar: evita seleccionar filas
-    // que ya no están en los nuevos resultados.
     setSeleccionados(new Set());
 
     try {
       const params = new URLSearchParams();
-      // Multi-valor: un `empresa_id` por cada ID seleccionado
-      for (const id of empresaIds) {
-        params.append("empresa_id", String(id));
-      }
+      for (const id of empresaIds) params.append("empresa_id", String(id));
       if (periodo)       params.set("periodo", periodo);
       if (nombre.trim()) params.set("nombre", nombre.trim());
 
@@ -95,68 +116,151 @@ export default function DescargaPanel({
     }
   };
 
-  // Silencia warning de prop no usada en este sub-paso (se usa en 5.3).
-  void onDashRefresh;
+  // ── Ejecutar (núcleo) ──────────────────────────────────────────────────
+  const ejecutarDescarga = async (replace: boolean) => {
+    if (!token || itemsSeleccionados.length === 0) return;
+
+    setEjecutando(true);
+    onError(null);
+
+    try {
+      const body = {
+        items: itemsSeleccionados.map((r) => ({
+          empresa_id: r.empresa_id,
+          config_id:  r.config_id,
+          ruta_sftp:  r.ruta_sftp,
+          nombre:     r.nombre,
+          estado:     r.estado,
+        })),
+        replace,
+      };
+
+      const res = await fetch(`${API_BASE_URL}/objeciones/descarga/ejecutar`, {
+        method:  "POST",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+      }
+
+      const data = await res.json() as EjecutarResponse;
+      setResultadoModal(data);
+      // Refrescar el dashboard (el resto del refresh es al cerrar el modal).
+      onDashRefresh();
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : "Error ejecutando la descarga");
+    } finally {
+      setEjecutando(false);
+    }
+  };
+
+  // ── Flujo del botón Ejecutar ───────────────────────────────────────────
+  const handleClickEjecutar = () => {
+    if (itemsSeleccionados.length === 0) return;
+    if (hayActualizables) {
+      // Abre el modal de confirmación — si acepta, llamaremos a ejecutarDescarga(true).
+      setConfirmModalOpen(true);
+    } else {
+      // Todos son "nuevo" → ejecuta sin confirmación.
+      void ejecutarDescarga(false);
+    }
+  };
+
+  const handleConfirmReemplazo = () => {
+    setConfirmModalOpen(false);
+    void ejecutarDescarga(true);
+  };
+
+  const handleCloseResultado = async () => {
+    setResultadoModal(null);
+    // Tras cerrar, rehacer la búsqueda para refrescar los estados (⚪→🟢).
+    if (buscado) {
+      await handleBuscar();
+    }
+  };
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <div style={panelStyle}>
-      <div style={panelHeaderStyle} onClick={() => setOpen((v) => !v)}>
-        <div>
-          <div style={panelTitleStyle}>Descarga en Objeciones</div>
-          <div style={panelDescStyle}>Buscar ficheros AOB en el SFTP e importar a BD</div>
+    <>
+      <div style={panelStyle}>
+        <div style={panelHeaderStyle} onClick={() => setOpen((v) => !v)}>
+          <div>
+            <div style={panelTitleStyle}>Descarga en Objeciones</div>
+            <div style={panelDescStyle}>Buscar ficheros AOB en el SFTP e importar a BD</div>
+          </div>
+          <button
+            type="button"
+            className="ui-btn ui-btn-outline ui-btn-xs"
+            onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+          >
+            {open ? "Ocultar" : "Mostrar"}
+          </button>
         </div>
-        <button
-          type="button"
-          className="ui-btn ui-btn-outline ui-btn-xs"
-          onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        >
-          {open ? "Ocultar" : "Mostrar"}
-        </button>
+
+        {open && (
+          <div style={{ borderTop: "1px solid var(--card-border)", padding: "14px 20px" }}>
+            <DescargaFiltros
+              empresas={empresas}
+              empresaIds={empresaIds}
+              setEmpresaIds={setEmpresaIds}
+              periodo={periodo}
+              setPeriodo={setPeriodo}
+              nombre={nombre}
+              setNombre={setNombre}
+              loading={loading}
+              onBuscar={handleBuscar}
+            />
+
+            {/* Barra de estado + botón Ejecutar */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "6px 10px", background: "var(--field-bg-soft)",
+              border: "1px solid var(--card-border)", borderBottom: "none",
+              fontSize: 11, color: "var(--text-muted)",
+            }}>
+              <span>
+                {loading
+                  ? "Buscando..."
+                  : buscado
+                    ? `${resultados.length} resultado${resultados.length !== 1 ? "s" : ""} · ${seleccionados.size} seleccionado${seleccionados.size !== 1 ? "s" : ""}${hayActualizables ? ` (${actualizablesSeleccionados.length} actualizable${actualizablesSeleccionados.length !== 1 ? "s" : ""})` : ""}`
+                    : "Sin buscar"}
+              </span>
+              <button
+                type="button"
+                className="ui-btn ui-btn-primary ui-btn-xs"
+                onClick={handleClickEjecutar}
+                disabled={ejecutando || itemsSeleccionados.length === 0}
+              >
+                {ejecutando ? "Ejecutando..." : `Ejecutar ${itemsSeleccionados.length > 0 ? `(${itemsSeleccionados.length})` : ""}`}
+              </button>
+            </div>
+
+            <DescargaTabla
+              resultados={resultados}
+              loading={loading}
+              seleccionados={seleccionados}
+              setSeleccionados={setSeleccionados}
+              buscado={buscado}
+            />
+          </div>
+        )}
       </div>
 
-      {open && (
-        <div style={{ borderTop: "1px solid var(--card-border)", padding: "14px 20px" }}>
-          <DescargaFiltros
-            empresas={empresas}
-            empresaIds={empresaIds}
-            setEmpresaIds={setEmpresaIds}
-            periodo={periodo}
-            setPeriodo={setPeriodo}
-            nombre={nombre}
-            setNombre={setNombre}
-            loading={loading}
-            onBuscar={handleBuscar}
-          />
-
-          {/* Barra de estado + futuro botón Ejecutar (llega en 5.3) */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "6px 10px", background: "var(--field-bg-soft)",
-            border: "1px solid var(--card-border)", borderBottom: "none",
-            fontSize: 11, color: "var(--text-muted)",
-          }}>
-            <span>
-              {loading
-                ? "Buscando..."
-                : buscado
-                  ? `${resultados.length} resultado${resultados.length !== 1 ? "s" : ""} · ${seleccionados.size} seleccionado${seleccionados.size !== 1 ? "s" : ""}`
-                  : "Sin buscar"}
-            </span>
-            <span style={{ fontSize: 10 }}>
-              (Botón Ejecutar + modales — sub-paso 5.3)
-            </span>
-          </div>
-
-          <DescargaTabla
-            resultados={resultados}
-            loading={loading}
-            seleccionados={seleccionados}
-            setSeleccionados={setSeleccionados}
-            buscado={buscado}
-          />
-        </div>
-      )}
-    </div>
+      {/* ── Modales ──────────────────────────────────────────────────── */}
+      <DescargaConfirmReemplazoModal
+        open={confirmModalOpen}
+        actualizables={actualizablesSeleccionados}
+        onCancel={() => setConfirmModalOpen(false)}
+        onConfirm={handleConfirmReemplazo}
+      />
+      <DescargaResultadoModal
+        open={resultadoModal !== null}
+        resultado={resultadoModal}
+        onClose={handleCloseResultado}
+      />
+    </>
   );
 }
