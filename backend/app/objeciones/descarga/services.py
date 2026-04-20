@@ -22,7 +22,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,16 @@ from app.objeciones.models import (
     ObjecionCIL,
     ObjecionCUPS,
     ObjecionINCL,
+)
+from app.objeciones.services import (
+    delete_agrecl_fichero,
+    delete_cil_fichero,
+    delete_cups_fichero,
+    delete_incl_fichero,
+    import_agrecl,
+    import_cil,
+    import_cups,
+    import_incl,
 )
 
 
@@ -493,3 +503,292 @@ def buscar_ftp(
     # ── 8) Orden determinista: empresa → clave_base → versión desc ────────
     out.sort(key=lambda r: (r["empresa_nombre"], r["clave_base"], -int(r["version"])))
     return out
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FASE 4 — Ejecución: descargar-e-importar
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Mapeo tipo AOB → funciones de import + delete_fichero de objeciones/services.py.
+# Se construye aquí para localizar las funciones de cada tipo en un solo sitio.
+_TIPO_OPS = {
+    "AOBAGRECL": {"import": import_agrecl, "delete": delete_agrecl_fichero},
+    "OBJEINCL":  {"import": import_incl,   "delete": delete_incl_fichero},
+    "AOBCUPS":   {"import": import_cups,   "delete": delete_cups_fichero},
+    "AOBCIL":    {"import": import_cil,    "delete": delete_cil_fichero},
+}
+
+
+def _version_y_nombre_importado(
+    db: Session,
+    *,
+    modelo,
+    tenant_id: int,
+    empresa_id: int,
+    clave_base: str,
+) -> Optional[Tuple[int, str]]:
+    """
+    Busca en la tabla del modelo el nombre_fichero importado para una clave_base.
+    Devuelve (version, nombre_completo) de la versión más alta encontrada, o None
+    si no hay ninguna importación previa para esa clave.
+
+    Ej: clave_base="AOBAGRECL_0277_202604_20260415" →
+        puede devolver (2, "AOBAGRECL_0277_202604_20260415.2")
+    """
+    rows = db.query(modelo.nombre_fichero).filter(
+        modelo.tenant_id == tenant_id,
+        modelo.empresa_id == empresa_id,
+        modelo.nombre_fichero.like(f"{clave_base}.%"),
+    ).distinct().all()
+
+    mejor: Optional[Tuple[int, str]] = None
+    for (nombre,) in rows:
+        parsed = parse_aob_filename(nombre or "")
+        if parsed is None or parsed.clave_base != clave_base:
+            continue
+        if mejor is None or parsed.version > mejor[0]:
+            mejor = (parsed.version, nombre)
+    return mejor
+
+
+def _procesar_item(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    config_id: int,
+    ruta_sftp: str,
+    nombre: str,
+    replace: bool,
+) -> dict:
+    """
+    Procesa UN item: descarga del SFTP + importa a BD según reglas FASE 4.
+
+    Reglas del spec V8 · puntos 26-30:
+      ⚪ Nuevo                       → importar
+      🟠 Actualizable + replace=True → DELETE antigua + INSERT nueva
+      🟠 Actualizable + replace=False→ ERROR
+      Igual o inferior ya en BD      → ERROR
+
+    Devuelve un dict con el detalle del item para la respuesta:
+      {"nombre": ..., "resultado": "ok" | "reemplazado" | "error",
+       "mensaje": "..."}
+    """
+    # Import local para evitar ciclos y reusar helpers del proyecto.
+    from app.comunicaciones.services import (
+        _get_config_by_id_activa,
+        _log,
+        leer_fichero_ftp,
+    )
+
+    # 1) Validar nombre y tipo
+    parsed = parse_aob_filename(nombre)
+    if parsed is None:
+        msg = "Nombre de fichero no reconocido como AOB válido."
+        _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+             rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+             estado="error", mensaje_error=msg, modulo="objeciones")
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+
+    ops = _TIPO_OPS.get(parsed.tipo)
+    if ops is None:
+        msg = f"Tipo '{parsed.tipo}' no soportado."
+        _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+             rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+             estado="error", mensaje_error=msg, modulo="objeciones")
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+
+    # 2) Calcular estado REAL en BD (no confiamos en el cliente)
+    modelo = _TIPO_MODELO[parsed.tipo]
+    importado = _version_y_nombre_importado(
+        db, modelo=modelo, tenant_id=tenant_id, empresa_id=empresa_id,
+        clave_base=parsed.clave_base,
+    )
+
+    if importado is not None:
+        version_bd, nombre_bd = importado
+        if parsed.version < version_bd:
+            msg = f"Existe versión .{version_bd} más nueva en BD — esta (.{parsed.version}) es obsoleta."
+            _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+                 rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+                 estado="error", mensaje_error=msg, modulo="objeciones")
+            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        if parsed.version == version_bd:
+            msg = f"Versión .{parsed.version} ya está importada."
+            _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+                 rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+                 estado="error", mensaje_error=msg, modulo="objeciones")
+            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        # parsed.version > version_bd → es "actualizable"
+        if not replace:
+            msg = f"Existe versión .{version_bd} importada. Confirma reemplazo para sustituirla."
+            _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+                 rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+                 estado="error", mensaje_error=msg, modulo="objeciones")
+            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        es_reemplazo = True
+        nombre_antiguo = nombre_bd
+    else:
+        es_reemplazo = False
+        nombre_antiguo = None
+
+    # 3) Validar que la config FTP sigue activa y es del tenant
+    try:
+        _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
+    except ValueError as e:
+        msg = str(e)
+        _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+             rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+             estado="error", mensaje_error=msg, modulo="objeciones")
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+
+    # 4) Descargar del SFTP a memoria (registrar=False para no duplicar el log)
+    try:
+        contenido = leer_fichero_ftp(
+            db,
+            config_id=config_id,
+            tenant_id=tenant_id,
+            path=ruta_sftp,
+            fichero=nombre,
+            registrar=False,
+        )
+    except Exception as e:
+        msg = f"Error descargando del SFTP: {str(e)[:200]}"
+        _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+             rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+             estado="error", mensaje_error=msg, modulo="objeciones")
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+
+    # 5) Si es reemplazo: borrar la versión antigua (con sus respuestas)
+    filas_borradas = 0
+    if es_reemplazo and nombre_antiguo:
+        try:
+            filas_borradas = ops["delete"](
+                db, nombre_fichero=nombre_antiguo,
+                tenant_id=tenant_id, empresa_id=empresa_id,
+            )
+        except Exception as e:
+            msg = f"Error borrando versión antigua: {str(e)[:200]}"
+            _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+                 rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=len(contenido),
+                 estado="error", mensaje_error=msg, modulo="objeciones")
+            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+
+    # 6) Importar el fichero nuevo
+    try:
+        filas_importadas = ops["import"](
+            db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            nombre_fichero=nombre,
+            content=contenido,
+        )
+    except Exception as e:
+        msg = f"Error importando contenido: {str(e)[:200]}"
+        _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+             rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=len(contenido),
+             estado="error", mensaje_error=msg, modulo="objeciones")
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+
+    # 7) Log OK + respuesta
+    if es_reemplazo:
+        resultado = "reemplazado"
+        mensaje = f"Reemplazada versión .{importado[0] if importado else '?'} " \
+                  f"({filas_borradas} filas borradas) + {filas_importadas} filas nuevas importadas."
+    else:
+        resultado = "ok"
+        mensaje = f"Importadas {filas_importadas} filas."
+
+    _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+         rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=len(contenido),
+         estado="ok", modulo="objeciones")
+
+    return {"nombre": nombre, "resultado": resultado, "mensaje": mensaje}
+
+
+def descargar_e_importar(
+    db: Session,
+    *,
+    tenant_id: int,
+    current_user: Any,
+    items: List[dict],
+    replace: bool,
+) -> dict:
+    """
+    API pública de FASE 4.
+
+    Recibe una lista de items seleccionados del resultado de buscar_ftp (FASE 3)
+    y los procesa de uno en uno, aplicando las reglas de estado.
+
+    items: cada uno debe llevar empresa_id, config_id, ruta_sftp, nombre.
+    replace: True = autorizar reemplazo de versiones antigas (🟠).
+
+    Devuelve:
+        {
+          "importados":   N,
+          "reemplazados": M,
+          "errores":      K,
+          "detalle":      [{"nombre", "resultado", "mensaje"}, ...]
+        }
+    """
+    # Validar scope: lista de empresas que el usuario puede usar.
+    empresas_accesibles_ids = {
+        int(e.id)
+        for e in _empresas_accesibles(db, tenant_id=tenant_id, current_user=current_user)
+    }
+
+    importados = 0
+    reemplazados = 0
+    errores = 0
+    detalle: List[dict] = []
+
+    for item in items:
+        empresa_id = int(item.get("empresa_id") or 0)
+        config_id  = int(item.get("config_id") or 0)
+        ruta_sftp  = str(item.get("ruta_sftp") or "").strip()
+        nombre     = str(item.get("nombre") or "").strip()
+
+        # Validación mínima del item
+        if not (empresa_id and config_id and ruta_sftp and nombre):
+            errores += 1
+            detalle.append({
+                "nombre": nombre or "(sin nombre)",
+                "resultado": "error",
+                "mensaje": "Item incompleto: faltan empresa_id, config_id, ruta_sftp o nombre.",
+            })
+            continue
+
+        # Validar acceso a la empresa
+        if empresa_id not in empresas_accesibles_ids:
+            errores += 1
+            detalle.append({
+                "nombre": nombre,
+                "resultado": "error",
+                "mensaje": "Sin permiso sobre la empresa indicada.",
+            })
+            continue
+
+        # Procesar el item
+        res = _procesar_item(
+            db,
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            config_id=config_id,
+            ruta_sftp=ruta_sftp,
+            nombre=nombre,
+            replace=replace,
+        )
+        detalle.append(res)
+
+        if res["resultado"] == "ok":
+            importados += 1
+        elif res["resultado"] == "reemplazado":
+            reemplazados += 1
+        else:
+            errores += 1
+
+    return {
+        "importados":   importados,
+        "reemplazados": reemplazados,
+        "errores":      errores,
+        "detalle":      detalle,
+    }
