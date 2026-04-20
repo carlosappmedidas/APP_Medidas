@@ -112,7 +112,7 @@ export default function GestionFicherosLista({
                         title={f.enviado_sftp_at ? `Enviado ${fmtDate(f.enviado_sftp_at)} · Click para desmarcar` : "No enviado · Click para marcar"}
                         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: "none", border: "none", cursor: "pointer", padding: 2, borderRadius: 3 }}>
                         <div style={{ width: 8, height: 8, borderRadius: 2, background: f.enviado_sftp_at ? "#378ADD" : "var(--card-border)" }} />
-                        <span style={{ fontSize: 8, color: "var(--text-muted)" }}>sftp</span>
+                        <span style={{ fontSize: 8, color: "var(--text-muted)" }}>enviado</span>
                       </button>
                     </div>
                   </td>

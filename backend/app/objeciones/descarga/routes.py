@@ -33,6 +33,8 @@ router = APIRouter(
 def buscar(
     empresa_id:    Optional[List[int]] = Query(default=None, description="Filtrar por empresas concretas. Si se omite, se buscan todas las accesibles al usuario."),
     periodo:       Optional[str]       = Query(default=None, description="Mes a buscar en formato YYYY-MM. Si se omite, últimos 6 meses."),
+    fecha_desde:   Optional[str]       = Query(default=None, description="Fecha publicación SFTP mínima (YYYY-MM-DD). Incluye todo desde las 00:00 de ese día."),
+    fecha_hasta:   Optional[str]       = Query(default=None, description="Fecha publicación SFTP máxima (YYYY-MM-DD). Incluye todo hasta las 23:59 de ese día."),
     nombre:        Optional[str]       = Query(default=None, description="Filtro de texto sobre el nombre del fichero (contiene, case-insensitive)."),
     db:            Session             = Depends(get_db),
     current_user                       = Depends(get_current_user),
@@ -59,6 +61,25 @@ def buscar(
             if len(partes) != 2 or len(partes[0]) != 4 or len(partes[1]) != 2 or not (partes[0] + partes[1]).isdigit():
                 raise HTTPException(status_code=400, detail="Parámetro 'periodo' debe tener formato YYYY-MM.")
 
+    # Validación ligera de fechas (YYYY-MM-DD).
+    def _validar_fecha(val: Optional[str], nombre_param: str) -> Optional[str]:
+        if val is None:
+            return None
+        val = val.strip()
+        if val == "":
+            return None
+        partes = val.split("-")
+        if len(partes) != 3 or len(partes[0]) != 4 or len(partes[1]) != 2 or len(partes[2]) != 2 \
+                or not "".join(partes).isdigit():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Parámetro '{nombre_param}' debe tener formato YYYY-MM-DD.",
+            )
+        return val
+
+    fecha_desde = _validar_fecha(fecha_desde, "fecha_desde")
+    fecha_hasta = _validar_fecha(fecha_hasta, "fecha_hasta")
+
     resultados = buscar_ftp(
         db,
         tenant_id      = int(tenant_id),
@@ -66,6 +87,8 @@ def buscar(
         empresa_ids    = empresa_id,
         periodo        = periodo,
         nombre_filtro  = nombre,
+        fecha_desde    = fecha_desde,
+        fecha_hasta    = fecha_hasta,
     )
 
     return {

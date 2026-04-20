@@ -39,17 +39,18 @@ _RE_OBJEINCL = re.compile(
     r"_(?P<dddd>\d{4})"
     r"_(?P<aaaamm>\d{6})"
     r"_(?P<yyyymmdd>\d{8})"
-    r"\.(?P<version>\d+)$"
+    r"\.(?P<version>\d+)"
+    r"(?:\.bz2)?$"
 )
 
-# AOBAGRECL / AOBCUPS / AOBCIL — DDDD obligatorio, CCCC OPCIONAL (Opción B tolerante).
 _RE_AOB = re.compile(
     r"^(?P<tipo>AOBAGRECL|AOBCUPS|AOBCIL)"
     r"_(?P<dddd>\d{4})"
     r"(?:_(?P<cccc>\d{4}))?"          # CCCC opcional
     r"_(?P<aaaamm>\d{6})"
     r"_(?P<yyyymmdd>\d{8})"
-    r"\.(?P<version>\d+)$"
+    r"\.(?P<version>\d+)"
+    r"(?:\.bz2)?$"
 )
 
 
@@ -61,24 +62,35 @@ class AobFilename:
     Representación parseada de un nombre de fichero AOB.
 
     Atributos:
-        nombre:       nombre completo original, ej. "AOBAGRECL_0029_202604_20260415.0"
-        tipo:         uno de "OBJEINCL" | "AOBAGRECL" | "AOBCUPS" | "AOBCIL"
-        dddd:         código distribuidora (4 dígitos)
-        cccc:         código comercializadora (4 dígitos) o None si no viene
-        aaaamm:       periodo YYYYMM (6 dígitos)
-        yyyymmdd:     fecha de emisión YYYYMMDD (8 dígitos)
-        version:      entero ≥ 0 (parte tras el punto)
-        clave_base:   nombre sin la extensión ".N" — agrupa versiones del mismo fichero
+        nombre:          nombre completo original tal como vino, SIN normalizar.
+                         Puede incluir sufijo ".bz2" si el fichero en SFTP lo tiene.
+                         Ejemplos:
+                           "AOBAGRECL_0029_202604_20260415.0"
+                           "AOBAGRECL_0029_202604_20260415.0.bz2"
+        nombre_sin_bz2:  nombre SIN sufijo ".bz2" — se usa para guardar en BD y
+                         cruzar con los ficheros importados manualmente.
+                         Ejemplo: "AOBAGRECL_0029_202604_20260415.0"
+        tipo:            uno de "OBJEINCL" | "AOBAGRECL" | "AOBCUPS" | "AOBCIL"
+        dddd:            código distribuidora (4 dígitos)
+        cccc:            código comercializadora (4 dígitos) o None si no viene
+        aaaamm:          periodo YYYYMM (6 dígitos)
+        yyyymmdd:        fecha de emisión YYYYMMDD (8 dígitos)
+        version:         entero ≥ 0 (parte tras el punto)
+        clave_base:      nombre sin la extensión ".N" y SIN ".bz2" — agrupa
+                         versiones del mismo fichero. Se usa para cruzar con BD.
+        es_bz2:          True si el nombre original llevaba sufijo ".bz2".
     """
 
-    nombre:      str
-    tipo:        str
-    dddd:        str
-    cccc:        Optional[str]
-    aaaamm:      str
-    yyyymmdd:    str
-    version:     int
-    clave_base:  str
+    nombre:          str
+    nombre_sin_bz2:  str
+    tipo:            str
+    dddd:            str
+    cccc:            Optional[str]
+    aaaamm:          str
+    yyyymmdd:        str
+    version:         int
+    clave_base:      str
+    es_bz2:          bool
 
 
 # ── API pública ───────────────────────────────────────────────────────────────
@@ -123,16 +135,29 @@ def clave_base(nombre: str) -> Optional[str]:
 
 def _build_from_match(nombre: str, m: re.Match[str], *, has_cccc_always: bool) -> AobFilename:
     version_str = m.group("version")
-    # La clave base es todo lo que hay antes del ".N"
-    dot_idx = nombre.rfind(".")
-    clave = nombre[:dot_idx]
+
+    # Detectar y quitar sufijo .bz2 si lo lleva.
+    nombre_lower = nombre.lower()
+    if nombre_lower.endswith(".bz2"):
+        nombre_sin_bz2 = nombre[: -len(".bz2")]
+        es_bz2 = True
+    else:
+        nombre_sin_bz2 = nombre
+        es_bz2 = False
+
+    # La clave base es todo lo que hay antes del ".N" (ya sin .bz2).
+    dot_idx = nombre_sin_bz2.rfind(".")
+    clave = nombre_sin_bz2[:dot_idx]
+
     return AobFilename(
-        nombre     = nombre,
-        tipo       = m.group("tipo"),
-        dddd       = m.group("dddd"),
-        cccc       = m.group("cccc") if (has_cccc_always or m.group("cccc")) else None,
-        aaaamm     = m.group("aaaamm"),
-        yyyymmdd   = m.group("yyyymmdd"),
-        version    = int(version_str),
-        clave_base = clave,
+        nombre         = nombre,
+        nombre_sin_bz2 = nombre_sin_bz2,
+        tipo           = m.group("tipo"),
+        dddd           = m.group("dddd"),
+        cccc           = m.group("cccc") if (has_cccc_always or m.group("cccc")) else None,
+        aaaamm         = m.group("aaaamm"),
+        yyyymmdd       = m.group("yyyymmdd"),
+        version        = int(version_str),
+        clave_base     = clave,
+        es_bz2         = es_bz2,
     )

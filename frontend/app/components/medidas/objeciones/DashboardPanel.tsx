@@ -106,7 +106,7 @@ export default function DashboardPanel({
                               border: "0.5px solid rgba(55,138,221,0.35)",
                             }}
                           >
-                            {eSftp} sftp
+                            {eSftp} enviados
                           </span>
                         </div>
                       </div>

@@ -52,6 +52,8 @@ export default function DescargaPanel({
   // ── Filtros ─────────────────────────────────────────────────────────────
   const [empresaIds, setEmpresaIds] = useState<number[]>([]);
   const [periodo,    setPeriodo]    = useState<string>("");
+  const [fechaDesde, setFechaDesde] = useState<string>("");
+  const [fechaHasta, setFechaHasta] = useState<string>("");
   const [nombre,     setNombre]     = useState<string>("");
 
   // ── Resultados ──────────────────────────────────────────────────────────
@@ -91,8 +93,10 @@ export default function DescargaPanel({
     try {
       const params = new URLSearchParams();
       for (const id of empresaIds) params.append("empresa_id", String(id));
-      if (periodo)       params.set("periodo", periodo);
-      if (nombre.trim()) params.set("nombre", nombre.trim());
+      if (periodo)           params.set("periodo", periodo);
+      if (fechaDesde)        params.set("fecha_desde", fechaDesde);
+      if (fechaHasta)        params.set("fecha_hasta", fechaHasta);
+      if (nombre.trim())     params.set("nombre", nombre.trim());
 
       const res = await fetch(
         `${API_BASE_URL}/objeciones/descarga/buscar?${params.toString()}`,
@@ -208,6 +212,10 @@ export default function DescargaPanel({
               setEmpresaIds={setEmpresaIds}
               periodo={periodo}
               setPeriodo={setPeriodo}
+              fechaDesde={fechaDesde}
+              setFechaDesde={setFechaDesde}
+              fechaHasta={fechaHasta}
+              setFechaHasta={setFechaHasta}
               nombre={nombre}
               setNombre={setNombre}
               loading={loading}

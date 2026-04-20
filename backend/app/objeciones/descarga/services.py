@@ -19,6 +19,7 @@ NO descarga ficheros, NO escribe en BD, NO escribe en FtpSyncLog (eso es FASE 4)
 
 from __future__ import annotations
 
+import bz2
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -168,6 +169,47 @@ class _FtpEntry:
     fecha:  Optional[datetime]  # fecha de modificación, None si no disponible
 
 
+def _parse_fecha_sort(fecha_sort: Optional[str]) -> Optional[datetime]:
+    """
+    Convierte un string fecha_sort de _parse_list_line ("YYYYMMDDHHMM", 12 dígitos)
+    a datetime. Devuelve None si el formato no es válido.
+    """
+    if not fecha_sort or len(fecha_sort) != 12 or not fecha_sort.isdigit():
+        return None
+    try:
+        return datetime(
+            year   = int(fecha_sort[0:4]),
+            month  = int(fecha_sort[4:6]),
+            day    = int(fecha_sort[6:8]),
+            hour   = int(fecha_sort[8:10]),
+            minute = int(fecha_sort[10:12]),
+        )
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_fecha_dia(fecha: Optional[str], *, fin_de_dia: bool) -> Optional[datetime]:
+    """
+    Convierte un string "YYYY-MM-DD" en datetime al principio o final del día.
+      - fin_de_dia=False → datetime(Y, M, D, 0, 0, 0, 0)
+      - fin_de_dia=True  → datetime(Y, M, D, 23, 59, 59, 999999)
+    Devuelve None si el formato no es válido o la cadena está vacía.
+    """
+    if not fecha:
+        return None
+    fecha = fecha.strip()
+    if not fecha:
+        return None
+    try:
+        y, m, d = fecha.split("-")
+        year, month, day = int(y), int(m), int(d)
+        if fin_de_dia:
+            return datetime(year, month, day, 23, 59, 59, 999999)
+        return datetime(year, month, day, 0, 0, 0, 0)
+    except (ValueError, TypeError):
+        return None
+
+
 def _listar_path(config: FtpConfig, path: str) -> List[_FtpEntry]:
     """
     Lista una carpeta SFTP reutilizando los helpers de comunicaciones/services.
@@ -188,11 +230,15 @@ def _listar_path(config: FtpConfig, path: str) -> List[_FtpEntry]:
             parsed = _parse_list_line(line)
             if parsed is None:
                 continue
-            # _parse_list_line devuelve (nombre, es_dir, size, fecha)
-            nombre, es_dir, size, fecha = parsed
-            if es_dir:
+            # _parse_list_line devuelve un dict: {"tipo", "nombre", "tamanio",
+            # "fecha" (string formateada), "fecha_sort" (YYYYMMDDHHMM), ...}
+            if parsed.get("tipo") != "file":
                 continue
-            entries.append(_FtpEntry(nombre=nombre, size=size or 0, fecha=fecha))
+            entries.append(_FtpEntry(
+                nombre=parsed["nombre"],
+                size=int(parsed.get("tamanio") or 0),
+                fecha=_parse_fecha_sort(parsed.get("fecha_sort")),
+            ))
     finally:
         try:
             ftp.quit()
@@ -399,6 +445,8 @@ def buscar_ftp(
     empresa_ids: Optional[List[int]] = None,
     periodo: Optional[str] = None,
     nombre_filtro: Optional[str] = None,
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
 ) -> List[dict]:
     """
     Busca ficheros AOB en el SFTP de las empresas del tenant.
@@ -411,6 +459,8 @@ def buscar_ftp(
         periodo:        "YYYY-MM" para filtrar un mes concreto. Si es None
                         → últimos 6 meses.
         nombre_filtro:  substring case-insensitive sobre el nombre del fichero.
+        fecha_desde:    "YYYY-MM-DD" — fecha SFTP mínima (inclusive, 00:00).
+        fecha_hasta:    "YYYY-MM-DD" — fecha SFTP máxima (inclusive, 23:59).
 
     Devuelve una lista de dicts, una fila por versión de fichero AOB, con las
     columnas del spec V8 · punto 23.
@@ -459,6 +509,27 @@ def buscar_ftp(
     if not hits:
         return []
 
+    # ── 4b) Filtro por fecha SFTP (fecha_desde / fecha_hasta) ─────────────
+    #      - fecha_desde: desde 00:00 de ese día (inclusive).
+    #      - fecha_hasta: hasta 23:59:59.999999 de ese día (inclusive).
+    #      - Si un hit no tiene fecha_sftp (ninguno de los dos parseó),
+    #        se incluye cuando NO hay filtro, y se EXCLUYE cuando sí lo hay.
+    dt_desde = _parse_fecha_dia(fecha_desde, fin_de_dia=False)
+    dt_hasta = _parse_fecha_dia(fecha_hasta, fin_de_dia=True)
+    if dt_desde is not None or dt_hasta is not None:
+        filtrados: List[_SftpHit] = []
+        for h in hits:
+            if h.fecha_sftp is None:
+                continue  # sin fecha → fuera cuando hay filtro
+            if dt_desde is not None and h.fecha_sftp < dt_desde:
+                continue
+            if dt_hasta is not None and h.fecha_sftp > dt_hasta:
+                continue
+            filtrados.append(h)
+        hits = filtrados
+        if not hits:
+            return []
+
     # ── 5) Agrupar por (empresa_id, clave_base) para saber la versión máx SFTP
     version_max_sftp: Dict[Tuple[int, str], int] = {}
     for h in hits:
@@ -500,9 +571,37 @@ def buscar_ftp(
             "version_importada": ver_bd,
         })
 
-    # ── 8) Orden determinista: empresa → clave_base → versión desc ────────
-    out.sort(key=lambda r: (r["empresa_nombre"], r["clave_base"], -int(r["version"])))
+    # ── 8) Orden: fecha SFTP desc (más reciente primero),
+    #    con clave_base asc + versión desc como desempate.
+    #    Ficheros sin fecha_sftp van al final de la lista.
+    out.sort(key=_sort_key_resultado)
     return out
+
+
+def _sort_key_resultado(r: dict) -> Tuple[int, float, str, int]:
+    """
+    Clave de orden para resultados de buscar_ftp:
+      1) Los que tienen fecha_sftp primero (con fecha = 0, sin fecha = 1).
+      2) Fecha SFTP descendente (más reciente arriba) → usamos -timestamp.
+      3) clave_base ascendente (alfabética).
+      4) version descendente (mayor arriba) → usamos -version.
+    """
+    fecha_iso = r.get("fecha_sftp")
+    if fecha_iso:
+        try:
+            ts = datetime.fromisoformat(fecha_iso).timestamp()
+        except (ValueError, TypeError):
+            ts = 0.0
+        sin_fecha = 0
+    else:
+        ts = 0.0
+        sin_fecha = 1
+    return (
+        sin_fecha,
+        -ts,
+        r.get("clave_base") or "",
+        -int(r.get("version") or 0),
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FASE 4 — Ejecución: descargar-e-importar
@@ -641,24 +740,43 @@ def _procesar_item(
              estado="error", mensaje_error=msg, modulo="objeciones")
         return {"nombre": nombre, "resultado": "error", "mensaje": msg}
 
-    # 4) Descargar del SFTP a memoria (registrar=False para no duplicar el log)
+    # 4) Descargar del SFTP a memoria (registrar=False para no duplicar el log).
+    #    Usamos parsed.nombre porque es el nombre real del fichero en SFTP
+    #    (puede incluir sufijo .bz2 que no está en parsed.nombre_sin_bz2).
     try:
-        contenido = leer_fichero_ftp(
+        contenido_bruto = leer_fichero_ftp(
             db,
             config_id=config_id,
             tenant_id=tenant_id,
             path=ruta_sftp,
-            fichero=nombre,
+            fichero=parsed.nombre,
             registrar=False,
         )
     except Exception as e:
         msg = f"Error descargando del SFTP: {str(e)[:200]}"
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
-             rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
+             rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2, tamanio=None,
              estado="error", mensaje_error=msg, modulo="objeciones")
-        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
 
-    # 5) Si es reemplazo: borrar la versión antigua (con sus respuestas)
+    # 4b) Si el fichero viene comprimido con bz2, descomprimir.
+    #     El contenido se pasa al importador como CSV plano (igual que el flujo
+    #     de subida manual, donde el usuario sube el fichero ya descomprimido).
+    tamanio_original = len(contenido_bruto)
+    if parsed.es_bz2:
+        try:
+            contenido = bz2.decompress(contenido_bruto)
+        except Exception as e:
+            msg = f"Error descomprimiendo bz2: {str(e)[:200]}"
+            _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
+                 rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
+                 tamanio=tamanio_original,
+                 estado="error", mensaje_error=msg, modulo="objeciones")
+            return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
+    else:
+        contenido = contenido_bruto
+
+    # 5) Si es reemplazo: borrar la versión antigua (con sus respuestas).
     filas_borradas = 0
     if es_reemplazo and nombre_antiguo:
         try:
@@ -669,27 +787,30 @@ def _procesar_item(
         except Exception as e:
             msg = f"Error borrando versión antigua: {str(e)[:200]}"
             _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
-                 rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=len(contenido),
+                 rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
+                 tamanio=tamanio_original,
                  estado="error", mensaje_error=msg, modulo="objeciones")
-            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+            return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
 
-    # 6) Importar el fichero nuevo
+    # 6) Importar el fichero nuevo. Usamos parsed.nombre_sin_bz2 para que en BD
+    #    los nombres queden consistentes con los de la subida manual.
     try:
         filas_importadas = ops["import"](
             db,
             tenant_id=tenant_id,
             empresa_id=empresa_id,
-            nombre_fichero=nombre,
+            nombre_fichero=parsed.nombre_sin_bz2,
             content=contenido,
         )
     except Exception as e:
         msg = f"Error importando contenido: {str(e)[:200]}"
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
-             rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=len(contenido),
+             rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
+             tamanio=tamanio_original,
              estado="error", mensaje_error=msg, modulo="objeciones")
-        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
 
-    # 7) Log OK + respuesta
+    # 7) Log OK + respuesta.
     if es_reemplazo:
         resultado = "reemplazado"
         mensaje = f"Reemplazada versión .{importado[0] if importado else '?'} " \
@@ -699,10 +820,11 @@ def _procesar_item(
         mensaje = f"Importadas {filas_importadas} filas."
 
     _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
-         rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=len(contenido),
+         rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
+         tamanio=tamanio_original,
          estado="ok", modulo="objeciones")
 
-    return {"nombre": nombre, "resultado": resultado, "mensaje": mensaje}
+    return {"nombre": parsed.nombre_sin_bz2, "resultado": resultado, "mensaje": mensaje}
 
 
 def descargar_e_importar(
