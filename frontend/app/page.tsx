@@ -462,7 +462,10 @@ export default function HomePage() {
                 </button>
                 {showAlertasObjeciones && (
                   <div className="ui-collapsible-card__body">
-                    <AlertasObjecionesSection token={token} />
+                    <AlertasObjecionesSection
+                      token={token}
+                      onNavigateToObjeciones={() => setActiveTab("objeciones")}
+                    />
                   </div>
                 )}
               </div>

@@ -33,6 +33,7 @@ type EstadoFiltro = "activa" | "resuelta" | "descartada" | "todas";
 
 interface Props {
   token: string | null;
+  onNavigateToObjeciones?: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -64,7 +65,7 @@ const colorEstado: Record<string, string> = {
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
-export default function AlertasObjecionesSection({ token }: Props) {
+export default function AlertasObjecionesSection({ token, onNavigateToObjeciones }: Props) {
   const [alertas, setAlertas] = useState<AlertaRead[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -137,15 +138,24 @@ export default function AlertasObjecionesSection({ token }: Props) {
   };
 
   const handleAbrirDescarga = (a: AlertaRead) => {
-    // PASO 8 (próxima fase): este botón abrirá el panel Descarga pre-filtrado.
-    // Por ahora solo avisamos al usuario con un mensaje simple.
-    alert(
-      `En la próxima fase:\n\n` +
-      `Click aquí abrirá el panel Descarga ya filtrado por:\n` +
-      `  Empresa: ${a.empresa_nombre}\n` +
-      `  Periodo: ${periodoLabel(a.periodo)}\n\n` +
-      `(${a.num_pendientes} AOBs pendientes)`,
-    );
+    // Convertir periodo YYYYMM → YYYY-MM para el panel Descarga
+    const periodoDashed = a.periodo.length === 6
+      ? `${a.periodo.substring(0, 4)}-${a.periodo.substring(4, 6)}`
+      : a.periodo;
+
+    // Guardar intención en localStorage — el DescargaPanel la leerá al montarse
+    try {
+      localStorage.setItem("objeciones_autoabrir_descarga", JSON.stringify({
+        empresa_id: a.empresa_id,
+        periodo:    periodoDashed,
+        timestamp:  Date.now(),
+      }));
+    } catch { /* silencioso */ }
+
+    // Navegar a Medidas > Objeciones (el padre se encarga)
+    if (onNavigateToObjeciones) {
+      onNavigateToObjeciones();
+    }
   };
 
   // ── Render ──────────────────────────────────────────────────────────────

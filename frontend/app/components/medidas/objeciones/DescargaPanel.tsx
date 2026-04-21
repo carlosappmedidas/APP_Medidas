@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../../apiConfig";
 import type { BusquedaResult, EjecutarResponse, EmpresaOption } from "./shared/types";
 import DescargaFiltros from "./DescargaFiltros";
@@ -185,6 +185,66 @@ export default function DescargaPanel({
       await handleBuscar();
     }
   };
+
+  // ── Auto-abrir desde una alerta (FASE 8) ─────────────────────────────────
+  // Cuando el usuario clica "Abrir en Descarga" en una alerta, ésta guarda
+  // en localStorage la empresa+periodo y navega a Objeciones. Aquí leemos
+  // esa intención al montar el componente, aplicamos filtros y lanzamos
+  // la búsqueda automáticamente.
+  const autoAbrirProcesado = useRef(false);
+  useEffect(() => {
+    if (autoAbrirProcesado.current) return;
+    if (!token || empresas.length === 0) return;
+
+    let intencionRaw: string | null = null;
+    try { intencionRaw = localStorage.getItem("objeciones_autoabrir_descarga"); } catch { /* */ }
+    if (!intencionRaw) return;
+
+    let intencion: { empresa_id?: number; periodo?: string; timestamp?: number } | null = null;
+    try { intencion = JSON.parse(intencionRaw); } catch { intencion = null; }
+
+    try { localStorage.removeItem("objeciones_autoabrir_descarga"); } catch { /* */ }
+    autoAbrirProcesado.current = true;
+
+    if (!intencion || !intencion.timestamp) return;
+
+    // Ignorar intenciones viejas (> 10s) — evita auto-ejecutar al recargar página.
+    if (Date.now() - intencion.timestamp > 10_000) return;
+
+    // Aplicar filtros y lanzar búsqueda
+    if (typeof intencion.empresa_id === "number") {
+      setEmpresaIds([intencion.empresa_id]);
+    }
+    if (intencion.periodo) {
+      setPeriodo(intencion.periodo);
+    }
+    setOpen(true);
+
+    // Disparar búsqueda en el siguiente tick para que los setters hayan surtido efecto.
+    // El endpoint acepta parámetros directos, por lo que podemos construir la request
+    // sin depender del estado del componente.
+    (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (typeof intencion.empresa_id === "number") {
+          params.set("empresa_id", String(intencion.empresa_id));
+        }
+        if (intencion.periodo) {
+          params.set("periodo", intencion.periodo);
+        }
+        const res = await fetch(
+          `${API_BASE_URL}/objeciones/descarga/buscar?${params}`,
+          { headers: getAuthHeaders(token) },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        setResultados(data.resultados ?? []);
+        setBuscado(true);
+        setSeleccionados(new Set());
+      } catch { /* silencioso */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, empresas]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
