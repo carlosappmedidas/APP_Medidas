@@ -36,6 +36,15 @@ export interface DashTipo {
   rechazadas: number;
 }
 
+export interface DashPeriodo {
+  periodo: string;          // YYYYMM, ej "202507"
+  periodo_label: string;    // "Jul 2025" — formato legible
+  total: number;
+  pendientes: number;
+  aceptadas: number;
+  rechazadas: number;
+}
+
 export interface DashEmpresa {
   empresa_id: number;
   empresa_nombre: string;
@@ -52,7 +61,8 @@ export interface DashData {
   aceptadas: number;
   rechazadas: number;
   enviadas_sftp: number;
-  por_tipo: DashTipo[];
+  por_tipo: DashTipo[];       // usado por GestionPanel (contadores de pestañas)
+  por_periodo: DashPeriodo[];
   por_empresa: DashEmpresa[];
 }
 

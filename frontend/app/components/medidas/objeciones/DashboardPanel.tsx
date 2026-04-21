@@ -2,6 +2,8 @@
 // Extraído de ObjecionesSection.tsx (Fase 0 · Paso 0.5).
 
 import type { DashData, DashEmpresa, EmpresaOption } from "./shared/types";
+// Nota: DashPeriodo ya no se importa aquí porque se accede vía dash.por_periodo
+// y TypeScript infiere los tipos desde DashData.
 
 interface DashboardPanelProps {
   dash: DashData | null;
@@ -19,7 +21,7 @@ export default function DashboardPanel({
   const err   = dash?.rechazadas ?? 0;
   const pct   = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
   const empresaActiva = empresaFiltroId ? empresas.find((e) => e.id === empresaFiltroId) : null;
-  const maxTipo = Math.max(1, ...(dash?.por_tipo ?? []).map((t) => t.total));
+  const maxPeriodo = Math.max(1, ...(dash?.por_periodo ?? []).map((t) => t.total));
 
   return (
     <div style={{ padding: "16px 20px", borderTop: "1px solid var(--card-border)" }}>
@@ -28,7 +30,7 @@ export default function DashboardPanel({
       ) : (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 8, marginBottom: 14 }}>            {[
-              { label: "Total objeciones", val: total, sub: `${dash?.por_tipo.length ?? 0} tipos · ${dash?.por_empresa.length ?? 0} empresa${(dash?.por_empresa.length ?? 0) !== 1 ? "s" : ""}`, color: "var(--text)", bar: null },
+              { label: "Total objeciones", val: total, sub: `${dash?.por_empresa.length ?? 0} empresa${(dash?.por_empresa.length ?? 0) !== 1 ? "s" : ""}`, color: "var(--text)", bar: null },
               { label: "Pendientes",       val: pend,  sub: `${pct(pend)}% del total`, color: "#BA7517", bar: { pct: pct(pend), bg: "#EF9F27" } },
               { label: "Aceptadas",        val: ok,    sub: `${pct(ok)}% del total`,   color: "#1D9E75", bar: { pct: pct(ok),   bg: "#1D9E75" } },
               { label: "Rechazadas",       val: err,   sub: `${pct(err)}% del total`,  color: "#E24B4A", bar: { pct: pct(err),  bg: "#E24B4A" } },
@@ -48,15 +50,15 @@ export default function DashboardPanel({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 10 }}>
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Por tipo de objeción</div>
-              {(dash?.por_tipo ?? []).length === 0 ? (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Por periodo</div>
+              {(dash?.por_periodo ?? []).length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin datos</div>
               ) : (
-                (dash?.por_tipo ?? []).map((t) => (
-                  <div key={t.tipo} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-                    <div style={{ fontSize: 11, color: "var(--text)", width: 90, flexShrink: 0 }}>{t.tipo}</div>
+                (dash?.por_periodo ?? []).map((t) => (
+                  <div key={t.periodo} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+                    <div style={{ fontSize: 11, color: "var(--text)", width: 90, flexShrink: 0 }}>{t.periodo_label}</div>
                     <div style={{ flex: 1, height: 5, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${Math.round(t.total / maxTipo * 100)}%`, background: "#378ADD", borderRadius: 3, transition: "width 0.4s" }} />
+                      <div style={{ height: "100%", width: `${Math.round(t.total / maxPeriodo * 100)}%`, background: "#378ADD", borderRadius: 3, transition: "width 0.4s" }} />
                     </div>
                     <div style={{ fontSize: 10, color: "var(--text-muted)", width: 70, textAlign: "right", whiteSpace: "nowrap" }}>
                       {t.total} · {t.pendientes} pend.
@@ -86,29 +88,33 @@ export default function DashboardPanel({
                         <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.empresa_nombre}</div>
                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{e.empresa_codigo_ree ?? "—"}</div>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", flexShrink: 0 }}>
-                        {/* Fila 1: pendientes + aceptadas + rechazadas (3 columnas iguales) */}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
-                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, textAlign: "center" }}>{e.pendientes} pend.</span>
-                          <span className="ui-badge ui-badge--ok" style={{ fontSize: 9, textAlign: "center" }}>{e.aceptadas}</span>
-                          <span className="ui-badge ui-badge--err" style={{ fontSize: 9, textAlign: "center" }}>{e.rechazadas}</span>
-                        </div>
-                        {/* Fila 2: total (span 2 cols) + sftp (1 col) — mismo ancho total que la fila 1 */}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
-                          <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, textAlign: "center", gridColumn: "span 2" }}>{e.total} total</span>
-                          <span
-                            className="ui-badge"
-                            style={{
-                              fontSize: 9,
-                              textAlign: "center",
-                              background: "rgba(55,138,221,0.15)",
-                              color: "#378ADD",
-                              border: "0.5px solid rgba(55,138,221,0.35)",
-                            }}
-                          >
-                            {eSftp} enviados
-                          </span>
-                        </div>
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "60px 36px 36px",  // col1: pend/total · col2/3: aceptadas/rechazadas/enviados
+                        gap: 2,
+                        flexShrink: 0,
+                      }}>
+                        {/* Fila 1: pendientes · aceptadas · rechazadas */}
+                        <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.pendientes} pend.</span>
+                        <span className="ui-badge ui-badge--ok" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.aceptadas}</span>
+                        <span className="ui-badge ui-badge--err" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.rechazadas}</span>
+
+                        {/* Fila 2: total · enviados (enviados ocupa 2 columnas) */}
+                        <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.total} total</span>
+                        <span
+                          className="ui-badge"
+                          style={{
+                            fontSize: 9,
+                            padding: "1px 5px",
+                            textAlign: "center",
+                            gridColumn: "span 2",  // ocupa col2 + col3
+                            background: "rgba(55,138,221,0.15)",
+                            color: "#378ADD",
+                            border: "0.5px solid rgba(55,138,221,0.35)",
+                          }}
+                        >
+                          {eSftp} enviados
+                        </span>
                       </div>
                     </div>
                   );

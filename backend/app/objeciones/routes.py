@@ -48,7 +48,23 @@ class FicheroStats(BaseModel):
     enviado_sftp_at: Optional[datetime] = None
 
 class DashTipo(BaseModel):
+    """
+    Agregación por tipo de objeción (AOBAGRECL, OBJEINCL, AOBCUPS, AOBCIL).
+    El Dashboard visual ya no la pinta (se sustituyó por DashPeriodo), pero
+    se sigue devolviendo en la respuesta porque GestionPanel la usa para
+    los contadores de las pestañas del panel Gestión.
+    """
     tipo: str
+    total: int
+    pendientes: int
+    aceptadas: int
+    rechazadas: int
+    enviadas_sftp: int = 0
+
+
+class DashPeriodo(BaseModel):
+    periodo: str              # YYYYMM, ej "202507"
+    periodo_label: str        # "Jul 2025" — formato legible para la UI
     total: int
     pendientes: int
     aceptadas: int
@@ -71,7 +87,8 @@ class DashResponse(BaseModel):
     aceptadas: int
     rechazadas: int
     enviadas_sftp: int = 0
-    por_tipo: List[DashTipo]
+    por_tipo: List[DashTipo]          # usado por GestionPanel (no visible en Dashboard)
+    por_periodo: List[DashPeriodo]
     por_empresa: List[DashEmpresa]
 
 
@@ -125,6 +142,63 @@ def _get_empresa_id_verificado(db: Session, empresa_id: int, user: User) -> int:
 # DASHBOARD GLOBAL
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Meses en español para las etiquetas del dashboard (ej. "Jul 2025").
+_MESES_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+
+def _normalizar_periodo(raw: Optional[str]) -> Optional[tuple[str, str]]:
+    """
+    Normaliza el campo periodo de las tablas de objeciones.
+
+    Acepta los formatos habituales:
+      - "2025/06"  (el formato actual en BD)
+      - "2025-06"
+      - "202506"
+
+    Devuelve una tupla (periodo_yyyymm, periodo_label), por ejemplo:
+      ("202506", "Jun 2025")
+
+    Si el valor no se puede parsear, devuelve None (y esa fila se ignora
+    en la agrupación del dashboard).
+    """
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+
+    # Intentar extraer año y mes
+    year_str = ""
+    month_str = ""
+    if "/" in s:
+        partes = s.split("/", 1)
+        year_str, month_str = partes[0], partes[1] if len(partes) > 1 else ""
+    elif len(s) >= 6 and s[:6].isdigit():
+        # Formato RAW tipo "20250601 01 - 20250701 00" — los primeros 6 dígitos son YYYYMM.
+        # También cubre el caso simple "202506".
+        year_str, month_str = s[:4], s[4:6]
+    elif "-" in s:
+        # Formato "2025-06" — lo ponemos DESPUÉS del anterior porque el formato RAW
+        # también contiene guiones y queremos que prevalezca la lectura por posición.
+        partes = s.split("-", 1)
+        year_str, month_str = partes[0], partes[1] if len(partes) > 1 else ""
+    else:
+        return None
+
+    if len(year_str) != 4 or not year_str.isdigit():
+        return None
+    if len(month_str) < 1 or len(month_str) > 2 or not month_str.isdigit():
+        return None
+
+    month_int = int(month_str)
+    if month_int < 1 or month_int > 12:
+        return None
+
+    periodo_yyyymm = f"{year_str}{month_int:02d}"
+    periodo_label = f"{_MESES_ES[month_int - 1]} {year_str}"
+    return periodo_yyyymm, periodo_label
+
+
 @router.get("/dashboard", response_model=DashResponse)
 def get_dashboard(
     empresa_id: Optional[int] = Query(None),
@@ -148,7 +222,12 @@ def get_dashboard(
     ]
 
     total_global = pendientes_global = aceptadas_global = rechazadas_global = enviadas_sftp_global = 0
+
+    # Agregador por tipo (necesario para los contadores de las pestañas de Gestión).
     por_tipo: List[DashTipo] = []
+    # Agregador por periodo (clave = "YYYYMM"). Guardamos también el label.
+    por_periodo_dict: dict = {}
+    # Agregador por empresa (clave = empresa_id).
     por_empresa_dict: dict = {}
 
     for tipo_label, model in MODELOS:
@@ -157,19 +236,58 @@ def get_dashboard(
             q = q.filter(model.empresa_id == empresa_id)
         rows = q.all()
 
+        # Contadores locales para este tipo
         t_total = t_pend = t_ok = t_err = t_sftp = 0
+
         for r in rows:
-            t_total += 1
             ac = getattr(r, "aceptacion") or ""
+            enviado = bool(getattr(r, "enviado_sftp_at", None))
+
+            # ─── Contadores globales ──────────────────────────────────────
+            total_global += 1
+            if ac == "S":
+                aceptadas_global += 1
+            elif ac == "N":
+                rechazadas_global += 1
+            else:
+                pendientes_global += 1
+            if enviado:
+                enviadas_sftp_global += 1
+
+            # ─── Contadores POR TIPO (se agregarán abajo) ─────────────────
+            t_total += 1
             if ac == "S":
                 t_ok += 1
             elif ac == "N":
                 t_err += 1
             else:
                 t_pend += 1
-            if getattr(r, "enviado_sftp_at", None):
+            if enviado:
                 t_sftp += 1
 
+            # ─── Agregación POR PERIODO ──────────────────────────────────
+            periodo_parsed = _normalizar_periodo(getattr(r, "periodo", None))
+            if periodo_parsed is not None:
+                pkey, plabel = periodo_parsed
+                if pkey not in por_periodo_dict:
+                    por_periodo_dict[pkey] = {
+                        "periodo": pkey,
+                        "periodo_label": plabel,
+                        "total": 0, "pendientes": 0, "aceptadas": 0,
+                        "rechazadas": 0, "enviadas_sftp": 0,
+                    }
+                p = por_periodo_dict[pkey]
+                p["total"] += 1
+                if ac == "S":
+                    p["aceptadas"] += 1
+                elif ac == "N":
+                    p["rechazadas"] += 1
+                else:
+                    p["pendientes"] += 1
+                if enviado:
+                    p["enviadas_sftp"] += 1
+
+            # ─── Agregación POR EMPRESA (se mantiene igual que antes) ────
             eid = int(getattr(r, "empresa_id"))
             if eid not in por_empresa_dict:
                 emp = db.query(Empresa).filter(Empresa.id == eid).first()
@@ -187,20 +305,27 @@ def get_dashboard(
                 d["rechazadas"] += 1
             else:
                 d["pendientes"] += 1
-            if getattr(r, "enviado_sftp_at", None):
+            if enviado:
                 d["enviadas_sftp"] += 1
 
+        # ─── Cerrar el agregado POR TIPO para este modelo ────────────────
         if t_total > 0:
             por_tipo.append(DashTipo(
-                tipo=tipo_label, total=t_total,
-                pendientes=t_pend, aceptadas=t_ok, rechazadas=t_err, enviadas_sftp=t_sftp,
+                tipo=tipo_label,
+                total=t_total,
+                pendientes=t_pend,
+                aceptadas=t_ok,
+                rechazadas=t_err,
+                enviadas_sftp=t_sftp,
             ))
 
-        total_global          += t_total
-        pendientes_global     += t_pend
-        aceptadas_global      += t_ok
-        rechazadas_global     += t_err
-        enviadas_sftp_global  += t_sftp
+    # ─── Orden y límite de "por_periodo": 6 más recientes, reciente arriba ────
+    por_periodo_ordenado = sorted(
+        por_periodo_dict.values(),
+        key=lambda p: p["periodo"],
+        reverse=True,
+    )[:6]
+    por_periodo = [DashPeriodo(**v) for v in por_periodo_ordenado]
 
     por_empresa = [DashEmpresa(**v) for v in por_empresa_dict.values()]
 
@@ -211,6 +336,7 @@ def get_dashboard(
         rechazadas=rechazadas_global,
         enviadas_sftp=enviadas_sftp_global,
         por_tipo=por_tipo,
+        por_periodo=por_periodo,
         por_empresa=por_empresa,
     )
 
