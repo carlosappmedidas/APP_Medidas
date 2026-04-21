@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
-from fastapi.responses import Response
-from pydantic import BaseModel
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -25,6 +25,7 @@ from app.objeciones.schemas import (
     RespuestaUpdate,
 )
 from app.objeciones import services
+from app.objeciones.services_respuestas_ree import buscar_respuestas_tenant
 
 router = APIRouter(prefix="/objeciones", tags=["objeciones"])
 
@@ -791,6 +792,7 @@ class ReobGeneradoRead(BaseModel):
     generado_at: Optional[datetime] = None
     enviado_sftp_at: Optional[datetime] = None
     config_sftp_id: Optional[int] = None
+    estado_ree: Optional[str] = None   # NULL | 'ok' | 'bad'
 
     class Config:
         from_attributes = True
@@ -812,6 +814,220 @@ def get_reob_generados(
     if tipo:
         q = q.filter(ReobGenerado.tipo == tipo)
     return q.order_by(ReobGenerado.enviado_sftp_at.desc()).all()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RESPUESTAS REE (.ok / .bad) sobre los REOB enviados
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class EstadoReePatch(BaseModel):
+    """Body para marcar manualmente el estado de respuesta REE de un REOB."""
+    estado: Optional[str] = Field(
+        None,
+        description="'ok', 'bad' o null para dejar sin respuesta",
+    )
+
+
+class EstadoReePatchResponse(BaseModel):
+    id: int
+    estado_ree: Optional[str]
+
+
+@router.patch("/reob-generados/{id}/estado-ree", response_model=EstadoReePatchResponse)
+def patch_estado_ree(
+    id: int,
+    payload: EstadoReePatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Marca manualmente el estado de respuesta REE de un REOB generado.
+    Acepta 'ok', 'bad' o null (para limpiar)."""
+    from app.objeciones.models import ReobGenerado
+
+    # Validar valor recibido
+    estado = payload.estado
+    if estado is not None:
+        estado = estado.strip().lower() or None
+    if estado not in (None, "ok", "bad"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="estado debe ser 'ok', 'bad' o null",
+        )
+
+    tenant_id = _effective_tenant(current_user)
+    reob = db.query(ReobGenerado).filter(
+        ReobGenerado.id == id,
+        ReobGenerado.tenant_id == tenant_id,
+    ).first()
+    if reob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="REOB no encontrado")
+
+    # Verificar acceso a la empresa del REOB
+    _get_empresa_id_verificado(db, int(getattr(reob, "empresa_id")), current_user)
+
+    reob.estado_ree = estado  # type: ignore[assignment]
+    db.commit()
+    db.refresh(reob)
+    return EstadoReePatchResponse(id=int(getattr(reob, "id")), estado_ree=getattr(reob, "estado_ree"))
+
+
+class BuscarRespuestasResponseDetalle(BaseModel):
+    empresa_id: int
+    empresa_nombre: str
+    ok: int
+    bad: int
+    sin_resp: int
+    error: Optional[str] = None
+
+
+class BuscarRespuestasResponse(BaseModel):
+    procesados: int
+    encontrados_ok: int
+    encontrados_bad: int
+    sin_respuesta: int
+    errores_empresa: int
+    detalle: List[BuscarRespuestasResponseDetalle]
+
+
+@router.post("/reob-generados/buscar-respuestas", response_model=BuscarRespuestasResponse)
+def buscar_respuestas_ree(
+    empresa_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Busca las respuestas .ok/.bad de REE en el SFTP para los REOB enviados
+    del tenant que aún no tienen estado_ree.
+
+    Si se indica `empresa_id` → solo procesa esa empresa (verificando acceso).
+    Si se omite → procesa todas las empresas accesibles al usuario.
+    """
+    # Si viene empresa_id, verificar acceso ANTES de tocar SFTPs
+    if empresa_id is not None:
+        _get_empresa_id_verificado(db, empresa_id, current_user)
+
+    try:
+        res = buscar_respuestas_tenant(
+            db,
+            tenant_id=_effective_tenant(current_user),
+            current_user=current_user,
+            empresa_id=empresa_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error buscando respuestas: {str(exc)[:300]}",
+        ) from exc
+    return res
+
+
+@router.get("/reob-generados/{id}/descargar-respuesta")
+def descargar_respuesta_ree(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Descarga el fichero .ok.bz2 o .bad.bz2 de respuesta de REE desde el SFTP.
+    Solo disponible si el REOB tiene estado_ree != NULL."""
+    from app.objeciones.models import ReobGenerado
+    from app.comunicaciones.services import leer_fichero_ftp
+    from app.objeciones.descarga.services import (
+        _carpeta_es_dinamica,
+        _primera_config_activa,
+        _resolver_carpeta_aob,
+    )
+
+    tenant_id = _effective_tenant(current_user)
+    reob = db.query(ReobGenerado).filter(
+        ReobGenerado.id == id,
+        ReobGenerado.tenant_id == tenant_id,
+    ).first()
+    if reob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="REOB no encontrado")
+
+    # Verificar acceso a la empresa
+    empresa_id = int(getattr(reob, "empresa_id"))
+    _get_empresa_id_verificado(db, empresa_id, current_user)
+
+    estado_ree = getattr(reob, "estado_ree", None)
+    if estado_ree not in ("ok", "bad"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este REOB todavía no tiene respuesta de REE marcada.",
+        )
+
+    # Localizar la carpeta AOB y el config del SFTP
+    config = _primera_config_activa(db, tenant_id=tenant_id, empresa_id=empresa_id)
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La empresa no tiene una conexión FTP activa.",
+        )
+    carpeta_base = (getattr(config, "carpeta_aob", None) or "").strip()
+    if not carpeta_base:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La conexión FTP no tiene carpeta_aob configurada.",
+        )
+
+    # Resolver carpeta (dinámica → usar AAAAMM del REOB)
+    aaaamm = (getattr(reob, "aaaamm", None) or "").strip()
+    if _carpeta_es_dinamica(carpeta_base) and not aaaamm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede resolver la carpeta SFTP (AAAAMM ausente).",
+        )
+    carpeta = _resolver_carpeta_aob(carpeta_base, aaaamm or "202601")
+
+    # Nombre del fichero respuesta en SFTP
+    base = str(getattr(reob, "nombre_fichero_reob") or "").strip()
+    if not base:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El REOB no tiene nombre_fichero_reob registrado.",
+        )
+    # Probamos primero el patrón '.ok.bz2' / '.bad.bz2' (habitual)
+    nombre_respuesta = f"{base}.{estado_ree}.bz2"
+
+    # Descargar del SFTP
+    try:
+        contenido = leer_fichero_ftp(
+            db,
+            config_id=int(getattr(config, "id")),
+            tenant_id=tenant_id,
+            path=carpeta,
+            fichero=nombre_respuesta,
+            registrar=False,
+        )
+    except Exception:
+        # Fallback: probar patrón legacy '.bz2.ok' / '.bz2.bad'
+        nombre_respuesta_alt = f"{base}.bz2.{estado_ree}"
+        try:
+            contenido = leer_fichero_ftp(
+                db,
+                config_id=int(getattr(config, "id")),
+                tenant_id=tenant_id,
+                path=carpeta,
+                fichero=nombre_respuesta_alt,
+                registrar=False,
+            )
+            nombre_respuesta = nombre_respuesta_alt
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No se encontró el fichero de respuesta en SFTP: {str(exc)[:200]}",
+            ) from exc
+
+    def _iter():
+        yield contenido
+
+    return StreamingResponse(
+        _iter(),
+        media_type="application/x-bzip2",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nombre_respuesta}"',
+            "Content-Length": str(len(contenido)),
+        },
+    )
 
 
 class ToggleSftpResponse(BaseModel):

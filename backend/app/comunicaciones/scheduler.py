@@ -103,6 +103,63 @@ def _ejecutar_chequeo_fin_recepcion() -> None:
     except Exception as e:
         logger.error(f"[obj_fin_recepcion_job] Error general: {e}")
 
+
+def _ejecutar_busqueda_respuestas_ree() -> None:
+    """
+    Job que corre cada día a las 07:00.
+    Busca respuestas REE (.ok / .bad) en el SFTP para los REOB enviados
+    que aún no tienen estado_ree, iterando todos los tenants que tengan
+    algún REOB pendiente.
+    """
+    try:
+        from app.core.db import SessionLocal
+        from app.objeciones.models import ReobGenerado
+        from app.objeciones.services_respuestas_ree import buscar_respuestas_tenant
+
+        db = SessionLocal()
+        try:
+            # Tenants que tienen al menos 1 REOB enviado pendiente de respuesta.
+            # Evita despertar SFTPs de tenants sin trabajo que hacer.
+            tenant_ids_rows = (
+                db.query(ReobGenerado.tenant_id)
+                .filter(
+                    ReobGenerado.enviado_sftp_at.isnot(None),
+                    ReobGenerado.estado_ree.is_(None),
+                )
+                .distinct()
+                .all()
+            )
+            tenant_ids = sorted({int(row[0]) for row in tenant_ids_rows})
+
+            if not tenant_ids:
+                logger.info("[obj_buscar_respuestas_ree] No hay REOBs pendientes. Nada que hacer.")
+                return
+
+            logger.info(f"[obj_buscar_respuestas_ree] Procesando {len(tenant_ids)} tenants: {tenant_ids}")
+
+            for tid in tenant_ids:
+                try:
+                    resultado = buscar_respuestas_tenant(
+                        db,
+                        tenant_id    = tid,
+                        current_user = None,   # usuario sintético: scope = tenant completo
+                    )
+                    logger.info(
+                        f"[obj_buscar_respuestas_ree] tenant={tid}: "
+                        f"procesados={resultado.get('procesados')} "
+                        f"ok={resultado.get('encontrados_ok')} "
+                        f"bad={resultado.get('encontrados_bad')} "
+                        f"sin_resp={resultado.get('sin_respuesta')} "
+                        f"errores_empresa={resultado.get('errores_empresa')}"
+                    )
+                except Exception as e:
+                    logger.error(f"[obj_buscar_respuestas_ree] Error en tenant={tid}: {e}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"[obj_buscar_respuestas_ree] Error general: {e}")
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None and _scheduler.running:
@@ -124,6 +181,16 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour=23, minute=0),
         id="obj_fin_recepcion_job",
         name="Objeciones — chequeo FIN RECEPCIÓN (23:00 diario)",
+        replace_existing=True,
+        max_instances=1,
+    )
+    # Job diario para buscar respuestas .ok / .bad de REE en el SFTP sobre los
+    # REOB enviados. Corre todos los días a las 07:00 (Europe/Madrid).
+    _scheduler.add_job(
+        _ejecutar_busqueda_respuestas_ree,
+        trigger=CronTrigger(hour=7, minute=0),
+        id="obj_buscar_respuestas_ree_job",
+        name="Objeciones — buscar respuestas REE (07:00 diario)",
         replace_existing=True,
         max_instances=1,
     )

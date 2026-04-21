@@ -222,6 +222,7 @@ class ReobGenerado(TimestampMixin, Base):
     enviado_sftp_at           = Column(DateTime,    nullable=True)
     config_sftp_id            = Column(Integer,     nullable=True)
     enviado_comunicaciones_at = Column(DateTime,    nullable=True)
+    estado_ree                = Column(String(10),  nullable=True)  # NULL / 'ok' / 'bad'
 
     __table_args__ = (
         Index("ix_reob_generados_tenant_empresa", "tenant_id", "empresa_id"),

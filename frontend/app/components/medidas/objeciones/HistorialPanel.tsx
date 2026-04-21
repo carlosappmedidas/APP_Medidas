@@ -76,6 +76,10 @@ export default function HistorialPanel({
   const [historialFilas, setHistorialFilas] = useState<ObjecionRow[]>([]);
   const [loadingHistorialFilas, setLoadingHistorialFilas] = useState(false);
 
+  // ── Búsqueda de respuestas REE (.ok/.bad) en SFTP ──────────────────────
+  const [buscandoRespuestas, setBuscandoRespuestas] = useState(false);
+  const [mensajeRespuestas, setMensajeRespuestas] = useState<string | null>(null);
+
   // ── Cargar historial — solo cuando hay empresa seleccionada ──────────────
 
   const cargarHistorial = useCallback(async () => {
@@ -132,6 +136,110 @@ export default function HistorialPanel({
       );
     } catch { setHistorialFilas([]); }
     finally { setLoadingHistorialFilas(false); }
+  };
+
+  // ── Toggle manual de estado_ree (ciclo ⚪ → 🟢 → 🔴 → ⚪) ─────────────────
+  const handleToggleEstadoRee = async (reob: ReobGenerado, e: React.MouseEvent) => {
+    e.stopPropagation();  // evita que se expanda/colapse la fila al clicar
+    if (!token) return;
+
+    // Ciclo: null → ok → bad → null
+    const siguiente: "ok" | "bad" | null =
+      reob.estado_ree === null ? "ok"
+      : reob.estado_ree === "ok" ? "bad"
+      : null;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/objeciones/reob-generados/${reob.id}/estado-ree`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: siguiente }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      // Actualizar en el state local sin recargar toda la tabla
+      setHistorial((prev) => prev.map((r) =>
+        r.id === reob.id ? { ...r, estado_ree: siguiente } : r
+      ));
+    } catch {
+      /* silencioso — si falla, el estado visual no cambia */
+    }
+  };
+
+  // ── Descargar respuesta REE (.ok.bz2 / .bad.bz2) desde el SFTP ───────────
+  const handleDescargarRespuestaRee = async (reob: ReobGenerado, e: React.MouseEvent) => {
+    e.stopPropagation();  // evita que se expanda/colapse la fila
+    if (!token || !reob.estado_ree) return;
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/objeciones/reob-generados/${reob.id}/descargar-respuesta`,
+        { headers: getAuthHeaders(token) },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `Error ${res.status}` }));
+        alert(`No se pudo descargar la respuesta: ${err.detail || res.status}`);
+        return;
+      }
+
+      // Leer el blob y extraer el nombre del fichero de Content-Disposition
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = cd.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1] : `${reob.nombre_fichero_reob}.${reob.estado_ree}.bz2`;
+
+      // Disparar descarga en el navegador
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Error descargando: ${err instanceof Error ? err.message : "desconocido"}`);
+    }
+  };
+
+  // ── Buscar respuestas REE en SFTP (respeta el filtro de empresa) ─────────
+  const handleBuscarRespuestasRee = async () => {
+    if (!token || buscandoRespuestas) return;
+    setBuscandoRespuestas(true);
+    setMensajeRespuestas(null);
+    try {
+      const params = new URLSearchParams();
+      if (empresaFiltroId) params.set("empresa_id", String(empresaFiltroId));
+      const url = `${API_BASE_URL}/objeciones/reob-generados/buscar-respuestas${params.toString() ? `?${params}` : ""}`;
+      const res = await fetch(url, { method: "POST", headers: getAuthHeaders(token) });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json() as {
+        procesados: number;
+        encontrados_ok: number;
+        encontrados_bad: number;
+        sin_respuesta: number;
+        errores_empresa: number;
+      };
+      const partes: string[] = [];
+      if (data.encontrados_ok > 0)  partes.push(`🟢 ${data.encontrados_ok} OK`);
+      if (data.encontrados_bad > 0) partes.push(`🔴 ${data.encontrados_bad} BAD`);
+      if (data.sin_respuesta > 0)   partes.push(`${data.sin_respuesta} sin respuesta`);
+      setMensajeRespuestas(
+        data.procesados === 0
+          ? "No hay REOBs pendientes de respuesta."
+          : partes.length > 0
+            ? partes.join(" · ")
+            : `${data.procesados} procesados`,
+      );
+      // Recargar el historial para ver los cambios en la tabla
+      await cargarHistorial();
+      // Quitar el mensaje a los 5 segundos
+      setTimeout(() => setMensajeRespuestas(null), 5000);
+    } catch (e) {
+      setMensajeRespuestas(e instanceof Error ? e.message : "Error al buscar respuestas");
+      setTimeout(() => setMensajeRespuestas(null), 5000);
+    } finally {
+      setBuscandoRespuestas(false);
+    }
   };
 
   // ── Contadores por tipo (para las pestañas) ──────────────────────────────
@@ -214,7 +322,7 @@ export default function HistorialPanel({
         <div style={{ borderTop: "1px solid var(--card-border)", padding: "14px 20px" }}>
 
           {/* Selector empresa (mismo estilo que GestionPanel) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Empresa:</span>
             <select
               className="ui-select"
@@ -232,6 +340,33 @@ export default function HistorialPanel({
                 </option>
               ))}
             </select>
+
+            {/* Botón buscar respuestas REE */}
+            <button
+              type="button"
+              className="ui-btn ui-btn-outline ui-btn-xs"
+              onClick={handleBuscarRespuestasRee}
+              disabled={buscandoRespuestas}
+              title={empresaFiltroId
+                ? "Buscar respuestas .ok/.bad de REE en el SFTP para esta empresa"
+                : "Buscar respuestas .ok/.bad de REE en el SFTP para todas las empresas accesibles"
+              }
+              style={{ height: 28 }}
+            >
+              {buscandoRespuestas ? "Buscando..." : "🔄 Buscar respuestas REE"}
+            </button>
+
+            {mensajeRespuestas && (
+              <span style={{
+                fontSize: 10, color: "var(--text-muted)",
+                padding: "4px 10px",
+                background: "var(--field-bg-soft)",
+                border: "0.5px solid var(--card-border)",
+                borderRadius: 6,
+              }}>
+                {mensajeRespuestas}
+              </span>
+            )}
           </div>
 
           {/* Pestañas por tipo */}
@@ -250,12 +385,13 @@ export default function HistorialPanel({
                   <th className="ui-th" style={{ textAlign: "center" }}>Regs.</th>
                   <th className="ui-th">Enviado</th>
                   <th className="ui-th">sftp</th>
+                  <th className="ui-th" style={{ textAlign: "center" }}>Resp. REE</th>
                 </tr>
               </thead>
               <tbody>
                 {filaMensaje !== null ? (
                   <tr className="ui-tr">
-                    <td colSpan={8} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                    <td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                       {filaMensaje}
                     </td>
                   </tr>
@@ -281,10 +417,89 @@ export default function HistorialPanel({
                       <td className="ui-td">
                         <div style={{ width: 8, height: 8, borderRadius: 2, background: r.enviado_sftp_at ? "#378ADD" : "var(--card-border)" }} />
                       </td>
+                      <td
+                        className="ui-td"
+                        style={{ textAlign: "center" }}
+                      >
+                        <div style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}>
+                          {r.estado_ree === "ok" ? (
+                            <span
+                              onClick={(e) => handleToggleEstadoRee(r, e)}
+                              title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
+                              style={{
+                                display: "inline-block",
+                                padding: "2px 8px",
+                                borderRadius: 10,
+                                background: "rgba(29,158,117,0.15)",
+                                color: "#0F6E56",
+                                fontSize: 9,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              🟢 OK
+                            </span>
+                          ) : r.estado_ree === "bad" ? (
+                            <span
+                              onClick={(e) => handleToggleEstadoRee(r, e)}
+                              title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
+                              style={{
+                                display: "inline-block",
+                                padding: "2px 8px",
+                                borderRadius: 10,
+                                background: "rgba(226,75,74,0.15)",
+                                color: "#A32D2D",
+                                fontSize: 9,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              🔴 BAD
+                            </span>
+                          ) : (
+                            <span
+                              onClick={(e) => handleToggleEstadoRee(r, e)}
+                              title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
+                              style={{
+                                display: "inline-block",
+                                width: 8, height: 8, borderRadius: "50%",
+                                background: "var(--card-border)",
+                                cursor: "pointer",
+                              }}
+                            />
+                          )}
+
+                          {/* Botón descargar respuesta (solo visible si hay estado) */}
+                          {r.estado_ree && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleDescargarRespuestaRee(r, e)}
+                              title={`Descargar fichero .${r.estado_ree}.bz2 del SFTP`}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                padding: "2px 4px",
+                                cursor: "pointer",
+                                fontSize: 11,
+                                color: "var(--text-muted)",
+                                borderRadius: 4,
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+                            >
+                              ⬇️
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                     {historialExpandido === r.id && (
                       <tr key={`${r.id}-sub`} className="ui-tr" style={{ background: "rgba(55,138,221,0.04)" }}>
-                        <td colSpan={8} style={{ padding: "0 0 0 32px" }}>
+                        <td colSpan={9} style={{ padding: "0 0 0 32px" }}>
                           <div style={{ padding: "8px 12px 8px 0" }}>
                             <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 6 }}>
                               Objeciones de <span style={{ fontFamily: "monospace", color: "var(--text)" }}>{r.nombre_fichero_aob}</span>

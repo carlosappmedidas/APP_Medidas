@@ -16,6 +16,7 @@ export interface ReobGenerado {
   num_registros: number | null;
   generado_at: string | null;
   enviado_sftp_at: string | null;
+  estado_ree: "ok" | "bad" | null;
 }
 
 export interface FicheroStats {
