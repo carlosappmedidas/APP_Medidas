@@ -238,6 +238,12 @@ def _finalize_ingestion_processing(
         if delete_after_ok and cast(str, ing.status) == IngestionFile.STATUS_OK:
             _safe_unlink(storage_key_for_cleanup)
     except Exception:
+        # Blinda: si la query/commit dentro falla, deja la sesión limpia
+        # para que el caller pueda seguir usándola sin InFailedSqlTransaction.
+        try:
+            db.rollback()
+        except Exception:
+            pass
         return
 
 
@@ -426,6 +432,13 @@ def process_ingestion_file(
             tenant_id=tenant_id,
             storage_key_for_cleanup=storage_key_for_cleanup,
         )
+    # Blinda: garantizamos que la sesión está limpia antes del query final.
+    # Si algún paso previo (_mark_error, _finalize) dejó la transacción rota,
+    # hacer rollback aquí evita un InFailedSqlTransaction.
+    try:
+        db.rollback()
+    except Exception:
+        pass
     refreshed = (
         db.query(IngestionFile)
         .filter(
