@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import LoginSection from "./components/auth/Login-section";
 import DashboardSection from "./components/dashboard/DashboardSection";
 import AlertsSection from "./components/admin/AlertsSection";
+import AlertasObjecionesSection from "./components/admin/AlertasObjecionesSection";
 import AlertConfigSection from "./components/admin/AlertConfigSection";
 import MedidasSection from "./components/medidas/MedidasSection";
 import ObjecionesSection from "./components/medidas/ObjecionesSection";
@@ -121,6 +122,7 @@ export default function HomePage() {
   const [showTopologia,   setShowTopologia]   = useState(false);
   const [showObjeciones,  setShowObjeciones]  = useState(false);
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
+  const [showAlertasObjeciones, setShowAlertasObjeciones] = useState(false)
 
   const {
     appearance, setAppearance,
@@ -187,7 +189,12 @@ export default function HomePage() {
     return () => { window.fetch = originalFetch; };
   }, [token]);
   useEffect(() => { setHomeMenuOpen(false); }, [activeTab]);
-  useEffect(() => { if (activeTab === "alertas") setShowAlertasGeneral(false); }, [activeTab]);
+  useEffect(() => {
+    if (activeTab === "alertas") {
+      setShowAlertasGeneral(false);
+      setShowAlertasObjeciones(false);
+    }
+  }, [activeTab]);
 
   const isViewer         = currentUser?.rol === "viewer";
   const canManageUsers   = currentUser && (currentUser.rol === "admin" || currentUser.rol === "owner");
@@ -437,6 +444,29 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+
+            {/* ─── ALERTAS · OBJECIONES ─────────────────────────────────────── */}
+            {!isViewer && (
+              <div className="ui-collapsible-card">
+                <button type="button" className="ui-collapsible-card__trigger"
+                  onClick={() => setShowAlertasObjeciones((v) => !v)}>
+                  <div>
+                    <div className="ui-collapsible-card__title">ALERTAS · OBJECIONES</div>
+                    <p className="ui-collapsible-card__subtitle">
+                      AOBs pendientes de descargar tras el cierre de recepción de objeciones (scheduler automático).
+                    </p>
+                  </div>
+                  <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+                    {showAlertasObjeciones ? "Ocultar" : "Mostrar"}
+                  </span>
+                </button>
+                {showAlertasObjeciones && (
+                  <div className="ui-collapsible-card__body">
+                    <AlertasObjecionesSection token={token} />
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
 

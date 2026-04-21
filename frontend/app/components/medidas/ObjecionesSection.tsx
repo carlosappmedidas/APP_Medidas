@@ -49,6 +49,20 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
   const [error, setError] = useState<string | null>(null);
 
+  // ── Datos del scheduler de objeciones (para tarjeta "Automatización") ──
+  const [autoConfig, setAutoConfig] = useState<{
+    activa: boolean;
+    ultimo_run_at: string | null;
+    ultimo_run_ok: boolean | null;
+    ultimo_run_msg: string | null;
+  } | null>(null);
+  const [alertasResumen, setAlertasResumen] = useState<{
+    total_alertas: number;
+    empresas_afectadas: number;
+    periodos_afectados: number;
+    total_aobs_pendientes: number;
+  } | null>(null);
+
   // ── Cargar empresas ───────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -81,6 +95,22 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
 
   useEffect(() => { cargarDash(); }, [cargarDash]);
 
+  // ── Cargar automatización + resumen alertas (para tarjeta "Automatización") ──
+  useEffect(() => {
+    if (!token) return;
+    const cargar = async () => {
+      try {
+        const [resConfig, resResumen] = await Promise.all([
+          fetch(`${API_BASE_URL}/objeciones/automatizacion/config`, { headers: getAuthHeaders(token) }),
+          fetch(`${API_BASE_URL}/objeciones/alertas/resumen`,       { headers: getAuthHeaders(token) }),
+        ]);
+        if (resConfig.ok)  setAutoConfig(await resConfig.json());
+        if (resResumen.ok) setAlertasResumen(await resResumen.json());
+      } catch { /* silencioso */ }
+    };
+    void cargar();
+  }, [token]);
+
   // ── Descripción dashboard ─────────────────────────────────────────────────
 
   const dashDesc = empresaFiltroId
@@ -106,7 +136,14 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
           </button>
         </div>
         {dashOpen && (
-          <DashboardPanel dash={dash} loading={dashLoading} empresaFiltroId={empresaFiltroId} empresas={empresas} />
+          <DashboardPanel
+            dash={dash}
+            loading={dashLoading}
+            empresaFiltroId={empresaFiltroId}
+            empresas={empresas}
+            autoConfig={autoConfig}
+            alertasResumen={alertasResumen}
+          />
         )}
       </div>
 

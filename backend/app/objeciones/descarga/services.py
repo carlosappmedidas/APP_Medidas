@@ -22,7 +22,7 @@ from __future__ import annotations
 import bz2
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -100,24 +100,17 @@ def _resolver_meses(periodo: Optional[str]) -> List[str]:
     """
     Devuelve la lista de meses 'YYYYMM' a considerar.
       - Si `periodo` (formato "YYYY-MM") viene → solo ese mes.
-      - Si no viene → últimos _MESES_DEFAULT meses hasta hoy.
+      - Si no viene → lista vacía, que el explorador interpreta como
+        "no filtres por mes objetado — devuelve todo lo que haya en la
+        carpeta SFTP" (luego el filtro por fecha_desde/hasta acota).
     """
     if periodo:
         # "YYYY-MM" → "YYYYMM"
         return [periodo.replace("-", "")]
 
-    hoy = date.today()
-    year, month = hoy.year, hoy.month
-    meses: List[str] = []
-    for _ in range(_MESES_DEFAULT):
-        meses.append(f"{year:04d}{month:02d}")
-        # retroceder un mes
-        month -= 1
-        if month == 0:
-            month = 12
-            year -= 1
-    # Orden cronológico ascendente (cosmético).
-    return list(reversed(meses))
+    # Sin periodo → no filtrar por mes objetado.
+    # El filtrado lo hace fecha_desde (auto = hoy-20 días cuando no hay filtros).
+    return []
 
 
 def _mes_actual_yyyymm() -> str:
@@ -321,12 +314,14 @@ def _explorar_empresa(
 
 
 
-            # Filtro de mes:
+           # Filtro de mes:
             #   - Dinámica: ya estamos listando SOLO la carpeta de ese mes,
             #     no hace falta comprobar. (mes_contexto no se usa aquí, pero
             #     se deja por documentación.)
             #   - Fija: aceptar solo ficheros cuyo YYYYMM esté en el set pedido.
-            if mes_contexto is None:
+            #     Si meses_set está vacío → NO filtrar por mes (el caller ya
+            #     está aplicando filtros por fecha SFTP).
+            if mes_contexto is None and meses_set:
                 if parsed.aaaamm not in meses_set:
                     continue
 
@@ -508,6 +503,13 @@ def buscar_ftp(
 
     if not hits:
         return []
+
+    # ── 4a) Auto-filtro por defecto: últimos 20 días de publicación SFTP ──
+    # Si el usuario no ha pasado ningún filtro (ni periodo ni fechas),
+    # acotamos automáticamente a los AOBs publicados en los últimos 20 días
+    # para no devolver listados gigantes cuando se hace "buscar sin filtros".
+    if periodo is None and fecha_desde is None and fecha_hasta is None:
+        fecha_desde = (date.today() - timedelta(days=20)).isoformat()
 
     # ── 4b) Filtro por fecha SFTP (fecha_desde / fecha_hasta) ─────────────
     #      - fecha_desde: desde 00:00 de ese día (inclusive).
