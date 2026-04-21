@@ -71,6 +71,10 @@ class DashPeriodo(BaseModel):
     aceptadas: int
     rechazadas: int
     enviadas_sftp: int = 0
+    # ── Respuestas REE (.ok/.bad) agregadas desde ReobGenerado por aaaamm ──
+    ree_ok: int = 0           # REOBs aceptados por REE (.ok.bz2)
+    ree_bad: int = 0          # REOBs rechazados por REE (.bad.bz2/.bad2.bz2)
+    ree_sin_resp: int = 0     # REOBs enviados sin respuesta REE aún
 
 class DashEmpresa(BaseModel):
     empresa_id: int
@@ -231,6 +235,37 @@ def get_dashboard(
     # Agregador por empresa (clave = empresa_id).
     por_empresa_dict: dict = {}
 
+    # ── Agregar datos REE desde ReobGenerado (por aaaamm) ────────────────────
+    # Lo hacemos ANTES del bucle de modelos para que, al montar cada periodo,
+    # ya tengamos los contadores REE listos para fusionarlos.
+    from app.objeciones.models import ReobGenerado
+    reob_q = db.query(ReobGenerado).filter(
+        ReobGenerado.tenant_id == tenant_id,
+        ReobGenerado.enviado_sftp_at.isnot(None),  # solo los enviados
+    )
+    if empresa_id:
+        reob_q = reob_q.filter(ReobGenerado.empresa_id == empresa_id)
+    reob_rows = reob_q.all()
+
+    # ree_por_periodo[pkey] = {"ok": n, "bad": n, "sin_resp": n}
+    ree_por_periodo: dict = {}
+    for r in reob_rows:
+        aaaamm_raw = getattr(r, "aaaamm", None)
+        if not aaaamm_raw:
+            continue
+        pkey = str(aaaamm_raw).strip()
+        if len(pkey) != 6 or not pkey.isdigit():
+            continue
+        if pkey not in ree_por_periodo:
+            ree_por_periodo[pkey] = {"ok": 0, "bad": 0, "sin_resp": 0}
+        estado = getattr(r, "estado_ree", None)
+        if estado == "ok":
+            ree_por_periodo[pkey]["ok"] += 1
+        elif estado == "bad":
+            ree_por_periodo[pkey]["bad"] += 1
+        else:
+            ree_por_periodo[pkey]["sin_resp"] += 1
+
     for tipo_label, model in MODELOS:
         q = db.query(model).filter(model.tenant_id == tenant_id)
         if empresa_id:
@@ -271,11 +306,17 @@ def get_dashboard(
             if periodo_parsed is not None:
                 pkey, plabel = periodo_parsed
                 if pkey not in por_periodo_dict:
+                    # Al crear el periodo, inyectar de una vez los contadores REE
+                    # calculados antes del bucle (si hay REOBs de ese aaaamm).
+                    ree = ree_por_periodo.get(pkey, {"ok": 0, "bad": 0, "sin_resp": 0})
                     por_periodo_dict[pkey] = {
                         "periodo": pkey,
                         "periodo_label": plabel,
                         "total": 0, "pendientes": 0, "aceptadas": 0,
                         "rechazadas": 0, "enviadas_sftp": 0,
+                        "ree_ok": ree["ok"],
+                        "ree_bad": ree["bad"],
+                        "ree_sin_resp": ree["sin_resp"],
                     }
                 p = por_periodo_dict[pkey]
                 p["total"] += 1
@@ -319,6 +360,25 @@ def get_dashboard(
                 rechazadas=t_err,
                 enviadas_sftp=t_sftp,
             ))
+
+    # ─── Añadir periodos que solo tienen REOBs (sin objeciones) ──────────
+    # Se crean con contadores de objeciones a 0 pero con los datos REE.
+    for pkey, ree in ree_por_periodo.items():
+        if pkey in por_periodo_dict:
+            continue
+        # Construir el label "Jul 2025" desde el pkey "202507"
+        year = pkey[:4]
+        month = int(pkey[4:6])
+        plabel = f"{_MESES_ES[month - 1]} {year}" if 1 <= month <= 12 else pkey
+        por_periodo_dict[pkey] = {
+            "periodo": pkey,
+            "periodo_label": plabel,
+            "total": 0, "pendientes": 0, "aceptadas": 0,
+            "rechazadas": 0, "enviadas_sftp": 0,
+            "ree_ok": ree["ok"],
+            "ree_bad": ree["bad"],
+            "ree_sin_resp": ree["sin_resp"],
+        }
 
     # ─── Orden y límite de "por_periodo": 6 más recientes, reciente arriba ────
     por_periodo_ordenado = sorted(
@@ -377,11 +437,18 @@ def get_ficheros_agrecl(
 def delete_fichero_agrecl(
     nombre_fichero: str,
     empresa_id: int = Query(...),
+    delete_reob_asociado: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     eid = _get_empresa_id_verificado(db, empresa_id, current_user)
-    deleted = services.delete_agrecl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
+    deleted = services.delete_agrecl_fichero(
+        db,
+        nombre_fichero=nombre_fichero,
+        tenant_id=_effective_tenant(current_user),
+        empresa_id=eid,
+        delete_reob_asociado=delete_reob_asociado,
+    )
     return DeleteResponse(deleted=deleted)
 
 
@@ -501,11 +568,18 @@ def get_ficheros_incl(
 def delete_fichero_incl(
     nombre_fichero: str,
     empresa_id: int = Query(...),
+    delete_reob_asociado: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     eid = _get_empresa_id_verificado(db, empresa_id, current_user)
-    deleted = services.delete_incl_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
+    deleted = services.delete_incl_fichero(
+        db,
+        nombre_fichero=nombre_fichero,
+        tenant_id=_effective_tenant(current_user),
+        empresa_id=eid,
+        delete_reob_asociado=delete_reob_asociado,
+    )
     return DeleteResponse(deleted=deleted)
 
 
@@ -609,11 +683,18 @@ def get_ficheros_cups(
 def delete_fichero_cups(
     nombre_fichero: str,
     empresa_id: int = Query(...),
+    delete_reob_asociado: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     eid = _get_empresa_id_verificado(db, empresa_id, current_user)
-    deleted = services.delete_cups_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
+    deleted = services.delete_cups_fichero(
+        db,
+        nombre_fichero=nombre_fichero,
+        tenant_id=_effective_tenant(current_user),
+        empresa_id=eid,
+        delete_reob_asociado=delete_reob_asociado,
+    )
     return DeleteResponse(deleted=deleted)
 
 
@@ -717,11 +798,18 @@ def get_ficheros_cil(
 def delete_fichero_cil(
     nombre_fichero: str,
     empresa_id: int = Query(...),
+    delete_reob_asociado: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     eid = _get_empresa_id_verificado(db, empresa_id, current_user)
-    deleted = services.delete_cil_fichero(db, nombre_fichero=nombre_fichero, tenant_id=_effective_tenant(current_user), empresa_id=eid)
+    deleted = services.delete_cil_fichero(
+        db,
+        nombre_fichero=nombre_fichero,
+        tenant_id=_effective_tenant(current_user),
+        empresa_id=eid,
+        delete_reob_asociado=delete_reob_asociado,
+    )
     return DeleteResponse(deleted=deleted)
 
 
@@ -1032,6 +1120,41 @@ def descargar_respuesta_ree(
             "Content-Length": str(len(contenido)),
         },
     )
+
+
+class DeleteReobResponse(BaseModel):
+    deleted: bool
+    id: int
+
+
+@router.delete("/reob-generados/{id}", response_model=DeleteReobResponse)
+def delete_reob_generado(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Borra sólo un REOB generado. El AOB original y sus objeciones se
+    mantienen. Útil cuando REE devuelve .bad y queremos regenerar un REOB
+    corregido con el mismo AOB base."""
+    from app.objeciones.models import ReobGenerado
+
+    tenant_id = _effective_tenant(current_user)
+    reob = db.query(ReobGenerado).filter(
+        ReobGenerado.id == id,
+        ReobGenerado.tenant_id == tenant_id,
+    ).first()
+    if reob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="REOB no encontrado")
+
+    # Verificar acceso a la empresa del REOB
+    _get_empresa_id_verificado(db, int(getattr(reob, "empresa_id")), current_user)
+
+    deleted = services.delete_reob_solo(
+        db,
+        reob_id=id,
+        tenant_id=tenant_id,
+    )
+    return DeleteReobResponse(deleted=deleted, id=id)
 
 
 class ToggleSftpResponse(BaseModel):

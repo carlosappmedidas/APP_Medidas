@@ -175,18 +175,96 @@ export default function DashboardPanel({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 10 }}>
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Por periodo</div>
+              {/* Cabecera de la tabla Por periodo */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "90px 1fr 70px 1fr",
+                gap: 10,
+                alignItems: "center",
+                fontSize: 9,
+                color: "var(--text-muted)",
+                fontWeight: 500,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                paddingBottom: 6,
+                marginBottom: 6,
+                borderBottom: "0.5px solid var(--card-border)",
+              }}>
+                <div>Por periodo</div>
+                <div>Envío SFTP</div>
+                <div style={{ textAlign: "center" }}>Pend.</div>
+                <div style={{ textAlign: "right" }}>Respuestas REE</div>
+              </div>
+
               {(dash?.por_periodo ?? []).length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin datos</div>
               ) : (
                 (dash?.por_periodo ?? []).map((t) => (
-                  <div key={t.periodo} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-                    <div style={{ fontSize: 11, color: "var(--text)", width: 90, flexShrink: 0 }}>{t.periodo_label}</div>
-                    <div style={{ flex: 1, height: 5, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${Math.round(t.total / maxPeriodo * 100)}%`, background: "#378ADD", borderRadius: 3, transition: "width 0.4s" }} />
+                  <div key={t.periodo} style={{
+                    display: "grid",
+                    gridTemplateColumns: "90px 1fr 70px 1fr",
+                    gap: 10,
+                    alignItems: "center",
+                    padding: "5px 0",
+                    borderBottom: "0.5px solid rgba(31,41,55,0.3)",
+                  }}>
+                    {/* Periodo */}
+                    <div style={{ fontSize: 11, color: "var(--text)" }}>{t.periodo_label}</div>
+
+                    {/* Barra de progreso + total objeciones */}
+                    <div>
+                      <div style={{ height: 5, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%",
+                          width: `${Math.round(t.total / maxPeriodo * 100)}%`,
+                          background: "#378ADD", borderRadius: 3, transition: "width 0.4s",
+                        }} />
+                      </div>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                        {t.total} objeciones
+                      </div>
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", width: 70, textAlign: "right", whiteSpace: "nowrap" }}>
-                      {t.total} · {t.pendientes} pend.
+
+                    {/* Pendientes */}
+                    <div style={{
+                      fontSize: 11, textAlign: "center", fontWeight: 500,
+                      color: t.pendientes > 0 ? "#BA7517" : "var(--text-muted)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {t.pendientes}
+                    </div>
+
+                    {/* Respuestas REE: siempre los 3 contadores para que sea fácil comparar */}
+                    <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      {(t.ree_ok + t.ree_bad + t.ree_sin_resp) === 0 ? (
+                        <span style={{ fontSize: 9, color: "var(--text-muted)", fontStyle: "italic" }}>
+                          Sin REOB enviados
+                        </span>
+                      ) : (
+                        <>
+                          <span style={{
+                            fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                            background: "rgba(29,158,117,0.15)",
+                            color: t.ree_ok > 0 ? "#0F6E56" : "var(--text-muted)",
+                            fontWeight: 500,
+                            opacity: t.ree_ok > 0 ? 1 : 0.5,
+                          }}>🟢 {t.ree_ok}</span>
+                          <span style={{
+                            fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                            background: "rgba(226,75,74,0.15)",
+                            color: t.ree_bad > 0 ? "#A32D2D" : "var(--text-muted)",
+                            fontWeight: 500,
+                            opacity: t.ree_bad > 0 ? 1 : 0.5,
+                          }}>🔴 {t.ree_bad}</span>
+                          <span style={{
+                            fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                            background: "rgba(156,163,175,0.15)",
+                            color: t.ree_sin_resp > 0 ? "var(--text)" : "var(--text-muted)",
+                            fontWeight: 500,
+                            opacity: t.ree_sin_resp > 0 ? 1 : 0.5,
+                          }}>⚪ {t.ree_sin_resp}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))

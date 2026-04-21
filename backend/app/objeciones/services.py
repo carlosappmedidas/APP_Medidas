@@ -309,13 +309,33 @@ def delete_agrecl(db: Session, *, ids: List[int], tenant_id: int, empresa_id: in
     return deleted
 
 
-def delete_agrecl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
-    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
+def delete_agrecl_fichero(
+    db: Session, *,
+    nombre_fichero: str,
+    tenant_id: int,
+    empresa_id: int,
+    delete_reob_asociado: bool = False,
+) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id.
+
+    Si delete_reob_asociado=True, también borra los REOB generados a partir
+    de este AOB (filas en objeciones_reob_generados donde nombre_fichero_aob
+    coincida + mismo tenant+empresa).
+    Devuelve el total de filas borradas (objeciones + REOBs).
+    """
     deleted = db.query(ObjecionAGRECL).filter(
         ObjecionAGRECL.nombre_fichero == nombre_fichero,
         ObjecionAGRECL.tenant_id == tenant_id,
         ObjecionAGRECL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
+
+    if delete_reob_asociado:
+        deleted += db.query(ReobGenerado).filter(
+            ReobGenerado.tenant_id == tenant_id,
+            ReobGenerado.empresa_id == empresa_id,
+            ReobGenerado.nombre_fichero_aob == nombre_fichero,
+        ).delete(synchronize_session=False)
+
     db.commit()
     return deleted
 
@@ -456,13 +476,30 @@ def delete_incl(db: Session, *, ids: List[int], tenant_id: int, empresa_id: int)
     return deleted
 
 
-def delete_incl_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
-    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
+def delete_incl_fichero(
+    db: Session, *,
+    nombre_fichero: str,
+    tenant_id: int,
+    empresa_id: int,
+    delete_reob_asociado: bool = False,
+) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id.
+
+    Si delete_reob_asociado=True, también borra los REOB generados del AOB.
+    """
     deleted = db.query(ObjecionINCL).filter(
         ObjecionINCL.nombre_fichero == nombre_fichero,
         ObjecionINCL.tenant_id == tenant_id,
         ObjecionINCL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
+
+    if delete_reob_asociado:
+        deleted += db.query(ReobGenerado).filter(
+            ReobGenerado.tenant_id == tenant_id,
+            ReobGenerado.empresa_id == empresa_id,
+            ReobGenerado.nombre_fichero_aob == nombre_fichero,
+        ).delete(synchronize_session=False)
+
     db.commit()
     return deleted
 
@@ -576,13 +613,30 @@ def delete_cups(db: Session, *, ids: List[int], tenant_id: int, empresa_id: int)
     return deleted
 
 
-def delete_cups_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
-    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
+def delete_cups_fichero(
+    db: Session, *,
+    nombre_fichero: str,
+    tenant_id: int,
+    empresa_id: int,
+    delete_reob_asociado: bool = False,
+) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id.
+
+    Si delete_reob_asociado=True, también borra los REOB generados del AOB.
+    """
     deleted = db.query(ObjecionCUPS).filter(
         ObjecionCUPS.nombre_fichero == nombre_fichero,
         ObjecionCUPS.tenant_id == tenant_id,
         ObjecionCUPS.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
+
+    if delete_reob_asociado:
+        deleted += db.query(ReobGenerado).filter(
+            ReobGenerado.tenant_id == tenant_id,
+            ReobGenerado.empresa_id == empresa_id,
+            ReobGenerado.nombre_fichero_aob == nombre_fichero,
+        ).delete(synchronize_session=False)
+
     db.commit()
     return deleted
 
@@ -710,13 +764,30 @@ def delete_cil(db: Session, *, ids: List[int], tenant_id: int, empresa_id: int) 
     return deleted
 
 
-def delete_cil_fichero(db: Session, *, nombre_fichero: str, tenant_id: int, empresa_id: int) -> int:
-    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id."""
+def delete_cil_fichero(
+    db: Session, *,
+    nombre_fichero: str,
+    tenant_id: int,
+    empresa_id: int,
+    delete_reob_asociado: bool = False,
+) -> int:
+    """Borra todas las objeciones de un fichero — verifica tenant_id Y empresa_id.
+
+    Si delete_reob_asociado=True, también borra los REOB generados del AOB.
+    """
     deleted = db.query(ObjecionCIL).filter(
         ObjecionCIL.nombre_fichero == nombre_fichero,
         ObjecionCIL.tenant_id == tenant_id,
         ObjecionCIL.empresa_id == empresa_id,
     ).delete(synchronize_session=False)
+
+    if delete_reob_asociado:
+        deleted += db.query(ReobGenerado).filter(
+            ReobGenerado.tenant_id == tenant_id,
+            ReobGenerado.empresa_id == empresa_id,
+            ReobGenerado.nombre_fichero_aob == nombre_fichero,
+        ).delete(synchronize_session=False)
+
     db.commit()
     return deleted
 
@@ -936,3 +1007,29 @@ def enviar_al_sftp(
             nombre_fichero_aob=nombre_fichero, nombre_fichero_reob=filename,
             comercializadora=cccc, aaaamm=aaaamm, num_registros=num, config_id=config_id)
         return filename
+
+
+# ── Borrar sólo un REOB generado (deja AOB y objeciones intactas) ────────────
+
+def delete_reob_solo(
+    db: Session, *,
+    reob_id: int,
+    tenant_id: int,
+) -> bool:
+    """Borra una única fila de objeciones_reob_generados.
+
+    Se valida por tenant_id; la verificación de empresa_id la hace el router
+    antes de llamar aquí (usando _get_empresa_id_verificado con el empresa_id
+    del propio REOB).
+
+    Devuelve True si se borró, False si no se encontró.
+    """
+    reob = db.query(ReobGenerado).filter(
+        ReobGenerado.id == reob_id,
+        ReobGenerado.tenant_id == tenant_id,
+    ).first()
+    if reob is None:
+        return False
+    db.delete(reob)
+    db.commit()
+    return True

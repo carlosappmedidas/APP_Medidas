@@ -64,6 +64,10 @@ export default function GestionPanel({
   const [sftpModalOpen, setSftpModalOpen] = useState(false);
   const [sftpFichero,   setSftpFichero]   = useState<string | null>(null);
 
+  // Modal confirmación de borrado de AOB (F8: preguntar si borrar también REOB)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalFichero, setDeleteModalFichero] = useState<string | null>(null);
+
   const fileInputRef     = useRef<HTMLInputElement>(null);
   const tab              = TABS.find((t) => t.id === activeTab)!;
   const ruta             = TIPO_RUTA[activeTab];
@@ -206,13 +210,29 @@ export default function GestionPanel({
   };
 
   // ── Borrar fichero completo ───────────────────────────────────────────────
+  // F8: primero se abre un modal que pregunta qué hacer con el REOB asociado.
+  //     El borrado real se hace en confirmDeleteFichero.
 
-  const handleDeleteFichero = async (nombreFichero: string) => {
-    if (!token || !empresaIdGestion) return;
+  const handleDeleteFichero = (nombreFichero: string) => {
+    setDeleteModalFichero(nombreFichero);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDeleteFichero = async (deleteReobAsociado: boolean) => {
+    const nombreFichero = deleteModalFichero;
+    // Cerrar el modal antes de arrancar la operación
+    setDeleteModalOpen(false);
+    setDeleteModalFichero(null);
+
+    if (!nombreFichero || !token || !empresaIdGestion) return;
     setDeleting(true); onError(null);
     try {
+      const params = new URLSearchParams({
+        empresa_id: String(empresaIdGestion),
+        delete_reob_asociado: deleteReobAsociado ? "true" : "false",
+      });
       const res = await fetch(
-        `${API_BASE_URL}/objeciones/${ruta}/ficheros/${encodeURIComponent(nombreFichero)}?empresa_id=${empresaIdGestion}`,
+        `${API_BASE_URL}/objeciones/${ruta}/ficheros/${encodeURIComponent(nombreFichero)}?${params}`,
         { method: "DELETE", headers: getAuthHeaders(token) },
       );
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -430,6 +450,71 @@ export default function GestionPanel({
         token={token}
         onClose={() => setSftpModalOpen(false)}
       />
+
+      {/* ── Modal confirmar borrado de AOB (F8) ──────────────────────── */}
+      {deleteModalOpen && deleteModalFichero && (
+        <div
+          onClick={() => { setDeleteModalOpen(false); setDeleteModalFichero(null); }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 2000,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 480, maxWidth: "90vw",
+              background: "var(--card-bg)",
+              border: "1px solid var(--card-border)",
+              borderRadius: 12, padding: "20px 22px",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+              Eliminar fichero AOB
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
+              Vas a eliminar{" "}
+              <span style={{ fontFamily: "monospace", color: "var(--text)", wordBreak: "break-all" }}>
+                {deleteModalFichero}
+              </span>{" "}
+              y todas sus objeciones.
+              <br /><br />
+              ¿Qué quieres hacer con el REOB asociado (si existe)?
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                type="button"
+                className="ui-btn ui-btn-err ui-btn-xs"
+                onClick={() => confirmDeleteFichero(true)}
+                style={{ justifyContent: "flex-start", padding: "10px 14px", fontSize: 12 }}
+              >
+                🗑 Borrar todo (AOB + objeciones + REOB asociado)
+              </button>
+
+              <button
+                type="button"
+                className="ui-btn ui-btn-outline ui-btn-xs"
+                onClick={() => confirmDeleteFichero(false)}
+                style={{ justifyContent: "flex-start", padding: "10px 14px", fontSize: 12 }}
+              >
+                📄 Borrar solo el AOB y sus objeciones (mantener REOB)
+              </button>
+
+              <button
+                type="button"
+                className="ui-btn ui-btn-outline ui-btn-xs"
+                onClick={() => { setDeleteModalOpen(false); setDeleteModalFichero(null); }}
+                style={{ justifyContent: "flex-start", padding: "10px 14px", fontSize: 12, marginTop: 4 }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

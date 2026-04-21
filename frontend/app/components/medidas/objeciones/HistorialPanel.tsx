@@ -201,6 +201,41 @@ export default function HistorialPanel({
     }
   };
 
+  // ── Eliminar SOLO el REOB (AOB + objeciones intactos) ────────────────────
+  // Útil cuando REE devuelve .bad y queremos regenerar un REOB corregido.
+  const handleEliminarReob = async (reob: ReobGenerado, e: React.MouseEvent) => {
+    e.stopPropagation();  // evita que se expanda/colapse la fila
+    if (!token) return;
+
+    const ok = window.confirm(
+      `¿Eliminar el REOB "${reob.nombre_fichero_reob}"?\n\n` +
+      `El AOB original y sus objeciones se mantendrán en BD.\n` +
+      `Podrás regenerar un REOB nuevo cuando quieras.`,
+    );
+    if (!ok) return;
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/objeciones/reob-generados/${reob.id}`,
+        { method: "DELETE", headers: getAuthHeaders(token) },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `Error ${res.status}` }));
+        alert(`No se pudo eliminar: ${err.detail || res.status}`);
+        return;
+      }
+      // Quitar la fila del state local
+      setHistorial((prev) => prev.filter((r) => r.id !== reob.id));
+      // Si la fila expandida era esta, colapsarla
+      if (historialExpandido === reob.id) {
+        setHistorialExpandido(null);
+        setHistorialFilas([]);
+      }
+    } catch (err) {
+      alert(`Error eliminando: ${err instanceof Error ? err.message : "desconocido"}`);
+    }
+  };
+
   // ── Buscar respuestas REE en SFTP (respeta el filtro de empresa) ─────────
   const handleBuscarRespuestasRee = async () => {
     if (!token || buscandoRespuestas) return;
@@ -494,6 +529,26 @@ export default function HistorialPanel({
                               ⬇️
                             </button>
                           )}
+
+                          {/* Botón eliminar solo el REOB (AOB y objeciones intactos) */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleEliminarReob(r, e)}
+                            title="Eliminar este REOB (el AOB y sus objeciones se mantienen)"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              padding: "2px 4px",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              color: "var(--text-muted)",
+                              borderRadius: 4,
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "#A32D2D"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+                          >
+                            🗑
+                          </button>
                         </div>
                       </td>
                     </tr>

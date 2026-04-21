@@ -44,6 +44,10 @@ export interface DashPeriodo {
   pendientes: number;
   aceptadas: number;
   rechazadas: number;
+  // ── Respuestas REE (.ok / .bad) agregadas por aaaamm ──
+  ree_ok: number;
+  ree_bad: number;
+  ree_sin_resp: number;
 }
 
 export interface DashEmpresa {
