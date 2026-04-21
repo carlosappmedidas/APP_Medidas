@@ -134,7 +134,7 @@ _REOB_NOMBRE_RE = re.compile(
     r"(?P<fecha>\d{8})\."
     r"(?P<version>\d+)"
     r"(?:\.bz2)?"
-    r"(?:\.(?P<sufijo>ok|bad)(?:\.bz2)?)?$"
+    r"(?:\.(?P<sufijo>ok|bad\d*)(?:\.bz2)?)?$"
 )
 
 
@@ -208,8 +208,13 @@ def _buscar_respuestas_empresa(
         if p is None:
             continue
         prefijo, fecha, version, sufijo = p
-        if sufijo not in ("ok", "bad"):
-            continue  # es un REOB original o algo no reconocido, ignorar
+        if sufijo is None:
+            continue  # es un REOB original, no una respuesta
+        # Normalizar 'bad2', 'bad3'… → 'bad' (la columna en BD solo acepta 'ok'|'bad')
+        if sufijo.startswith("bad"):
+            sufijo = "bad"
+        elif sufijo != "ok":
+            continue  # sufijo raro no reconocido
         respuestas_por_grupo.setdefault((prefijo, version), []).append((fecha, sufijo))
 
     # Ordenar las respuestas de cada grupo por fecha ascendente

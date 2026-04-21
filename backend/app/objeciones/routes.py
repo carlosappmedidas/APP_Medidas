@@ -985,37 +985,41 @@ def descargar_respuesta_ree(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El REOB no tiene nombre_fichero_reob registrado.",
         )
-    # Probamos primero el patrón '.ok.bz2' / '.bad.bz2' (habitual)
-    nombre_respuesta = f"{base}.{estado_ree}.bz2"
+    # Patrones posibles según lo observado en SFTPs reales:
+    #   - '.ok.bz2'         (respuesta OK: siempre este patrón)
+    #   - '.bad.bz2'        (respuesta BAD: patrón "clásico")
+    #   - '.bad2.bz2'       (respuesta BAD: patrón que usan algunos concentradores)
+    #   - '.bz2.ok' / '.bz2.bad'  (patrón legacy)
+    # Probamos todos hasta encontrar el fichero.
+    if estado_ree == "ok":
+        candidatos = [f"{base}.ok.bz2", f"{base}.bz2.ok"]
+    else:  # "bad"
+        candidatos = [f"{base}.bad.bz2", f"{base}.bad2.bz2", f"{base}.bz2.bad"]
 
-    # Descargar del SFTP
-    try:
-        contenido = leer_fichero_ftp(
-            db,
-            config_id=int(getattr(config, "id")),
-            tenant_id=tenant_id,
-            path=carpeta,
-            fichero=nombre_respuesta,
-            registrar=False,
-        )
-    except Exception:
-        # Fallback: probar patrón legacy '.bz2.ok' / '.bz2.bad'
-        nombre_respuesta_alt = f"{base}.bz2.{estado_ree}"
+    contenido: Optional[bytes] = None
+    nombre_respuesta: Optional[str] = None
+    ultimo_error: Optional[Exception] = None
+    for candidato in candidatos:
         try:
             contenido = leer_fichero_ftp(
                 db,
                 config_id=int(getattr(config, "id")),
                 tenant_id=tenant_id,
                 path=carpeta,
-                fichero=nombre_respuesta_alt,
+                fichero=candidato,
                 registrar=False,
             )
-            nombre_respuesta = nombre_respuesta_alt
+            nombre_respuesta = candidato
+            break
         except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No se encontró el fichero de respuesta en SFTP: {str(exc)[:200]}",
-            ) from exc
+            ultimo_error = exc
+            continue
+
+    if contenido is None or nombre_respuesta is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró el fichero de respuesta en SFTP: {str(ultimo_error)[:200]}",
+        )
 
     def _iter():
         yield contenido
