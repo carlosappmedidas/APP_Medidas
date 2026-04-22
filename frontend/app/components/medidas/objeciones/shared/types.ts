@@ -37,6 +37,19 @@ export interface DashTipo {
   rechazadas: number;
 }
 
+export interface DashTipoEnPeriodo {
+  /** "AOBAGRECL" | "OBJEINCL" | "AOBCUPS" | "AOBCIL" */
+  tipo: string;
+  obj_total: number;           // nº objeciones del tipo en este periodo
+  obj_pendientes: number;      // objeciones sin responder
+  reob_total: number;          // nº REOBs enviados para este tipo+periodo
+  // Contadores REE propagados a objeciones (usando num_registros del REOB)
+  ree_ok: number;
+  ree_bad: number;
+  ree_sin_resp: number;
+  ree_na: number;              // siempre 0 excepto para OBJEINCL
+}
+
 export interface DashPeriodo {
   periodo: string;          // YYYYMM, ej "202507"
   periodo_label: string;    // "Jul 2025" — formato legible
@@ -44,10 +57,15 @@ export interface DashPeriodo {
   pendientes: number;
   aceptadas: number;
   rechazadas: number;
-  // ── Respuestas REE (.ok / .bad) agregadas por aaaamm ──
+  // ── Respuestas REE agregadas por aaaamm ──
+  // Contadores en UNIDAD DE OBJECIONES (propagadas desde los REOBs que las cubren).
+  // INCL NO cuenta aquí — sus objeciones van a ree_na porque REE no responde INCL.
   ree_ok: number;
   ree_bad: number;
   ree_sin_resp: number;
+  ree_na: number;              // objeciones de tipo INCL
+  // Desglose por tipo dentro del periodo (para el acordeón del dashboard)
+  por_tipo: DashTipoEnPeriodo[];
 }
 
 export interface DashEmpresa {

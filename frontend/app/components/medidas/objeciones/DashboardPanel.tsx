@@ -1,7 +1,8 @@
 // Panel 1 del módulo Objeciones: Dashboard / Resumen.
 // Extraído de ObjecionesSection.tsx (Fase 0 · Paso 0.5).
 
-import type { DashData, DashEmpresa, EmpresaOption } from "./shared/types";
+import { useState } from "react";
+import type { DashData, DashEmpresa, DashTipoEnPeriodo, EmpresaOption } from "./shared/types";
 // Nota: DashPeriodo ya no se importa aquí porque se accede vía dash.por_periodo
 // y TypeScript infiere los tipos desde DashData.
 
@@ -28,6 +29,84 @@ interface DashboardPanelProps {
   alertasResumen: AlertasResumen | null;
 }
 
+// ── Estilos de los chips de tipo (AGRECL / CUPS / INCL / CIL) ─────────────────
+// Cada tipo tiene un color propio para que de un vistazo se distinga en el
+// detalle desplegado del periodo.
+const TIPO_CHIP_STYLE: Record<string, React.CSSProperties> = {
+  AOBAGRECL: { background: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
+  AOBCUPS:   { background: "rgba(168,85,247,0.15)",  color: "#c084fc" },
+  OBJEINCL:  { background: "rgba(251,146,60,0.15)",  color: "#fb923c" },
+  AOBCIL:    { background: "rgba(20,184,166,0.15)",  color: "#2dd4bf" },
+};
+
+const TIPO_LABEL_CORTO: Record<string, string> = {
+  AOBAGRECL: "AGRECL",
+  AOBCUPS:   "CUPS",
+  OBJEINCL:  "INCL",
+  AOBCIL:    "CIL",
+};
+
+// Tooltip explicativo sobre "X objeciones · Y REOB".
+// Si esINCL = true, el texto aclara que REE no envía respuesta para este tipo.
+function tooltipObjReob(objTotal: number, reobTotal: number, esINCL: boolean = false): string {
+  if (reobTotal === 0) return `${objTotal} objeciones (sin REOB enviados todavía)`;
+
+  const notaINCL = esINCL
+    ? " REE no envía respuesta (.ok/.bad) para los REOB de tipo INCL."
+    : "";
+
+  if (objTotal === reobTotal) {
+    return `${objTotal} objeciones agrupadas en ${reobTotal} REOB (una por cada objeción).${notaINCL}`;
+  }
+  const diff = objTotal - reobTotal;
+  return (
+    `${objTotal} objeciones agrupadas en ${reobTotal} REOB. ` +
+    `Cuando varias objeciones van a la misma comercializadora, se agrupan en 1 solo REOB — por eso hay ${diff} ${diff === 1 ? "objeción" : "objeciones"} de más que ficheros REOB.${notaINCL}`
+  );
+}
+
+// Componente inline para tooltip CSS visible (hover).
+// Muestra un popover encima del texto hijo, con el mensaje en `text`.
+function InfoTooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span style={{ position: "relative", display: "inline-block" }} className="info-tooltip-wrapper">
+      {children}
+      <span
+        className="info-tooltip-popup"
+        style={{
+          position: "absolute",
+          bottom: "calc(100% + 8px)",
+          left: "50%",
+          transform: "translate(-50%, 4px)",
+          width: 280,
+          padding: "10px 12px",
+          background: "var(--card-bg)",
+          border: "1px solid var(--card-border)",
+          borderRadius: 6,
+          fontSize: 10,
+          color: "var(--text)",
+          lineHeight: 1.5,
+          textAlign: "left",
+          whiteSpace: "normal",
+          zIndex: 100,
+          opacity: 0,
+          pointerEvents: "none",
+          transition: "opacity 0.15s, transform 0.15s",
+          boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+        }}
+      >
+        {text}
+      </span>
+      <style>{`
+        .info-tooltip-wrapper:hover .info-tooltip-popup {
+          opacity: 1 !important;
+          transform: translate(-50%, 0) !important;
+        }
+      `}</style>
+    </span>
+  );
+}
+
 export default function DashboardPanel({
   dash, loading, empresaFiltroId, empresas,
   autoConfig, alertasResumen,
@@ -39,6 +118,18 @@ export default function DashboardPanel({
   const pct   = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
   const empresaActiva = empresaFiltroId ? empresas.find((e) => e.id === empresaFiltroId) : null;
   const maxPeriodo = Math.max(1, ...(dash?.por_periodo ?? []).map((t) => t.total));
+
+  // Estado de periodos desplegados (Set con las claves de periodo abiertos).
+  const [expandedPeriodos, setExpandedPeriodos] = useState<Set<string>>(new Set());
+
+  const togglePeriodo = (pkey: string) => {
+    setExpandedPeriodos((prev) => {
+      const next = new Set(prev);
+      if (next.has(pkey)) next.delete(pkey);
+      else next.add(pkey);
+      return next;
+    });
+  };
 
   // ── Derivados de autoConfig / alertasResumen para la tarjeta Automatización ──
   const autoActiva        = autoConfig?.activa ?? false;
@@ -69,6 +160,10 @@ export default function DashboardPanel({
     autoConfig?.ultimo_run_at ?? null,
     autoConfig?.ultimo_run_ok ?? null,
   );
+
+  // ── Render de una fila (resumen o detalle por tipo) ──────────────────────
+  // Utiliza el MISMO grid-template-columns para que las barras queden alineadas.
+  const GRID_TEMPLATE = "24px 90px 1fr 110px 160px";
 
   return (
     <div style={{ padding: "16px 20px", borderTop: "1px solid var(--card-border)" }}>
@@ -178,7 +273,7 @@ export default function DashboardPanel({
               {/* Cabecera de la tabla Por periodo */}
               <div style={{
                 display: "grid",
-                gridTemplateColumns: "90px 1fr 70px 1fr",
+                gridTemplateColumns: GRID_TEMPLATE,
                 gap: 10,
                 alignItems: "center",
                 fontSize: 9,
@@ -190,8 +285,9 @@ export default function DashboardPanel({
                 marginBottom: 6,
                 borderBottom: "0.5px solid var(--card-border)",
               }}>
+                <div></div>
                 <div>Por periodo</div>
-                <div>Envío SFTP</div>
+                <div></div>
                 <div style={{ textAlign: "center" }}>Pend.</div>
                 <div style={{ textAlign: "right" }}>Respuestas REE</div>
               </div>
@@ -199,75 +295,220 @@ export default function DashboardPanel({
               {(dash?.por_periodo ?? []).length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin datos</div>
               ) : (
-                (dash?.por_periodo ?? []).map((t) => (
-                  <div key={t.periodo} style={{
-                    display: "grid",
-                    gridTemplateColumns: "90px 1fr 70px 1fr",
-                    gap: 10,
-                    alignItems: "center",
-                    padding: "5px 0",
-                    borderBottom: "0.5px solid rgba(31,41,55,0.3)",
-                  }}>
-                    {/* Periodo */}
-                    <div style={{ fontSize: 11, color: "var(--text)" }}>{t.periodo_label}</div>
+                (dash?.por_periodo ?? []).map((t) => {
+                  const expanded = expandedPeriodos.has(t.periodo);
+                  const tiposDetalle: DashTipoEnPeriodo[] = t.por_tipo ?? [];
+                  const hasDetail = tiposDetalle.length > 0;
+                  const tieneRespuestasREE = (t.ree_ok + t.ree_bad + t.ree_sin_resp) > 0;
+                  const reobTotalPeriodo = tiposDetalle.reduce((acc, r) => acc + (r.reob_total ?? 0), 0);
 
-                    {/* Barra de progreso + total objeciones */}
-                    <div>
-                      <div style={{ height: 5, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
+                  return (
+                    <div key={t.periodo}>
+                      {/* ── Fila resumen del mes (clickable si hay detalle) ── */}
+                      <div
+                        onClick={() => hasDetail && togglePeriodo(t.periodo)}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: GRID_TEMPLATE,
+                          gap: 10,
+                          alignItems: "center",
+                          padding: "6px 0",
+                          borderBottom: expanded ? "none" : "0.5px solid rgba(31,41,55,0.3)",
+                          cursor: hasDetail ? "pointer" : "default",
+                          transition: "background 0.15s",
+                        }}
+                        onMouseEnter={(e) => { if (hasDetail) e.currentTarget.style.background = "rgba(55,138,221,0.04)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        {/* Chevron */}
                         <div style={{
-                          height: "100%",
-                          width: `${Math.round(t.total / maxPeriodo * 100)}%`,
-                          background: "#378ADD", borderRadius: 3, transition: "width 0.4s",
-                        }} />
-                      </div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
-                        {t.total} objeciones
-                      </div>
-                    </div>
+                          fontSize: 10,
+                          color: hasDetail ? (expanded ? "#378ADD" : "var(--text-muted)") : "transparent",
+                          textAlign: "center",
+                          transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+                          transition: "transform 0.2s",
+                          userSelect: "none",
+                        }}>▶</div>
 
-                    {/* Pendientes */}
-                    <div style={{
-                      fontSize: 11, textAlign: "center", fontWeight: 500,
-                      color: t.pendientes > 0 ? "#BA7517" : "var(--text-muted)",
-                      fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {t.pendientes}
-                    </div>
+                        {/* Periodo label */}
+                        <div style={{ fontSize: 11, color: "var(--text)" }}>{t.periodo_label}</div>
 
-                    {/* Respuestas REE: siempre los 3 contadores para que sea fácil comparar */}
-                    <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                      {(t.ree_ok + t.ree_bad + t.ree_sin_resp) === 0 ? (
-                        <span style={{ fontSize: 9, color: "var(--text-muted)", fontStyle: "italic" }}>
-                          Sin REOB enviados
-                        </span>
-                      ) : (
-                        <>
+                        {/* Barra + nº objeciones/REOB */}
+                        <div>
+                          <div style={{ height: 5, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
+                            <div style={{
+                              height: "100%",
+                              width: `${Math.round(t.total / maxPeriodo * 100)}%`,
+                              background: "#378ADD", borderRadius: 3, transition: "width 0.4s",
+                            }} />
+                          </div>
+                          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                            {t.total} obj{reobTotalPeriodo > 0 && <> · {reobTotalPeriodo} REOB</>}
+                          </div>
+                        </div>
+
+                        {/* Pendientes */}
+                        <div style={{
+                          fontSize: 11, textAlign: "center", fontWeight: 500,
+                          color: t.pendientes > 0 ? "#BA7517" : "var(--text-muted)",
+                          fontVariantNumeric: "tabular-nums",
+                        }}>
+                          {t.pendientes}
+                        </div>
+
+                        {/* Respuestas REE del periodo (agregado, excluyendo INCL) */}
+                        <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                          {!tieneRespuestasREE && t.ree_na === 0 ? (
+                            <span style={{ fontSize: 9, color: "var(--text-muted)", fontStyle: "italic" }}>
+                              Sin REOB enviados
+                            </span>
+                          ) : (
+                            <>
+                              <span style={{
+                                fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                                background: "rgba(29,158,117,0.15)",
+                                color: t.ree_ok > 0 ? "#0F6E56" : "var(--text-muted)",
+                                fontWeight: 500,
+                                opacity: t.ree_ok > 0 ? 1 : 0.5,
+                              }}>🟢 {t.ree_ok}</span>
+                              <span style={{
+                                fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                                background: "rgba(226,75,74,0.15)",
+                                color: t.ree_bad > 0 ? "#A32D2D" : "var(--text-muted)",
+                                fontWeight: 500,
+                                opacity: t.ree_bad > 0 ? 1 : 0.5,
+                              }}>🔴 {t.ree_bad}</span>
                           <span style={{
-                            fontSize: 9, padding: "1px 6px", borderRadius: 8,
-                            background: "rgba(29,158,117,0.15)",
-                            color: t.ree_ok > 0 ? "#0F6E56" : "var(--text-muted)",
-                            fontWeight: 500,
-                            opacity: t.ree_ok > 0 ? 1 : 0.5,
-                          }}>🟢 {t.ree_ok}</span>
-                          <span style={{
-                            fontSize: 9, padding: "1px 6px", borderRadius: 8,
-                            background: "rgba(226,75,74,0.15)",
-                            color: t.ree_bad > 0 ? "#A32D2D" : "var(--text-muted)",
-                            fontWeight: 500,
-                            opacity: t.ree_bad > 0 ? 1 : 0.5,
-                          }}>🔴 {t.ree_bad}</span>
-                          <span style={{
-                            fontSize: 9, padding: "1px 6px", borderRadius: 8,
-                            background: "rgba(156,163,175,0.15)",
-                            color: t.ree_sin_resp > 0 ? "var(--text)" : "var(--text-muted)",
-                            fontWeight: 500,
-                            opacity: t.ree_sin_resp > 0 ? 1 : 0.5,
-                          }}>⚪ {t.ree_sin_resp}</span>
-                        </>
+                                fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                                background: "rgba(156,163,175,0.15)",
+                                color: t.ree_sin_resp > 0 ? "var(--text)" : "var(--text-muted)",
+                                fontWeight: 500,
+                                opacity: t.ree_sin_resp > 0 ? 1 : 0.5,
+                              }}>⚪ {t.ree_sin_resp}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── Detalle desplegado: filas por tipo ────────── */}
+                      {expanded && hasDetail && (
+                        <div style={{
+                          background: "rgba(55,138,221,0.04)",
+                          borderTop: "0.5px dashed rgba(55,138,221,0.18)",
+                          borderBottom: "0.5px solid rgba(31,41,55,0.3)",
+                          padding: "4px 0",
+                        }}>
+                          {tiposDetalle.map((tipoRow) => {
+                            const chipStyle = TIPO_CHIP_STYLE[tipoRow.tipo] ?? { background: "rgba(156,163,175,0.15)", color: "var(--text-muted)" };
+                            const chipLabel = TIPO_LABEL_CORTO[tipoRow.tipo] ?? tipoRow.tipo;
+                            const widthPct = Math.round(tipoRow.obj_total / maxPeriodo * 100);
+                            const esINCL = tipoRow.tipo === "OBJEINCL";
+
+                            return (
+                              <div key={tipoRow.tipo} style={{
+                                display: "grid",
+                                gridTemplateColumns: GRID_TEMPLATE,
+                                gap: 10,
+                                alignItems: "center",
+                                padding: "4px 0",
+                              }}>
+                                {/* Hueco del chevron */}
+                                <div></div>
+
+                                {/* Chip del tipo */}
+                                <div>
+                                  <span style={{
+                                    ...chipStyle,
+                                    padding: "1px 6px", borderRadius: 4,
+                                    fontSize: 9, fontWeight: 600, letterSpacing: "0.04em",
+                                    display: "inline-block",
+                                  }}>{chipLabel}</span>
+                                </div>
+
+                                {/* Barra del tipo (alineada con la del periodo) */}
+                                <div>
+                                  <div style={{ height: 5, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
+                                    <div style={{
+                                      height: "100%",
+                                      width: `${widthPct}%`,
+                                      background: chipStyle.color as string,
+                                      borderRadius: 3, transition: "width 0.4s",
+                                      opacity: 0.7,
+                                    }} />
+                                  </div>
+                                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                                    <InfoTooltip text={tooltipObjReob(tipoRow.obj_total, tipoRow.reob_total, esINCL)}>
+                                      <span style={{ cursor: "help", borderBottom: tipoRow.reob_total > 0 ? "1px dotted var(--text-muted)" : "none" }}>
+                                        {tipoRow.obj_total} obj{tipoRow.reob_total > 0 && <> · {tipoRow.reob_total} REOB</>}
+                                      </span>
+                                    </InfoTooltip>
+                                  </div>
+                                </div>
+
+                                {/* Pendientes del tipo */}
+                                <div style={{
+                                  fontSize: 10, textAlign: "center", fontWeight: 500,
+                                  color: tipoRow.obj_pendientes > 0 ? "#BA7517" : "var(--text-muted)",
+                                  fontVariantNumeric: "tabular-nums",
+                                }}>
+                                  {tipoRow.obj_pendientes}
+                                </div>
+
+                                {/* Respuestas REE del tipo */}
+                                <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                                  {esINCL ? (
+                                    <span
+                                      title="REE no envía respuestas (.ok/.bad) para los REOB de tipo INCL"
+                                      style={{
+                                        fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                                        background: "rgba(107,114,128,0.10)",
+                                        color: "var(--text-muted)",
+                                        fontWeight: 500,
+                                        cursor: "help",
+                                      }}
+                                    >N/A</span>
+                                  ) : (
+                                    <>
+                                      {tipoRow.ree_ok > 0 && (
+                                        <span style={{
+                                          fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                                          background: "rgba(29,158,117,0.15)",
+                                          color: "#0F6E56",
+                                          fontWeight: 500,
+                                        }}>🟢 {tipoRow.ree_ok}</span>
+                                      )}
+                                      {tipoRow.ree_bad > 0 && (
+                                        <span style={{
+                                          fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                                          background: "rgba(226,75,74,0.15)",
+                                          color: "#A32D2D",
+                                          fontWeight: 500,
+                                        }}>🔴 {tipoRow.ree_bad}</span>
+                                      )}
+                                      {tipoRow.ree_sin_resp > 0 && (
+                                        <span style={{
+                                          fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                                          background: "rgba(156,163,175,0.15)",
+                                          color: "var(--text)",
+                                          fontWeight: 500,
+                                        }}>⚪ {tipoRow.ree_sin_resp}</span>
+                                      )}
+                                      {tipoRow.ree_ok === 0 && tipoRow.ree_bad === 0 && tipoRow.ree_sin_resp === 0 && (
+                                        <span style={{ fontSize: 9, color: "var(--text-muted)", fontStyle: "italic" }}>
+                                          —
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -293,16 +534,13 @@ export default function DashboardPanel({
                       </div>
                       <div style={{
                         display: "grid",
-                        gridTemplateColumns: "60px 36px 36px",  // col1: pend/total · col2/3: aceptadas/rechazadas/enviados
+                        gridTemplateColumns: "60px 36px 36px",
                         gap: 2,
                         flexShrink: 0,
                       }}>
-                        {/* Fila 1: pendientes · aceptadas · rechazadas */}
                         <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.pendientes} pend.</span>
                         <span className="ui-badge ui-badge--ok" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.aceptadas}</span>
                         <span className="ui-badge ui-badge--err" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.rechazadas}</span>
-
-                        {/* Fila 2: total · enviados (enviados ocupa 2 columnas) */}
                         <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.total} total</span>
                         <span
                           className="ui-badge"
@@ -310,7 +548,7 @@ export default function DashboardPanel({
                             fontSize: 9,
                             padding: "1px 5px",
                             textAlign: "center",
-                            gridColumn: "span 2",  // ocupa col2 + col3
+                            gridColumn: "span 2",
                             background: "rgba(55,138,221,0.15)",
                             color: "#378ADD",
                             border: "0.5px solid rgba(55,138,221,0.35)",

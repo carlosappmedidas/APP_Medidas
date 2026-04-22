@@ -63,6 +63,20 @@ class DashTipo(BaseModel):
     enviadas_sftp: int = 0
 
 
+class DashTipoEnPeriodo(BaseModel):
+    """Desglose por tipo dentro de un periodo (AOBAGRECL, OBJEINCL, AOBCUPS, AOBCIL).
+    Usado por el dashboard para mostrar el detalle al desplegar un mes."""
+    tipo: str                  # "AOBAGRECL" | "OBJEINCL" | "AOBCUPS" | "AOBCIL"
+    obj_total: int             # nº objeciones del tipo en este periodo
+    obj_pendientes: int        # objeciones sin responder (aceptacion null)
+    reob_total: int = 0        # nº REOBs enviados para este tipo+periodo
+    # Contadores REE propagados a objeciones (usando num_registros del REOB)
+    ree_ok: int = 0
+    ree_bad: int = 0
+    ree_sin_resp: int = 0
+    ree_na: int = 0            # siempre 0 excepto para OBJEINCL (REE no responde INCL)
+
+
 class DashPeriodo(BaseModel):
     periodo: str              # YYYYMM, ej "202507"
     periodo_label: str        # "Jul 2025" — formato legible para la UI
@@ -71,10 +85,15 @@ class DashPeriodo(BaseModel):
     aceptadas: int
     rechazadas: int
     enviadas_sftp: int = 0
-    # ── Respuestas REE (.ok/.bad) agregadas desde ReobGenerado por aaaamm ──
-    ree_ok: int = 0           # REOBs aceptados por REE (.ok.bz2)
-    ree_bad: int = 0          # REOBs rechazados por REE (.bad.bz2/.bad2.bz2)
-    ree_sin_resp: int = 0     # REOBs enviados sin respuesta REE aún
+    # ── Respuestas REE agregadas desde ReobGenerado, en UNIDAD DE OBJECIONES ──
+    # (propagadas desde cada REOB a las objeciones que cubre vía num_registros).
+    # INCL NO se cuenta aquí — sus objeciones van a ree_na porque REE no responde INCL.
+    ree_ok: int = 0
+    ree_bad: int = 0
+    ree_sin_resp: int = 0
+    ree_na: int = 0            # objeciones de tipo INCL (no reciben respuesta REE)
+    # Desglose por tipo dentro del periodo
+    por_tipo: List[DashTipoEnPeriodo] = []
 
 class DashEmpresa(BaseModel):
     empresa_id: int
@@ -211,6 +230,7 @@ def get_dashboard(
     current_user: User = Depends(get_current_user),
 ):
     from app.objeciones.models import ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, ObjecionCIL
+    from app.objeciones.models import ReobGenerado
 
     # Si se filtra por empresa, verificar acceso
     if empresa_id:
@@ -219,11 +239,13 @@ def get_dashboard(
 
     tenant_id = _effective_tenant(current_user)
 
+    # Mapeo tipo_label (en objeciones_reob_generados) ↔ tipo REE (modelos).
+    # La columna ReobGenerado.tipo usa los valores: 'agrecl', 'incl', 'cups', 'cil'
     MODELOS = [
-        ("AOBAGRECL", ObjecionAGRECL),
-        ("OBJEINCL",  ObjecionINCL),
-        ("AOBCUPS",   ObjecionCUPS),
-        ("AOBCIL",    ObjecionCIL),
+        ("AOBAGRECL", ObjecionAGRECL, "agrecl"),
+        ("OBJEINCL",  ObjecionINCL,   "incl"),
+        ("AOBCUPS",   ObjecionCUPS,   "cups"),
+        ("AOBCIL",    ObjecionCIL,    "cil"),
     ]
 
     total_global = pendientes_global = aceptadas_global = rechazadas_global = enviadas_sftp_global = 0
@@ -235,20 +257,19 @@ def get_dashboard(
     # Agregador por empresa (clave = empresa_id).
     por_empresa_dict: dict = {}
 
-    # ── Agregar datos REE desde ReobGenerado (por aaaamm) ────────────────────
-    # Lo hacemos ANTES del bucle de modelos para que, al montar cada periodo,
-    # ya tengamos los contadores REE listos para fusionarlos.
-    from app.objeciones.models import ReobGenerado
+    # ── Paso 1: Construir tablas de REOBs indexadas por (aaaamm, tipo_reob) ──
+    # Necesitamos saber, para cada periodo+tipo, cuántos REOBs hay y cuántas
+    # objeciones cubren en cada estado REE (propagando num_registros).
     reob_q = db.query(ReobGenerado).filter(
         ReobGenerado.tenant_id == tenant_id,
-        ReobGenerado.enviado_sftp_at.isnot(None),  # solo los enviados
+        ReobGenerado.enviado_sftp_at.isnot(None),  # solo los enviados al SFTP
     )
     if empresa_id:
         reob_q = reob_q.filter(ReobGenerado.empresa_id == empresa_id)
     reob_rows = reob_q.all()
 
-    # ree_por_periodo[pkey] = {"ok": n, "bad": n, "sin_resp": n}
-    ree_por_periodo: dict = {}
+    # reob_stats[(pkey, tipo_reob)] = {"reob_total": N, "obj_ok": N, "obj_bad": N, "obj_sin_resp": N}
+    reob_stats: dict = {}
     for r in reob_rows:
         aaaamm_raw = getattr(r, "aaaamm", None)
         if not aaaamm_raw:
@@ -256,24 +277,35 @@ def get_dashboard(
         pkey = str(aaaamm_raw).strip()
         if len(pkey) != 6 or not pkey.isdigit():
             continue
-        if pkey not in ree_por_periodo:
-            ree_por_periodo[pkey] = {"ok": 0, "bad": 0, "sin_resp": 0}
-        estado = getattr(r, "estado_ree", None)
-        if estado == "ok":
-            ree_por_periodo[pkey]["ok"] += 1
-        elif estado == "bad":
-            ree_por_periodo[pkey]["bad"] += 1
-        else:
-            ree_por_periodo[pkey]["sin_resp"] += 1
+        tipo_reob = (getattr(r, "tipo", None) or "").strip().lower()
+        if not tipo_reob:
+            continue
+        key = (pkey, tipo_reob)
+        if key not in reob_stats:
+            reob_stats[key] = {"reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0}
 
-    for tipo_label, model in MODELOS:
+        num_regs = int(getattr(r, "num_registros", 0) or 0)
+        estado = getattr(r, "estado_ree", None)
+        reob_stats[key]["reob_total"] += 1
+        # Propagar el estado REE del REOB a las N objeciones que cubre
+        if estado == "ok":
+            reob_stats[key]["obj_ok"] += num_regs
+        elif estado == "bad":
+            reob_stats[key]["obj_bad"] += num_regs
+        else:
+            reob_stats[key]["obj_sin_resp"] += num_regs
+
+    for tipo_label, model, tipo_reob in MODELOS:
         q = db.query(model).filter(model.tenant_id == tenant_id)
         if empresa_id:
             q = q.filter(model.empresa_id == empresa_id)
         rows = q.all()
 
-        # Contadores locales para este tipo
+        # Contadores locales para este tipo (usado por por_tipo global)
         t_total = t_pend = t_ok = t_err = t_sftp = 0
+        # Contadores por periodo+tipo (usado para construir por_tipo dentro de cada periodo)
+        # tipo_por_periodo[pkey] = {"obj_total": N, "obj_pendientes": N}
+        tipo_por_periodo: dict = {}
 
         for r in rows:
             ac = getattr(r, "aceptacion") or ""
@@ -290,7 +322,7 @@ def get_dashboard(
             if enviado:
                 enviadas_sftp_global += 1
 
-            # ─── Contadores POR TIPO (se agregarán abajo) ─────────────────
+            # ─── Contadores POR TIPO global (para GestionPanel) ───────────
             t_total += 1
             if ac == "S":
                 t_ok += 1
@@ -306,17 +338,13 @@ def get_dashboard(
             if periodo_parsed is not None:
                 pkey, plabel = periodo_parsed
                 if pkey not in por_periodo_dict:
-                    # Al crear el periodo, inyectar de una vez los contadores REE
-                    # calculados antes del bucle (si hay REOBs de ese aaaamm).
-                    ree = ree_por_periodo.get(pkey, {"ok": 0, "bad": 0, "sin_resp": 0})
                     por_periodo_dict[pkey] = {
                         "periodo": pkey,
                         "periodo_label": plabel,
                         "total": 0, "pendientes": 0, "aceptadas": 0,
                         "rechazadas": 0, "enviadas_sftp": 0,
-                        "ree_ok": ree["ok"],
-                        "ree_bad": ree["bad"],
-                        "ree_sin_resp": ree["sin_resp"],
+                        "ree_ok": 0, "ree_bad": 0, "ree_sin_resp": 0, "ree_na": 0,
+                        "por_tipo": [],  # se rellena al final
                     }
                 p = por_periodo_dict[pkey]
                 p["total"] += 1
@@ -329,7 +357,14 @@ def get_dashboard(
                 if enviado:
                     p["enviadas_sftp"] += 1
 
-            # ─── Agregación POR EMPRESA (se mantiene igual que antes) ────
+                # Sub-agregador por periodo+tipo (para construir el detalle "por_tipo")
+                if pkey not in tipo_por_periodo:
+                    tipo_por_periodo[pkey] = {"obj_total": 0, "obj_pendientes": 0}
+                tipo_por_periodo[pkey]["obj_total"] += 1
+                if ac not in ("S", "N"):
+                    tipo_por_periodo[pkey]["obj_pendientes"] += 1
+
+            # ─── Agregación POR EMPRESA (se mantiene igual) ──────────────
             eid = int(getattr(r, "empresa_id"))
             if eid not in por_empresa_dict:
                 emp = db.query(Empresa).filter(Empresa.id == eid).first()
@@ -350,7 +385,7 @@ def get_dashboard(
             if enviado:
                 d["enviadas_sftp"] += 1
 
-        # ─── Cerrar el agregado POR TIPO para este modelo ────────────────
+        # ─── Cerrar agregado POR TIPO global ─────────────────────────────
         if t_total > 0:
             por_tipo.append(DashTipo(
                 tipo=tipo_label,
@@ -361,12 +396,56 @@ def get_dashboard(
                 enviadas_sftp=t_sftp,
             ))
 
-    # ─── Añadir periodos que solo tienen REOBs (sin objeciones) ──────────
-    # Se crean con contadores de objeciones a 0 pero con los datos REE.
-    for pkey, ree in ree_por_periodo.items():
+        # ─── Fusionar tipo_por_periodo dentro de cada periodo ────────────
+        # Añadimos una entrada DashTipoEnPeriodo a p["por_tipo"] por cada
+        # periodo donde este tipo tenga objeciones.
+        for pkey, agg in tipo_por_periodo.items():
+            if pkey not in por_periodo_dict:
+                continue
+            p = por_periodo_dict[pkey]
+            # Recuperar stats REE para este (periodo, tipo_reob)
+            stats = reob_stats.get((pkey, tipo_reob), {
+                "reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0,
+            })
+
+            # Para INCL: todas las objeciones van a ree_na (REE no responde).
+            # Para el resto: se usan los contadores propagados desde los REOBs.
+            if tipo_reob == "incl":
+                entry = {
+                    "tipo": tipo_label,
+                    "obj_total": agg["obj_total"],
+                    "obj_pendientes": agg["obj_pendientes"],
+                    "reob_total": stats["reob_total"],
+                    "ree_ok": 0,
+                    "ree_bad": 0,
+                    "ree_sin_resp": 0,
+                    "ree_na": agg["obj_total"],  # todas las objeciones de INCL son N/A
+                }
+                # Propagar al total del periodo
+                p["ree_na"] += agg["obj_total"]
+            else:
+                entry = {
+                    "tipo": tipo_label,
+                    "obj_total": agg["obj_total"],
+                    "obj_pendientes": agg["obj_pendientes"],
+                    "reob_total": stats["reob_total"],
+                    "ree_ok": stats["obj_ok"],
+                    "ree_bad": stats["obj_bad"],
+                    "ree_sin_resp": stats["obj_sin_resp"],
+                    "ree_na": 0,
+                }
+                # Propagar al total del periodo
+                p["ree_ok"] += stats["obj_ok"]
+                p["ree_bad"] += stats["obj_bad"]
+                p["ree_sin_resp"] += stats["obj_sin_resp"]
+
+            p["por_tipo"].append(entry)
+
+    # ─── Añadir periodos que solo tienen REOBs (sin objeciones en BD) ────
+    # Caso raro: puede haber REOBs huérfanos de un mes que ya no tiene AOB.
+    for (pkey, tipo_reob), stats in reob_stats.items():
         if pkey in por_periodo_dict:
             continue
-        # Construir el label "Jul 2025" desde el pkey "202507"
         year = pkey[:4]
         month = int(pkey[4:6])
         plabel = f"{_MESES_ES[month - 1]} {year}" if 1 <= month <= 12 else pkey
@@ -375,10 +454,10 @@ def get_dashboard(
             "periodo_label": plabel,
             "total": 0, "pendientes": 0, "aceptadas": 0,
             "rechazadas": 0, "enviadas_sftp": 0,
-            "ree_ok": ree["ok"],
-            "ree_bad": ree["bad"],
-            "ree_sin_resp": ree["sin_resp"],
+            "ree_ok": 0, "ree_bad": 0, "ree_sin_resp": 0, "ree_na": 0,
+            "por_tipo": [],
         }
+        # (No desglosamos por_tipo en este caso raro — se mostrará solo el total)
 
     # ─── Orden y límite de "por_periodo": 6 más recientes, reciente arriba ────
     por_periodo_ordenado = sorted(
@@ -386,6 +465,9 @@ def get_dashboard(
         key=lambda p: p["periodo"],
         reverse=True,
     )[:6]
+    # Convertir por_tipo de cada periodo a DashTipoEnPeriodo
+    for p in por_periodo_ordenado:
+        p["por_tipo"] = [DashTipoEnPeriodo(**t) for t in p["por_tipo"]]
     por_periodo = [DashPeriodo(**v) for v in por_periodo_ordenado]
 
     por_empresa = [DashEmpresa(**v) for v in por_empresa_dict.values()]
