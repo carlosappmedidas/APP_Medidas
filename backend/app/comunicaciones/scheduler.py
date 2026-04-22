@@ -174,8 +174,11 @@ def start_scheduler() -> None:
         max_instances=1,  # evita solapamientos
     )
     # Job diario para chequear hitos FIN RECEPCIÓN OBJECIONES del calendario REE.
-    # Corre todos los días a las 23:00 UTC y genera alertas para los tenants
-    # con la automatización activada.
+    # Corre todos los días a las 23:00 (Europe/Madrid) y genera alertas para los
+    # tenants con la automatización activada.
+    # misfire_grace_time=21600 → si uvicorn estaba apagado a las 23:00, tiene
+    # hasta 6 horas de gracia para recuperarse al arrancar y ejecutar el job.
+    # coalesce=True → si se perdieron varios triggers, solo ejecuta 1 (no en bucle).
     _scheduler.add_job(
         _ejecutar_chequeo_fin_recepcion,
         trigger=CronTrigger(hour=23, minute=0),
@@ -183,9 +186,12 @@ def start_scheduler() -> None:
         name="Objeciones — chequeo FIN RECEPCIÓN (23:00 diario)",
         replace_existing=True,
         max_instances=1,
+        misfire_grace_time=21600,
+        coalesce=True,
     )
     # Job diario para buscar respuestas .ok / .bad de REE en el SFTP sobre los
     # REOB enviados. Corre todos los días a las 07:00 (Europe/Madrid).
+    # misfire_grace_time + coalesce: ver comentarios del job FIN RECEPCIÓN arriba.
     _scheduler.add_job(
         _ejecutar_busqueda_respuestas_ree,
         trigger=CronTrigger(hour=7, minute=0),
@@ -193,7 +199,10 @@ def start_scheduler() -> None:
         name="Objeciones — buscar respuestas REE (07:00 diario)",
         replace_existing=True,
         max_instances=1,
+        misfire_grace_time=21600,
+        coalesce=True,
     )
+
     _scheduler.start()
     logger.info("[Scheduler] Scheduler arrancado — FTP cada minuto + Objeciones FIN RECEPCIÓN diario 23:00")
 
