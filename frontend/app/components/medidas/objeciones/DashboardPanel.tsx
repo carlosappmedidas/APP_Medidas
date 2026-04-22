@@ -147,18 +147,26 @@ export default function DashboardPanel({
   const iconoBg           = autoActiva ? "rgba(29,158,117,0.15)" : "rgba(148,163,184,0.12)";
   const alertasColor      = alertasActivasNum > 0 ? "#A32D2D" : "var(--text-muted)";
 
-  // Formateo del último run: "21/04/2026 23:00 ✓" / "ayer 23:00 ⚠"
+  // Formateo del último run en hora Madrid: "23/04/2026 00:42 ✓"
+  // El backend guarda los timestamps en UTC (datetime.utcnow) sin offset, así que
+  // al recibirlos añadimos "Z" si no tienen zona, y luego los formateamos con
+  // Intl.DateTimeFormat en timezone Europe/Madrid.
   const formatearUltimoRun = (iso: string | null, okFlag: boolean | null): string => {
     if (!iso) return "Sin ejecutar aún";
     try {
-      const d = new Date(iso);
-      const dd  = String(d.getDate()).padStart(2, "0");
-      const mm  = String(d.getMonth() + 1).padStart(2, "0");
-      const yyyy = d.getFullYear();
-      const hh  = String(d.getHours()).padStart(2, "0");
-      const min = String(d.getMinutes()).padStart(2, "0");
+      // Si el ISO no tiene indicador de zona (Z o ±hh:mm), lo tratamos como UTC.
+      const isoUtc = /[Zz]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
+      const d = new Date(isoUtc);
+      const fecha = new Intl.DateTimeFormat("es-ES", {
+        timeZone: "Europe/Madrid",
+        day: "2-digit", month: "2-digit", year: "numeric",
+      }).format(d);
+      const hora = new Intl.DateTimeFormat("es-ES", {
+        timeZone: "Europe/Madrid",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      }).format(d);
       const marker = okFlag === true ? "✓" : okFlag === false ? "⚠" : "";
-      return `Último: ${dd}/${mm}/${yyyy} ${hh}:${min} ${marker}`.trim();
+      return `Último: ${fecha} ${hora} ${marker}`.trim();
     } catch {
       return "Sin ejecutar aún";
     }

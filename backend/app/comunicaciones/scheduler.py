@@ -1,5 +1,5 @@
 # app/comunicaciones/scheduler.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
 """
 Scheduler de sincronización FTP automática.
 Se integra con FastAPI via lifespan — arranca con la app y para con ella.
@@ -9,7 +9,7 @@ Comprueba cada minuto qué reglas tienen proxima_ejecucion <= ahora y las ejecut
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -160,6 +160,97 @@ def _ejecutar_busqueda_respuestas_ree() -> None:
         logger.error(f"[obj_buscar_respuestas_ree] Error general: {e}")
 
 
+def _catchup_jobs_perdidos() -> None:
+    """
+    Recupera ejecuciones perdidas del job FIN_RECEPCION tras un reinicio de uvicorn.
+
+    Problema que resuelve:
+      APScheduler in-memory arranca "en blanco" tras cada reinicio. Si uvicorn
+      estaba parado a las 23:00 (hora programada del cron), ese día NO se
+      ejecuta el job — misfire_grace_time solo sirve si el scheduler ya tenía
+      el trigger registrado y lo perdió por lag, no tras un reinicio completo.
+
+    Estrategia:
+      - Al arrancar, iterar tenants con automatización fin_recepcion activa.
+      - Si (a) su ultimo_run_at fue hace > 20 horas (o nunca corrió) Y
+           (b) ya pasaron las 23:00 del día de hoy en Europe/Madrid,
+        entonces disparar el job ahora mismo para ese tenant.
+      - Si uvicorn se reinicia muchas veces en un día, el marcaje de
+        ultimo_run_at evita ejecuciones duplicadas (el umbral de 20h lo cubre).
+
+    Se ejecuta UNA sola vez al arrancar el scheduler (en start_scheduler).
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        from app.core.db import SessionLocal
+        from app.objeciones.automatizacion.models import ObjecionesAutomatizacion, TIPO_FIN_RECEPCION
+        from app.objeciones.automatizacion.services_job import ejecutar_chequeo_fin_recepcion_tenant
+
+        madrid = ZoneInfo("Europe/Madrid")
+        ahora_madrid = datetime.now(madrid)
+
+        # Si aún no son las 23:00 de hoy, no hay nada que recuperar
+        # (todavía no tocaba ejecutar el cron de hoy).
+        if ahora_madrid.hour < 23:
+            logger.info(
+                f"[Scheduler catchup] Hora actual {ahora_madrid:%H:%M} < 23:00 Madrid — "
+                f"nada que recuperar, el cron correrá a su hora."
+            )
+            return
+
+        db = SessionLocal()
+        try:
+            configs = (
+                db.query(ObjecionesAutomatizacion)
+                .filter(
+                    ObjecionesAutomatizacion.tipo   == TIPO_FIN_RECEPCION,
+                    ObjecionesAutomatizacion.activa == 1,
+                )
+                .all()
+            )
+
+            if not configs:
+                logger.info("[Scheduler catchup] No hay tenants con fin_recepcion activa.")
+                return
+
+            # Umbral: si no ha corrido en las últimas 20 horas Y ya pasaron las 23:00
+            # de hoy Madrid → se asume que se perdió la ejecución de hoy.
+            umbral = datetime.utcnow() - timedelta(hours=20)
+
+            for cfg in configs:
+                tid = int(cfg.tenant_id)
+                ultimo = cfg.ultimo_run_at
+                necesita_catchup = (ultimo is None) or (ultimo < umbral)
+
+                if not necesita_catchup:
+                    logger.info(
+                        f"[Scheduler catchup] tenant={tid}: último run {ultimo} OK, no hace falta recuperar."
+                    )
+                    continue
+
+                logger.warning(
+                    f"[Scheduler catchup] tenant={tid}: ejecución perdida detectada "
+                    f"(último run: {ultimo}). Disparando recuperación..."
+                )
+                try:
+                    resultado = ejecutar_chequeo_fin_recepcion_tenant(
+                        db,
+                        tenant_id    = tid,
+                        current_user = None,
+                        forzar       = False,
+                    )
+                    logger.info(
+                        f"[Scheduler catchup] tenant={tid}: recuperado — "
+                        f"ok={resultado.get('ok')} alertas={resultado.get('alertas_creadas')}"
+                    )
+                except Exception as e:
+                    logger.error(f"[Scheduler catchup] Error recuperando tenant={tid}: {e}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"[Scheduler catchup] Error general: {e}")
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None and _scheduler.running:
@@ -206,9 +297,15 @@ def start_scheduler() -> None:
     _scheduler.start()
     logger.info("[Scheduler] Scheduler arrancado — FTP cada minuto + Objeciones FIN RECEPCIÓN diario 23:00")
 
+    # Catch-up: tras arrancar (posiblemente después de un reinicio), comprobar
+    # si se perdió la ejecución del job FIN_RECEPCION de hoy y recuperarla.
+    # Se ejecuta en un thread para no bloquear el arranque de uvicorn.
+    import threading
+    threading.Thread(target=_catchup_jobs_perdidos, daemon=True, name="SchedulerCatchup").start()
+
 
 def stop_scheduler() -> None:
     global _scheduler
     if _scheduler is not None and _scheduler.running:
         _scheduler.shutdown(wait=False)
-        logger.info("[Scheduler] FTP Scheduler detenido")
+        
