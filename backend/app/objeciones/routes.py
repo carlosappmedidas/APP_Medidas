@@ -284,16 +284,16 @@ def get_dashboard(
         if key not in reob_stats:
             reob_stats[key] = {"reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0}
 
-        num_regs = int(getattr(r, "num_registros", 0) or 0)
         estado = getattr(r, "estado_ree", None)
         reob_stats[key]["reob_total"] += 1
-        # Propagar el estado REE del REOB a las N objeciones que cubre
+        # Contadores REE en UNIDAD DE REOBS (no objeciones).
+        # Cada REOB cuenta como 1, independientemente de cuántas objeciones agrupe.
         if estado == "ok":
-            reob_stats[key]["obj_ok"] += num_regs
+            reob_stats[key]["obj_ok"] += 1
         elif estado == "bad":
-            reob_stats[key]["obj_bad"] += num_regs
+            reob_stats[key]["obj_bad"] += 1
         else:
-            reob_stats[key]["obj_sin_resp"] += num_regs
+            reob_stats[key]["obj_sin_resp"] += 1
 
     for tipo_label, model, tipo_reob in MODELOS:
         q = db.query(model).filter(model.tenant_id == tenant_id)
@@ -408,7 +408,7 @@ def get_dashboard(
                 "reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0,
             })
 
-            # Para INCL: todas las objeciones van a ree_na (REE no responde).
+            # Para INCL: los REOBs no reciben respuesta REE. ree_na cuenta REOBs.
             # Para el resto: se usan los contadores propagados desde los REOBs.
             if tipo_reob == "incl":
                 entry = {
@@ -419,10 +419,10 @@ def get_dashboard(
                     "ree_ok": 0,
                     "ree_bad": 0,
                     "ree_sin_resp": 0,
-                    "ree_na": agg["obj_total"],  # todas las objeciones de INCL son N/A
+                    "ree_na": stats["reob_total"],  # nº de REOBs INCL (no reciben respuesta)
                 }
-                # Propagar al total del periodo
-                p["ree_na"] += agg["obj_total"]
+                # Propagar al total del periodo (en nº de REOBs)
+                p["ree_na"] += stats["reob_total"]
             else:
                 entry = {
                     "tipo": tipo_label,

@@ -49,20 +49,27 @@ const TIPO_LABEL_CORTO: Record<string, string> = {
 // Tooltip explicativo sobre "X objeciones · Y REOB".
 // Si esINCL = true, el texto aclara que REE no envía respuesta para este tipo.
 function tooltipObjReob(objTotal: number, reobTotal: number, esINCL: boolean = false): string {
-  if (reobTotal === 0) return `${objTotal} objeciones (sin REOB enviados todavía)`;
-
-  const notaINCL = esINCL
-    ? " REE no envía respuesta (.ok/.bad) para los REOB de tipo INCL."
-    : "";
-
-  if (objTotal === reobTotal) {
-    return `${objTotal} objeciones agrupadas en ${reobTotal} REOB (una por cada objeción).${notaINCL}`;
+  // Caso sin enviar
+  if (reobTotal === 0) {
+    return `${objTotal} ${objTotal === 1 ? "objeción pendiente" : "objeciones pendientes"} de enviar al SFTP.`;
   }
+
+  // Caso sin agrupación (una objeción = un REOB)
+  if (objTotal === reobTotal) {
+    const base = `${objTotal} ${objTotal === 1 ? "objeción enviada" : "objeciones enviadas"} en ${reobTotal} ${reobTotal === 1 ? "fichero REOB" : "ficheros REOB"} (una por fichero).`;
+    if (esINCL) {
+      return base + "\n\n⚠ REE no envía respuesta (.ok/.bad) para los REOB de tipo INCL.";
+    }
+    return base;
+  }
+
+  // Caso con agrupación (más objeciones que REOBs)
   const diff = objTotal - reobTotal;
-  return (
-    `${objTotal} objeciones agrupadas en ${reobTotal} REOB. ` +
-    `Cuando varias objeciones van a la misma comercializadora, se agrupan en 1 solo REOB — por eso hay ${diff} ${diff === 1 ? "objeción" : "objeciones"} de más que ficheros REOB.${notaINCL}`
-  );
+  const base = `${objTotal} objeciones enviadas en ${reobTotal} ficheros REOB.\n\n${diff === 1 ? "1 REOB agrupa" : `${diff} REOB agrupan`} a varias objeciones porque pertenecen a la misma comercializadora.`;
+  if (esINCL) {
+    return base + "\n\n⚠ REE no envía respuesta (.ok/.bad) para los REOB de tipo INCL.";
+  }
+  return base;
 }
 
 // Componente inline para tooltip CSS visible (hover).
