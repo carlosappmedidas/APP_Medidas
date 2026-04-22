@@ -208,6 +208,32 @@ export default function DashboardPanel({
                 <span style={{ color: "#378ADD", fontWeight: 500 }}>{dash?.enviadas_sftp ?? 0}</span> enviadas SFTP
                 {total > 0 && <> · {pct(dash?.enviadas_sftp ?? 0)}%</>}
               </div>
+              {/* ── Respuestas REE (solo sobre REOBs que REE responde, excl. INCL) ──
+                  "esperadas" = suma de REOBs no-INCL enviados = ree_ok + ree_bad + ree_sin_resp
+                  "respondidas" = ree_ok + ree_bad (REE ya dio veredicto OK o BAD)
+                  Se calcula agregando todos los periodos devueltos por el dashboard. */}
+              {(() => {
+                const periodos = dash?.por_periodo ?? [];
+                const esperadas = periodos.reduce(
+                  (acc, p) => acc + (p.ree_ok ?? 0) + (p.ree_bad ?? 0) + (p.ree_sin_resp ?? 0),
+                  0,
+                );
+                const respondidas = periodos.reduce(
+                  (acc, p) => acc + (p.ree_ok ?? 0) + (p.ree_bad ?? 0),
+                  0,
+                );
+                if (esperadas === 0) return null;
+                const pctRee = Math.round(respondidas / esperadas * 100);
+                return (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                    <span style={{ color: "#0F6E56", fontWeight: 500 }}>{respondidas}</span>
+                    {" respondidas / "}
+                    <span style={{ fontWeight: 500 }}>{esperadas}</span>
+                    {" esperadas · "}
+                    {pctRee}%
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ── Tarjeta 2: ESTADO ────────────────────────────────────────── */}
