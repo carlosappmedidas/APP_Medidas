@@ -39,14 +39,25 @@ export default function ObjecionesSettingsSection({ token }: Props) {
   const [savedId, setSavedId]     = useState<number | null>(null);
 
   // ── Automatización: estado local ─────────────────────────────────────────────
-  const [autoConfig, setAutoConfig] = useState<{
+  // El backend devuelve ahora 3 configuraciones en un objeto con 3 claves.
+  type AutoConfigItem = {
     activa: boolean;
     ultimo_run_at: string | null;
     ultimo_run_ok: boolean | null;
     ultimo_run_msg: string | null;
-  } | null>(null);
-  const [autoSaving, setAutoSaving] = useState(false);
-  const [revisando, setRevisando]   = useState(false);
+  };
+  type AutoConfigAll = {
+    fin_recepcion:         AutoConfigItem;
+    fin_resolucion:        AutoConfigItem;
+    buscar_respuestas_ree: AutoConfigItem;
+  };
+  type AutoTipo = keyof AutoConfigAll;  // "fin_recepcion" | "fin_resolucion" | "buscar_respuestas_ree"
+
+  const [autoConfigs, setAutoConfigs] = useState<AutoConfigAll | null>(null);
+  // Saving/revisando ahora son por tipo (para que los 3 botones puedan operar
+  // independientemente sin bloquearse entre sí).
+  const [autoSavingTipo, setAutoSavingTipo] = useState<AutoTipo | null>(null);
+  const [revisandoTipo,  setRevisandoTipo]  = useState<AutoTipo | null>(null);
 
   // ── Cargar configs del tenant ───────────────────────────────────────────────
   const cargarConfigs = useCallback(async () => {
@@ -75,7 +86,9 @@ export default function ObjecionesSettingsSection({ token }: Props) {
 
   useEffect(() => { cargarConfigs(); }, [cargarConfigs]);
 
-  // ── Cargar config de automatización ─────────────────────────────────────────
+  // ── Cargar las 3 configs de automatización ─────────────────────────────────
+  // El nuevo endpoint devuelve un objeto con 3 claves: fin_recepcion,
+  // fin_resolucion, buscar_respuestas_ree. Cada una es un AutoConfigItem.
   const cargarAutoConfig = useCallback(async () => {
     if (!token) return;
     try {
@@ -84,59 +97,68 @@ export default function ObjecionesSettingsSection({ token }: Props) {
       });
       if (!res.ok) return;
       const data = await res.json();
-      setAutoConfig({
-        activa:         !!data.activa,
-        ultimo_run_at:  data.ultimo_run_at ?? null,
-        ultimo_run_ok:  data.ultimo_run_ok ?? null,
-        ultimo_run_msg: data.ultimo_run_msg ?? null,
+      const norm = (c: Partial<AutoConfigItem> | undefined): AutoConfigItem => ({
+        activa:         !!c?.activa,
+        ultimo_run_at:  c?.ultimo_run_at  ?? null,
+        ultimo_run_ok:  c?.ultimo_run_ok  ?? null,
+        ultimo_run_msg: c?.ultimo_run_msg ?? null,
+      });
+      setAutoConfigs({
+        fin_recepcion:         norm(data.fin_recepcion),
+        fin_resolucion:        norm(data.fin_resolucion),
+        buscar_respuestas_ree: norm(data.buscar_respuestas_ree),
       });
     } catch { /* silencioso */ }
   }, [token]);
 
   useEffect(() => { cargarAutoConfig(); }, [cargarAutoConfig]);
 
-  // ── Toggle activa/desactiva ─────────────────────────────────────────────────
-  const handleToggleAuto = async () => {
-    if (!token || !autoConfig) return;
-    const nuevoValor = !autoConfig.activa;
-    setAutoSaving(true); setError(null);
+  // ── Toggle activa/desactiva por tipo ────────────────────────────────────────
+  const handleToggleAuto = async (tipo: AutoTipo) => {
+    if (!token || !autoConfigs) return;
+    const nuevoValor = !autoConfigs[tipo].activa;
+    setAutoSavingTipo(tipo); setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/automatizacion/config`, {
+      const res = await fetch(`${API_BASE_URL}/objeciones/automatizacion/config/${tipo}`, {
         method: "PATCH",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
         body: JSON.stringify({ activa: nuevoValor }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
-      setAutoConfig({
-        activa:         !!data.activa,
-        ultimo_run_at:  data.ultimo_run_at ?? null,
-        ultimo_run_ok:  data.ultimo_run_ok ?? null,
-        ultimo_run_msg: data.ultimo_run_msg ?? null,
-      });
+      // El PATCH devuelve un AutoConfigItem plano, lo actualizamos en su clave
+      setAutoConfigs(prev => prev ? {
+        ...prev,
+        [tipo]: {
+          activa:         !!data.activa,
+          ultimo_run_at:  data.ultimo_run_at  ?? null,
+          ultimo_run_ok:  data.ultimo_run_ok  ?? null,
+          ultimo_run_msg: data.ultimo_run_msg ?? null,
+        },
+      } : prev);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error al cambiar el estado");
     } finally {
-      setAutoSaving(false);
+      setAutoSavingTipo(null);
     }
   };
 
-  // ── Revisar ahora (ejecuta el job manualmente) ──────────────────────────────
-  const handleRevisarAhora = async () => {
+  // ── Revisar ahora por tipo (ejecuta el job manualmente) ────────────────────
+  const handleRevisarAhora = async (tipo: AutoTipo) => {
     if (!token) return;
-    setRevisando(true); setError(null);
+    setRevisandoTipo(tipo); setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/automatizacion/revisar-ahora`, {
+      const res = await fetch(`${API_BASE_URL}/objeciones/automatizacion/revisar-ahora/${tipo}`, {
         method: "POST",
         headers: getAuthHeaders(token),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      // Refrescar la config para ver el nuevo ultimo_run_at/ok/msg
+      // Refrescar las 3 configs para ver el nuevo ultimo_run_at/ok/msg
       await cargarAutoConfig();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error al ejecutar");
     } finally {
-      setRevisando(false);
+      setRevisandoTipo(null);
     }
   };
 
@@ -289,104 +311,153 @@ export default function ObjecionesSettingsSection({ token }: Props) {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* TARJETA AUTOMATIZACIÓN — FIN RECEPCIÓN OBJECIONES                       */}
+      {/* TARJETAS AUTOMATIZACIÓN (las 3)                                         */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      <div style={{
-        background: "var(--field-bg-soft)",
-        border: "0.5px solid var(--card-border)",
-        borderRadius: 10,
-        padding: "16px 18px",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: 7,
-              background: autoConfig?.activa ? "rgba(29,158,117,0.15)" : "rgba(148,163,184,0.12)",
-              display: "flex", alignItems: "center", justifyContent: "center",
+
+      {/* Metadata de cada tipo: título, descripción, hora del cron (solo info). */}
+      {(() => {
+        const AUTO_META: Record<AutoTipo, { titulo: string; desc: string; hora: string }> = {
+          fin_recepcion: {
+            titulo: "Automatización · Fin recepción objeciones",
+            desc:   "Cada día a las 23:00 revisa el SFTP si el calendario REE tuvo ayer un cierre de recepción.",
+            hora:   "23:00",
+          },
+          fin_resolucion: {
+            titulo: "Automatización · Fin resolución objeciones",
+            desc:   "Cada día a las 23:30 avisa de las objeciones sin responder antes de los próximos hitos de resolución (3 días vista).",
+            hora:   "23:30",
+          },
+          buscar_respuestas_ree: {
+            titulo: "Automatización · Búsqueda de respuestas REE",
+            desc:   "Cada día a las 07:00 busca en el SFTP los ficheros .ok / .bad con los que REE responde a los REOB enviados.",
+            hora:   "07:00",
+          },
+        };
+
+        // Lee la config de un tipo — devuelve null si no está cargada aún.
+        const cfgOf = (t: AutoTipo): AutoConfigItem | null => autoConfigs?.[t] ?? null;
+
+        // Renderiza una tarjeta de automatización por tipo.
+        const renderTarjeta = (tipo: AutoTipo) => {
+          const meta = AUTO_META[tipo];
+          const cfg  = cfgOf(tipo);
+          const saving    = autoSavingTipo === tipo;
+          const revisando = revisandoTipo  === tipo;
+          return (
+            <div key={tipo} style={{
+              background: "var(--field-bg-soft)",
+              border: "0.5px solid var(--card-border)",
+              borderRadius: 10,
+              padding: "16px 18px",
             }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke={autoConfig?.activa ? "#1D9E75" : "var(--text-muted)"}
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
-              </svg>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text)" }}>
-                Automatización · Fin recepción objeciones
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 7,
+                    background: cfg?.activa ? "rgba(29,158,117,0.15)" : "rgba(148,163,184,0.12)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke={cfg?.activa ? "#1D9E75" : "var(--text-muted)"}
+                      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text)" }}>
+                      {meta.titulo}
+                      <span style={{ marginLeft: 8, fontSize: 10, color: "#378ADD", letterSpacing: "0.04em" }}>· {meta.hora}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                      {meta.desc}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAuto(tipo)}
+                  disabled={saving || !cfg}
+                  className="ui-btn ui-btn-outline ui-btn-xs"
+                  style={{
+                    minWidth: 100,
+                    color: cfg?.activa ? "#A32D2D" : "#0F6E56",
+                    borderColor: cfg?.activa ? "rgba(163,45,45,0.4)" : "rgba(15,110,86,0.4)",
+                  }}
+                >
+                  {saving ? "..." : (cfg?.activa ? "Desactivar" : "Activar")}
+                </button>
               </div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                Cada día a las 23:00 revisa el SFTP si el calendario REE tuvo ayer un cierre de recepción.
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleToggleAuto}
-            disabled={autoSaving || !autoConfig}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-            style={{
-              minWidth: 100,
-              color: autoConfig?.activa ? "#A32D2D" : "#0F6E56",
-              borderColor: autoConfig?.activa ? "rgba(163,45,45,0.4)" : "rgba(15,110,86,0.4)",
-            }}
-          >
-            {autoSaving ? "..." : (autoConfig?.activa ? "Desactivar" : "Activar")}
-          </button>
-        </div>
 
-        {/* Estado + último run + botón Revisar ahora */}
-        <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 14,
-          alignItems: "center",
-          paddingTop: 12, borderTop: "0.5px solid var(--card-border)",
-        }}>
-          <div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Estado</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {/* Estado + último run + botón Revisar ahora */}
               <div style={{
-                width: 8, height: 8, borderRadius: "50%",
-                background: autoConfig?.activa ? "#1D9E75" : "#94A3B8",
-              }} />
-              <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 500 }}>
-                {autoConfig?.activa ? "Activa" : "Desactivada"}
-              </span>
-            </div>
-          </div>
+                display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 14,
+                alignItems: "center",
+                paddingTop: 12, borderTop: "0.5px solid var(--card-border)",
+              }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Estado</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: cfg?.activa ? "#1D9E75" : "#94A3B8",
+                    }} />
+                    <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 500 }}>
+                      {cfg?.activa ? "Activa" : "Desactivada"}
+                    </span>
+                  </div>
+                </div>
 
-          <div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Último chequeo</div>
-            <div style={{ fontSize: 12, color: "var(--text)" }}>
-              {autoConfig?.ultimo_run_at ? (
-                <>
-                  {new Date(autoConfig.ultimo_run_at).toLocaleString("es-ES", {
-                    day: "2-digit", month: "2-digit", year: "numeric",
-                    hour: "2-digit", minute: "2-digit",
-                  })}
-                  {" "}
-                  {autoConfig.ultimo_run_ok === true ? "✓" : autoConfig.ultimo_run_ok === false ? "⚠" : ""}
-                </>
-              ) : (
-                <span style={{ color: "var(--text-muted)" }}>Nunca</span>
-              )}
-            </div>
-            {autoConfig?.ultimo_run_msg && (
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-                {autoConfig.ultimo_run_msg}
+                <div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Último chequeo</div>
+                  <div style={{ fontSize: 12, color: "var(--text)" }}>
+                    {cfg?.ultimo_run_at ? (() => {
+                      // Igual que DashboardPanel: UTC→Madrid si el ISO no trae zona.
+                      const iso = cfg.ultimo_run_at as string;
+                      const isoUtc = /[Zz]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
+                      const d = new Date(isoUtc);
+                      const fecha = new Intl.DateTimeFormat("es-ES", {
+                        timeZone: "Europe/Madrid",
+                        day: "2-digit", month: "2-digit", year: "numeric",
+                      }).format(d);
+                      const hora = new Intl.DateTimeFormat("es-ES", {
+                        timeZone: "Europe/Madrid",
+                        hour: "2-digit", minute: "2-digit", hour12: false,
+                      }).format(d);
+                      const marker = cfg.ultimo_run_ok === true ? "✓" : cfg.ultimo_run_ok === false ? "⚠" : "";
+                      return <>{fecha} {hora} {marker}</>;
+                    })() : (
+                      <span style={{ color: "var(--text-muted)" }}>Nunca</span>
+                    )}
+                  </div>
+                  {cfg?.ultimo_run_msg && (
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                      {cfg.ultimo_run_msg}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleRevisarAhora(tipo)}
+                  disabled={revisando}
+                  className="ui-btn ui-btn-outline ui-btn-xs"
+                  style={{ minWidth: 130 }}
+                >
+                  {revisando ? "Revisando..." : "🔄 Revisar ahora"}
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          );
+        };
 
-          <button
-            type="button"
-            onClick={handleRevisarAhora}
-            disabled={revisando}
-            className="ui-btn ui-btn-outline ui-btn-xs"
-            style={{ minWidth: 130 }}
-          >
-            {revisando ? "Revisando..." : "🔄 Revisar ahora"}
-          </button>
-        </div>
-      </div>
+        return (
+          <>
+            {renderTarjeta("fin_recepcion")}
+            {renderTarjeta("fin_resolucion")}
+            {renderTarjeta("buscar_respuestas_ree")}
+          </>
+        );
+      })()}
 
     </div>
   );

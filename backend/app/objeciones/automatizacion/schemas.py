@@ -35,11 +35,27 @@ class AutomatizacionConfigPatch(BaseModel):
 
 
 class RevisarAhoraResponse(BaseModel):
-    """Respuesta del POST /objeciones/automatizacion/revisar-ahora."""
+    """Respuesta del POST /objeciones/automatizacion/revisar-ahora/{tipo}."""
     ok:               bool
     mensaje:          str
     alertas_creadas:  int
     hitos_procesados: int
+
+
+class AutomatizacionConfigAll(BaseModel):
+    """
+    Respuesta de GET /objeciones/automatizacion/config — devuelve las 3
+    configuraciones de automatización del tenant a la vez:
+      - fin_recepcion          (cron 23:00 — detecta AOBs nuevos en SFTP)
+      - fin_resolucion         (cron 23:30 — avisa objeciones sin responder)
+      - buscar_respuestas_ree  (cron 07:00 — busca .ok/.bad de REE en SFTP)
+
+    Cada clave es un AutomatizacionConfigRead. Si una config no existía en BD,
+    el servicio la crea on-the-fly con sus valores por defecto.
+    """
+    fin_recepcion:          AutomatizacionConfigRead
+    fin_resolucion:         AutomatizacionConfigRead
+    buscar_respuestas_ree:  AutomatizacionConfigRead
 
 
 # ═════════════════════════════════════════════════════════════════════════════

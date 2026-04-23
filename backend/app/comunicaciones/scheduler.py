@@ -104,17 +104,78 @@ def _ejecutar_chequeo_fin_recepcion() -> None:
         logger.error(f"[obj_fin_recepcion_job] Error general: {e}")
 
 
+def _ejecutar_chequeo_fin_resolucion() -> None:
+    """
+    Job que corre cada día a las 23:30.
+    Itera todos los tenants que tienen la automatización "fin_resolucion" activada
+    y ejecuta el chequeo contra calendario_ree + BD de objeciones.
+
+    A diferencia de FIN_RECEPCION:
+      - No toca el SFTP (mira objeciones locales con aceptacion IS NULL).
+      - La ventana es hacia ADELANTE (3 próximos días) — avisa ANTES del hito.
+    """
+    try:
+        from app.core.db import SessionLocal
+        from app.objeciones.automatizacion.models import ObjecionesAutomatizacion, TIPO_FIN_RESOLUCION
+        from app.objeciones.automatizacion.services_job_resolucion import ejecutar_chequeo_fin_resolucion_tenant
+
+        db = SessionLocal()
+        try:
+            tenants_con_auto = (
+                db.query(ObjecionesAutomatizacion.tenant_id)
+                .filter(
+                    ObjecionesAutomatizacion.tipo   == TIPO_FIN_RESOLUCION,
+                    ObjecionesAutomatizacion.activa == 1,
+                )
+                .all()
+            )
+            tenant_ids = sorted({int(row[0]) for row in tenants_con_auto})
+
+            if not tenant_ids:
+                logger.info("[obj_fin_resolucion_job] No hay tenants con la automatización activa. Nada que hacer.")
+                return
+
+            logger.info(f"[obj_fin_resolucion_job] Procesando {len(tenant_ids)} tenants: {tenant_ids}")
+
+            for tid in tenant_ids:
+                try:
+                    resultado = ejecutar_chequeo_fin_resolucion_tenant(
+                        db,
+                        tenant_id    = tid,
+                        current_user = None,
+                        forzar       = False,
+                    )
+                    logger.info(
+                        f"[obj_fin_resolucion_job] tenant={tid}: "
+                        f"ok={resultado.get('ok')} "
+                        f"alertas={resultado.get('alertas_creadas')} "
+                        f"hitos={resultado.get('hitos_procesados')}"
+                    )
+                except Exception as e:
+                    logger.error(f"[obj_fin_resolucion_job] Error en tenant={tid}: {e}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"[obj_fin_resolucion_job] Error general: {e}")
+
+
 def _ejecutar_busqueda_respuestas_ree() -> None:
     """
     Job que corre cada día a las 07:00.
     Busca respuestas REE (.ok / .bad) en el SFTP para los REOB enviados
     que aún no tienen estado_ree, iterando todos los tenants que tengan
     algún REOB pendiente.
+
+    Además: registra el ultimo_run_at/ok/msg por tenant en la tabla
+    objeciones_automatizaciones con tipo='buscar_respuestas_ree', para que
+    la UI de Configuración pueda mostrar cuándo corrió por última vez.
     """
     try:
         from app.core.db import SessionLocal
         from app.objeciones.models import ReobGenerado
         from app.objeciones.services_respuestas_ree import buscar_respuestas_tenant
+        from app.objeciones.automatizacion.models import TIPO_BUSCAR_RESPUESTAS_REE
+        from app.objeciones.automatizacion.services_config import marcar_ultimo_run
 
         db = SessionLocal()
         try:
@@ -144,16 +205,41 @@ def _ejecutar_busqueda_respuestas_ree() -> None:
                         tenant_id    = tid,
                         current_user = None,   # usuario sintético: scope = tenant completo
                     )
+                    # Resumen legible para la UI de Configuración.
+                    ok_n      = int(resultado.get("encontrados_ok", 0) or 0)
+                    bad_n     = int(resultado.get("encontrados_bad", 0) or 0)
+                    sin_n     = int(resultado.get("sin_respuesta", 0) or 0)
+                    err_n     = int(resultado.get("errores_empresa", 0) or 0)
+                    proc_n    = int(resultado.get("procesados", 0) or 0)
+                    mensaje = (
+                        f"{proc_n} REOB revisados · {ok_n} OK · {bad_n} BAD · "
+                        f"{sin_n} sin respuesta · {err_n} errores empresa."
+                    )
+                    marcar_ultimo_run(
+                        db,
+                        tenant_id = tid,
+                        tipo      = TIPO_BUSCAR_RESPUESTAS_REE,
+                        ok        = (err_n == 0),
+                        mensaje   = mensaje,
+                    )
                     logger.info(
                         f"[obj_buscar_respuestas_ree] tenant={tid}: "
-                        f"procesados={resultado.get('procesados')} "
-                        f"ok={resultado.get('encontrados_ok')} "
-                        f"bad={resultado.get('encontrados_bad')} "
-                        f"sin_resp={resultado.get('sin_respuesta')} "
-                        f"errores_empresa={resultado.get('errores_empresa')}"
+                        f"procesados={proc_n} ok={ok_n} bad={bad_n} "
+                        f"sin_resp={sin_n} errores_empresa={err_n}"
                     )
                 except Exception as e:
                     logger.error(f"[obj_buscar_respuestas_ree] Error en tenant={tid}: {e}")
+                    # Registrar también en config para que la UI vea el fallo.
+                    try:
+                        marcar_ultimo_run(
+                            db,
+                            tenant_id = tid,
+                            tipo      = TIPO_BUSCAR_RESPUESTAS_REE,
+                            ok        = False,
+                            mensaje   = f"Error: {str(e)[:200]}",
+                        )
+                    except Exception:
+                        pass
         finally:
             db.close()
     except Exception as e:
@@ -162,89 +248,106 @@ def _ejecutar_busqueda_respuestas_ree() -> None:
 
 def _catchup_jobs_perdidos() -> None:
     """
-    Recupera ejecuciones perdidas del job FIN_RECEPCION tras un reinicio de uvicorn.
+    Recupera ejecuciones perdidas de los jobs de objeciones tras un reinicio
+    de uvicorn. Cubre:
+      - fin_recepcion  (cron 23:00)
+      - fin_resolucion (cron 23:30)
 
     Problema que resuelve:
       APScheduler in-memory arranca "en blanco" tras cada reinicio. Si uvicorn
-      estaba parado a las 23:00 (hora programada del cron), ese día NO se
-      ejecuta el job — misfire_grace_time solo sirve si el scheduler ya tenía
-      el trigger registrado y lo perdió por lag, no tras un reinicio completo.
+      estaba parado a la hora programada del cron, ese día NO se ejecuta el
+      job — misfire_grace_time solo sirve si el scheduler ya tenía el trigger
+      registrado y lo perdió por lag, no tras un reinicio completo.
 
-    Estrategia:
-      - Al arrancar, iterar tenants con automatización fin_recepcion activa.
+    Estrategia (idéntica para ambos jobs):
+      - Al arrancar, iterar tenants con la automatización activa.
       - Si (a) su ultimo_run_at fue hace > 20 horas (o nunca corrió) Y
-           (b) ya pasaron las 23:00 del día de hoy en Europe/Madrid,
+           (b) ya pasó la hora programada del cron para hoy,
         entonces disparar el job ahora mismo para ese tenant.
-      - Si uvicorn se reinicia muchas veces en un día, el marcaje de
-        ultimo_run_at evita ejecuciones duplicadas (el umbral de 20h lo cubre).
+      - El marcaje de ultimo_run_at evita ejecuciones duplicadas si uvicorn
+        se reinicia varias veces el mismo día (el umbral de 20h lo cubre).
 
     Se ejecuta UNA sola vez al arrancar el scheduler (en start_scheduler).
     """
     try:
         from zoneinfo import ZoneInfo
         from app.core.db import SessionLocal
-        from app.objeciones.automatizacion.models import ObjecionesAutomatizacion, TIPO_FIN_RECEPCION
+        from app.objeciones.automatizacion.models import (
+            ObjecionesAutomatizacion,
+            TIPO_FIN_RECEPCION,
+            TIPO_FIN_RESOLUCION,
+        )
         from app.objeciones.automatizacion.services_job import ejecutar_chequeo_fin_recepcion_tenant
+        from app.objeciones.automatizacion.services_job_resolucion import ejecutar_chequeo_fin_resolucion_tenant
 
         madrid = ZoneInfo("Europe/Madrid")
         ahora_madrid = datetime.now(madrid)
 
-        # Si aún no son las 23:00 de hoy, no hay nada que recuperar
-        # (todavía no tocaba ejecutar el cron de hoy).
-        if ahora_madrid.hour < 23:
-            logger.info(
-                f"[Scheduler catchup] Hora actual {ahora_madrid:%H:%M} < 23:00 Madrid — "
-                f"nada que recuperar, el cron correrá a su hora."
-            )
-            return
-
         db = SessionLocal()
         try:
-            configs = (
-                db.query(ObjecionesAutomatizacion)
-                .filter(
-                    ObjecionesAutomatizacion.tipo   == TIPO_FIN_RECEPCION,
-                    ObjecionesAutomatizacion.activa == 1,
-                )
-                .all()
-            )
+            # Definición de los jobs que soportan catch-up.
+            # Cada entrada: (tipo, hora_cron_madrid, función, etiqueta_log)
+            jobs_catchup = [
+                (TIPO_FIN_RECEPCION,  23, ejecutar_chequeo_fin_recepcion_tenant,  "fin_recepcion"),
+                (TIPO_FIN_RESOLUCION, 23, ejecutar_chequeo_fin_resolucion_tenant, "fin_resolucion"),
+                # Nota: fin_resolucion corre a las 23:30, pero a efectos de catch-up
+                # usamos 23 como umbral (si ya son las 23:00+ y el run fue hace >20h,
+                # asumimos que toca ejecutar). Los 30 minutos de diferencia respecto
+                # al cron real son inofensivos — el próximo reinicio lo cogerá.
+            ]
 
-            if not configs:
-                logger.info("[Scheduler catchup] No hay tenants con fin_recepcion activa.")
-                return
-
-            # Umbral: si no ha corrido en las últimas 20 horas Y ya pasaron las 23:00
-            # de hoy Madrid → se asume que se perdió la ejecución de hoy.
             umbral = datetime.utcnow() - timedelta(hours=20)
 
-            for cfg in configs:
-                tid = int(cfg.tenant_id)
-                ultimo = cfg.ultimo_run_at
-                necesita_catchup = (ultimo is None) or (ultimo < umbral)
-
-                if not necesita_catchup:
+            for tipo, hora_min, fn, etiqueta in jobs_catchup:
+                # Si aún no toca la hora programada de hoy, saltar este job.
+                if ahora_madrid.hour < hora_min:
                     logger.info(
-                        f"[Scheduler catchup] tenant={tid}: último run {ultimo} OK, no hace falta recuperar."
+                        f"[Scheduler catchup] {etiqueta}: hora actual {ahora_madrid:%H:%M} < "
+                        f"{hora_min:02d}:00 Madrid — el cron correrá a su hora."
                     )
                     continue
 
-                logger.warning(
-                    f"[Scheduler catchup] tenant={tid}: ejecución perdida detectada "
-                    f"(último run: {ultimo}). Disparando recuperación..."
+                configs = (
+                    db.query(ObjecionesAutomatizacion)
+                    .filter(
+                        ObjecionesAutomatizacion.tipo   == tipo,
+                        ObjecionesAutomatizacion.activa == 1,
+                    )
+                    .all()
                 )
-                try:
-                    resultado = ejecutar_chequeo_fin_recepcion_tenant(
-                        db,
-                        tenant_id    = tid,
-                        current_user = None,
-                        forzar       = False,
+
+                if not configs:
+                    logger.info(f"[Scheduler catchup] {etiqueta}: no hay tenants con la automatización activa.")
+                    continue
+
+                for cfg in configs:
+                    tid = int(cfg.tenant_id)
+                    ultimo = cfg.ultimo_run_at
+                    necesita_catchup = (ultimo is None) or (ultimo < umbral)
+
+                    if not necesita_catchup:
+                        logger.info(
+                            f"[Scheduler catchup] {etiqueta} tenant={tid}: último run {ultimo} OK, no hace falta recuperar."
+                        )
+                        continue
+
+                    logger.warning(
+                        f"[Scheduler catchup] {etiqueta} tenant={tid}: ejecución perdida detectada "
+                        f"(último run: {ultimo}). Disparando recuperación..."
                     )
-                    logger.info(
-                        f"[Scheduler catchup] tenant={tid}: recuperado — "
-                        f"ok={resultado.get('ok')} alertas={resultado.get('alertas_creadas')}"
-                    )
-                except Exception as e:
-                    logger.error(f"[Scheduler catchup] Error recuperando tenant={tid}: {e}")
+                    try:
+                        resultado = fn(
+                            db,
+                            tenant_id    = tid,
+                            current_user = None,
+                            forzar       = False,
+                        )
+                        logger.info(
+                            f"[Scheduler catchup] {etiqueta} tenant={tid}: recuperado — "
+                            f"ok={resultado.get('ok')} alertas={resultado.get('alertas_creadas')}"
+                        )
+                    except Exception as e:
+                        logger.error(f"[Scheduler catchup] Error recuperando {etiqueta} tenant={tid}: {e}")
         finally:
             db.close()
     except Exception as e:
@@ -293,9 +396,27 @@ def start_scheduler() -> None:
         misfire_grace_time=21600,
         coalesce=True,
     )
+    # Job diario para chequear hitos FIN RESOLUCIÓN OBJECIONES del calendario REE.
+    # Corre todos los días a las 23:30 (Europe/Madrid) y genera alertas para los
+    # tenants con la automatización activada. Mira HACIA ADELANTE (próximos 3 días)
+    # al contrario que FIN RECEPCIÓN, porque es un aviso PREVENTIVO antes del hito.
+    # misfire_grace_time + coalesce: ver comentarios del job FIN RECEPCIÓN arriba.
+    _scheduler.add_job(
+        _ejecutar_chequeo_fin_resolucion,
+        trigger=CronTrigger(hour=23, minute=30),
+        id="obj_fin_resolucion_job",
+        name="Objeciones — chequeo FIN RESOLUCIÓN (23:30 diario)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+        coalesce=True,
+    )
 
     _scheduler.start()
-    logger.info("[Scheduler] Scheduler arrancado — FTP cada minuto + Objeciones FIN RECEPCIÓN diario 23:00")
+    logger.info(
+        "[Scheduler] Scheduler arrancado — FTP cada minuto + "
+        "Objeciones FIN RECEPCIÓN 23:00 + FIN RESOLUCIÓN 23:30 + BUSCAR RESPUESTAS REE 07:00"
+    )
 
     # Catch-up: tras arrancar (posiblemente después de un reinicio), comprobar
     # si se perdió la ejecución del job FIN_RECEPCION de hoy y recuperarla.

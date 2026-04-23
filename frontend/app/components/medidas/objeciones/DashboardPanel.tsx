@@ -6,11 +6,18 @@ import type { DashData, DashEmpresa, DashTipoEnPeriodo, EmpresaOption } from "./
 // Nota: DashPeriodo ya no se importa aquí porque se accede vía dash.por_periodo
 // y TypeScript infiere los tipos desde DashData.
 
-interface AutoConfig {
+// Item de automatización: una sola config (uno de los 3 tipos).
+interface AutoConfigItem {
   activa: boolean;
   ultimo_run_at: string | null;
   ultimo_run_ok: boolean | null;
   ultimo_run_msg: string | null;
+}
+// AutoConfig ahora es el objeto con las 3 configs del tenant.
+interface AutoConfig {
+  fin_recepcion:         AutoConfigItem;
+  fin_resolucion:        AutoConfigItem;
+  buscar_respuestas_ree: AutoConfigItem;
 }
 
 interface AlertasResumen {
@@ -139,7 +146,10 @@ export default function DashboardPanel({
   };
 
   // ── Derivados de autoConfig / alertasResumen para la tarjeta Automatización ──
-  const autoActiva        = autoConfig?.activa ?? false;
+  // El "estado general" de la tarjeta se decide a partir de fin_recepcion
+  // (mantiene el comportamiento visual que había antes). El resto (líneas
+  // "Último" de los 3 tipos) se renderiza debajo, cada una con su propio timestamp.
+  const autoActiva        = autoConfig?.fin_recepcion?.activa ?? false;
   const alertasActivasNum = alertasResumen?.total_alertas ?? 0;
   const estadoLabel       = autoActiva ? "Activa" : "Desactivada";
   const estadoPuntoColor  = autoActiva ? "#1D9E75" : "#94A3B8";
@@ -171,10 +181,20 @@ export default function DashboardPanel({
       return "Sin ejecutar aún";
     }
   };
-  const ultimoRunTexto = formatearUltimoRun(
-    autoConfig?.ultimo_run_at ?? null,
-    autoConfig?.ultimo_run_ok ?? null,
-  );
+  // Generar 3 líneas "Último" (una por tipo de automatización).
+  // Cada línea se renderiza luego dentro de la tarjeta Automatización.
+  const ULTIMO_RUN_LABELS: Array<{ key: keyof AutoConfig; label: string }> = [
+    { key: "fin_recepcion",         label: "Recepción" },
+    { key: "fin_resolucion",        label: "Resolución" },
+    { key: "buscar_respuestas_ree", label: "Respuestas REE" },
+  ];
+  const ultimoRunLineas = ULTIMO_RUN_LABELS.map(({ key, label }) => {
+    const cfg = autoConfig?.[key];
+    return {
+      label,
+      texto: formatearUltimoRun(cfg?.ultimo_run_at ?? null, cfg?.ultimo_run_ok ?? null),
+    };
+  });
 
   // ── Render de una fila (resumen o detalle por tipo) ──────────────────────
   // Utiliza el MISMO grid-template-columns para que las barras queden alineadas.
@@ -287,8 +307,16 @@ export default function DashboardPanel({
                 <span style={{ fontSize: 28, fontWeight: 500, color: alertasColor, lineHeight: 1 }}>{alertasActivasNum}</span>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>alertas activas</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{ultimoRunTexto}</span>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                {/* 3 líneas "Último" — una por tipo de automatización */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
+                  {ultimoRunLineas.map((linea) => (
+                    <div key={linea.label} style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ color: "var(--text)", fontWeight: 500 }}>{linea.label}:</span>{" "}
+                      <span>{linea.texto.replace(/^Último:\s*/, "")}</span>
+                    </div>
+                  ))}
+                </div>
                 <button
                   type="button"
                   style={{
@@ -297,6 +325,7 @@ export default function DashboardPanel({
                     border: "0.5px solid var(--card-border)",
                     background: "var(--field-bg-soft)", color: "var(--text)",
                     fontSize: 11, fontWeight: 500, cursor: "pointer",
+                    flexShrink: 0, alignSelf: "flex-end",
                   }}
                 >
                   Ver alertas

@@ -27,9 +27,9 @@ from app.core.models_base import Base, TimestampMixin
 
 
 # ── Tipos de automatización soportados ───────────────────────────────────────
-TIPO_FIN_RECEPCION = "fin_recepcion"
-# En el futuro se añadirá:
-# TIPO_FIN_RESOLUCION = "fin_resolucion"
+TIPO_FIN_RECEPCION         = "fin_recepcion"
+TIPO_FIN_RESOLUCION        = "fin_resolucion"
+TIPO_BUSCAR_RESPUESTAS_REE = "buscar_respuestas_ree"
 
 
 class ObjecionesAutomatizacion(TimestampMixin, Base):

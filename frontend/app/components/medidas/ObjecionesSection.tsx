@@ -50,12 +50,20 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
   const [error, setError] = useState<string | null>(null);
 
   // ── Datos del scheduler de objeciones (para tarjeta "Automatización") ──
-  const [autoConfig, setAutoConfig] = useState<{
+  // Ahora son 3 configs: fin_recepcion, fin_resolucion, buscar_respuestas_ree.
+  // Las 3 se pasan al Dashboard para que pueda mostrar una línea "Último" por cada una.
+  type AutoConfigItem = {
     activa: boolean;
     ultimo_run_at: string | null;
     ultimo_run_ok: boolean | null;
     ultimo_run_msg: string | null;
-  } | null>(null);
+  };
+  type AutoConfigAll = {
+    fin_recepcion:         AutoConfigItem;
+    fin_resolucion:        AutoConfigItem;
+    buscar_respuestas_ree: AutoConfigItem;
+  };
+  const [autoConfig, setAutoConfig] = useState<AutoConfigAll | null>(null);
   const [alertasResumen, setAlertasResumen] = useState<{
     total_alertas: number;
     empresas_afectadas: number;
@@ -104,7 +112,21 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
           fetch(`${API_BASE_URL}/objeciones/automatizacion/config`, { headers: getAuthHeaders(token) }),
           fetch(`${API_BASE_URL}/objeciones/alertas/resumen`,       { headers: getAuthHeaders(token) }),
         ]);
-        if (resConfig.ok)  setAutoConfig(await resConfig.json());
+        if (resConfig.ok) {
+          // El endpoint devuelve un objeto con 3 claves. Normalizamos por seguridad.
+          const data = await resConfig.json();
+          const norm = (c: Partial<AutoConfigItem> | undefined): AutoConfigItem => ({
+            activa:         !!c?.activa,
+            ultimo_run_at:  c?.ultimo_run_at  ?? null,
+            ultimo_run_ok:  c?.ultimo_run_ok  ?? null,
+            ultimo_run_msg: c?.ultimo_run_msg ?? null,
+          });
+          setAutoConfig({
+            fin_recepcion:         norm(data.fin_recepcion),
+            fin_resolucion:        norm(data.fin_resolucion),
+            buscar_respuestas_ree: norm(data.buscar_respuestas_ree),
+          });
+        }
         if (resResumen.ok) setAlertasResumen(await resResumen.json());
       } catch { /* silencioso */ }
     };
