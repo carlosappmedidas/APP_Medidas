@@ -95,6 +95,18 @@ class DashPeriodo(BaseModel):
     # Desglose por tipo dentro del periodo
     por_tipo: List[DashTipoEnPeriodo] = []
 
+class DashEmpresaPeriodo(BaseModel):
+    """Desglose por periodo dentro de una empresa.
+    Usado por el dashboard para mostrar datos del último periodo por empresa."""
+    periodo: str                  # YYYYMM, ej "202507"
+    periodo_label: str            # "Jul 2025"
+    total: int
+    pendientes: int
+    aceptadas: int
+    rechazadas: int
+    enviadas_sftp: int = 0
+
+
 class DashEmpresa(BaseModel):
     empresa_id: int
     empresa_nombre: str
@@ -104,6 +116,9 @@ class DashEmpresa(BaseModel):
     aceptadas: int
     rechazadas: int
     enviadas_sftp: int = 0
+    # Desglose por periodo dentro de esta empresa (ordenado reciente→antiguo).
+    # La UI usa el primer elemento para mostrar "el último periodo" de cada empresa.
+    por_periodo: List[DashEmpresaPeriodo] = []
 
 class DashResponse(BaseModel):
     total: int
@@ -364,7 +379,7 @@ def get_dashboard(
                 if ac not in ("S", "N"):
                     tipo_por_periodo[pkey]["obj_pendientes"] += 1
 
-            # ─── Agregación POR EMPRESA (se mantiene igual) ──────────────
+            # ─── Agregación POR EMPRESA ──────────────────────────────────
             eid = int(getattr(r, "empresa_id"))
             if eid not in por_empresa_dict:
                 emp = db.query(Empresa).filter(Empresa.id == eid).first()
@@ -373,6 +388,8 @@ def get_dashboard(
                     "empresa_nombre": getattr(emp, "nombre", "") if emp else f"Empresa {eid}",
                     "empresa_codigo_ree": getattr(emp, "codigo_ree", None) if emp else None,
                     "total": 0, "pendientes": 0, "aceptadas": 0, "rechazadas": 0, "enviadas_sftp": 0,
+                    # Sub-agregador por (empresa, periodo). Clave = pkey.
+                    "_por_periodo": {},
                 }
             d = por_empresa_dict[eid]
             d["total"] += 1
@@ -384,6 +401,30 @@ def get_dashboard(
                 d["pendientes"] += 1
             if enviado:
                 d["enviadas_sftp"] += 1
+
+            # Sub-agregador (empresa × periodo) — se rellena si la objeción
+            # tiene un periodo parseable (usa el mismo parseado que el bloque
+            # POR PERIODO de arriba: variable `periodo_parsed`).
+            if periodo_parsed is not None:
+                pkey_e, plabel_e = periodo_parsed
+                ep_dict = d["_por_periodo"]
+                if pkey_e not in ep_dict:
+                    ep_dict[pkey_e] = {
+                        "periodo": pkey_e,
+                        "periodo_label": plabel_e,
+                        "total": 0, "pendientes": 0, "aceptadas": 0,
+                        "rechazadas": 0, "enviadas_sftp": 0,
+                    }
+                ep = ep_dict[pkey_e]
+                ep["total"] += 1
+                if ac == "S":
+                    ep["aceptadas"] += 1
+                elif ac == "N":
+                    ep["rechazadas"] += 1
+                else:
+                    ep["pendientes"] += 1
+                if enviado:
+                    ep["enviadas_sftp"] += 1
 
         # ─── Cerrar agregado POR TIPO global ─────────────────────────────
         if t_total > 0:
@@ -470,9 +511,21 @@ def get_dashboard(
         p["por_tipo"] = [DashTipoEnPeriodo(**t) for t in p["por_tipo"]]
     por_periodo = [DashPeriodo(**v) for v in por_periodo_ordenado]
 
-    por_empresa = [DashEmpresa(**v) for v in por_empresa_dict.values()]
+    # Convertir el sub-agregador _por_periodo a una lista ordenada (reciente→antiguo)
+    # y limpiar la clave interna antes de instanciar el schema Pydantic.
+    por_empresa = []
+    for v in por_empresa_dict.values():
+        periodos_empresa_dict = v.pop("_por_periodo", {})
+        periodos_ordenados = sorted(
+            periodos_empresa_dict.values(),
+            key=lambda p: p["periodo"],
+            reverse=True,
+        )
+        v["por_periodo"] = [DashEmpresaPeriodo(**p) for p in periodos_ordenados]
+        por_empresa.append(DashEmpresa(**v))
 
     return DashResponse(
+
         total=total_global,
         pendientes=pendientes_global,
         aceptadas=aceptadas_global,

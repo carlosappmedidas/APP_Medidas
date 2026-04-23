@@ -68,6 +68,16 @@ export interface DashPeriodo {
   por_tipo: DashTipoEnPeriodo[];
 }
 
+export interface DashEmpresaPeriodo {
+  periodo: string;          // YYYYMM, ej "202507"
+  periodo_label: string;    // "Jul 2025"
+  total: number;
+  pendientes: number;
+  aceptadas: number;
+  rechazadas: number;
+  enviadas_sftp: number;
+}
+
 export interface DashEmpresa {
   empresa_id: number;
   empresa_nombre: string;
@@ -76,6 +86,9 @@ export interface DashEmpresa {
   pendientes: number;
   aceptadas: number;
   rechazadas: number;
+  // Desglose por periodo dentro de esta empresa (ordenado reciente→antiguo).
+  // La UI usa el primer elemento para mostrar "el último periodo" de cada empresa.
+  por_periodo: DashEmpresaPeriodo[];
 }
 
 export interface DashData {

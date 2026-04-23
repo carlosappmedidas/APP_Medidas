@@ -554,13 +554,33 @@ export default function DashboardPanel({
             </div>
 
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Por empresa</div>
+              {/* Cabecera "POR EMPRESA · Jul 2025" — usa el label del primer periodo
+                  encontrado entre las empresas (siempre el más reciente porque el
+                  backend ya los ordena reciente→antiguo). */}
+              {(() => {
+                // Buscar el label del periodo más reciente en cualquier empresa
+                const labelUltimo = (dash?.por_empresa ?? [])
+                  .map((e) => e.por_periodo?.[0]?.periodo_label)
+                  .find((l) => !!l) ?? "";
+                return (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+                    Por empresa{labelUltimo && <span style={{ color: "#378ADD" }}> · {labelUltimo}</span>}
+                  </div>
+                );
+              })()}
               {(dash?.por_empresa ?? []).length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin datos</div>
               ) : (
                 (dash?.por_empresa ?? []).map((e) => {
                   const isActive = empresaActiva && e.empresa_id === empresaActiva.id;
-                  const eSftp = (e as DashEmpresa & { enviadas_sftp?: number }).enviadas_sftp ?? 0;
+                  // Usar los datos del periodo MÁS RECIENTE de esta empresa.
+                  // Si la empresa no tiene datos en ningún periodo, mostramos todo a 0.
+                  const ultimoPeriodo = e.por_periodo?.[0] ?? null;
+                  const pPend  = ultimoPeriodo?.pendientes    ?? 0;
+                  const pOk    = ultimoPeriodo?.aceptadas     ?? 0;
+                  const pErr   = ultimoPeriodo?.rechazadas    ?? 0;
+                  const pTotal = ultimoPeriodo?.total         ?? 0;
+                  const pSftp  = ultimoPeriodo?.enviadas_sftp ?? 0;
                   return (
                     <div key={e.empresa_id} style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -579,10 +599,10 @@ export default function DashboardPanel({
                         gap: 2,
                         flexShrink: 0,
                       }}>
-                        <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.pendientes} pend.</span>
-                        <span className="ui-badge ui-badge--ok" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.aceptadas}</span>
-                        <span className="ui-badge ui-badge--err" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.rechazadas}</span>
-                        <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{e.total} total</span>
+                        <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{pPend} pend.</span>
+                        <span className="ui-badge ui-badge--ok" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{pOk}</span>
+                        <span className="ui-badge ui-badge--err" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{pErr}</span>
+                        <span className="ui-badge ui-badge--neutral" style={{ fontSize: 9, padding: "1px 5px", textAlign: "center" }}>{pTotal} total</span>
                         <span
                           className="ui-badge"
                           style={{
@@ -595,7 +615,7 @@ export default function DashboardPanel({
                             border: "0.5px solid rgba(55,138,221,0.35)",
                           }}
                         >
-                          {eSftp} enviados
+                          {pSftp} enviados
                         </span>
                       </div>
                     </div>
@@ -603,6 +623,7 @@ export default function DashboardPanel({
                 })
               )}
             </div>
+
           </div>
         </>
       )}
