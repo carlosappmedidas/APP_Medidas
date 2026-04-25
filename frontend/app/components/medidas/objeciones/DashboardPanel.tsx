@@ -34,6 +34,7 @@ interface DashboardPanelProps {
   empresas: EmpresaOption[];
   autoConfig: AutoConfig | null;
   alertasResumen: AlertasResumen | null;
+  onGoToObjecionesConfig?: () => void;
 }
 
 // ── Estilos de los chips de tipo (AGRECL / CUPS / INCL / CIL) ─────────────────
@@ -124,6 +125,7 @@ function InfoTooltip({ text, children }: { text: string; children: React.ReactNo
 export default function DashboardPanel({
   dash, loading, empresaFiltroId, empresas,
   autoConfig, alertasResumen,
+  onGoToObjecionesConfig,
 }: DashboardPanelProps) {
   // ── Toggle global: "Periodo actual" vs "Histórico" ─────────────────────
   // Por defecto arranca en "actual". Solo en memoria (no persistente).
@@ -251,47 +253,85 @@ export default function DashboardPanel({
                 <span style={{ color: "var(--text)", marginLeft: 6, fontWeight: 500 }}>todos los meses</span>
               )}
             </span>
-            <div style={{
-              display: "inline-flex",
-              background: "rgba(0,0,0,0.35)",
-              border: "0.5px solid var(--card-border)",
-              borderRadius: 6,
-              padding: 2,
-            }}>
-              <button
-                type="button"
-                onClick={() => setVistaPeriodo("actual")}
-                style={{
-                  fontSize: 11,
-                  padding: "4px 12px",
-                  borderRadius: 4,
-                  background: vistaPeriodo === "actual" ? "rgba(55,138,221,0.18)" : "transparent",
-                  color: vistaPeriodo === "actual" ? "#85B7EB" : "var(--text-muted)",
-                  border: "none",
-                  cursor: "pointer",
-                  fontWeight: vistaPeriodo === "actual" ? 500 : 400,
-                  transition: "background 0.15s, color 0.15s",
-                }}
-              >
-                Periodo actual
-              </button>
-              <button
-                type="button"
-                onClick={() => setVistaPeriodo("historico")}
-                style={{
-                  fontSize: 11,
-                  padding: "4px 12px",
-                  borderRadius: 4,
-                  background: vistaPeriodo === "historico" ? "rgba(55,138,221,0.18)" : "transparent",
-                  color: vistaPeriodo === "historico" ? "#85B7EB" : "var(--text-muted)",
-                  border: "none",
-                  cursor: "pointer",
-                  fontWeight: vistaPeriodo === "historico" ? 500 : 400,
-                  transition: "background 0.15s, color 0.15s",
-                }}
-              >
-                Histórico
-              </button>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <div style={{
+                display: "inline-flex",
+                background: "rgba(0,0,0,0.35)",
+                border: "0.5px solid var(--card-border)",
+                borderRadius: 6,
+                padding: 2,
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setVistaPeriodo("actual")}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 12px",
+                    borderRadius: 4,
+                    background: vistaPeriodo === "actual" ? "rgba(55,138,221,0.18)" : "transparent",
+                    color: vistaPeriodo === "actual" ? "#85B7EB" : "var(--text-muted)",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: vistaPeriodo === "actual" ? 500 : 400,
+                    transition: "background 0.15s, color 0.15s",
+                  }}
+                >
+                  Periodo actual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVistaPeriodo("historico")}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 12px",
+                    borderRadius: 4,
+                    background: vistaPeriodo === "historico" ? "rgba(55,138,221,0.18)" : "transparent",
+                    color: vistaPeriodo === "historico" ? "#85B7EB" : "var(--text-muted)",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: vistaPeriodo === "historico" ? 500 : 400,
+                    transition: "background 0.15s, color 0.15s",
+                  }}
+                >
+                  Histórico
+                </button>
+              </div>
+
+              {/* ── Atajo a Configuración Objeciones ───────────────────────── */}
+              {onGoToObjecionesConfig && (
+                <button
+                  type="button"
+                  onClick={onGoToObjecionesConfig}
+                  title="Ir a Configuración Objeciones"
+                  aria-label="Ir a Configuración Objeciones"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(0,0,0,0.35)",
+                    border: "0.5px solid var(--card-border)",
+                    borderRadius: 6,
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    transition: "color 0.15s, border-color 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "#85B7EB";
+                    e.currentTarget.style.borderColor = "rgba(55,138,221,0.35)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "var(--text-muted)";
+                    e.currentTarget.style.borderColor = "var(--card-border)";
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
 

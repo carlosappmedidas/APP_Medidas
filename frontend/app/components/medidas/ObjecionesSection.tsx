@@ -12,6 +12,7 @@ import HistorialPanel from "./objeciones/HistorialPanel";
 interface ObjecionesSectionProps {
   token: string | null;
   currentUser: User | null;
+  onGoToObjecionesConfig?: () => void;
 }
 
 // ─── Estilos panel (estilo Configuración) ─────────────────────────────────────
@@ -37,7 +38,7 @@ const panelDescStyle: React.CSSProperties = {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function ObjecionesSection({ token, currentUser }: ObjecionesSectionProps) {
+export default function ObjecionesSection({ token, currentUser, onGoToObjecionesConfig }: ObjecionesSectionProps) {
 
   const [dashOpen, setDashOpen] = useState(true);
 
@@ -165,6 +166,7 @@ export default function ObjecionesSection({ token, currentUser }: ObjecionesSect
             empresas={empresas}
             autoConfig={autoConfig}
             alertasResumen={alertasResumen}
+            onGoToObjecionesConfig={onGoToObjecionesConfig}
           />
         )}
       </div>

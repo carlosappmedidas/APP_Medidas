@@ -224,8 +224,9 @@ export default function HomePage() {
     if (!PERDIDAS_TABS.includes(activeTab)) setActiveTab("perdidas");
   };
 
-  const handleGoToTableSettings = () => { setActiveTab("ajustes"); setShowTablas(true); };
-  const handleGoToAlertConfig   = () => { setActiveTab("ajustes"); setShowAlertConfig(true); };
+  const handleGoToTableSettings    = () => { setActiveTab("ajustes"); setShowTablas(true); };
+  const handleGoToAlertConfig      = () => { setActiveTab("ajustes"); setShowAlertConfig(true); };
+  const handleGoToObjecionesConfig = () => { setActiveTab("ajustes"); setShowObjeciones(true); };
 
   if (!authReady) {
     return (
@@ -418,7 +419,13 @@ export default function HomePage() {
 
         {activeTab === "dashboard"      && <DashboardSection token={token} />}
         {activeTab === "medidas"        && <MedidasSection token={token} currentUser={currentUser} />}
-        {activeTab === "objeciones" && !isViewer && <ObjecionesSection token={token} currentUser={currentUser} />}
+        {activeTab === "objeciones" && !isViewer && (
+          <ObjecionesSection
+            token={token}
+            currentUser={currentUser}
+            onGoToObjecionesConfig={canSeeAjustes ? handleGoToObjecionesConfig : undefined}
+          />
+        )}
         {activeTab === "calendario-ree" && <CalendarioReeSection token={token} currentUser={currentUser} />}
         {activeTab === "graficos"       && <GraficosSection token={token} currentUser={currentUser} />}
 
