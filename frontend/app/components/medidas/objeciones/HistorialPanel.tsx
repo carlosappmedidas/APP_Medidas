@@ -706,10 +706,16 @@ export default function HistorialPanel({
                         </div>
                       </td>
                     </tr>
-                   {historialExpandido === r.id && (
-                      <tr key={`${r.id}-sub`} className="ui-tr" style={{ background: "rgba(55,138,221,0.04)" }}>
+                    {historialExpandido === r.id && (
+                      <tr key={`${r.id}-sub`} className="ui-tr" style={{ background: "transparent" }}>
                         <td colSpan={11} style={{ padding: "0 0 0 32px" }}>
-                          <div style={{ padding: "8px 12px 8px 0" }}>
+                          <div style={{
+                            padding: "10px 14px 10px 14px",
+                            margin: "6px 12px 8px 0",
+                            borderLeft: "3px solid #378ADD",
+                            background: "rgba(55,138,221,0.06)",
+                            borderRadius: 6,
+                          }}>
                             <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 6 }}>
                               Objeciones de <span style={{ fontFamily: "monospace", color: "var(--text)" }}>{r.nombre_fichero_aob}</span>
                               {r.comercializadora && <> · comercializadora <strong>{r.comercializadora}</strong></>}
@@ -723,20 +729,20 @@ export default function HistorialPanel({
                                 <thead>
                                   <tr>
                                     {["ID objeción", "Periodo", "Motivo", "E. publicada", "E. propuesta", "Aceptación", "Comentario"].map((h) => (
-                                      <th key={h} style={{ padding: "4px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500, borderBottom: "0.5px solid var(--card-border)" }}>{h}</th>
+                                      <th key={h} style={{ padding: "6px 14px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500, borderBottom: "0.5px solid var(--card-border)" }}>{h}</th>
                                     ))}
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {historialFilas.map((fila, fi) => (
                                     <tr key={fi} style={{ borderBottom: "0.5px solid rgba(55,138,221,0.08)" }}>
-                                      <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{fila.id_objecion || fila.cups || fila.cil || "—"}</td>
-                                      <td style={{ padding: "4px 8px" }}>{fila.periodo || "—"}</td>
-                                      <td style={{ padding: "4px 8px" }}>{fila.motivo || "—"}</td>
-                                      <td style={{ padding: "4px 8px", textAlign: "right" }}>{fila.e_publicada ?? fila.ae_publicada ?? fila.eas_publicada ?? "—"}</td>
-                                      <td style={{ padding: "4px 8px", textAlign: "right" }}>{fila.e_propuesta ?? fila.ae_propuesta ?? fila.eas_propuesta ?? "—"}</td>
-                                      <td style={{ padding: "4px 8px" }}><BadgeAceptacion valor={fila.aceptacion ?? ""} /></td>
-                                      <td style={{ padding: "4px 8px", textAlign: "center" }}>
+                                      <td style={{ padding: "6px 14px", fontFamily: "monospace" }}>{fila.id_objecion || fila.cups || fila.cil || "—"}</td>
+                                      <td style={{ padding: "6px 14px" }}>{fila.periodo || "—"}</td>
+                                      <td style={{ padding: "6px 14px" }}>{fila.motivo || "—"}</td>
+                                      <td style={{ padding: "6px 14px" }}>{fila.e_publicada ?? fila.ae_publicada ?? fila.eas_publicada ?? "—"}</td>
+                                      <td style={{ padding: "6px 14px" }}>{fila.e_propuesta ?? fila.ae_propuesta ?? fila.eas_propuesta ?? "—"}</td>
+                                      <td style={{ padding: "6px 14px" }}><BadgeAceptacion valor={fila.aceptacion ?? ""} /></td>
+                                      <td style={{ padding: "6px 14px", textAlign: "center" }}>
                                         {fila.comentario_interno ? (
                                           <button
                                             type="button"
