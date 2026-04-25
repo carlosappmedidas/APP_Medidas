@@ -186,8 +186,17 @@ def _stats_ficheros(db: Session, model, *, tenant_id: int, empresa_id: Optional[
     for r in rows:
         nombre = getattr(r, "nombre_fichero") or "desconocido"
         if nombre not in ficheros:
+            # `aaaamm`: periodo del fichero, extraído del nombre (no del campo
+            # `periodo` de la fila, que en INCL viene como rango "20250701 - 20250731").
+            # El nombre tiene formato AOB{TIPO}_..._AAAAMM_FECHA.0[.bz2] y la
+            # posición de AAAAMM depende del tipo:
+            #   AOBAGRECL_DDDD_AAAAMM_FECHA   → posición 2
+            #   OBJEINCL_CCCC_DDDD_AAAAMM_F   → posición 3
+            #   AOBCUPS_DDDD_CCCC_AAAAMM_F    → posición 3
+            #   AOBCIL_DDDD_CCCC_AAAAMM_F     → posición 3
             ficheros[nombre] = {
                 "nombre_fichero": nombre,
+                "aaaamm": _extraer_aaaamm_de_nombre(nombre),
                 "created_at": getattr(r, "created_at"),
                 "total": 0,
                 "pendientes": 0,
@@ -212,6 +221,33 @@ def _stats_ficheros(db: Session, model, *, tenant_id: int, empresa_id: Optional[
             f["enviado_sftp_at"] = enviado
 
     return list(ficheros.values())
+
+
+def _extraer_aaaamm_de_nombre(nombre: str) -> Optional[str]:
+    """
+    Extrae el AAAAMM del nombre de un fichero AOB. Detecta el tipo por el
+    prefijo y aplica la posición correcta. Devuelve None si no se puede
+    determinar.
+    """
+    if not nombre:
+        return None
+    upper = nombre.upper()
+    try:
+        if upper.startswith("AOBAGRECL_"):
+            _, aaaamm, _ = _parse_nombre_agrecl(nombre)
+            return aaaamm if aaaamm and aaaamm != "000000" else None
+        if upper.startswith("OBJEINCL_"):
+            _, _, aaaamm, _ = _parse_nombre_incl(nombre)
+            return aaaamm if aaaamm and aaaamm != "000000" else None
+        if upper.startswith("AOBCUPS_"):
+            _, _, aaaamm, _ = _parse_nombre_cups(nombre)
+            return aaaamm if aaaamm and aaaamm != "000000" else None
+        if upper.startswith("AOBCIL_"):
+            _, _, aaaamm, _ = _parse_nombre_cil(nombre)
+            return aaaamm if aaaamm and aaaamm != "000000" else None
+    except Exception:
+        return None
+    return None
 
 
 # ── AOBAGRECL ─────────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ import type { ObjecionTipo, ReobGenerado, EmpresaOption } from "./shared/types";
 import { TIPO_RUTA, TABS } from "./shared/constants";
 import { fmtDate } from "./shared/helpers";
 import { BadgeAceptacion } from "./shared/badges";
+import { IconDownload, IconTrash, IconDotsV } from "./shared/icons";
 
 interface HistorialPanelProps {
   token: string | null;
@@ -79,6 +80,22 @@ export default function HistorialPanel({
   // ── Búsqueda de respuestas REE (.ok/.bad) en SFTP ──────────────────────
   const [buscandoRespuestas, setBuscandoRespuestas] = useState(false);
   const [mensajeRespuestas, setMensajeRespuestas] = useState<string | null>(null);
+
+  // ── Menú "..." de la columna Acciones ──────────────────────────────────
+  // Mismo patrón que GestionFicherosLista: el menú se posiciona en `fixed`
+  // junto al botón que lo abrió y se cierra al click fuera.
+  const [menuAbierto, setMenuAbierto] = useState<number | null>(null);   // id del REOB con menú abierto
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as Element).closest("[data-menu-container]")) {
+        setMenuAbierto(null);
+      }
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
 
   // ── Cargar historial — solo cuando hay empresa seleccionada ──────────────
 
@@ -421,12 +438,13 @@ export default function HistorialPanel({
                   <th className="ui-th">Enviado</th>
                   <th className="ui-th">sftp</th>
                   <th className="ui-th" style={{ textAlign: "center" }}>Resp. REE</th>
+                  <th className="ui-th" style={{ textAlign: "center", width: 80 }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filaMensaje !== null ? (
                   <tr className="ui-tr">
-                    <td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                    <td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                       {filaMensaje}
                     </td>
                   </tr>
@@ -446,115 +464,131 @@ export default function HistorialPanel({
                       <td className="ui-td" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 9 }}>{r.nombre_fichero_reob}</td>
                       <td className="ui-td" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 9, color: "var(--text-muted)" }}>{r.nombre_fichero_aob}</td>
                       <td className="ui-td">{r.comercializadora ?? "—"}</td>
-                      <td className="ui-td">{r.aaaamm ?? "—"}</td>
+                      <td className="ui-td">{r.aaaamm
+                        ? `${r.aaaamm.slice(0, 4)}/${r.aaaamm.slice(4, 6)}`
+                        : <span className="ui-muted">—</span>}
+                      </td>
                       <td className="ui-td" style={{ textAlign: "center" }}>{r.num_registros ?? "—"}</td>
                       <td className="ui-td ui-muted">{fmtDate(r.enviado_sftp_at)}</td>
                       <td className="ui-td">
                         <div style={{ width: 8, height: 8, borderRadius: 2, background: r.enviado_sftp_at ? "#378ADD" : "var(--card-border)" }} />
                       </td>
+                      {/* Celda Resp. REE — solo el badge clickable */}
                       <td
                         className="ui-td"
                         style={{ textAlign: "center" }}
                       >
-                        <div style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}>
-                          {r.estado_ree === "ok" ? (
-                            <span
-                              onClick={(e) => handleToggleEstadoRee(r, e)}
-                              title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
-                              style={{
-                                display: "inline-block",
-                                padding: "2px 8px",
-                                borderRadius: 10,
-                                background: "rgba(29,158,117,0.15)",
-                                color: "#0F6E56",
-                                fontSize: 9,
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              🟢 OK
-                            </span>
-                          ) : r.estado_ree === "bad" ? (
-                            <span
-                              onClick={(e) => handleToggleEstadoRee(r, e)}
-                              title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
-                              style={{
-                                display: "inline-block",
-                                padding: "2px 8px",
-                                borderRadius: 10,
-                                background: "rgba(226,75,74,0.15)",
-                                color: "#A32D2D",
-                                fontSize: 9,
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              🔴 BAD
-                            </span>
-                          ) : (
-                            <span
-                              onClick={(e) => handleToggleEstadoRee(r, e)}
-                              title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
-                              style={{
-                                display: "inline-block",
-                                width: 8, height: 8, borderRadius: "50%",
-                                background: "var(--card-border)",
-                                cursor: "pointer",
-                              }}
-                            />
-                          )}
+                        {r.estado_ree === "ok" ? (
+                          <span
+                            onClick={(e) => handleToggleEstadoRee(r, e)}
+                            title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
+                            style={{
+                              display: "inline-block",
+                              padding: "2px 8px",
+                              borderRadius: 10,
+                              background: "rgba(29,158,117,0.15)",
+                              color: "#0F6E56",
+                              fontSize: 9,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            🟢 OK
+                          </span>
+                        ) : r.estado_ree === "bad" ? (
+                          <span
+                            onClick={(e) => handleToggleEstadoRee(r, e)}
+                            title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
+                            style={{
+                              display: "inline-block",
+                              padding: "2px 8px",
+                              borderRadius: 10,
+                              background: "rgba(226,75,74,0.15)",
+                              color: "#A32D2D",
+                              fontSize: 9,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            🔴 BAD
+                          </span>
+                        ) : (
+                          <span
+                            onClick={(e) => handleToggleEstadoRee(r, e)}
+                            title="Click para cambiar estado: sin respuesta → OK → BAD → sin respuesta"
+                            style={{
+                              display: "inline-block",
+                              width: 8, height: 8, borderRadius: "50%",
+                              background: "var(--card-border)",
+                              cursor: "pointer",
+                            }}
+                          />
+                        )}
+                      </td>
 
-                          {/* Botón descargar respuesta (solo visible si hay estado) */}
-                          {r.estado_ree && (
-                            <button
-                              type="button"
-                              onClick={(e) => handleDescargarRespuestaRee(r, e)}
-                              title={`Descargar fichero .${r.estado_ree}.bz2 del SFTP`}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                padding: "2px 4px",
-                                cursor: "pointer",
-                                fontSize: 11,
-                                color: "var(--text-muted)",
-                                borderRadius: 4,
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
-                            >
-                              ⬇️
-                            </button>
-                          )}
-
-                          {/* Botón eliminar solo el REOB (AOB y objeciones intactos) */}
+                      {/* Celda Acciones — menú "..." con dropdown */}
+                      <td
+                        className="ui-td"
+                        style={{ textAlign: "center" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{ position: "relative" }} data-menu-container>
                           <button
                             type="button"
-                            onClick={(e) => handleEliminarReob(r, e)}
-                            title="Eliminar este REOB (el AOB y sus objeciones se mantienen)"
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              padding: "2px 4px",
-                              cursor: "pointer",
-                              fontSize: 11,
-                              color: "var(--text-muted)",
-                              borderRadius: 4,
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (menuAbierto === r.id) {
+                                setMenuAbierto(null);
+                              } else {
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                setMenuAbierto(r.id);
+                              }
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.color = "#A32D2D"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+                            className="ui-btn ui-btn-ghost ui-btn-xs"
+                            style={{ padding: "4px 7px", display: "inline-flex", alignItems: "center" }}
+                            title="Acciones"
                           >
-                            🗑
+                            <IconDotsV />
                           </button>
+                          {menuAbierto === r.id && (
+                            <div style={{
+                              position: "fixed", top: menuPos.top, right: menuPos.right, zIndex: 200,
+                              background: "var(--card-bg)", border: "1px solid var(--card-border)",
+                              borderRadius: 8, minWidth: 175, overflow: "hidden",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                            }}>
+                              {/* Descargar respuesta — solo si hay estado_ree */}
+                              {r.estado_ree && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { setMenuAbierto(null); handleDescargarRespuestaRee(r, e); }}
+                                  style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", fontSize: 11, background: "none", border: "none", cursor: "pointer", color: "var(--text)", textAlign: "left" }}
+                                >
+                                  <IconDownload />
+                                  Descargar respuesta
+                                </button>
+                              )}
+                              {r.estado_ree && (
+                                <div style={{ height: "0.5px", background: "var(--card-border)", margin: "2px 0" }} />
+                              )}
+                              {/* Eliminar REOB */}
+                              <button
+                                type="button"
+                                onClick={(e) => { setMenuAbierto(null); handleEliminarReob(r, e); }}
+                                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", fontSize: 11, background: "none", border: "none", cursor: "pointer", color: "#E24B4A", textAlign: "left" }}
+                              >
+                                <IconTrash />
+                                Eliminar REOB
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
                     {historialExpandido === r.id && (
                       <tr key={`${r.id}-sub`} className="ui-tr" style={{ background: "rgba(55,138,221,0.04)" }}>
-                        <td colSpan={9} style={{ padding: "0 0 0 32px" }}>
+                        <td colSpan={10} style={{ padding: "0 0 0 32px" }}>
                           <div style={{ padding: "8px 12px 8px 0" }}>
                             <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 6 }}>
                               Objeciones de <span style={{ fontFamily: "monospace", color: "var(--text)" }}>{r.nombre_fichero_aob}</span>

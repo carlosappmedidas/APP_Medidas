@@ -75,6 +75,7 @@ export default function GestionFicherosLista({
               <th className="ui-th" style={{ width: 28 }}></th>
               <th className="ui-th">Fichero</th>
               <th className="ui-th">Cargado</th>
+              <th className="ui-th">Periodo</th>
               <th className="ui-th" style={{ textAlign: "center" }}>Total</th>
               <th className="ui-th" style={{ textAlign: "center" }}>Pendientes</th>
               <th className="ui-th" style={{ textAlign: "center" }}>Aceptadas</th>
@@ -85,13 +86,13 @@ export default function GestionFicherosLista({
           </thead>
           <tbody>
             {!empresaIdGestion ? (
-              <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+              <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                 Selecciona una empresa para ver sus ficheros
               </td></tr>
             ) : loadingFicheros ? (
-              <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
+              <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
             ) : ficheros.length === 0 ? (
-              <tr className="ui-tr"><td colSpan={9} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+              <tr className="ui-tr"><td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                 Sin ficheros importados · Usa &quot;{tab.importLabel}&quot; para cargar
               </td></tr>
             ) : (
@@ -100,6 +101,10 @@ export default function GestionFicherosLista({
                   <td className="ui-td" style={{ width: 28, color: "var(--text-muted)", textAlign: "center" }}><IconChevron /></td>
                   <td className="ui-td" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "10px" }}>{f.nombre_fichero}</td>
                   <td className="ui-td ui-muted">{fmtDate(f.created_at)}</td>
+                  <td className="ui-td">{f.aaaamm
+                    ? `${f.aaaamm.slice(0, 4)}/${f.aaaamm.slice(4, 6)}`
+                    : <span className="ui-muted">—</span>}
+                  </td>
                   <td className="ui-td" style={{ textAlign: "center", fontWeight: 500 }}>{f.total}</td>
                   <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.pendientes} variant="neutral" /></td>
                   <td className="ui-td" style={{ textAlign: "center" }}><BadgeNum n={f.aceptadas} variant="ok" /></td>

@@ -21,6 +21,7 @@ export interface ReobGenerado {
 
 export interface FicheroStats {
   nombre_fichero: string;
+  aaaamm: string | null;        // periodo extraído del nombre (YYYYMM, p.ej. "202507"). Null si no se pudo parsear.
   created_at: string | null;
   total: number;
   pendientes: number;

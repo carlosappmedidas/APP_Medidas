@@ -41,6 +41,7 @@ class DeleteResponse(BaseModel):
 
 class FicheroStats(BaseModel):
     nombre_fichero: str
+    aaaamm: Optional[str] = None        # periodo extraído del nombre (YYYYMM)
     created_at: Optional[datetime] = None
     total: int
     pendientes: int
