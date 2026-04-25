@@ -125,11 +125,44 @@ export default function DashboardPanel({
   dash, loading, empresaFiltroId, empresas,
   autoConfig, alertasResumen,
 }: DashboardPanelProps) {
-  const total = dash?.total ?? 0;
-  const pend  = dash?.pendientes ?? 0;
-  const ok    = dash?.aceptadas ?? 0;
-  const err   = dash?.rechazadas ?? 0;
-  const pct   = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
+  // ── Toggle global: "Periodo actual" vs "Histórico" ─────────────────────
+  // Por defecto arranca en "actual". Solo en memoria (no persistente).
+  // Afecta a las tarjetas TOTAL, ESTADO y POR EMPRESA.
+  // NO afecta a AUTOMATIZACIÓN (siempre tiempo real) ni POR PERIODO (siempre histórico).
+  const [vistaPeriodo, setVistaPeriodo] = useState<"actual" | "historico">("actual");
+
+  // ── Datos del periodo actual (último mes con datos) ────────────────────
+  // Se obtiene del primer item de por_periodo (el backend ya los devuelve
+  // ordenados reciente→antiguo). Si no hay datos, se trata como ceros.
+  const periodoActual = (dash?.por_periodo ?? [])[0] ?? null;
+  const labelPeriodoActual = periodoActual?.periodo_label ?? "";
+
+  // ── Datos derivados según modo activo (TOTAL + ESTADO) ─────────────────
+  // En modo "actual": cogemos los valores del primer periodo.
+  // En modo "histórico": cogemos los valores agregados del dashboard.
+  const total = vistaPeriodo === "actual"
+    ? (periodoActual?.total ?? 0)
+    : (dash?.total ?? 0);
+  const pend  = vistaPeriodo === "actual"
+    ? (periodoActual?.pendientes ?? 0)
+    : (dash?.pendientes ?? 0);
+  const ok    = vistaPeriodo === "actual"
+    ? (periodoActual?.aceptadas ?? 0)
+    : (dash?.aceptadas ?? 0);
+  const err   = vistaPeriodo === "actual"
+    ? (periodoActual?.rechazadas ?? 0)
+    : (dash?.rechazadas ?? 0);
+  const enviadasSftp = vistaPeriodo === "actual"
+    ? (periodoActual?.enviadas_sftp ?? 0)
+    : (dash?.enviadas_sftp ?? 0);
+  const pct = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
+
+  // Sufijo de cabecera para TOTAL · ESTADO · POR EMPRESA — depende del modo activo.
+  // En "actual" muestra el label del periodo (ej: "Jun 2025"), en "histórico" la palabra.
+  const sufijoCabecera = vistaPeriodo === "actual"
+    ? labelPeriodoActual
+    : "histórico";
+
   const empresaActiva = empresaFiltroId ? empresas.find((e) => e.id === empresaFiltroId) : null;
   const maxPeriodo = Math.max(1, ...(dash?.por_periodo ?? []).map((t) => t.total));
 
@@ -206,6 +239,62 @@ export default function DashboardPanel({
         <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "12px 0" }}>Cargando resumen...</div>
       ) : (
         <>
+          {/* ── Toggle global: Periodo actual vs Histórico ───────────────────
+              Afecta a las tarjetas TOTAL, ESTADO y POR EMPRESA. */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              Mostrando datos de:
+              {labelPeriodoActual && vistaPeriodo === "actual" && (
+                <span style={{ color: "#85B7EB", marginLeft: 6, fontWeight: 500 }}>{labelPeriodoActual}</span>
+              )}
+              {vistaPeriodo === "historico" && (
+                <span style={{ color: "var(--text)", marginLeft: 6, fontWeight: 500 }}>todos los meses</span>
+              )}
+            </span>
+            <div style={{
+              display: "inline-flex",
+              background: "rgba(0,0,0,0.35)",
+              border: "0.5px solid var(--card-border)",
+              borderRadius: 6,
+              padding: 2,
+            }}>
+              <button
+                type="button"
+                onClick={() => setVistaPeriodo("actual")}
+                style={{
+                  fontSize: 11,
+                  padding: "4px 12px",
+                  borderRadius: 4,
+                  background: vistaPeriodo === "actual" ? "rgba(55,138,221,0.18)" : "transparent",
+                  color: vistaPeriodo === "actual" ? "#85B7EB" : "var(--text-muted)",
+                  border: "none",
+                  cursor: "pointer",
+                  fontWeight: vistaPeriodo === "actual" ? 500 : 400,
+                  transition: "background 0.15s, color 0.15s",
+                }}
+              >
+                Periodo actual
+              </button>
+              <button
+                type="button"
+                onClick={() => setVistaPeriodo("historico")}
+                style={{
+                  fontSize: 11,
+                  padding: "4px 12px",
+                  borderRadius: 4,
+                  background: vistaPeriodo === "historico" ? "rgba(55,138,221,0.18)" : "transparent",
+                  color: vistaPeriodo === "historico" ? "#85B7EB" : "var(--text-muted)",
+                  border: "none",
+                  cursor: "pointer",
+                  fontWeight: vistaPeriodo === "historico" ? 500 : 400,
+                  transition: "background 0.15s, color 0.15s",
+                }}
+              >
+                Histórico
+              </button>
+            </div>
+          </div>
+
           {/* 3 tarjetas fusionadas: Total · Estado · Automatización */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10, marginBottom: 14 }}>
 
@@ -218,22 +307,26 @@ export default function DashboardPanel({
                     <path d="M7 10h10M7 14h7"/>
                   </svg>
                 </div>
-                <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Total</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  Total{sufijoCabecera && <span style={{ color: "#378ADD" }}> · {sufijoCabecera}</span>}
+                </span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6 }}>
                 <span style={{ fontSize: 28, fontWeight: 500, color: "var(--text)", lineHeight: 1 }}>{total}</span>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>objeciones</span>
               </div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                <span style={{ color: "#378ADD", fontWeight: 500 }}>{dash?.enviadas_sftp ?? 0}</span> enviadas SFTP
-                {total > 0 && <> · {pct(dash?.enviadas_sftp ?? 0)}%</>}
+                <span style={{ color: "#378ADD", fontWeight: 500 }}>{enviadasSftp}</span> enviadas SFTP
+                {total > 0 && <> · {pct(enviadasSftp)}%</>}
               </div>
               {/* ── Respuestas REE (solo sobre REOBs que REE responde, excl. INCL) ──
-                  "esperadas" = suma de REOBs no-INCL enviados = ree_ok + ree_bad + ree_sin_resp
+                  "esperadas" = REOBs no-INCL enviados = ree_ok + ree_bad + ree_sin_resp
                   "respondidas" = ree_ok + ree_bad (REE ya dio veredicto OK o BAD)
-                  Se calcula agregando todos los periodos devueltos por el dashboard. */}
+                  En modo "actual" usa solo el periodo actual; en histórico suma todos. */}
               {(() => {
-                const periodos = dash?.por_periodo ?? [];
+                const periodos = vistaPeriodo === "actual"
+                  ? (periodoActual ? [periodoActual] : [])
+                  : (dash?.por_periodo ?? []);
                 const esperadas = periodos.reduce(
                   (acc, p) => acc + (p.ree_ok ?? 0) + (p.ree_bad ?? 0) + (p.ree_sin_resp ?? 0),
                   0,
@@ -265,7 +358,9 @@ export default function DashboardPanel({
                     <path d="M12 6v6l4 2"/>
                   </svg>
                 </div>
-                <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Estado</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  Estado{sufijoCabecera && <span style={{ color: "#378ADD" }}> · {sufijoCabecera}</span>}
+                </span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 10 }}>
                 <span style={{ fontSize: 28, fontWeight: 500, color: "#BA7517", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{pend}</span>
@@ -583,33 +678,38 @@ export default function DashboardPanel({
             </div>
 
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-              {/* Cabecera "POR EMPRESA · Jul 2025" — usa el label del primer periodo
-                  encontrado entre las empresas (siempre el más reciente porque el
-                  backend ya los ordena reciente→antiguo). */}
-              {(() => {
-                // Buscar el label del periodo más reciente en cualquier empresa
-                const labelUltimo = (dash?.por_empresa ?? [])
-                  .map((e) => e.por_periodo?.[0]?.periodo_label)
-                  .find((l) => !!l) ?? "";
-                return (
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-                    Por empresa{labelUltimo && <span style={{ color: "#378ADD" }}> · {labelUltimo}</span>}
-                  </div>
-                );
-              })()}
+              {/* Cabecera "POR EMPRESA · Jul 2025 / Histórico" — depende del modo activo.
+                  En modo "actual" muestra el label del último periodo (del backend).
+                  En modo "histórico" muestra "histórico" como sufijo. */}
+              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+                Por empresa{sufijoCabecera && <span style={{ color: "#378ADD" }}> · {sufijoCabecera}</span>}
+              </div>
               {(dash?.por_empresa ?? []).length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin datos</div>
               ) : (
                 (dash?.por_empresa ?? []).map((e) => {
                   const isActive = empresaActiva && e.empresa_id === empresaActiva.id;
-                  // Usar los datos del periodo MÁS RECIENTE de esta empresa.
-                  // Si la empresa no tiene datos en ningún periodo, mostramos todo a 0.
+                  // Usar los datos según el modo activo:
+                  //   "actual"    → primer periodo de la empresa (último mes con datos)
+                  //   "historico" → suma de TODOS los periodos de esa empresa
+                  // Para "historico" reducimos por_periodo para sumar enviadas_sftp,
+                  // ya que el backend NO devuelve un total acumulado de SFTP por empresa.
                   const ultimoPeriodo = e.por_periodo?.[0] ?? null;
-                  const pPend  = ultimoPeriodo?.pendientes    ?? 0;
-                  const pOk    = ultimoPeriodo?.aceptadas     ?? 0;
-                  const pErr   = ultimoPeriodo?.rechazadas    ?? 0;
-                  const pTotal = ultimoPeriodo?.total         ?? 0;
-                  const pSftp  = ultimoPeriodo?.enviadas_sftp ?? 0;
+                  const pPend  = vistaPeriodo === "actual"
+                    ? (ultimoPeriodo?.pendientes ?? 0)
+                    : (e.pendientes ?? 0);
+                  const pOk    = vistaPeriodo === "actual"
+                    ? (ultimoPeriodo?.aceptadas ?? 0)
+                    : (e.aceptadas ?? 0);
+                  const pErr   = vistaPeriodo === "actual"
+                    ? (ultimoPeriodo?.rechazadas ?? 0)
+                    : (e.rechazadas ?? 0);
+                  const pTotal = vistaPeriodo === "actual"
+                    ? (ultimoPeriodo?.total ?? 0)
+                    : (e.total ?? 0);
+                  const pSftp  = vistaPeriodo === "actual"
+                    ? (ultimoPeriodo?.enviadas_sftp ?? 0)
+                    : (e.por_periodo ?? []).reduce((acc, p) => acc + (p.enviadas_sftp ?? 0), 0);
                   return (
                     <div key={e.empresa_id} style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",

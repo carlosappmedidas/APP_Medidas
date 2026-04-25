@@ -59,6 +59,7 @@ export interface DashPeriodo {
   pendientes: number;
   aceptadas: number;
   rechazadas: number;
+  enviadas_sftp: number;       // nº de objeciones enviadas al SFTP en este periodo
   // ── Respuestas REE agregadas por aaaamm ──
   // Contadores en UNIDAD DE OBJECIONES (propagadas desde los REOBs que las cubren).
   // INCL NO cuenta aquí — sus objeciones van a ree_na porque REE no responde INCL.
