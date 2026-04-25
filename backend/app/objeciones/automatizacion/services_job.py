@@ -73,31 +73,32 @@ def _parsear_mes_afectado(mes_afectado: Optional[str]) -> Optional[Tuple[int, in
     return anio, mes_num, periodo_yyyymm
 
 
-def _hitos_fin_recepcion_ultimos_dias(
+def _hitos_fin_recepcion_de_ayer(
     db: Session,
     *,
     tenant_id: int,
-    dias_atras: int = 3,
 ) -> List[ReeCalendarEvent]:
     """
-    Busca eventos de calendario_ree cuyo `evento` coincida con
-    "FIN RECEPCIÓN OBJECIONES" y cuya fecha esté en los últimos `dias_atras`
-    días (desde ayer hacia atrás: [hoy-dias_atras, hoy-1]).
+    Busca eventos de calendario_ree cuyo `evento` coincida EXACTAMENTE con
+    "FIN RECEPCIÓN OBJECIONES" y cuya fecha sea AYER (hoy - 1).
+
+    Lógica de negocio:
+      - REE publica los AOBs el día siguiente al fin de recepción a las 08:00.
+      - Si hoy es 31/03 y ayer 30/03 fue hito → REE habrá publicado HOY los AOBs
+        de ese periodo (con fecha de publicación = HOY en el nombre).
+      - Si ayer NO hubo hito → no toca buscar nada.
 
     Filtramos por el texto exacto "FIN RECEPCIÓN OBJECIONES" para NO capturar
     "FIN RECEPCIÓN AUTO-OBJECIONES", que es un evento distinto.
     """
-    hoy = date.today()
-    fecha_desde = hoy - timedelta(days=dias_atras)
-    fecha_hasta = hoy - timedelta(days=1)
+    ayer = date.today() - timedelta(days=1)
 
     eventos = (
         db.query(ReeCalendarEvent)
         .filter(
             ReeCalendarEvent.tenant_id == tenant_id,
             ReeCalendarEvent.evento    == "FIN RECEPCIÓN OBJECIONES",
-            ReeCalendarEvent.fecha     >= fecha_desde,
-            ReeCalendarEvent.fecha     <= fecha_hasta,
+            ReeCalendarEvent.fecha     == ayer,
         )
         .all()
     )
@@ -148,10 +149,14 @@ def ejecutar_chequeo_fin_recepcion_tenant(
     # Import diferido para evitar import circular con descarga/services.
     from app.objeciones.descarga.services import buscar_ftp
 
-    hitos = _hitos_fin_recepcion_ultimos_dias(db, tenant_id=tenant_id, dias_atras=3)
+    # Lógica de negocio: el cron busca SOLO los hitos cuya fecha sea AYER.
+    # Si ayer fue hito FIN RECEPCIÓN, REE habrá publicado HOY (a las 08:00) los
+    # primeros AOBs del periodo correspondiente. Por eso buscamos solo los AOBs
+    # con fecha de publicación = HOY (no acumulamos re-publicaciones posteriores).
+    hitos = _hitos_fin_recepcion_de_ayer(db, tenant_id=tenant_id)
 
     if not hitos:
-        msg = "No hay hitos FIN RECEPCIÓN OBJECIONES en los últimos 3 días."
+        msg = "Ayer no hubo hito FIN RECEPCIÓN OBJECIONES — nada que chequear."
         marcar_ultimo_run(db, tenant_id=tenant_id, ok=True, mensaje=msg)
         logger.info(f"[obj_fin_recepcion] tenant={tenant_id}: {msg}")
         return {"ok": True, "mensaje": msg, "alertas_creadas": 0, "hitos_procesados": 0}
@@ -165,6 +170,11 @@ def ejecutar_chequeo_fin_recepcion_tenant(
             empresa_ids_permitidas: list = []      # [] → acceso a todas las empresas del tenant
             tenant_id_attr = tenant_id
         current_user = _CronUser()
+
+    # Fecha de publicación esperada = HOY. La usamos para filtrar AOBs en SFTP
+    # cuyo nombre contenga este sello de fecha (formato YYYYMMDD en el nombre
+    # del fichero, ej. AOBAGRECL_0336_202508_20260430.0 → fecha pub = 20260430).
+    hoy_yyyymmdd = date.today().strftime("%Y%m%d")
 
     alertas_creadas = 0
     hitos_procesados = 0
@@ -199,11 +209,18 @@ def ejecutar_chequeo_fin_recepcion_tenant(
 
         hitos_procesados += 1
 
-        # Agrupar pendientes por empresa.
+        # Agrupar pendientes por empresa, filtrando SOLO los AOBs cuyo nombre
+        # contenga la fecha de publicación de HOY (ej. "_20260430."). Los AOBs
+        # de días anteriores (re-publicaciones futuras) NO se cuentan aquí —
+        # ya fueron alertados el día que se publicaron originalmente.
+        sello_fecha_hoy = f"_{hoy_yyyymmdd}."
         pendientes_por_empresa: Dict[int, List[dict]] = {}
         for r in (resultados or []):
             if r.get("estado") not in ("nuevo", "actualizable"):
                 continue
+            nombre = str(r.get("nombre") or "")
+            if sello_fecha_hoy not in nombre:
+                continue   # AOB de otra fecha de publicación, ignorar
             eid = int(r.get("empresa_id") or 0)
             if eid <= 0:
                 continue

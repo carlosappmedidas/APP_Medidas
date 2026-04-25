@@ -66,6 +66,8 @@ def _reobs_pendientes(
       - han sido enviados al SFTP (enviado_sftp_at != NULL)
       - aún no tienen respuesta de REE (estado_ree IS NULL)
       - pertenecen a alguna de las empresas pasadas.
+      - NO son de tipo INCL (REE no envía respuestas .ok/.bad para INCL,
+        así que buscarlas cada día es trabajo inútil).
     """
     if not empresa_ids:
         return []
@@ -80,6 +82,7 @@ def _reobs_pendientes(
         ReobGenerado.empresa_id.in_(empresa_ids),
         ReobGenerado.enviado_sftp_at.isnot(None),
         ReobGenerado.estado_ree.is_(None),
+        ReobGenerado.tipo != "incl",
     ).all()
 
     return [
