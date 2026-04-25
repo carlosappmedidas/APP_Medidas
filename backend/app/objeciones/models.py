@@ -56,6 +56,9 @@ class ObjecionAGRECL(TimestampMixin, Base):
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)  # 0/1
 
+    # ── Comentario interno (uso propio del usuario, no se envía a REE) ────
+    comentario_interno     = Column(Text, nullable=True)
+
     # ── Envío SFTP ────────────────────────────────────────────────────────
     enviado_sftp_at        = Column(DateTime, nullable=True)
     enviado_sftp_config_id = Column(Integer, nullable=True)
@@ -100,6 +103,9 @@ class ObjecionINCL(TimestampMixin, Base):
     motivo_no_aceptacion   = Column(String(50), nullable=True)
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)
+
+    # ── Comentario interno (uso propio del usuario, no se envía a REE) ────
+    comentario_interno     = Column(Text, nullable=True)
 
     # ── Envío SFTP ────────────────────────────────────────────────────────
     enviado_sftp_at        = Column(DateTime, nullable=True)
@@ -146,6 +152,9 @@ class ObjecionCUPS(TimestampMixin, Base):
     motivo_no_aceptacion   = Column(String(50), nullable=True)
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)
+
+    # ── Comentario interno (uso propio del usuario, no se envía a REE) ────
+    comentario_interno     = Column(Text, nullable=True)
 
     # ── Envío SFTP ────────────────────────────────────────────────────────
     enviado_sftp_at        = Column(DateTime, nullable=True)
@@ -195,6 +204,9 @@ class ObjecionCIL(TimestampMixin, Base):
     comentario_respuesta   = Column(Text, nullable=True)
     respuesta_publicada    = Column(Integer, nullable=True, default=0)
 
+    # ── Comentario interno (uso propio del usuario, no se envía a REE) ────
+    comentario_interno     = Column(Text, nullable=True)
+
     # ── Envío SFTP ────────────────────────────────────────────────────────
     enviado_sftp_at        = Column(DateTime, nullable=True)
     enviado_sftp_config_id = Column(Integer, nullable=True)
@@ -223,6 +235,7 @@ class ReobGenerado(TimestampMixin, Base):
     config_sftp_id            = Column(Integer,     nullable=True)
     enviado_comunicaciones_at = Column(DateTime,    nullable=True)
     estado_ree                = Column(String(10),  nullable=True)  # NULL / 'ok' / 'bad'
+    comentario_interno        = Column(Text,        nullable=True)  # nota interna del usuario sobre este REOB
 
     __table_args__ = (
         Index("ix_reob_generados_tenant_empresa", "tenant_id", "empresa_id"),

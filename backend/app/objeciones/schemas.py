@@ -47,6 +47,7 @@ class ObjecionAGRECLRead(BaseModel):
     motivo_no_aceptacion:   Optional[str]    = None
     comentario_respuesta:   Optional[str]    = None
     respuesta_publicada:    Optional[int]    = None
+    comentario_interno:     Optional[str]    = None
     created_at:             Optional[datetime] = None
     updated_at:             Optional[datetime] = None
 
@@ -73,6 +74,7 @@ class ObjecionINCLRead(BaseModel):
     motivo_no_aceptacion:   Optional[str]    = None
     comentario_respuesta:   Optional[str]    = None
     respuesta_publicada:    Optional[int]    = None
+    comentario_interno:     Optional[str]    = None
     created_at:             Optional[datetime] = None
     updated_at:             Optional[datetime] = None
 
@@ -99,6 +101,7 @@ class ObjecionCUPSRead(BaseModel):
     motivo_no_aceptacion:   Optional[str]    = None
     comentario_respuesta:   Optional[str]    = None
     respuesta_publicada:    Optional[int]    = None
+    comentario_interno:     Optional[str]    = None
     created_at:             Optional[datetime] = None
     updated_at:             Optional[datetime] = None
 
@@ -128,6 +131,7 @@ class ObjecionCILRead(BaseModel):
     motivo_no_aceptacion:   Optional[str]    = None
     comentario_respuesta:   Optional[str]    = None
     respuesta_publicada:    Optional[int]    = None
+    comentario_interno:     Optional[str]    = None
     created_at:             Optional[datetime] = None
     updated_at:             Optional[datetime] = None
 
@@ -141,3 +145,11 @@ class ImportResponse(BaseModel):
     fichero:    str
     registros:  int
     empresa_id: int
+
+
+# ── Comentario interno (uso propio del usuario, no se envía a REE) ────────────
+
+class ComentarioInternoUpdate(BaseModel):
+    """Body para actualizar el comentario interno de una objeción o de un REOB.
+    Pasar `null` o cadena vacía para limpiar el comentario."""
+    comentario_interno: Optional[str] = None

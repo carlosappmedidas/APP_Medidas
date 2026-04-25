@@ -18,7 +18,7 @@ import type { ObjecionTipo, ReobGenerado, EmpresaOption } from "./shared/types";
 import { TIPO_RUTA, TABS } from "./shared/constants";
 import { fmtDate } from "./shared/helpers";
 import { BadgeAceptacion } from "./shared/badges";
-import { IconDownload, IconTrash, IconDotsV } from "./shared/icons";
+import { IconDownload, IconTrash, IconDotsV, IconEdit, IconChat } from "./shared/icons";
 
 interface HistorialPanelProps {
   token: string | null;
@@ -86,6 +86,93 @@ export default function HistorialPanel({
   // junto al botón que lo abrió y se cierra al click fuera.
   const [menuAbierto, setMenuAbierto] = useState<number | null>(null);   // id del REOB con menú abierto
   const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
+
+  // ── Modal de comentario interno (REOB padre o objeción individual) ─────
+  // target identifica qué se está editando:
+  //   - { kind: "reob", id }       → comentario del REOB padre
+  //   - { kind: "obj", tipo, id }  → comentario de una objeción individual
+  type ComentarioTarget =
+    | { kind: "reob"; id: number; titulo: string }
+    | { kind: "obj";  tipo: "agrecl" | "incl" | "cups" | "cil"; id: number; empresa_id: number; titulo: string };
+  const [comentarioTarget, setComentarioTarget] = useState<ComentarioTarget | null>(null);
+  const [comentarioBorrador, setComentarioBorrador] = useState<string>("");
+  const [comentarioGuardando, setComentarioGuardando] = useState<boolean>(false);
+
+  const abrirModalComentarioReob = (reob: ReobGenerado, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setComentarioTarget({
+      kind: "reob",
+      id: reob.id,
+      titulo: reob.nombre_fichero_reob,
+    });
+    setComentarioBorrador(reob.comentario_interno ?? "");
+  };
+
+  const abrirModalComentarioObjecion = (
+    fila: ObjecionRow,
+    reob: ReobGenerado,
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+    const tipoBd = (reob.tipo || "").toLowerCase() as "agrecl" | "incl" | "cups" | "cil";
+    const id = Number(fila.id);
+    if (!id || !["agrecl", "incl", "cups", "cil"].includes(tipoBd)) return;
+    const titulo = String(fila.id_objecion ?? fila.cups ?? fila.cil ?? `#${id}`);
+    setComentarioTarget({
+      kind: "obj",
+      tipo: tipoBd,
+      id,
+      empresa_id: reob.empresa_id,
+      titulo,
+    });
+    setComentarioBorrador(String(fila.comentario_interno ?? ""));
+  };
+
+  const cerrarModalComentario = () => {
+    if (comentarioGuardando) return;
+    setComentarioTarget(null);
+    setComentarioBorrador("");
+  };
+
+  const guardarComentario = async () => {
+    if (!token || !comentarioTarget) return;
+    setComentarioGuardando(true);
+    try {
+      const url = comentarioTarget.kind === "reob"
+        ? `${API_BASE_URL}/objeciones/reob-generados/${comentarioTarget.id}/comentario-interno`
+        : `${API_BASE_URL}/objeciones/${comentarioTarget.tipo}/${comentarioTarget.id}/comentario-interno?empresa_id=${comentarioTarget.empresa_id}`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ comentario_interno: comentarioBorrador.trim() || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `Error ${res.status}` }));
+        alert(`No se pudo guardar el comentario: ${err.detail || res.status}`);
+        return;
+      }
+      const data = await res.json() as { id: number; comentario_interno: string | null };
+
+      // Actualizar el state local sin recargar toda la tabla
+      if (comentarioTarget.kind === "reob") {
+        setHistorial((prev) => prev.map((r) =>
+          r.id === data.id ? { ...r, comentario_interno: data.comentario_interno } : r,
+        ));
+      } else {
+        setHistorialFilas((prev) => prev.map((f) =>
+          Number(f.id) === data.id
+            ? { ...f, comentario_interno: data.comentario_interno ?? "" }
+            : f,
+        ));
+      }
+      setComentarioTarget(null);
+      setComentarioBorrador("");
+    } catch (err) {
+      alert(`Error guardando comentario: ${err instanceof Error ? err.message : "desconocido"}`);
+    } finally {
+      setComentarioGuardando(false);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -438,13 +525,14 @@ export default function HistorialPanel({
                   <th className="ui-th">Enviado</th>
                   <th className="ui-th">sftp</th>
                   <th className="ui-th" style={{ textAlign: "center" }}>Resp. REE</th>
+                  <th className="ui-th" style={{ textAlign: "center", width: 90 }}>Comentario</th>
                   <th className="ui-th" style={{ textAlign: "center", width: 80 }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filaMensaje !== null ? (
                   <tr className="ui-tr">
-                    <td colSpan={10} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                    <td colSpan={11} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                       {filaMensaje}
                     </td>
                   </tr>
@@ -526,6 +614,38 @@ export default function HistorialPanel({
                         )}
                       </td>
 
+                      {/* Celda Comentario — icono 💬 si hay, lápiz si vacío */}
+                      <td
+                        className="ui-td"
+                        style={{ textAlign: "center" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {r.comentario_interno ? (
+                          <button
+                            type="button"
+                            onClick={(e) => abrirModalComentarioReob(r, e)}
+                            className="ui-btn ui-btn-ghost ui-btn-xs"
+                            style={{ padding: "4px 7px", display: "inline-flex", alignItems: "center", color: "#378ADD" }}
+                            title={r.comentario_interno}
+                          >
+                            <IconChat />
+                          </button>
+                        ) : (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
+                            <span>—</span>
+                            <button
+                              type="button"
+                              onClick={(e) => abrirModalComentarioReob(r, e)}
+                              className="ui-btn ui-btn-ghost ui-btn-xs"
+                              style={{ padding: "4px 7px", display: "inline-flex", alignItems: "center" }}
+                              title="Añadir comentario interno"
+                            >
+                              <IconEdit />
+                            </button>
+                          </span>
+                        )}
+                      </td>
+
                       {/* Celda Acciones — menú "..." con dropdown */}
                       <td
                         className="ui-td"
@@ -586,9 +706,9 @@ export default function HistorialPanel({
                         </div>
                       </td>
                     </tr>
-                    {historialExpandido === r.id && (
+                   {historialExpandido === r.id && (
                       <tr key={`${r.id}-sub`} className="ui-tr" style={{ background: "rgba(55,138,221,0.04)" }}>
-                        <td colSpan={10} style={{ padding: "0 0 0 32px" }}>
+                        <td colSpan={11} style={{ padding: "0 0 0 32px" }}>
                           <div style={{ padding: "8px 12px 8px 0" }}>
                             <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 6 }}>
                               Objeciones de <span style={{ fontFamily: "monospace", color: "var(--text)" }}>{r.nombre_fichero_aob}</span>
@@ -602,7 +722,7 @@ export default function HistorialPanel({
                               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 9 }}>
                                 <thead>
                                   <tr>
-                                    {["ID objeción", "Periodo", "Motivo", "E. publicada", "E. propuesta", "Aceptación"].map((h) => (
+                                    {["ID objeción", "Periodo", "Motivo", "E. publicada", "E. propuesta", "Aceptación", "Comentario"].map((h) => (
                                       <th key={h} style={{ padding: "4px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500, borderBottom: "0.5px solid var(--card-border)" }}>{h}</th>
                                     ))}
                                   </tr>
@@ -616,6 +736,32 @@ export default function HistorialPanel({
                                       <td style={{ padding: "4px 8px", textAlign: "right" }}>{fila.e_publicada ?? fila.ae_publicada ?? fila.eas_publicada ?? "—"}</td>
                                       <td style={{ padding: "4px 8px", textAlign: "right" }}>{fila.e_propuesta ?? fila.ae_propuesta ?? fila.eas_propuesta ?? "—"}</td>
                                       <td style={{ padding: "4px 8px" }}><BadgeAceptacion valor={fila.aceptacion ?? ""} /></td>
+                                      <td style={{ padding: "4px 8px", textAlign: "center" }}>
+                                        {fila.comentario_interno ? (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => abrirModalComentarioObjecion(fila, r, e)}
+                                            className="ui-btn ui-btn-ghost ui-btn-xs"
+                                            style={{ padding: "2px 5px", display: "inline-flex", alignItems: "center", color: "#378ADD" }}
+                                            title={String(fila.comentario_interno)}
+                                          >
+                                            <IconChat />
+                                          </button>
+                                        ) : (
+                                          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--text-muted)" }}>
+                                            <span>—</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => abrirModalComentarioObjecion(fila, r, e)}
+                                              className="ui-btn ui-btn-ghost ui-btn-xs"
+                                              style={{ padding: "2px 5px", display: "inline-flex", alignItems: "center" }}
+                                              title="Añadir comentario interno"
+                                            >
+                                              <IconEdit />
+                                            </button>
+                                          </span>
+                                        )}
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -629,6 +775,74 @@ export default function HistorialPanel({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Comentario interno (REOB padre u objeción individual) ── */}
+      {comentarioTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) cerrarModalComentario(); }}
+          style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
+        >
+          <div
+            className="ui-card ui-card--border"
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 520 }}
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h4 className="ui-card-title">Comentario interno</h4>
+                <p className="ui-card-subtitle" style={{ fontFamily: "monospace", fontSize: 10 }}>
+                  {comentarioTarget.kind === "reob" ? "REOB" : "Objeción"} · {comentarioTarget.titulo}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={cerrarModalComentario}
+                disabled={comentarioGuardando}
+                className="ui-btn ui-btn-ghost ui-btn-xs"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="ui-help" style={{ marginBottom: 8 }}>
+              Nota interna para uso propio. <strong>No se envía a REE.</strong>
+            </p>
+
+            <textarea
+              className="ui-textarea"
+              placeholder="Escribe aquí tu nota interna..."
+              value={comentarioBorrador}
+              onChange={(e) => setComentarioBorrador(e.target.value)}
+              disabled={comentarioGuardando}
+              autoFocus
+              style={{ minHeight: 110, width: "100%" }}
+            />
+
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="ui-btn ui-btn-outline"
+                onClick={cerrarModalComentario}
+                disabled={comentarioGuardando}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="ui-btn ui-btn-primary"
+                onClick={guardarComentario}
+                disabled={comentarioGuardando}
+              >
+                {comentarioGuardando ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

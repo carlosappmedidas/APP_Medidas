@@ -17,6 +17,7 @@ from app.empresas.models import Empresa
 from app.tenants.models import User
 
 from app.objeciones.schemas import (
+    ComentarioInternoUpdate,
     ImportResponse,
     ObjecionAGRECLRead,
     ObjecionCILRead,
@@ -1017,6 +1018,7 @@ class ReobGeneradoRead(BaseModel):
     enviado_sftp_at: Optional[datetime] = None
     config_sftp_id: Optional[int] = None
     estado_ree: Optional[str] = None   # NULL | 'ok' | 'bad'
+    comentario_interno: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -1383,3 +1385,106 @@ def generate_cil(
     _assert_empresa_access(user=current_user, empresa=empresa)
     content, filename = services.generate_reobcil(db, tenant_id=_effective_tenant(current_user), empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     return Response(content=content, media_type="application/x-bzip2", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMENTARIO INTERNO (objeciones individuales + REOB padre)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Es una nota libre del usuario, NO se envía a REE ni se incluye en el REOB.
+# Se actualiza individualmente por objeción o por REOB padre.
+
+class ComentarioInternoResponse(BaseModel):
+    id: int
+    comentario_interno: Optional[str] = None
+
+
+def _normalizar_comentario(valor: Optional[str]) -> Optional[str]:
+    """Limpia el comentario: trim + cadena vacía → None."""
+    if valor is None:
+        return None
+    s = str(valor).strip()
+    return s if s else None
+
+
+@router.patch("/reob-generados/{id}/comentario-interno", response_model=ComentarioInternoResponse)
+def patch_comentario_interno_reob(
+    id: int,
+    payload: ComentarioInternoUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Actualiza el comentario interno de un REOB generado (la fila padre del Historial).
+
+    IMPORTANTE: este endpoint debe declararse ANTES de
+    `PATCH /{tipo}/{id}/comentario-interno`, porque FastAPI evalúa rutas en
+    orden de declaración y el path `/reob-generados/{id}/...` también encaja
+    con `/{tipo}/{id}/...` (con tipo='reob-generados'). Si se invierte el
+    orden, las llamadas al REOB devuelven 422 por exigir `empresa_id`.
+    """
+    from app.objeciones.models import ReobGenerado
+
+    tenant_id = _effective_tenant(current_user)
+    reob = db.query(ReobGenerado).filter(
+        ReobGenerado.id == id,
+        ReobGenerado.tenant_id == tenant_id,
+    ).first()
+    if reob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="REOB no encontrado")
+
+    # Verificar acceso a la empresa del REOB
+    _get_empresa_id_verificado(db, int(getattr(reob, "empresa_id")), current_user)
+
+    reob.comentario_interno = _normalizar_comentario(payload.comentario_interno)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(reob)
+    return ComentarioInternoResponse(
+        id=int(getattr(reob, "id")),
+        comentario_interno=getattr(reob, "comentario_interno", None),
+    )
+
+
+@router.patch("/{tipo}/{id}/comentario-interno", response_model=ComentarioInternoResponse)
+def patch_comentario_interno_objecion(
+    tipo: str,
+    id: int,
+    payload: ComentarioInternoUpdate,
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Actualiza el comentario interno de una objeción individual (agrecl/incl/cups/cil)."""
+    from app.objeciones.models import (
+        ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, ObjecionCIL,
+    )
+
+    MODELOS = {
+        "agrecl": ObjecionAGRECL,
+        "incl":   ObjecionINCL,
+        "cups":   ObjecionCUPS,
+        "cil":    ObjecionCIL,
+    }
+    if tipo not in MODELOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Tipo '{tipo}' no válido. Valores admitidos: {list(MODELOS.keys())}",
+        )
+
+    eid = _get_empresa_id_verificado(db, empresa_id, current_user)
+    Modelo = MODELOS[tipo]
+    tenant_id = _effective_tenant(current_user)
+
+    obj = db.query(Modelo).filter(
+        Modelo.id == id,
+        Modelo.tenant_id == tenant_id,
+        Modelo.empresa_id == eid,
+    ).first()
+    if obj is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Objeción no encontrada")
+
+    obj.comentario_interno = _normalizar_comentario(payload.comentario_interno)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(obj)
+    return ComentarioInternoResponse(
+        id=int(getattr(obj, "id")),
+        comentario_interno=getattr(obj, "comentario_interno", None),
+    )
