@@ -534,8 +534,9 @@ function MensualView({ data }: { data: MensualResponse }) {
           <button type="button" onClick={() => setDetalleGeneralAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              width: "100%", background: "transparent", border: "none", cursor: "pointer",
-              padding: 0, marginBottom: detalleGeneralAbierto ? 10 : 0,
+              width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+              padding: "8px 12px", borderRadius: 6, marginBottom: detalleGeneralAbierto ? 10 : 0,
+              transition: "background 0.15s ease",
             }}>
             <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
               Detalle por empresa {detalleGeneralAbierto && "· pulsa ▸ para ver meses afectados"}
@@ -857,8 +858,9 @@ function BloquePS({
         <button type="button" onClick={onToggleDetalle}
           style={{
             display: "flex", justifyContent: "space-between", alignItems: "center",
-            width: "100%", background: "transparent", border: "none", cursor: "pointer",
-            padding: 0, marginBottom: detalleAbierto ? 8 : 0,
+            width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+            padding: "8px 12px", borderRadius: 6, marginBottom: detalleAbierto ? 8 : 0,
+            transition: "background 0.15s ease",
           }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
             Detalle por empresa
@@ -1043,8 +1045,9 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
           <button type="button" onClick={() => setDesgloseGeneralAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              width: "100%", background: "transparent", border: "none", cursor: "pointer",
-              padding: 0, marginBottom: desgloseGeneralAbierto ? 12 : 0,
+              width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+              padding: "8px 12px", borderRadius: 6, marginBottom: desgloseGeneralAbierto ? 12 : 0,
+              transition: "background 0.15s ease",
             }}>
             <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
               Desglose por empresa · {data.general.por_empresa.length} empresas
@@ -1135,8 +1138,9 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
           <button type="button" onClick={() => setDesglosePSAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              width: "100%", background: "transparent", border: "none", cursor: "pointer",
-              padding: 0, marginBottom: desglosePSAbierto ? 12 : 0,
+              width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+              padding: "8px 12px", borderRadius: 6, marginBottom: desglosePSAbierto ? 12 : 0,
+              transition: "background 0.15s ease",
             }}>
             <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
               Desglose por empresa · {data.ps.por_empresa.length} empresas
