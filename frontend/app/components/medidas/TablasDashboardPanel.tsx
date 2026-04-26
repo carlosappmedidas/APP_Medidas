@@ -360,7 +360,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
           </div>
           <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>
             {vista === "mensual" && mensual
-              ? `Carga ${mesCorto(mensual.carga_mes + 1 > 12 ? 1 : mensual.carga_mes + 1)} ${mensual.carga_mes === 12 ? mensual.carga_anio + 1 : mensual.carga_anio}`
+              ? `Carga ${mesCorto(mensual.carga_mes)} ${mensual.carga_anio}`
               : vista === "historico" && historico
                 ? `Histórico · últimos ${historico.anios_visibles.length} años`
                 : "Cargando…"}
