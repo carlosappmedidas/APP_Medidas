@@ -298,7 +298,7 @@ export default function HomePage() {
               {medidasOpen && (
                 <div className="ui-nav-sub">
                   <>
-                    <button type="button" onClick={() => setTablasOpen((v) => !v)}
+                    <button type="button" onClick={() => { setActiveTab("tablas-resumen"); setTablasOpen(v => !v); }}
                       className={["ui-nav-subitem", ["tablas-resumen","tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
                       <span>Tablas</span>
                       <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
