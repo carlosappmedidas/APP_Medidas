@@ -16,6 +16,7 @@ from app.comunicaciones.routes import router as comunicaciones_router
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.dashboard.routes import router as dashboard_router
+from app.dashboard_tablas.routes import router as dashboard_tablas_router
 from app.empresas.routes import router as empresas_router
 from app.ingestion.routes import router as ingestion_router
 from app.measures.routes import router as medidas_router
@@ -103,6 +104,7 @@ app.include_router(ingestion_router)
 app.include_router(medidas_router)
 app.include_router(alerts_router)
 app.include_router(dashboard_router)
+app.include_router(dashboard_tablas_router)
 app.include_router(calendario_ree_router)
 app.include_router(medidas_graficos_router)
 app.include_router(medidas_graficos_ps_router)

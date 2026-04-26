@@ -5,7 +5,6 @@ import DashboardSection from "./components/dashboard/DashboardSection";
 import AlertsSection from "./components/admin/AlertsSection";
 import AlertasObjecionesSection from "./components/admin/AlertasObjecionesSection";
 import AlertConfigSection from "./components/admin/AlertConfigSection";
-import MedidasSection from "./components/medidas/MedidasSection";
 import ObjecionesSection from "./components/medidas/ObjecionesSection";
 import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
 import GraficosSection from "./components/medidas/GraficosSection";
@@ -18,6 +17,7 @@ import UsersSection from "./components/admin/UsersSection";
 import SistemaSection from "./components/settings/SistemaSection";
 import ClientesSection from "./components/admin/ClientesSection";
 import MedidasPsSection, { COLUMNS_PS_META } from "./components/medidas/MedidasPsSection";
+import TablasDashboardPanel from "./components/medidas/TablasDashboardPanel";
 import AppearanceSettingsSection from "./components/settings/AppearanceSettingsSection";
 import TableSettingsSection from "./components/settings/TableSettingsSection";
 import TopologiaSettingsSection from "./components/settings/TopologiaSettingsSection";
@@ -28,12 +28,14 @@ import type { User } from "./types";
 import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 
 type MainTab =
-  | "dashboard" | "medidas" | "objeciones" | "calendario-ree" | "graficos"
-  | "alertas" | "usuarios" | "clientes" | "tablas-general" | "tablas-ps"
+  | "dashboard" | "objeciones" | "calendario-ree" | "graficos"
+  | "alertas" | "usuarios" | "clientes"
+  | "tablas-resumen" | "tablas-general" | "tablas-ps"
   | "carga" | "comunicaciones" | "perdidas" | "topologia" | "ajustes" | "sistema";
 
 const PAGE_TITLES: Record<MainTab, string> = {
-  "dashboard": "Dashboard", "medidas": "Medidas",
+  "dashboard": "Dashboard",
+  "tablas-resumen": "Resumen de tablas",
   "tablas-general": "Medidas (General)", "tablas-ps": "Medidas (PS)",
   "objeciones": "Objeciones", "calendario-ree": "Calendario REE",
   "graficos": "Gráficos", "alertas": "Alertas", "usuarios": "Usuarios",
@@ -141,7 +143,12 @@ export default function HomePage() {
   useEffect(() => {
     try {
       const savedTab = localStorage.getItem("ui_active_tab");
-      if (savedTab && savedTab in PAGE_TITLES) setActiveTab(savedTab as MainTab);
+      // Si en localStorage hay un tab válido (existe en PAGE_TITLES) lo restauramos.
+      // Caso especial: si tienen guardado el antiguo "medidas" (que ya no es una
+      // pestaña real), lo ignoramos para que arranque en "dashboard".
+      if (savedTab && savedTab !== "medidas" && savedTab in PAGE_TITLES) {
+        setActiveTab(savedTab as MainTab);
+      }
       if (localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1") setSidebarCollapsed(true);
       if (localStorage.getItem(MEDIDAS_OPEN_STORAGE_KEY) === "1") setMedidasOpen(true);
       if (localStorage.getItem(TABLAS_OPEN_STORAGE_KEY) === "1") setTablasOpen(true);
@@ -212,11 +219,11 @@ export default function HomePage() {
   };
   const handleGoHome = () => { setActiveTab("dashboard"); setHomeMenuOpen(false); };
 
+  // "Medidas" es solo cabecera de grupo: pulsarla abre/cierra el submenú
+  // pero NO cambia la pantalla activa. Las sub-pestañas (Tablas, Objeciones,
+  // Calendario REE, Gráficos) son las que sí navegan.
   const handleMedidasClick = () => {
     setMedidasOpen((prev) => !prev);
-    if (!["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab)) {
-      setActiveTab("medidas");
-    }
   };
 
   const handlePerdidasClick = () => {
@@ -284,7 +291,7 @@ export default function HomePage() {
             </button>
             <div>
               <button onClick={handleMedidasClick}
-                className={["ui-nav-item", ["medidas","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
+                className={["ui-nav-item", ["medidas","tablas-resumen","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Medidas</span>
                 <span className="text-[10px] ui-muted">{medidasOpen ? "▾" : "▸"}</span>
               </button>
@@ -292,12 +299,16 @@ export default function HomePage() {
                 <div className="ui-nav-sub">
                   <>
                     <button type="button" onClick={() => setTablasOpen((v) => !v)}
-                      className={["ui-nav-subitem", ["tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
+                      className={["ui-nav-subitem", ["tablas-resumen","tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
                       <span>Tablas</span>
                       <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
                     </button>
                     {tablasOpen && (
                       <div className="ui-nav-sub">
+                        <button type="button" onClick={() => setActiveTab("tablas-resumen")}
+                          className={["ui-nav-subitem", activeTab === "tablas-resumen" ? "ui-nav-subitem--active" : ""].join(" ")}>
+                          <span>Resumen</span>
+                        </button>
                         <button type="button" onClick={() => setActiveTab("tablas-general")}
                           className={["ui-nav-subitem", activeTab === "tablas-general" ? "ui-nav-subitem--active" : ""].join(" ")}>
                           <span>Medidas general</span>
@@ -418,7 +429,6 @@ export default function HomePage() {
         </header>
 
         {activeTab === "dashboard"      && <DashboardSection token={token} />}
-        {activeTab === "medidas"        && <MedidasSection token={token} currentUser={currentUser} />}
         {activeTab === "objeciones" && !isViewer && (
           <ObjecionesSection
             token={token}
@@ -483,6 +493,14 @@ export default function HomePage() {
         {activeTab === "usuarios"  && (canManageUsers || isSuperuser) && <UsersSection token={token} />}
         {activeTab === "clientes"  && isSuperuser && <ClientesSection token={token} currentUser={currentUser} />}
 
+        {activeTab === "tablas-resumen" && (
+          <TablasDashboardPanel
+            token={token}
+            onGoToTableGeneral={() => setActiveTab("tablas-general")}
+            onGoToTablePS={() => setActiveTab("tablas-ps")}
+            onGoToCarga={!isViewer ? () => setActiveTab("carga") : undefined}
+          />
+        )}
         {activeTab === "tablas-general" && (
           <MedidasGeneralSection token={token}
             columnOrder={generalColumnOrder} setColumnOrder={setGeneralColumnOrder}
