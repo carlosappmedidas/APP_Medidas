@@ -661,12 +661,12 @@ function FilaEmpresa({
             borderRadius: 5, padding: "5px 7px",
           }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-              <span style={{ fontSize: 13, fontWeight: 500 }}>{formatGWh(c.energia_kwh)}</span>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{formatGWh3(c.energia_kwh)}</span>
               <span style={{ fontSize: 9, color: "var(--text-muted)" }}>GWh</span>
             </div>
             <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
               {formatPct(c.perdidas_pct)}
-              {c.perdidas_kwh != null && <> · {formatMiles(c.perdidas_kwh / 1000)}k</>}
+              {c.perdidas_kwh != null && <> · {formatMiles(c.perdidas_kwh / 1000)} MWh</>}
             </div>
           </div>
         );
