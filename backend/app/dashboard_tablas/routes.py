@@ -294,6 +294,13 @@ def get_dashboard_tablas_mensual(
         )
         ultimo_periodo_por_ventana[ventana] = periodos_v[0] if periodos_v else None
 
+    # Helper: ¿esta empresa tenía M1 publicado en (anio, mes)? Si no lo tenía,
+    # significa que la empresa aún no operaba ese mes -> no se la cuenta como
+    # pendiente ni se la incluye en el "total esperado" de regularizaciones.
+    def _empresa_tenia_m1(emp_id: int, anio: int, mes: int) -> bool:
+        v = agg.get((emp_id, anio, mes))
+        return bool(v and v["m1"]["e"] > 0)
+
     for ventana in VENTANAS:
         ult = ultimo_periodo_por_ventana[ventana]
         if ult is None:
@@ -305,12 +312,20 @@ def get_dashboard_tablas_mensual(
             )
             continue
         anio_v, mes_v = ult
-        # Suma global y empresas con dato en ese mes para esa ventana
+        # Suma global y empresas con dato en ese mes para esa ventana.
+        # Solo contamos como "total esperado" las empresas que YA operaban
+        # ese mes (es decir, que tienen M1 publicado en ese (anio, mes)).
+        # M1 no se filtra a sí mismo: en M1, esperadas = todas las empresas.
         total_e = 0.0
         total_p = 0.0
         empresas_con_dato = 0
+        empresas_esperadas = 0
         for emp_id in allowed:
             v = agg.get((emp_id, anio_v, mes_v))
+            # Para M1, todas las empresas son "esperadas".
+            # Para M2/M7/M11/ART15, solo si tenían M1 en ese mes.
+            if ventana == "m1" or _empresa_tenia_m1(emp_id, anio_v, mes_v):
+                empresas_esperadas += 1
             if v is None:
                 continue
             e = v[ventana]["e"]
@@ -327,7 +342,7 @@ def get_dashboard_tablas_mensual(
                 energia_kwh=round(total_e, 2),
                 perdidas_pct=_safe_pct(total_p, total_e),
                 empresas_con_dato=empresas_con_dato,
-                empresas_total=n_empresas,
+                empresas_total=empresas_esperadas,
             )
         )
 
@@ -353,9 +368,15 @@ def get_dashboard_tablas_mensual(
                     pendiente=False,
                 )
             else:
-                # Esa ventana ya está publicada para otras empresas
-                # pero esta empresa aún no la tiene -> pendiente.
-                celdas[ventana] = MensualGeneralEmpresaVentanaCelda(pendiente=True)
+                # Solo marcamos PENDIENTE si la empresa YA operaba ese mes
+                # (tenía M1 publicado). Si no tenía M1, la empresa aún no
+                # estaba activa -> celda vacía (no aplica), no pendiente.
+                # M1 mismo siempre se marca pendiente si falta para una
+                # empresa, porque es la primera ventana esperada.
+                if ventana == "m1" or _empresa_tenia_m1(emp_id, anio_v, mes_v):
+                    celdas[ventana] = MensualGeneralEmpresaVentanaCelda(pendiente=True)
+                else:
+                    celdas[ventana] = MensualGeneralEmpresaVentanaCelda(pendiente=False)
 
         # Despliegue: 5 meses afectados por la publicación = el último mes de cada ventana
         despliegue: list[MensualGeneralEmpresaDespliegueFila] = []
@@ -569,14 +590,20 @@ def get_dashboard_tablas_mensual(
     ps_completas = 1 if ps_empresas_con_dato == n_empresas and n_empresas > 0 else 0
     ps_total = 1
 
-    # Resumen textual de lo que falta (1 línea, máximo 1 ejemplo)
+    # Resumen textual de lo que falta (1 línea, máximo 1 ejemplo).
+    # Solo cuenta como falta si la empresa ya operaba ese mes (tenía M1).
     pendientes_resumen: str | None = None
     for ventana in VENTANAS:
         card = next((c for c in pipeline if c.ventana == ventana), None)
         if card and card.empresas_con_dato < card.empresas_total and card.anio is not None:
-            # Buscar la primera empresa que falta
+            # Buscar la primera empresa "esperada" que falta
             for emp in empresas:
                 emp_id = int(emp.id)
+                # Para ventanas distintas de M1, exigimos que la empresa
+                # tuviera M1 publicado en ese mes. Si no, no se considera
+                # falta.
+                if ventana != "m1" and not _empresa_tenia_m1(emp_id, card.anio, card.mes or 0):
+                    continue
                 v = agg.get((emp_id, card.anio, card.mes or 0))
                 if v is None or v[ventana]["e"] <= 0:
                     pendientes_resumen = (
