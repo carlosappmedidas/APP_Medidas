@@ -689,6 +689,19 @@ def get_dashboard_tablas_historico(
                 gen_agg[key][ventana]["e"] += e
                 gen_agg[key][ventana]["p"] += p
 
+    # Helper: dado un dict {ventana: {e, p}}, devolver (e, p) de la mejor
+    # ventana disponible siguiendo la jerarquía ART15 > M11 > M7 > M2 > M1.
+    # M1 es lectura provisional, ART15 es definitivo. Usar la "mejor"
+    # disponible refleja con más exactitud el valor real.
+    JERARQUIA_VENTANAS: list[VentanaCode] = ["art15", "m11", "m7", "m2", "m1"]
+
+    def _mejor_ventana(buckets: dict[VentanaCode, dict[str, float]]) -> tuple[float, float]:
+        for v in JERARQUIA_VENTANAS:
+            b = buckets.get(v)
+            if b and b["e"] > 0:
+                return (b["e"], b["p"])
+        return (0.0, 0.0)
+
     # Años con datos en M1 (orden descendente, máx 5)
     anios_con_datos = sorted({a for (_, a, _), _ in gen_agg.items()}, reverse=True)
     anios_visibles = anios_con_datos[:5]
@@ -698,15 +711,18 @@ def get_dashboard_tablas_historico(
     for anio in anios_visibles:
         meses_set = {m for (_, a, m) in gen_agg if a == anio}
         empresas_set = {e for (e, a, _) in gen_agg if a == anio}
-        # Suma M1 del año + ART15 cerrados
-        e_m1 = 0.0
-        p_m1 = 0.0
+        # Acumulamos energía y pérdidas usando la MEJOR ventana disponible
+        # por (empresa, mes). ART15 > M11 > M7 > M2 > M1. Esto refleja la
+        # realidad final, no la primera lectura provisional.
+        e_mejor = 0.0
+        p_mejor = 0.0
         meses_art15_cerrados: set[int] = set()
         for (emp_id, a, m), v in gen_agg.items():
             if a != anio:
                 continue
-            e_m1 += v["m1"]["e"]
-            p_m1 += v["m1"]["p"]
+            e_cell, p_cell = _mejor_ventana(v)
+            e_mejor += e_cell
+            p_mejor += p_cell
             if v["art15"]["e"] > 0:
                 meses_art15_cerrados.add(m)
 
@@ -737,8 +753,8 @@ def get_dashboard_tablas_historico(
                 estado=estado,  # type: ignore[arg-type]
                 meses_con_dato=n_meses,
                 empresas=len(empresas_set),
-                energia_kwh=round(e_m1, 2),
-                perdidas_pct=_safe_pct(p_m1, e_m1),
+                energia_kwh=round(e_mejor, 2),
+                perdidas_pct=_safe_pct(p_mejor, e_mejor),
                 art15_meses_cerrados=n_art15,
                 art15_meses_total=12,
             )
@@ -851,15 +867,18 @@ def get_dashboard_tablas_historico(
                  if e == emp_id and a == anio
                  and any(v[ventana]["e"] > 0 for ventana in VENTANAS)}
             )
-            # Sumas M1 + ART15 cerrados, solo de esta empresa
-            e_m1_emp = 0.0
-            p_m1_emp = 0.0
+            # Sumas usando la MEJOR ventana disponible por mes (jerarquía
+            # ART15 > M11 > M7 > M2 > M1) — refleja la realidad final, no
+            # la primera lectura provisional.
+            e_mejor_emp = 0.0
+            p_mejor_emp = 0.0
             art15_cerrados_emp: set[int] = set()
             for (e, a, m), v in gen_agg.items():
                 if e != emp_id or a != anio:
                     continue
-                e_m1_emp += v["m1"]["e"]
-                p_m1_emp += v["m1"]["p"]
+                e_cell, p_cell = _mejor_ventana(v)
+                e_mejor_emp += e_cell
+                p_mejor_emp += p_cell
                 if v["art15"]["e"] > 0:
                     art15_cerrados_emp.add(m)
 
@@ -868,8 +887,8 @@ def get_dashboard_tablas_historico(
                 HistoricoGeneralEmpresaAnioTarjeta(
                     anio=anio,
                     meses_con_dato=len(meses_emp),
-                    energia_kwh=round(e_m1_emp, 2),
-                    perdidas_pct=_safe_pct(p_m1_emp, e_m1_emp),
+                    energia_kwh=round(e_mejor_emp, 2),
+                    perdidas_pct=_safe_pct(p_mejor_emp, e_mejor_emp),
                     art15_meses_cerrados=len(art15_cerrados_emp),
                     art15_meses_total=12,
                     sin_datos=sin_datos,
