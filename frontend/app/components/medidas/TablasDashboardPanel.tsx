@@ -853,19 +853,21 @@ function BloquePS({
       </div>
 
       {/* Detalle por empresa (colapsable) */}
-      <button type="button" onClick={onToggleDetalle}
-        style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          width: "100%", background: "transparent", border: "none", cursor: "pointer",
-          padding: 0, marginBottom: detalleAbierto ? 8 : 0,
-        }}>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
-          Detalle por empresa
-        </div>
-        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-          {detalleAbierto ? "▾ ocultar" : "▸ mostrar"}
-        </span>
-      </button>
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
+        <button type="button" onClick={onToggleDetalle}
+          style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            width: "100%", background: "transparent", border: "none", cursor: "pointer",
+            padding: 0, marginBottom: detalleAbierto ? 8 : 0,
+          }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
+            Detalle por empresa
+          </div>
+          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+            {detalleAbierto ? "▾ ocultar" : "▸ mostrar"}
+          </span>
+        </button>
+      </div>
 
       {detalleAbierto && (
         <div style={{ fontVariantNumeric: "tabular-nums" }}>
