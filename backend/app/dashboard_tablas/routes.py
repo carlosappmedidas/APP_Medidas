@@ -9,6 +9,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import false as sql_false
 from sqlalchemy.orm import Session
 
+from datetime import date
+
+from app.calendario_ree.models import ReeCalendarEvent, ReeCalendarFile
 from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.empresas.models import Empresa
@@ -200,6 +203,110 @@ def _row_has_ventana(row: MedidaGeneral, ventana: VentanaCode) -> bool:
     return _f(getattr(row, col_e, None)) > 0.0
 
 
+# Mapeo: para cada ventana del dashboard, qué hito del calendario REE marca
+# su "cierre" oficial. El mes objetivo de la tarjeta = el mes_afectado del
+# hito cuya fecha cae DENTRO del mes de carga actual (mes natural de hoy).
+#
+# Por ejemplo: si hoy es 27 abril 2026, M11 muestra el mes cuyo
+# CIERRE DEFINITIVO ocurre en abril 2026 (cae el 30/04 → Junio 2025).
+VENTANA_HITO_CALENDARIO: dict[VentanaCode, tuple[str, str]] = {
+    "m1":    ("M+1",         "Publicación del cierre M+1"),
+    "m2":    ("M+2",         "Publicación del cierre M+2"),
+    "m7":    ("Provisional", "CIERRE PROVISIONAL"),
+    "m11":   ("Definitivo",  "CIERRE DEFINITIVO"),
+    "art15": ("Art. 15",     "PUBLICACION NUEVO CIERRE DE ENERGÍA"),
+}
+
+# "Enero" -> 1, etc. Necesario para parsear el campo `mes_afectado` del
+# calendario REE (formato "Mes Año" en castellano).
+_MES_NOMBRE_A_NUM: dict[str, int] = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}
+
+
+def _parse_mes_afectado(texto: str) -> tuple[int, int] | None:
+    """Convierte 'Junio 2025' -> (2025, 6). None si no parsea."""
+    if not texto:
+        return None
+    parts = texto.strip().split()
+    if len(parts) != 2:
+        return None
+    nombre, anio_str = parts
+    mes = _MES_NOMBRE_A_NUM.get(nombre.lower())
+    if mes is None:
+        return None
+    try:
+        return int(anio_str), mes
+    except ValueError:
+        return None
+
+
+def _meses_objetivo_por_calendario_ree(
+    db: Session,
+    tenant_id: int,
+) -> dict[VentanaCode, tuple[int, int] | None]:
+    """
+    Para cada ventana, devuelve el (anio, mes) que SEGÚN EL CALENDARIO REE
+    debe estar publicado en el mes de carga vigente (= mes natural de hoy).
+
+    Si no hay calendario activo para el tenant, o no hay hito que cuadre,
+    devuelve None para esa ventana — el caller hará fallback al cálculo
+    antiguo basado en el último mes con dato en BD.
+    """
+    resultado: dict[VentanaCode, tuple[int, int] | None] = {v: None for v in VENTANAS}
+
+    hoy = date.today()
+    primer_dia_mes = date(hoy.year, hoy.month, 1)
+    if hoy.month == 12:
+        primer_dia_mes_siguiente = date(hoy.year + 1, 1, 1)
+    else:
+        primer_dia_mes_siguiente = date(hoy.year, hoy.month + 1, 1)
+
+    # Calendario activo del tenant. Si no hay → todas las ventanas a None.
+    active_file = (
+        db.query(ReeCalendarFile)
+        .filter(
+            ReeCalendarFile.tenant_id == tenant_id,
+            ReeCalendarFile.is_active.is_(True),
+        )
+        .order_by(
+            ReeCalendarFile.anio.desc(),
+            ReeCalendarFile.created_at.desc(),
+            ReeCalendarFile.id.desc(),
+        )
+        .first()
+    )
+    if active_file is None:
+        return resultado
+
+    # Traemos los hitos del mes vigente para ese calendario.
+    eventos = (
+        db.query(ReeCalendarEvent)
+        .filter(
+            ReeCalendarEvent.tenant_id == tenant_id,
+            ReeCalendarEvent.calendar_file_id == active_file.id,
+            ReeCalendarEvent.fecha >= primer_dia_mes,
+            ReeCalendarEvent.fecha < primer_dia_mes_siguiente,
+        )
+        .all()
+    )
+
+    for ventana in VENTANAS:
+        categoria_esperada, evento_substring = VENTANA_HITO_CALENDARIO[ventana]
+        for ev in eventos:
+            if str(ev.categoria) != categoria_esperada:
+                continue
+            if evento_substring not in str(ev.evento):
+                continue
+            parsed = _parse_mes_afectado(str(ev.mes_afectado))
+            if parsed is not None:
+                resultado[ventana] = parsed
+                break
+
+    return resultado
+
+
 # =====================================================================
 # Endpoint MENSUAL
 # =====================================================================
@@ -285,9 +392,17 @@ def get_dashboard_tablas_mensual(
 
     # ----- Pipeline (5 tarjetas de ventana) -----
     pipeline: list[MensualGeneralVentanaCard] = []
-    # Para cada ventana, encontramos su último (anio,mes) con datos
+    # Para cada ventana, el (anio, mes) objetivo = el que dice el calendario
+    # REE (hito de cierre/publicación que cae dentro del mes natural de hoy).
+    # Si el calendario no responde para alguna ventana, hacemos fallback al
+    # último (anio, mes) con datos en BD para esa ventana.
+    objetivo_calendario = _meses_objetivo_por_calendario_ree(db, tenant_id)
     ultimo_periodo_por_ventana: dict[VentanaCode, tuple[int, int] | None] = {}
     for ventana in VENTANAS:
+        from_cal = objetivo_calendario.get(ventana)
+        if from_cal is not None:
+            ultimo_periodo_por_ventana[ventana] = from_cal
+            continue
         periodos_v = sorted(
             {(a, m) for (_, a, m), v in agg.items() if v[ventana]["e"] > 0},
             reverse=True,
