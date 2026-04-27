@@ -14,6 +14,7 @@ from datetime import date
 from app.calendario_ree.models import ReeCalendarEvent, ReeCalendarFile
 from app.core.auth import get_current_user
 from app.core.db import get_db
+from app.core.permissions import get_allowed_empresa_ids
 from app.empresas.models import Empresa
 from app.measures.models import MedidaGeneral, MedidaPS
 from app.tenants.models import User
@@ -53,30 +54,6 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/dashboard/tablas", tags=["dashboard-tablas"])
-
-
-# =====================================================================
-# Permisos y tenant — copiamos el patrón EXACTO de dashboard/routes.py
-# =====================================================================
-
-def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
-    tenant_id = int(cast(int, current_user.tenant_id))
-
-    if bool(getattr(current_user, "is_superuser", False)):
-        rows = (
-            db.query(Empresa.id)
-            .filter(Empresa.tenant_id == tenant_id)
-            .order_by(Empresa.id.asc())
-            .all()
-        )
-        return [int(row[0]) for row in rows if row and row[0] is not None]
-
-    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
-    explicit_ids = [int(x) for x in raw_ids if x is not None] if raw_ids else []
-    if explicit_ids:
-        return explicit_ids
-
-    return []
 
 
 # =====================================================================
@@ -317,7 +294,7 @@ def get_dashboard_tablas_mensual(
     current_user: User = Depends(get_current_user),
 ) -> MensualResponse:
     tenant_id = int(cast(int, current_user.tenant_id))
-    allowed = _allowed_empresa_ids(db, current_user)
+    allowed = get_allowed_empresa_ids(db, current_user)
 
     # Empresas visibles para el usuario
     empresas_q = (
@@ -758,7 +735,7 @@ def get_dashboard_tablas_historico(
     current_user: User = Depends(get_current_user),
 ) -> HistoricoResponse:
     tenant_id = int(cast(int, current_user.tenant_id))
-    allowed = _allowed_empresa_ids(db, current_user)
+    allowed = get_allowed_empresa_ids(db, current_user)
 
     empresas = (
         db.query(Empresa)

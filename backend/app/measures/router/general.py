@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_active_superuser, get_current_user
 from app.core.db import get_db
+from app.core.permissions import get_allowed_empresa_ids
 from app.empresas.models import Empresa
 from app.ingestion.models import IngestionFile
 from app.measures.m1_models import M1PeriodContribution
@@ -23,26 +24,6 @@ from app.measures.router.utils import (
 from app.tenants.models import User
 
 router = APIRouter(prefix="/general", tags=["medidas"])
-
-
-def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
-    tenant_id = int(cast(int, current_user.tenant_id))
-
-    if bool(getattr(current_user, "is_superuser", False)):
-        rows = (
-            db.query(Empresa.id)
-            .filter(Empresa.tenant_id == tenant_id)
-            .order_by(Empresa.id.asc())
-            .all()
-        )
-        return [int(row[0]) for row in rows if row and row[0] is not None]
-
-    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
-    explicit_ids = [int(x) for x in raw_ids if x is not None] if raw_ids else []
-    if explicit_ids:
-        return explicit_ids
-
-    return []
 
 
 def _parse_int_list_param(value: str | None) -> list[int]:
@@ -150,7 +131,7 @@ def listar_medidas_generales(
     current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     tenant_id = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     if not allowed_empresa_ids:
         return []
@@ -309,7 +290,7 @@ def medidas_general_filters(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     tenant_id = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     if not allowed_empresa_ids:
         return {"empresas": [], "anios": [], "meses": [], "ultimo_periodo": None}
@@ -453,7 +434,7 @@ def listar_medidas_generales_page(
     page_size: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, Any]:
     tenant_id = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     if not allowed_empresa_ids:
         return {

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
+from app.core.permissions import assert_empresa_access
 from app.tenants.models import User
 from app.topologia import services
 from app.topologia.models import CtInventario, LineaInventario, LineaTramo
@@ -70,6 +71,7 @@ async def importar_topologia(
     Al finalizar lanza automáticamente el cálculo de asociación CT BT y MT.
     """
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
 
     if not b2 and not b21 and not b22 and not a1 and not b1 and not b11:
         raise HTTPException(
@@ -116,6 +118,7 @@ def calcular_ct(
 ) -> CalcAsignacionCtResponse:
     """Recalcula la asociación CT → líneas BT y CUPS BT."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     try:
         resultado = services.calcular_asociacion_ct(
             db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
@@ -138,6 +141,7 @@ def calcular_ct_mt(
 ) -> CalcAsignacionCtMtResponse:
     """Recalcula la asociación CT → líneas MT y CUPS MT."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     try:
         resultado = services.calcular_asociacion_ct_mt(
             db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
@@ -160,6 +164,7 @@ def crear_ct(
 ) -> CtCreateResponse:
     """Crea un nuevo CT manualmente con todos los campos del B2."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     try:
         services.crear_ct(
             db=db,
@@ -186,6 +191,7 @@ def get_ct_detalle(
 ) -> CtDetalleRead:
     """Devuelve los datos completos de un CT junto con sus transformadores y celdas."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     tid = _tenant_id(current_user)
 
     ct = (
@@ -226,6 +232,7 @@ def reasignar_ct_linea(
 ) -> dict:
     """Reasigna manualmente el CT de una línea. Enviar id_ct=null para limpiar."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     try:
         services.reasignar_ct_linea(
             db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
@@ -248,6 +255,7 @@ def reasignar_ct_cups(
 ) -> dict:
     """Reasigna manualmente el CT de un CUPS. Enviar id_ct=null para limpiar."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     try:
         services.reasignar_ct_cups(
             db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
@@ -270,6 +278,7 @@ def reasignar_fase_cups(
 ) -> dict:
     """Asigna la fase del CT (R/S/T/RST) a un CUPS. Enviar fase=null para limpiar."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     try:
         services.reasignar_fase_cups(
             db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
@@ -331,6 +340,7 @@ def get_tabla_lineas(
     current_user: User          = Depends(get_current_user),
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     lineas, total = services.list_lineas_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
         id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, busqueda=busqueda,
@@ -404,6 +414,7 @@ def get_tabla_cups(
     current_user: User          = Depends(get_current_user),
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     cups, total = services.list_cups_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
         id_ct=id_ct, sin_ct=sin_ct, metodo=metodo, busqueda=busqueda,
@@ -451,6 +462,7 @@ def get_tabla_celdas(
     current_user: User          = Depends(get_current_user),
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     celdas, total = services.list_celdas_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
         id_ct=id_ct, busqueda=busqueda,
@@ -512,6 +524,7 @@ def get_tabla_cts(
     current_user: User    = Depends(get_current_user),
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     items, total = services.list_cts_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
         busqueda=busqueda, f_municipio=f_municipio, f_provincia=f_provincia,
@@ -561,6 +574,7 @@ def get_tabla_tramos(
     current_user: User          = Depends(get_current_user),
 ) -> Dict[str, Any]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     items, total = services.list_tramos_tabla(
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
         id_ct=id_ct, busqueda=busqueda,
@@ -587,6 +601,7 @@ def get_cuadro_bt(
 ) -> Dict[str, Any]:
     """Devuelve el cuadro BT de un CT: embarrados y salidas reales."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     return services.calcular_cuadro_bt(
         db=db,
         tenant_id=_tenant_id(current_user),
@@ -602,6 +617,7 @@ def get_cts_mapa(
     current_user: User    = Depends(get_current_user),
 ) -> List[CtMapaRead]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     return services.list_cts_mapa(  # type: ignore[return-value]
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
     )
@@ -617,6 +633,7 @@ def get_cups_mapa(
     current_user: User          = Depends(get_current_user),
 ) -> List[CupsMapaRead]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     return services.list_cups_mapa(  # type: ignore[return-value]
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id, id_ct=id_ct,
     )
@@ -633,6 +650,7 @@ def get_tramos_mapa(
     current_user: User          = Depends(get_current_user),
 ) -> List[TramoMapaRead]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     tid = _tenant_id(current_user)
 
     if id_ct is not None:
@@ -740,6 +758,7 @@ def get_lineas_disponibles(
     current_user: User    = Depends(get_current_user),
 ) -> List[str]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     tid = _tenant_id(current_user)
     filas = (
         db.query(LineaTramo.id_linea)
@@ -764,6 +783,7 @@ def get_cts(
     current_user: User    = Depends(get_current_user),
 ) -> List[CtInventarioRead]:
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     return services.list_cts(  # type: ignore[return-value]
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
     )
@@ -779,6 +799,7 @@ def get_cts_mapa_baja(
 ) -> List[CtMapaRead]:
     """CTs con fecha_baja IS NOT NULL."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     return services.list_cts_mapa_baja(  # type: ignore[return-value]
         db=db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id,
     )
@@ -794,6 +815,7 @@ def get_tramos_mapa_baja(
 ) -> List[TramoMapaRead]:
     """Tramos GIS cuya línea tiene fecha_baja IS NOT NULL."""
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, empresa_id)
     tid = _tenant_id(current_user)
     tramos = services.list_tramos_mapa_baja(
         db=db, tenant_id=tid, empresa_id=empresa_id,

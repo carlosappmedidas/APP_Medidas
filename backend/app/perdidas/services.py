@@ -1,5 +1,5 @@
 # app/perdidas/services.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportArgumentType=false, reportCallIssue=false
 
 from __future__ import annotations
 
@@ -74,9 +74,15 @@ def _perdida_to_dict(obj: PerdidaDiaria, nombre_ct: str) -> dict:
 def list_concentradores(
     db: Session, *,
     tenant_id: int,
+    allowed_empresa_ids: List[int],
     empresa_id: Optional[int] = None,
 ) -> List[dict]:
-    q = db.query(Concentrador).filter(Concentrador.tenant_id == tenant_id)
+    if not allowed_empresa_ids:
+        return []
+    q = db.query(Concentrador).filter(
+        Concentrador.tenant_id == tenant_id,
+        Concentrador.empresa_id.in_(allowed_empresa_ids),
+    )
     if empresa_id:
         q = q.filter(Concentrador.empresa_id == empresa_id)
     return [_concentrador_to_dict(c, db) for c in q.order_by(Concentrador.empresa_id, Concentrador.nombre_ct).all()]
@@ -492,15 +498,21 @@ def procesar_s02(
 def list_perdidas_diarias(
     db: Session, *,
     tenant_id: int,
+    allowed_empresa_ids: List[int],
     empresa_id: Optional[int] = None,
     concentrador_id: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
     limit: int = 500,
 ) -> List[dict]:
+    if not allowed_empresa_ids:
+        return []
     q = db.query(PerdidaDiaria, Concentrador).join(
         Concentrador, PerdidaDiaria.concentrador_id == Concentrador.id
-    ).filter(PerdidaDiaria.tenant_id == tenant_id)
+    ).filter(
+        PerdidaDiaria.tenant_id == tenant_id,
+        PerdidaDiaria.empresa_id.in_(allowed_empresa_ids),
+    )
 
     if empresa_id:
         q = q.filter(PerdidaDiaria.empresa_id == empresa_id)
@@ -520,11 +532,15 @@ def list_perdidas_diarias(
 def list_perdidas_mensuales(
     db: Session, *,
     tenant_id: int,
+    allowed_empresa_ids: List[int],
     empresa_id: Optional[int] = None,
     concentrador_id: Optional[int] = None,
     anio: Optional[int] = None,
 ) -> List[dict]:
     from sqlalchemy import cast, func, extract, Integer
+
+    if not allowed_empresa_ids:
+        return []
 
     q = db.query(
         PerdidaDiaria.concentrador_id,
@@ -542,7 +558,10 @@ def list_perdidas_mensuales(
         func.sum(cast(PerdidaDiaria.estado == "ok", Integer)).label("dias_completos"),
     ).join(
         Concentrador, PerdidaDiaria.concentrador_id == Concentrador.id
-    ).filter(PerdidaDiaria.tenant_id == tenant_id)
+    ).filter(
+        PerdidaDiaria.tenant_id == tenant_id,
+        PerdidaDiaria.empresa_id.in_(allowed_empresa_ids),
+    )
 
     if empresa_id:
         q = q.filter(PerdidaDiaria.empresa_id == empresa_id)

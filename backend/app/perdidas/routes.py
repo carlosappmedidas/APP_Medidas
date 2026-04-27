@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
+from app.core.permissions import assert_empresa_access, get_allowed_empresa_ids
 from app.tenants.models import User
 from app.perdidas import services
 from app.perdidas.schemas import (
@@ -47,7 +48,14 @@ def get_concentradores(
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
-    return services.list_concentradores(db, tenant_id=_tenant_id(current_user), empresa_id=empresa_id)
+    if empresa_id is not None:
+        assert_empresa_access(db, current_user, empresa_id)
+    return services.list_concentradores(
+        db,
+        tenant_id=_tenant_id(current_user),
+        allowed_empresa_ids=get_allowed_empresa_ids(db, current_user),
+        empresa_id=empresa_id,
+    )
 
 
 @router.post("/concentradores", response_model=ConcentradorRead, status_code=status.HTTP_201_CREATED)
@@ -57,6 +65,7 @@ def create_concentrador(
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
+    assert_empresa_access(db, current_user, payload.empresa_id)
     try:
         return services.create_concentrador(
             db,
@@ -205,9 +214,12 @@ def get_perdidas_diarias(
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
+    if empresa_id is not None:
+        assert_empresa_access(db, current_user, empresa_id)
     return services.list_perdidas_diarias(
         db,
         tenant_id=_tenant_id(current_user),
+        allowed_empresa_ids=get_allowed_empresa_ids(db, current_user),
         empresa_id=empresa_id,
         concentrador_id=concentrador_id,
         fecha_desde=fecha_desde,
@@ -227,9 +239,12 @@ def get_perdidas_mensuales(
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
+    if empresa_id is not None:
+        assert_empresa_access(db, current_user, empresa_id)
     return services.list_perdidas_mensuales(
         db,
         tenant_id=_tenant_id(current_user),
+        allowed_empresa_ids=get_allowed_empresa_ids(db, current_user),
         empresa_id=empresa_id,
         concentrador_id=concentrador_id,
         anio=anio,

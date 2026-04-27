@@ -8,31 +8,12 @@ from sqlalchemy.orm import Query, Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
+from app.core.permissions import assert_empresa_access, get_allowed_empresa_ids
 from app.empresas.models import Empresa
 from app.measures.models import MedidaGeneral, MedidaPS
 from app.tenants.models import User
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
-
-
-def _allowed_empresa_ids(db: Session, current_user: User) -> list[int]:
-    tenant_id = int(cast(int, current_user.tenant_id))
-
-    if bool(getattr(current_user, "is_superuser", False)):
-        rows = (
-            db.query(Empresa.id)
-            .filter(Empresa.tenant_id == tenant_id)
-            .order_by(Empresa.id.asc())
-            .all()
-        )
-        return [int(row[0]) for row in rows if row and row[0] is not None]
-
-    raw_ids = getattr(current_user, "empresa_ids_permitidas", None)
-    explicit_ids = [int(x) for x in raw_ids if x is not None] if raw_ids else []
-    if explicit_ids:
-        return explicit_ids
-
-    return []
 
 
 def _apply_scope_filters(
@@ -65,32 +46,18 @@ def _apply_scope_filters(
 def _ensure_empresa_belongs_to_tenant(
     db: Session,
     *,
-    tenant_id: int,
-    allowed_empresa_ids: list[int],
+    current_user: User,
     empresa_id: int | None,
 ) -> None:
+    """
+    Wrapper de compatibilidad sobre `assert_empresa_access`.
+
+    Mantiene la firma con kwargs para no propagar el cambio a las 6 llamadas
+    de los endpoints. La validación se delega al helper centralizado.
+    """
     if empresa_id is None:
         return
-
-    if empresa_id not in allowed_empresa_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes acceso a esta empresa",
-        )
-
-    empresa = (
-        db.query(Empresa)
-        .filter(
-            Empresa.id == empresa_id,
-            Empresa.tenant_id == tenant_id,
-        )
-        .first()
-    )
-    if not empresa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Empresa no encontrada para este tenant",
-        )
+    assert_empresa_access(db, current_user, empresa_id)
 
 
 def _build_common_periods_subqueries(
@@ -534,12 +501,11 @@ def get_dashboard_filters(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
-        tenant_id=tenant_id_int,
-        allowed_empresa_ids=allowed_empresa_ids,
+        current_user=current_user,
         empresa_id=empresa_id,
     )
 
@@ -603,12 +569,11 @@ def get_dashboard_summary(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
-        tenant_id=tenant_id_int,
-        allowed_empresa_ids=allowed_empresa_ids,
+        current_user=current_user,
         empresa_id=empresa_id,
     )
 
@@ -707,12 +672,11 @@ def get_dashboard_energy_comparison_chart(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
-        tenant_id=tenant_id_int,
-        allowed_empresa_ids=allowed_empresa_ids,
+        current_user=current_user,
         empresa_id=empresa_id,
     )
 
@@ -772,12 +736,11 @@ def get_dashboard_energy_trend_chart(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
-        tenant_id=tenant_id_int,
-        allowed_empresa_ids=allowed_empresa_ids,
+        current_user=current_user,
         empresa_id=empresa_id,
     )
 
@@ -837,12 +800,11 @@ def get_dashboard_losses_trend_chart(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
-        tenant_id=tenant_id_int,
-        allowed_empresa_ids=allowed_empresa_ids,
+        current_user=current_user,
         empresa_id=empresa_id,
     )
 
@@ -902,12 +864,11 @@ def get_dashboard_losses_consistency(
     current_user: User = Depends(get_current_user),
 ):
     tenant_id_int = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = _allowed_empresa_ids(db, current_user)
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
 
     _ensure_empresa_belongs_to_tenant(
         db,
-        tenant_id=tenant_id_int,
-        allowed_empresa_ids=allowed_empresa_ids,
+        current_user=current_user,
         empresa_id=empresa_id,
     )
 

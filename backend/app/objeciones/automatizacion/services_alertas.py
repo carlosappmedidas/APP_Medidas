@@ -104,6 +104,7 @@ def listar_alertas(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: List[int],
     estado: Optional[str] = None,
     empresa_id: Optional[int] = None,
     periodo: Optional[str] = None,
@@ -113,7 +114,12 @@ def listar_alertas(
     Lista alertas del tenant filtrando opcionalmente por estado, empresa,
     periodo y tipo. Orden: más recientes primero.
     """
-    q = db.query(ObjecionesAlerta).filter(ObjecionesAlerta.tenant_id == tenant_id)
+    if not allowed_empresa_ids:
+        return []
+    q = db.query(ObjecionesAlerta).filter(
+        ObjecionesAlerta.tenant_id == tenant_id,
+        ObjecionesAlerta.empresa_id.in_(allowed_empresa_ids),
+    )
     if estado:
         q = q.filter(ObjecionesAlerta.estado == estado)
     if empresa_id:
@@ -200,6 +206,7 @@ def contar_alertas_activas(
     db: Session,
     *,
     tenant_id: int,
+    allowed_empresa_ids: List[int],
 ) -> dict:
     """
     Devuelve un resumen compacto de las alertas activas del tenant,
@@ -213,11 +220,19 @@ def contar_alertas_activas(
         "total_aobs_pendientes": 12,
       }
     """
+    if not allowed_empresa_ids:
+        return {
+            "total_alertas":         0,
+            "empresas_afectadas":    0,
+            "periodos_afectados":    0,
+            "total_aobs_pendientes": 0,
+        }
     alertas = (
         db.query(ObjecionesAlerta)
         .filter(
-            ObjecionesAlerta.tenant_id == tenant_id,
-            ObjecionesAlerta.estado    == "activa",
+            ObjecionesAlerta.tenant_id  == tenant_id,
+            ObjecionesAlerta.empresa_id.in_(allowed_empresa_ids),
+            ObjecionesAlerta.estado     == "activa",
         )
         .all()
     )

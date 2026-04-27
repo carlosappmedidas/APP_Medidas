@@ -1,5 +1,5 @@
 # app/objeciones/automatizacion/routes_alertas.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportArgumentType=false, reportCallIssue=false
 
 """
 Endpoints de gestión de alertas de objeciones.
@@ -20,7 +20,9 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
+from app.core.permissions import assert_empresa_access, get_allowed_empresa_ids
 from app.empresas.models import Empresa
+from app.objeciones.automatizacion.models import ObjecionesAlerta
 from app.objeciones.automatizacion.schemas import (
     AlertaRead,
     AlertasResumen,
@@ -110,13 +112,16 @@ def get_alertas(
 ):
     """Lista alertas del tenant con filtros opcionales."""
     tid = _tenant_id(current_user)
+    if empresa_id is not None:
+        assert_empresa_access(db, current_user, empresa_id)
     alertas = listar_alertas(
         db,
-        tenant_id  = tid,
-        estado     = estado,
-        empresa_id = empresa_id,
-        periodo    = periodo,
-        tipo       = tipo,
+        tenant_id           = tid,
+        allowed_empresa_ids = get_allowed_empresa_ids(db, current_user),
+        estado              = estado,
+        empresa_id          = empresa_id,
+        periodo             = periodo,
+        tipo                = tipo,
     )
     mapa = _mapa_empresas(db, tenant_id=tid)
     return [_serializar_alerta(a, mapa) for a in alertas]
@@ -130,7 +135,11 @@ def get_resumen(
     current_user = Depends(get_current_user),
 ):
     """Resumen compacto de las alertas activas del tenant."""
-    resumen = contar_alertas_activas(db, tenant_id=_tenant_id(current_user))
+    resumen = contar_alertas_activas(
+        db,
+        tenant_id           = _tenant_id(current_user),
+        allowed_empresa_ids = get_allowed_empresa_ids(db, current_user),
+    )
     return AlertasResumen(**resumen)
 
 
@@ -144,6 +153,18 @@ def descartar_endpoint(
 ):
     """Marca una alerta como 'descartada'."""
     tid = _tenant_id(current_user)
+    # Cargar la alerta primero para validar acceso a su empresa
+    alerta_existente = (
+        db.query(ObjecionesAlerta)
+        .filter(
+            ObjecionesAlerta.id        == alert_id,
+            ObjecionesAlerta.tenant_id == tid,
+        )
+        .first()
+    )
+    if alerta_existente is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Alerta {alert_id} no encontrada.")
+    assert_empresa_access(db, current_user, int(alerta_existente.empresa_id))
     try:
         alerta = descartar_alerta(
             db,
@@ -167,6 +188,18 @@ def resolver_endpoint(
 ):
     """Marca una alerta como 'resuelta'."""
     tid = _tenant_id(current_user)
+    # Cargar la alerta primero para validar acceso a su empresa
+    alerta_existente = (
+        db.query(ObjecionesAlerta)
+        .filter(
+            ObjecionesAlerta.id        == alert_id,
+            ObjecionesAlerta.tenant_id == tid,
+        )
+        .first()
+    )
+    if alerta_existente is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Alerta {alert_id} no encontrada.")
+    assert_empresa_access(db, current_user, int(alerta_existente.empresa_id))
     try:
         alerta = resolver_alerta(
             db,
