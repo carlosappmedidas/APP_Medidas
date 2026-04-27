@@ -378,6 +378,7 @@ def _directorio_descarga() -> Path:
 def procesar_s02(
     db: Session, *,
     tenant_id: int,
+    allowed_empresa_ids: List[int],
     concentrador_ids: Optional[List[int]],
     fecha_desde: date,
     fecha_hasta: date,
@@ -387,8 +388,11 @@ def procesar_s02(
     en el rango de fechas. Calcula pérdidas y guarda en perdida_diaria.
     Si ya existe un registro para esa fecha → sobreescribe.
     """
+    if not allowed_empresa_ids:
+        return (0, 0, 0, [])
     q = db.query(Concentrador).filter(
         Concentrador.tenant_id == tenant_id,
+        Concentrador.empresa_id.in_(allowed_empresa_ids),
         Concentrador.activo.is_(True),
     )
     if concentrador_ids:

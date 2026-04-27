@@ -1,5 +1,5 @@
 # app/perdidas/routes.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportArgumentType=false, reportCallIssue=false
 
 from __future__ import annotations
 
@@ -9,11 +9,13 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.comunicaciones.models import FtpConfig
 from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.core.permissions import assert_empresa_access, get_allowed_empresa_ids
 from app.tenants.models import User
 from app.perdidas import services
+from app.perdidas.models import Concentrador
 from app.perdidas.schemas import (
     ConcentradorCreate,
     ConcentradorRead,
@@ -91,11 +93,21 @@ def update_concentrador(
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+    # Cargar concentrador primero para validar acceso a su empresa
+    concentrador = (
+        db.query(Concentrador)
+        .filter(Concentrador.id == concentrador_id, Concentrador.tenant_id == tid)
+        .first()
+    )
+    if concentrador is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Concentrador id={concentrador_id} no encontrado")
+    assert_empresa_access(db, current_user, int(concentrador.empresa_id))
     try:
         return services.update_concentrador(
             db,
             concentrador_id=concentrador_id,
-            tenant_id=_tenant_id(current_user),
+            tenant_id=tid,
             nombre_ct=payload.nombre_ct,
             id_supervisor=payload.id_supervisor,
             magn_supervisor=payload.magn_supervisor,
@@ -114,8 +126,18 @@ def delete_concentrador(
     current_user: User = Depends(get_current_user),
 ):
     _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+    # Cargar concentrador primero para validar acceso a su empresa
+    concentrador = (
+        db.query(Concentrador)
+        .filter(Concentrador.id == concentrador_id, Concentrador.tenant_id == tid)
+        .first()
+    )
+    if concentrador is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Concentrador id={concentrador_id} no encontrado")
+    assert_empresa_access(db, current_user, int(concentrador.empresa_id))
     try:
-        services.delete_concentrador(db, concentrador_id=concentrador_id, tenant_id=_tenant_id(current_user))
+        services.delete_concentrador(db, concentrador_id=concentrador_id, tenant_id=tid)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     return None
@@ -131,10 +153,20 @@ def descubrir_concentradores(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+    # Cargar FtpConfig primero para validar acceso a su empresa
+    ftp_config = (
+        db.query(FtpConfig)
+        .filter(FtpConfig.id == ftp_config_id, FtpConfig.tenant_id == tid)
+        .first()
+    )
+    if ftp_config is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"FtpConfig id={ftp_config_id} no encontrada")
+    assert_empresa_access(db, current_user, int(ftp_config.empresa_id))
     try:
         return services.descubrir_concentradores(
             db,
-            tenant_id=_tenant_id(current_user),
+            tenant_id=tid,
             ftp_config_id=ftp_config_id,
             directorio=directorio,
         )
@@ -159,10 +191,20 @@ def analizar_concentrador(
     id_supervisor, magn_supervisor y num_contadores.
     """
     _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+    # Cargar FtpConfig primero para validar acceso a su empresa
+    ftp_config = (
+        db.query(FtpConfig)
+        .filter(FtpConfig.id == ftp_config_id, FtpConfig.tenant_id == tid)
+        .first()
+    )
+    if ftp_config is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"FtpConfig id={ftp_config_id} no encontrada")
+    assert_empresa_access(db, current_user, int(ftp_config.empresa_id))
     try:
         return services.analizar_s02_ftp(
             db,
-            tenant_id=_tenant_id(current_user),
+            tenant_id=tid,
             ftp_config_id=ftp_config_id,
             directorio=directorio,
             fichero=fichero,
@@ -186,9 +228,31 @@ def procesar_s02(
     Si ya existe un registro para esa fecha → sobreescribe.
     """
     _assert_not_viewer(current_user)
+    tid = _tenant_id(current_user)
+    # Si vienen concentrador_ids explícitos, validar acceso a la empresa de cada uno
+    if payload.concentrador_ids:
+        concentradores = (
+            db.query(Concentrador)
+            .filter(
+                Concentrador.id.in_(payload.concentrador_ids),
+                Concentrador.tenant_id == tid,
+            )
+            .all()
+        )
+        ids_encontrados = {int(c.id) for c in concentradores}
+        ids_faltantes = [cid for cid in payload.concentrador_ids if cid not in ids_encontrados]
+        if ids_faltantes:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Concentradores no encontrados: {ids_faltantes}",
+            )
+        empresas_implicadas = {int(c.empresa_id) for c in concentradores}
+        for emp_id in empresas_implicadas:
+            assert_empresa_access(db, current_user, emp_id)
     procesados, errores, omitidos, detalle = services.procesar_s02(
         db,
-        tenant_id=_tenant_id(current_user),
+        tenant_id=tid,
+        allowed_empresa_ids=get_allowed_empresa_ids(db, current_user),
         concentrador_ids=payload.concentrador_ids,
         fecha_desde=payload.fecha_desde,
         fecha_hasta=payload.fecha_hasta,
