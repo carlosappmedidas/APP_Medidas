@@ -10,6 +10,7 @@ import MedidasTableActions from "../ui/MedidasTableActions";
 import { useMedidasTable } from "./hooks/useMedidasTable";
 import { useDeleteByIngestion } from "../ingestion/hooks/useDeleteByIngestion";
 import type { TableAppearance } from "../settings/hooks/useTableSettings";
+import { PctCell, formatNumberEs } from "./utils/pctBadge";
 
 // ── Colores de cabecera de grupo ──────────────────────────────────────────
 const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; borderBottom: string }> = {
@@ -21,10 +22,6 @@ const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; b
   "CUPS Tarifas":     { background: "rgba(30,58,95,0.35)",  color: "rgba(226,232,240,0.55)", borderBottom: "1px solid rgba(30,58,95,0.5)" },
   "Importes Tarifas": { background: "rgba(168,85,247,0.18)",color: "#c084fc",                 borderBottom: "1px solid rgba(168,85,247,0.4)" },
 };
-
-// ── Umbrales de pérdidas técnicas ─────────────────────────────────────────
-const PCT_UMBRAL_NORMAL = 8;
-const PCT_UMBRAL_ALTO   = 12;
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 type MedidasPsProps = {
@@ -44,47 +41,6 @@ const DEFAULT_APPEARANCE: TableAppearance = {
   pctBadges:       true,
   periodSeparator: false,
 };
-
-const formatNumberEs = (v: number | null | undefined, decimals = 2): string => {
-  if (v == null || Number.isNaN(v)) return "-";
-  return new Intl.NumberFormat("es-ES", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(v);
-};
-
-// ── Badge de porcentaje de pérdidas ───────────────────────────────────────
-function PctCell({ value, pctBadges }: { value: number | null | undefined; pctBadges: boolean }) {
-  const text = value == null || Number.isNaN(value)
-    ? "-"
-    : `${formatNumberEs(value, 2)} %`;
-
-  if (!pctBadges || text === "-") return <>{text}</>;
-
-  let bg: string;
-  let color: string;
-
-  if (typeof value !== "number") {
-    bg = "rgba(30,58,95,0.2)";    color = "var(--text-muted)";
-  } else if (value < 0) {
-    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";
-  } else if (value <= PCT_UMBRAL_NORMAL) {
-    bg = "rgba(5,150,105,0.18)";  color = "#34d399";
-  } else if (value <= PCT_UMBRAL_ALTO) {
-    bg = "rgba(245,158,11,0.2)";  color = "#fbbf24";
-  } else {
-    bg = "rgba(239,68,68,0.18)";  color = "#f87171";
-  }
-
-  return (
-    <span style={{
-      display: "inline-block", padding: "1px 6px", borderRadius: 4,
-      fontSize: "inherit", fontWeight: 500, background: bg, color,
-    }}>
-      {text}
-    </span>
-  );
-}
 
 export type ColumnDefPs = {
   id: string;

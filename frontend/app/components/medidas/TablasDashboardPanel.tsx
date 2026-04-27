@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import { PctCell } from "./utils/pctBadge";
 
 // ═══════════════════════════════════════════════════════════════════════
 // TIPOS — espejan los schemas del backend (dashboard_tablas/schemas.py)
@@ -666,7 +667,7 @@ function FilaEmpresa({
               <span style={{ fontSize: 9, color: "var(--text-muted)" }}>GWh</span>
             </div>
             <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-              {formatPct(c.perdidas_pct)}
+              <PctCell value={c.perdidas_pct} pctBadges={true} text={formatPct(c.perdidas_pct)} />
               {c.perdidas_kwh != null && <> · {formatMiles(c.perdidas_kwh / 1000)} MWh</>}
             </div>
           </div>
@@ -737,7 +738,7 @@ function DespliegueEmpresa({ despliegue }: { despliegue: MensualGeneralEmpresaDe
                   ) : (
                     <span style={{ color: "var(--text-muted)" }}>{formatGWh(c.energia_kwh)} GWh</span>
                   )}
-                  <span style={{ color: "var(--text-muted)" }}> · {formatPct(c.perdidas_pct)}</span>
+                  <span style={{ color: "var(--text-muted)" }}> · <PctCell value={c.perdidas_pct} pctBadges={true} text={formatPct(c.perdidas_pct)} /></span>
                 </div>
               );
             })}
@@ -1232,7 +1233,7 @@ function DetalleAnioGeneral({
             return (
               <div key={v} style={{ textAlign: "center" }}>
                 {formatGWh(c.energia_kwh)} GWh
-                <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {formatPct(c.perdidas_pct)}</span>
+                <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · <PctCell value={c.perdidas_pct} pctBadges={true} text={formatPct(c.perdidas_pct)} /></span>
               </div>
             );
           })}
@@ -1277,7 +1278,7 @@ function FilaMesHistorico({
               ? <strong>{formatGWh(c.energia_kwh)} GWh</strong>
               : <span style={{ color: "var(--text-muted)" }}>{formatGWh(c.energia_kwh)} GWh</span>
             }
-            <span style={{ color: "var(--text-muted)" }}> · {formatPct(c.perdidas_pct)}</span>
+            <span style={{ color: "var(--text-muted)" }}> · <PctCell value={c.perdidas_pct} pctBadges={true} text={formatPct(c.perdidas_pct)} /></span>
           </div>
         );
       })}
@@ -1335,7 +1336,7 @@ function FilaMesHistorico({
                       ? <strong>{formatGWh(c.energia_kwh)} GWh</strong>
                       : <span>{formatGWh(c.energia_kwh)} GWh</span>
                     }
-                    <span style={{ color: "var(--text-muted)" }}> · {formatPct(c.perdidas_pct)}</span>
+                    <span style={{ color: "var(--text-muted)" }}> · <PctCell value={c.perdidas_pct} pctBadges={true} text={formatPct(c.perdidas_pct)} /></span>
                   </div>
                 );
               })}
@@ -1548,7 +1549,7 @@ function DesgloseEmpresasGeneral({
                       {formatGWh3(card.energia_kwh)} <span style={{ fontSize: 8, color: "var(--text-muted)" }}>GWh</span>
                     </div>
                     <div style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                      {formatPct(card.perdidas_pct)} · ART15 {card.art15_meses_cerrados}/{card.art15_meses_total}
+                      <PctCell value={card.perdidas_pct} pctBadges={true} text={formatPct(card.perdidas_pct)} /> · ART15 {card.art15_meses_cerrados}/{card.art15_meses_total}
                     </div>
                   </div>
                 );
