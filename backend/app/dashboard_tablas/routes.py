@@ -152,9 +152,10 @@ def _safe_pct(perd_kwh: float, energia_kwh: float) -> float | None:
     """% pérdidas calculado: pérdidas / (energía + pérdidas).
 
     Devuelve None si no hay datos, si el denominador es <=0, o si el resultado
-    cae fuera de un rango razonable (-50%, +100%) — esto último filtra datos
-    sucios o filas con pérdidas anómalas que generarían valores absurdos en
-    los agregados anuales.
+    cae fuera de un rango muy amplio (-500%, +500%) — esto último solo filtra
+    datos absurdos por errores de carga, pero permite ver datos reales con
+    incoherencias REE como compensaciones negativas grandes (típicas de M2
+    en meses con regularizaciones cruzadas).
     """
     if energia_kwh <= 0 and perd_kwh <= 0:
         return None
@@ -162,7 +163,7 @@ def _safe_pct(perd_kwh: float, energia_kwh: float) -> float | None:
     if denom <= 0:
         return None
     pct = (perd_kwh / denom) * 100.0
-    if pct < -50.0 or pct > 100.0:
+    if pct < -500.0 or pct > 500.0:
         return None
     return round(pct, 2)
 
