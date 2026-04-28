@@ -3,12 +3,15 @@
 
 import React from "react";
 import type { TableAppearance, TableColumnConfig } from "./hooks/useTableSettings";
+import PublicacionesSettingsSection from "./PublicacionesSettingsSection";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
 type ColumnMeta = { id: string; label: string; group: string };
 
 type Props = {
+  // token (para sub-secciones que necesiten llamar a la API)
+  token: string | null;
   // apariencia
   appearance: TableAppearance;
   onSetAppearance: (key: keyof TableAppearance, value: boolean) => void;
@@ -303,6 +306,7 @@ function ColumnsPanel({
 
 // ── Componente principal ───────────────────────────────────────────────────
 export default function TableSettingsSection({
+  token,
   appearance,
   onSetAppearance,
   generalColumnOrder,
@@ -476,6 +480,20 @@ export default function TableSettingsSection({
             defaultOrder={psMeta.map((m) => m.id)}
           />
         )}
+      </div>
+
+      {/* Separador visual */}
+      <div style={{ borderTop: "1px solid var(--card-border)" }} />
+
+      {/* SECCIÓN: DESCARGA DE PUBLICACIONES REE */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Descarga de publicaciones REE</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            Carpeta SFTP donde buscar ficheros publicados por REE (BALD, M1, PS) por cada conexión activa.
+          </div>
+        </div>
+        <PublicacionesSettingsSection token={token} />
       </div>
 
     </div>

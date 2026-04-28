@@ -24,6 +24,7 @@ from app.medidas_graficos.routes import router as medidas_graficos_router
 from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router
 from app.objeciones.routes import router as objeciones_router
 from app.objeciones.descarga.routes import router as objeciones_descarga_router
+from app.measures.descarga.routes import router as measures_descarga_router
 from app.objeciones.automatizacion.routes_config import router as objeciones_automatizacion_router
 from app.objeciones.automatizacion.routes_alertas import router as objeciones_alertas_router
 from app.tenants.routes import router as auth_router
@@ -115,3 +116,4 @@ app.include_router(objeciones_alertas_router)
 app.include_router(comunicaciones_router)
 app.include_router(perdidas_router)
 app.include_router(topologia_router)
+app.include_router(measures_descarga_router)

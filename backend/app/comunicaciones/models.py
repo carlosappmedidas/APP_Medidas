@@ -20,8 +20,9 @@ class FtpConfig(Base):
     usuario           = Column(String(100), nullable=False)
     password_cifrada  = Column(Text, nullable=False)
     directorio_remoto = Column(String(500), nullable=False, default="/")
-    carpeta_aob       = Column(String(500), nullable=True)   # ← para feature Descarga en Objeciones (admite {mes_actual}/{mes_anterior} o ruta fija)
-    usar_tls          = Column(Boolean, nullable=False, default=True)
+    carpeta_aob            = Column(String(500), nullable=True)   # ← para feature Descarga en Objeciones (admite {mes_actual}/{mes_anterior} o ruta fija)
+    carpeta_publicaciones  = Column(String(500), nullable=True)   # ← para feature Descarga de Publicaciones REE (BALD, M1, PS); admite {mes_actual}/{mes_anterior} o ruta fija
+    usar_tls               = Column(Boolean, nullable=False, default=True)
     activo            = Column(Boolean, nullable=False, default=True)
     created_at        = Column(DateTime, nullable=False, server_default=func.now())
     updated_at        = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

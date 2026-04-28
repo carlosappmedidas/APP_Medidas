@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import { PctCell } from "./utils/pctBadge";
+import DescargaPanel from "./descarga-publicaciones/DescargaPanel";
 
 // ═══════════════════════════════════════════════════════════════════════
 // TIPOS — espejan los schemas del backend (dashboard_tablas/schemas.py)
@@ -451,7 +452,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
       )}
 
       {/* ═══════ VISTA MENSUAL ═══════ */}
-      {vista === "mensual" && mensual && <MensualView data={mensual} />}
+      {vista === "mensual" && mensual && <MensualView data={mensual} token={token} />}
 
       {/* ═══════ VISTA HISTÓRICO ═══════ */}
       {vista === "historico" && historico && <HistoricoView data={historico} />}
@@ -463,7 +464,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
 // VISTA MENSUAL
 // ═══════════════════════════════════════════════════════════════════════
 
-function MensualView({ data }: { data: MensualResponse }) {
+function MensualView({ data, token }: { data: MensualResponse; token: string | null }) {
   const [empresasExpandidas, setEmpresasExpandidas] = useState<Set<number>>(new Set());
   const [vistaRepartoPS, setVistaRepartoPS] = useState<"tarifa" | "tipo">("tarifa");
   const [detalleGeneralAbierto, setDetalleGeneralAbierto] = useState(false);
@@ -619,6 +620,9 @@ function MensualView({ data }: { data: MensualResponse }) {
         detalleAbierto={detallePSAbierto}
         onToggleDetalle={() => setDetallePSAbierto(v => !v)}
       />
+
+      {/* ═══════ Bloque Descarga publicaciones REE ═══════ */}
+      <DescargaPanel token={token} />
     </>
   );
 }

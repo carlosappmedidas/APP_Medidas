@@ -79,7 +79,9 @@ def _config_to_dict(obj: FtpConfig, db: Session) -> dict:
         "usuario": obj.usuario,
         "directorio_remoto": obj.directorio_remoto,
         "carpeta_aob": obj.carpeta_aob,   # feature Descarga en Objeciones
+        "carpeta_publicaciones": obj.carpeta_publicaciones,   # feature Descarga de Publicaciones REE
         "usar_tls": obj.usar_tls,
+
         "activo": obj.activo,
     }
 
@@ -239,11 +241,13 @@ def list_configs(db: Session, *, tenant_id: int) -> List[dict]:
 def create_config(db: Session, *, tenant_id: int, empresa_id: int, nombre: Optional[str],
                   host: str, puerto: int, usuario: str, password: str,
                   directorio_remoto: str, carpeta_aob: Optional[str],
+                  carpeta_publicaciones: Optional[str],
                   usar_tls: bool, activo: bool) -> dict:
     obj = FtpConfig(tenant_id=tenant_id, empresa_id=empresa_id, nombre=nombre,
                     host=host, puerto=puerto, usuario=usuario,
                     password_cifrada=cifrar_password(password),
                     directorio_remoto=directorio_remoto, carpeta_aob=carpeta_aob,
+                    carpeta_publicaciones=carpeta_publicaciones,
                     usar_tls=usar_tls, activo=activo)
     db.add(obj)
     db.commit()
@@ -255,6 +259,7 @@ def update_config(db: Session, *, config_id: int, tenant_id: int, nombre: Option
                   host: Optional[str], puerto: Optional[int], usuario: Optional[str],
                   password: Optional[str], directorio_remoto: Optional[str],
                   carpeta_aob: Optional[str],
+                  carpeta_publicaciones: Optional[str],
                   usar_tls: Optional[bool], activo: Optional[bool]) -> dict:
     obj = db.query(FtpConfig).filter(FtpConfig.id == config_id, FtpConfig.tenant_id == tenant_id).first()
     if obj is None:
@@ -273,6 +278,8 @@ def update_config(db: Session, *, config_id: int, tenant_id: int, nombre: Option
         obj.directorio_remoto = directorio_remoto  # type: ignore
     if carpeta_aob is not None:
         obj.carpeta_aob = carpeta_aob  # type: ignore
+    if carpeta_publicaciones is not None:
+        obj.carpeta_publicaciones = carpeta_publicaciones  # type: ignore
     if usar_tls is not None:
         obj.usar_tls = usar_tls  # type: ignore
     if activo is not None:

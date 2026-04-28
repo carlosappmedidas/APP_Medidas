@@ -568,6 +568,7 @@ export default function HomePage() {
               {showTablas && (
                 <div className="ui-collapsible-card__body">
                   <TableSettingsSection
+                    token={token}
                     appearance={appearance} onSetAppearance={setAppearance}
                     generalColumnOrder={generalColumnOrder} generalHiddenColumns={generalHiddenColumns}
                     generalMeta={ALL_COLUMNS_META}
