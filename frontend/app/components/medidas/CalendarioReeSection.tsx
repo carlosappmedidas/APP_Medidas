@@ -178,7 +178,19 @@ export default function CalendarioReeSection({ token, currentUser }: Props) {
     <section className="text-sm">
       <div className="flex flex-col gap-8">
 
-        {/* ── TARJETA 1: CALENDARIO REE (carga) ───────────────────── */}
+        {/* ── TARJETA 1: CALENDARIO OPERATIVO REE ─────────────────── */}
+        <CollapsibleCard
+          title="CALENDARIO OPERATIVO REE"
+          subtitle="Consulta operativa de hitos, cierres, publicaciones y ventanas del calendario activo."
+          defaultOpen={true}
+        >
+          <CalendarioOperativoCard
+            token={token}
+            anioActivo={activeCalendar?.anio ?? null}
+          />
+        </CollapsibleCard>
+
+        {/* ── TARJETA 2: CALENDARIO REE (carga) ───────────────────── */}
         <CollapsibleCard
           title="CALENDARIO REE"
           subtitle="Carga el calendario anual de REE en Excel y gestiona su versión activa."
@@ -361,18 +373,6 @@ export default function CalendarioReeSection({ token, currentUser }: Props) {
               El Excel original queda asociado a la versión activa y puede descargarse cuando lo necesites.
             </div>
           </div>
-        </CollapsibleCard>
-
-        {/* ── TARJETA 2: CALENDARIO OPERATIVO REE ─────────────────── */}
-        <CollapsibleCard
-          title="CALENDARIO OPERATIVO REE"
-          subtitle="Consulta operativa de hitos, cierres, publicaciones y ventanas del calendario activo."
-          defaultOpen={false}
-        >
-          <CalendarioOperativoCard
-            token={token}
-            anioActivo={activeCalendar?.anio ?? null}
-          />
         </CollapsibleCard>
 
       </div>
