@@ -257,6 +257,14 @@ const formatGWh3 = (kwh: number | null | undefined): string => {
   return new Intl.NumberFormat("es-ES", { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(kwh / 1_000_000);
 };
 
+// MWh entero con miles — para celdas pequeñas del detalle por empresa donde
+// los GWh con 3 decimales se ven como "0,598" y resultan poco legibles.
+// 597.500 kWh → "598 MWh", 1.275.300 kWh → "1.275 MWh".
+const formatMWh = (kwh: number | null | undefined): string => {
+  if (kwh == null || Number.isNaN(kwh)) return "—";
+  return new Intl.NumberFormat("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 0, useGrouping: "always" }).format(kwh / 1_000);
+};
+
 // Importe en € con miles separados, sin convertir a "k €". Para celdas
 // pequeñas donde 899 € no debe redondearse a 1k €.
 // useGrouping: "always" fuerza separador en español también para 4 dígitos
@@ -817,7 +825,7 @@ const TIPO_META: Record<string, { label: string }> = {
 };
 
 const TARIFAS_ORDEN = ["20td", "30td", "30tdve", "61td"];
-const TIPOS_ORDEN = ["tipo_1", "tipo_2", "tipo_3", "tipo_4", "tipo_5"];
+const TIPOS_ORDEN = ["tipo_5", "tipo_4", "tipo_3", "tipo_2", "tipo_1"];
 
 function BloquePS({
   data, vistaReparto, onChangeVistaReparto, detalleAbierto, onToggleDetalle,
@@ -954,7 +962,7 @@ function BloquePS({
                         <>
                           <div style={{ fontSize: 11, fontWeight: 500 }}>{formatMiles(c!.cups ?? 0)} CUPS</div>
                           <div style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                            {formatGWh3(c!.energia_kwh ?? 0)} GWh · {formatEur(c!.importe_eur ?? 0)} €
+                            {formatMWh(c!.energia_kwh ?? 0)} MWh · {formatEur(c!.importe_eur ?? 0)} €
                           </div>
                         </>
                       )}
@@ -1460,7 +1468,7 @@ function DetalleAnioPS({
                 }
                 return (
                   <div key={codigo} style={{ textAlign: "center" }}>
-                    {formatGWh3(c.energia_kwh ?? 0)} GWh
+                    {formatMWh(c.energia_kwh ?? 0)} MWh
                     <span style={{ color: "var(--text-muted)" }}> · {formatEur(c.importe_eur ?? 0)} €</span>
                   </div>
                 );
