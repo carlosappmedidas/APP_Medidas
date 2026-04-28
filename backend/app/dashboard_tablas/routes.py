@@ -36,6 +36,7 @@ from .schemas import (
     HistoricoPSEmpresaDetalle,
     HistoricoPSMesFila,
     HistoricoResponse,
+    MensualBandaPendienteGrupo,
     MensualBandaSalud,
     MensualGeneralBlock,
     MensualGeneralEmpresaDespliegueCelda,
@@ -682,29 +683,48 @@ def get_dashboard_tablas_mensual(
     ps_completas = 1 if ps_empresas_con_dato == n_empresas and n_empresas > 0 else 0
     ps_total = 1
 
-    # Resumen textual de lo que falta (1 línea, máximo 1 ejemplo).
+    # Resumen de lo que falta — agrupado por ventana/mes.
+    # Devolvemos DOS formatos:
+    #   - pendientes_grupos (estructurado): el frontend lo pinta con cabeceras en negrita
+    #   - pendientes_resumen (texto plano): fallback de compatibilidad
     # Solo cuenta como falta si la empresa ya operaba ese mes (tenía M1).
-    pendientes_resumen: str | None = None
+    pendientes_grupos_raw: list[tuple[VentanaCode, int, int, list[str]]] = []
     for ventana in VENTANAS:
         card = next((c for c in pipeline if c.ventana == ventana), None)
-        if card and card.empresas_con_dato < card.empresas_total and card.anio is not None:
-            # Buscar la primera empresa "esperada" que falta
-            for emp in empresas:
-                emp_id = int(emp.id)
-                # Para ventanas distintas de M1, exigimos que la empresa
-                # tuviera M1 publicado en ese mes. Si no, no se considera
-                # falta.
-                if ventana != "m1" and not _empresa_tenia_m1(emp_id, card.anio, card.mes or 0):
-                    continue
-                v = agg.get((emp_id, card.anio, card.mes or 0))
-                if v is None or v[ventana]["e"] <= 0:
-                    pendientes_resumen = (
-                        f"falta {emp.nombre} {ventana.upper()} "
-                        f"{_mes_corto(card.mes or 0)} {card.anio}"
-                    )
-                    break
-            if pendientes_resumen:
-                break
+        if not (card and card.empresas_con_dato < card.empresas_total and card.anio is not None):
+            continue
+        anio_v = card.anio
+        mes_v = card.mes or 0
+        empresas_faltantes: list[str] = []
+        for emp in empresas:
+            emp_id = int(emp.id)
+            # Para ventanas distintas de M1, exigimos que la empresa
+            # tuviera M1 publicado en ese mes. Si no, no se considera falta.
+            if ventana != "m1" and not _empresa_tenia_m1(emp_id, anio_v, mes_v):
+                continue
+            v = agg.get((emp_id, anio_v, mes_v))
+            if v is None or v[ventana]["e"] <= 0:
+                empresas_faltantes.append(str(emp.nombre))
+        if empresas_faltantes:
+            pendientes_grupos_raw.append((ventana, anio_v, mes_v, empresas_faltantes))
+
+    pendientes_grupos: list[MensualBandaPendienteGrupo] = []
+    pendientes_resumen: str | None = None
+    if pendientes_grupos_raw:
+        partes: list[str] = []
+        for ventana, anio_v, mes_v, faltantes in pendientes_grupos_raw:
+            label = f"falta {ventana.upper()} {_mes_corto(mes_v)} {anio_v}"
+            pendientes_grupos.append(
+                MensualBandaPendienteGrupo(
+                    ventana=ventana,
+                    anio=anio_v,
+                    mes=mes_v,
+                    label=label,
+                    empresas=faltantes,
+                )
+            )
+            partes.append(f"{label}: {', '.join(faltantes)}")
+        pendientes_resumen = " · ".join(partes)
 
     banda_salud = MensualBandaSalud(
         ficheros_recibidos=ficheros_recibidos,
@@ -714,6 +734,7 @@ def get_dashboard_tablas_mensual(
         ps_completas=ps_completas,
         ps_total=ps_total,
         pendientes_resumen=pendientes_resumen,
+        pendientes_grupos=pendientes_grupos,
     )
 
     return MensualResponse(

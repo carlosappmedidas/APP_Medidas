@@ -133,6 +133,19 @@ class MensualPSBlock(BaseModel):
 # Mensual — Banda de salud (carga del mes)
 # =====================================================================
 
+class MensualBandaPendienteGrupo(BaseModel):
+    """Un grupo de pendientes agrupado por ventana + mes.
+    El frontend pinta la cabecera (label) en negrita y luego la lista de empresas.
+    """
+    ventana: VentanaCode
+    anio: int
+    mes: int
+    label: str
+    """Cabecera ya formateada lista para mostrar, ej. 'falta M11 jun 2025'."""
+    empresas: list[str]
+    """Nombres de las empresas que faltan en este grupo."""
+
+
 class MensualBandaSalud(BaseModel):
     ficheros_recibidos: int
     ficheros_esperados: int
@@ -141,7 +154,9 @@ class MensualBandaSalud(BaseModel):
     ps_completas: int
     ps_total: int
     pendientes_resumen: str | None = None
-    """Texto corto tipo 'falta Lersa M7 sep 2025', o null si todo OK."""
+    """Texto plano del resumen — fallback si el frontend no usa pendientes_grupos."""
+    pendientes_grupos: list[MensualBandaPendienteGrupo] = []
+    """Pendientes estructurados por ventana/mes para que el frontend los formatee."""
 
 
 # =====================================================================

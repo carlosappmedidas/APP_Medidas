@@ -96,6 +96,14 @@ type MensualPSBlock = {
 };
 
 // ── Mensual · Banda salud ──
+type MensualBandaPendienteGrupo = {
+  ventana: VentanaCode;
+  anio: number;
+  mes: number;
+  label: string;          // ej: "falta M11 jun 2025"
+  empresas: string[];     // ej: ["Las Mercedes", "San Pedro"]
+};
+
 type MensualBandaSalud = {
   ficheros_recibidos: number;
   ficheros_esperados: number;
@@ -104,6 +112,7 @@ type MensualBandaSalud = {
   ps_completas: number;
   ps_total: number;
   pendientes_resumen: string | null;
+  pendientes_grupos?: MensualBandaPendienteGrupo[];   // opcional, si el backend no lo envía → fallback al string
 };
 
 type MensualResponse = {
@@ -474,7 +483,24 @@ function MensualView({ data }: { data: MensualResponse }) {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#BA7517" }} />
             <div style={{ fontSize: 12, fontWeight: 500 }}>
-              Carga del mes · {banda.ficheros_recibidos}/{banda.ficheros_esperados} ficheros · {banda.pendientes_resumen}
+              Carga del mes · {banda.ficheros_recibidos}/{banda.ficheros_esperados} ficheros ·{" "}
+              {banda.pendientes_grupos && banda.pendientes_grupos.length > 0 ? (
+                banda.pendientes_grupos.map((g, i) => (
+                  <span key={`${g.ventana}-${g.anio}-${g.mes}`}>
+                    {i > 0 && <span style={{ color: "var(--text-muted)" }}> · </span>}
+                    <strong style={{
+                      background: "rgba(255,255,255,0.06)",
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                    }}>
+                      {g.label}
+                    </strong>
+                    {g.empresas.length > 0 && <>: {g.empresas.join(", ")}</>}
+                  </span>
+                ))
+              ) : (
+                banda.pendientes_resumen
+              )}
             </div>
           </div>
           <div style={{ display: "flex", gap: 14, fontSize: 11, color: "var(--text-muted)" }}>
