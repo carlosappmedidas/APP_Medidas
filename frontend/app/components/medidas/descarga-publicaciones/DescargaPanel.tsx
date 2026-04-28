@@ -13,13 +13,23 @@ import DescargaResultadoModal from "./DescargaResultadoModal";
 
 interface DescargaPanelProps {
   token: string | null;
+  /**
+   * Filtros pre-aplicados desde la campanita de alertas.
+   * Cuando cambia el `nonce`, el panel se abre, aplica los filtros y dispara Buscar.
+   */
+  filtrosDescarga?: {
+    empresaId: number;
+    periodo: string;        // "YYYY-MM"
+    fechaDesde?: string;    // "YYYY-MM-DD"
+    nonce: number;
+  } | null;
 }
 
 function keyOf(r: BusquedaResult): string {
   return `${r.empresa_id}|${r.nombre}`;
 }
 
-export default function DescargaPanel({ token }: DescargaPanelProps) {
+export default function DescargaPanel({ token, filtrosDescarga }: DescargaPanelProps) {
 
   // CollapsibleCard cerrada por defecto (como pediste).
   const [open, setOpen] = useState(false);
@@ -153,6 +163,24 @@ export default function DescargaPanel({ token }: DescargaPanelProps) {
   const handleConfirmReemplazo = () => {
     void ejecutarItems(true);
   };
+
+  // ── Aplicar filtros venidos desde la campanita de alertas ──────────────
+  // Cuando `filtrosDescarga.nonce` cambia, abrimos el panel, aplicamos los
+  // filtros y disparamos Buscar automáticamente.
+  useEffect(() => {
+    if (!filtrosDescarga || !token) return;
+    setOpen(true);
+    setEmpresaIds([filtrosDescarga.empresaId]);
+    setPeriodo(filtrosDescarga.periodo);
+    setFechaDesde(filtrosDescarga.fechaDesde ?? "");
+    setFechaHasta("");
+    setNombre("");
+    // Disparar la búsqueda en el siguiente tick para que React aplique los
+    // setState antes de que `handleBuscar` lea sus valores.
+    const t = setTimeout(() => { void handleBuscar(); }, 50);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtrosDescarga?.nonce]);
 
   // ── Estilos ───────────────────────────────────────────────────────────
   const panelStyle: React.CSSProperties = {

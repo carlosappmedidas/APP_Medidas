@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import { PctCell } from "./utils/pctBadge";
 import DescargaPanel from "./descarga-publicaciones/DescargaPanel";
+import CampanaAlertasPublicaciones from "./CampanaAlertasPublicaciones";
 
 // ═══════════════════════════════════════════════════════════════════════
 // TIPOS — espejan los schemas del backend (dashboard_tablas/schemas.py)
@@ -330,6 +331,25 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
   const [vista, setVista] = useState<Vista>("mensual");
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Filtros pre-aplicados desde la campanita de alertas — viajan a DescargaPanel
+  // mediante props. Al recibir un valor, cambia automáticamente a vista "mensual".
+  const [filtrosDescarga, setFiltrosDescarga] = useState<{
+    empresaId: number;
+    periodo: string;        // "YYYY-MM"
+    fechaDesde?: string;    // "YYYY-MM-DD"
+    nonce: number;          // cambia en cada click para forzar re-aplicar aunque sean los mismos valores
+  } | null>(null);
+
+  const handleAlertaClick = (params: { empresaId: number; periodo: string; fechaDesde?: string }) => {
+    setVista("mensual");
+    setFiltrosDescarga({
+      empresaId:  params.empresaId,
+      periodo:    params.periodo,
+      fechaDesde: params.fechaDesde,
+      nonce:      Date.now(),
+    });
+  };
+
   const [mensual, setMensual] = useState<MensualResponse | null>(null);
   const [historico, setHistorico] = useState<HistoricoResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -404,6 +424,8 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
             </button>
           </div>
 
+          <CampanaAlertasPublicaciones token={token} onIrADescarga={handleAlertaClick} />
+
           <button type="button" onClick={() => setMenuOpen(v => !v)}
             className="ui-btn ui-btn-ghost ui-btn-xs"
             style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
@@ -452,7 +474,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
       )}
 
       {/* ═══════ VISTA MENSUAL ═══════ */}
-      {vista === "mensual" && mensual && <MensualView data={mensual} token={token} />}
+      {vista === "mensual" && mensual && <MensualView data={mensual} token={token} filtrosDescarga={filtrosDescarga} />}
 
       {/* ═══════ VISTA HISTÓRICO ═══════ */}
       {vista === "historico" && historico && <HistoricoView data={historico} />}
@@ -464,7 +486,16 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
 // VISTA MENSUAL
 // ═══════════════════════════════════════════════════════════════════════
 
-function MensualView({ data, token }: { data: MensualResponse; token: string | null }) {
+function MensualView({ data, token, filtrosDescarga }: {
+  data: MensualResponse;
+  token: string | null;
+  filtrosDescarga: {
+    empresaId: number;
+    periodo: string;
+    fechaDesde?: string;
+    nonce: number;
+  } | null;
+}) {
   const [empresasExpandidas, setEmpresasExpandidas] = useState<Set<number>>(new Set());
   const [vistaRepartoPS, setVistaRepartoPS] = useState<"tarifa" | "tipo">("tarifa");
   const [detalleGeneralAbierto, setDetalleGeneralAbierto] = useState(false);
@@ -622,7 +653,7 @@ function MensualView({ data, token }: { data: MensualResponse; token: string | n
       />
 
       {/* ═══════ Bloque Descarga publicaciones REE ═══════ */}
-      <DescargaPanel token={token} />
+      <DescargaPanel token={token} filtrosDescarga={filtrosDescarga} />
     </>
   );
 }

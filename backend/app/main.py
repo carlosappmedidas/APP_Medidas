@@ -25,6 +25,7 @@ from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router
 from app.objeciones.routes import router as objeciones_router
 from app.objeciones.descarga.routes import router as objeciones_descarga_router
 from app.measures.descarga.routes import router as measures_descarga_router
+from app.measures.descarga.automatizacion.routes import router as measures_descarga_automatizacion_router
 from app.objeciones.automatizacion.routes_config import router as objeciones_automatizacion_router
 from app.objeciones.automatizacion.routes_alertas import router as objeciones_alertas_router
 from app.tenants.routes import router as auth_router
@@ -43,6 +44,7 @@ from app.measures.ps_models import PSPeriodContribution  # noqa: F401
 from app.measures.ps_detail_models import PSPeriodDetail  # noqa: F401
 from app.objeciones.models import ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, ObjecionCIL  # noqa: F401
 from app.objeciones.automatizacion.models import ObjecionesAutomatizacion, ObjecionesAlerta  # noqa: F401
+from app.measures.descarga.automatizacion.models import PublicacionesAutomatizacion, PublicacionesAlerta  # noqa: F401
 from app.perdidas.models import Concentrador, PerdidaDiaria  # noqa: F401
 from app.topologia.models import CtInventario, CtTransformador, CupsTopologia  # noqa: F401
 
@@ -117,3 +119,4 @@ app.include_router(comunicaciones_router)
 app.include_router(perdidas_router)
 app.include_router(topologia_router)
 app.include_router(measures_descarga_router)
+app.include_router(measures_descarga_automatizacion_router)

@@ -246,6 +246,67 @@ def _ejecutar_busqueda_respuestas_ree() -> None:
         logger.error(f"[obj_buscar_respuestas_ree] Error general: {e}")
 
 
+def _ejecutar_buscar_publicaciones_ree() -> None:
+    """
+    Job que corre cada día a las 22:00 (Europe/Madrid).
+    Itera todos los tenants que tienen la automatización 'buscar_publicaciones_ree'
+    activada y dispara el chequeo: mira el calendario REE para detectar hitos
+    de publicación (M2/M7/M11/ART15) en los próximos 3 días, busca BALDs nuevos
+    en SFTP, y crea alertas (NO descarga ni importa).
+
+    Si un tenant no tiene la automatización activa → el propio servicio
+    lo detecta y no hace nada.
+    """
+    try:
+        from app.core.db import SessionLocal
+        from app.measures.descarga.automatizacion.models import (
+            PublicacionesAutomatizacion,
+            TIPO_BUSCAR_PUBLICACIONES_REE,
+        )
+        from app.measures.descarga.automatizacion.services_job import (
+            ejecutar_chequeo_publicaciones_tenant,
+        )
+
+        db = SessionLocal()
+        try:
+            tenants_con_auto = (
+                db.query(PublicacionesAutomatizacion.tenant_id)
+                .filter(
+                    PublicacionesAutomatizacion.tipo   == TIPO_BUSCAR_PUBLICACIONES_REE,
+                    PublicacionesAutomatizacion.activa == 1,
+                )
+                .all()
+            )
+            tenant_ids = sorted({int(row[0]) for row in tenants_con_auto})
+
+            if not tenant_ids:
+                logger.info("[pub_buscar_publicaciones_ree_job] No hay tenants con la automatización activa. Nada que hacer.")
+                return
+
+            logger.info(f"[pub_buscar_publicaciones_ree_job] Procesando {len(tenant_ids)} tenants: {tenant_ids}")
+
+            for tid in tenant_ids:
+                try:
+                    resultado = ejecutar_chequeo_publicaciones_tenant(
+                        db,
+                        tenant_id    = tid,
+                        current_user = None,
+                        forzar       = False,
+                    )
+                    logger.info(
+                        f"[pub_buscar_publicaciones_ree_job] tenant={tid}: "
+                        f"ok={resultado.get('ok')} "
+                        f"alertas={resultado.get('alertas_creadas')} "
+                        f"hitos={resultado.get('hitos_procesados')}"
+                    )
+                except Exception as e:
+                    logger.error(f"[pub_buscar_publicaciones_ree_job] Error en tenant={tid}: {e}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"[pub_buscar_publicaciones_ree_job] Error general: {e}")
+
+
 def _catchup_jobs_perdidos() -> None:
     """
     Recupera ejecuciones perdidas de los jobs de objeciones tras un reinicio
@@ -295,6 +356,67 @@ def _catchup_jobs_perdidos() -> None:
                 # asumimos que toca ejecutar). Los 30 minutos de diferencia respecto
                 # al cron real son inofensivos — el próximo reinicio lo cogerá.
             ]
+
+            # Catch-up de publicaciones (cron 22:00). Importes diferidos para
+            # no acoplar el scheduler a otro módulo si no hace falta cargarlo.
+            # Calculamos `umbral_pub` localmente (igual que el bucle de
+            # objeciones más abajo). Si el último run fue hace > 20h o nunca,
+            # se considera ejecución perdida y se recupera.
+            try:
+                from app.measures.descarga.automatizacion.models import (
+                    PublicacionesAutomatizacion,
+                    TIPO_BUSCAR_PUBLICACIONES_REE,
+                )
+                from app.measures.descarga.automatizacion.services_job import (
+                    ejecutar_chequeo_publicaciones_tenant,
+                )
+
+                umbral_pub = datetime.utcnow() - timedelta(hours=20)
+
+                if ahora_madrid.hour < 22:
+                    logger.info(
+                        f"[Scheduler catchup] buscar_publicaciones_ree: hora actual {ahora_madrid:%H:%M} < "
+                        f"22:00 Madrid — el cron correrá a su hora."
+                    )
+                else:
+                    configs_pub = (
+                        db.query(PublicacionesAutomatizacion)
+                        .filter(
+                            PublicacionesAutomatizacion.tipo   == TIPO_BUSCAR_PUBLICACIONES_REE,
+                            PublicacionesAutomatizacion.activa == 1,
+                        )
+                        .all()
+                    )
+                    if not configs_pub:
+                        logger.info("[Scheduler catchup] buscar_publicaciones_ree: no hay tenants con la automatización activa.")
+                    for cfg in configs_pub:
+                        tid = int(cfg.tenant_id)
+                        ultimo = cfg.ultimo_run_at
+                        necesita_catchup = (ultimo is None) or (ultimo < umbral_pub)
+                        if not necesita_catchup:
+                            logger.info(
+                                f"[Scheduler catchup] buscar_publicaciones_ree tenant={tid}: último run {ultimo} OK, no hace falta recuperar."
+                            )
+                            continue
+                        logger.warning(
+                            f"[Scheduler catchup] buscar_publicaciones_ree tenant={tid}: ejecución perdida detectada "
+                            f"(último run: {ultimo}). Disparando recuperación..."
+                        )
+                        try:
+                            resultado = ejecutar_chequeo_publicaciones_tenant(
+                                db,
+                                tenant_id    = tid,
+                                current_user = None,
+                                forzar       = False,
+                            )
+                            logger.info(
+                                f"[Scheduler catchup] buscar_publicaciones_ree tenant={tid}: recuperado — "
+                                f"ok={resultado.get('ok')} alertas={resultado.get('alertas_creadas')}"
+                            )
+                        except Exception as e:
+                            logger.error(f"[Scheduler catchup] Error recuperando buscar_publicaciones_ree tenant={tid}: {e}")
+            except Exception as e:
+                logger.error(f"[Scheduler catchup] Error general en bloque publicaciones: {e}")
 
             umbral = datetime.utcnow() - timedelta(hours=20)
 
@@ -412,10 +534,27 @@ def start_scheduler() -> None:
         coalesce=True,
     )
 
+    # Job diario de Publicaciones REE — busca hitos en calendario REE
+    # (M2/M7/M11/ART15) en los próximos 3 días y crea alertas si encuentra
+    # BALDs nuevos en SFTP. NO descarga ni importa nada (eso es manual).
+    # Hora elegida: 22:00 Madrid — separa carga del SFTP de los otros 3 jobs
+    # de objeciones (07:00, 23:00, 23:30).
+    _scheduler.add_job(
+        _ejecutar_buscar_publicaciones_ree,
+        trigger=CronTrigger(hour=22, minute=0),
+        id="pub_buscar_publicaciones_ree_job",
+        name="Publicaciones REE — buscar hitos publicados (22:00 diario)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+        coalesce=True,
+    )
+
     _scheduler.start()
     logger.info(
         "[Scheduler] Scheduler arrancado — FTP cada minuto + "
-        "Objeciones FIN RECEPCIÓN 23:00 + FIN RESOLUCIÓN 23:30 + BUSCAR RESPUESTAS REE 07:00"
+        "Objeciones FIN RECEPCIÓN 23:00 + FIN RESOLUCIÓN 23:30 + BUSCAR RESPUESTAS REE 07:00 + "
+        "Publicaciones BUSCAR PUBLICACIONES REE 22:00"
     )
 
     # Catch-up: tras arrancar (posiblemente después de un reinicio), comprobar
