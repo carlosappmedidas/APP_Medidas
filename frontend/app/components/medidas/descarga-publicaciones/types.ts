@@ -32,4 +32,5 @@ export interface EjecutarResponse {
   reemplazados:  number;
   errores:       number;
   detalle:       EjecutarDetalleItem[];
+  logs:          string[];
 }

@@ -105,7 +105,21 @@ class EjecutarPayload(BaseModel):
     replace: bool = Field(default=False, description="Si es True, autoriza reemplazar versiones antigas ya importadas.")
 
 
-@router.post("/ejecutar")
+class EjecutarDetalleResponse(BaseModel):
+    nombre:    str
+    resultado: str = Field(..., description="ok | reemplazado | error")
+    mensaje:   str
+
+
+class EjecutarResponse(BaseModel):
+    importados:    int
+    reemplazados:  int
+    errores:       int
+    detalle:       List[EjecutarDetalleResponse]
+    logs:          List[str] = Field(default_factory=list, description="Líneas de log con timestamp ISO, mismo formato que CargaSection.")
+
+
+@router.post("/ejecutar", response_model=EjecutarResponse)
 def ejecutar(
     payload:      EjecutarPayload,
     db:           Session = Depends(get_db),

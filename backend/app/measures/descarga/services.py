@@ -548,6 +548,87 @@ def _periodo_yyyymm_a_anio_mes(yyyymm: str) -> Tuple[int, int]:
     return int(yyyymm[:4]), int(yyyymm[4:])
 
 
+# ── Helpers de log estilo CargaSection ────────────────────────────────────────
+
+def _ts_iso() -> str:
+    """Timestamp ISO con sufijo Z (formato idéntico a CargaSection del frontend)."""
+    return datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+
+
+def _log_line(msg: str) -> str:
+    return f"{_ts_iso()} - {msg}"
+
+
+def _formatear_warning_item(item: Any) -> str:
+    """
+    Espejo de `formatWarningItem` del frontend (CargaSection.tsx).
+    """
+    if isinstance(item, str):
+        return item
+    if not isinstance(item, dict):
+        return str(item)
+
+    type_value = str(item.get("type") or item.get("code") or "").strip()
+    msg_value  = str(item.get("message") or "").strip()
+    parts: List[str] = []
+    if type_value:
+        parts.append(f"[{type_value}]")
+    if msg_value:
+        parts.append(msg_value)
+    if isinstance(item.get("periodo"), str):
+        parts.append(f"(periodo {item['periodo']})")
+    if isinstance(item.get("anio"), int) and isinstance(item.get("mes"), int):
+        parts.append(f"(periodo {item['anio']}-{str(item['mes']).zfill(2)})")
+    if isinstance(item.get("energia_kwh"), (int, float)):
+        parts.append(f"energia={item['energia_kwh']}")
+    if item.get("fecha_final"):
+        parts.append(f"fecha_final={item['fecha_final']}")
+    return " ".join(parts).strip() or str(item)
+
+
+def _logs_desde_ingestion(ingestion: Optional[IngestionFile]) -> List[str]:
+    """
+    Construye las líneas de aviso/notas/error a partir del IngestionFile
+    procesado, idéntico al patrón que aplica CargaSection en el frontend.
+    """
+    import json as _json
+
+    out: List[str] = []
+    if ingestion is None:
+        return out
+
+    ing = cast(Any, ingestion)
+
+    # warnings_json (lista de dicts).
+    warnings_raw = getattr(ing, "warnings_json", None)
+    warnings_list: List[Any] = []
+    if warnings_raw:
+        try:
+            parsed = _json.loads(warnings_raw) if isinstance(warnings_raw, str) else warnings_raw
+            if isinstance(parsed, list):
+                warnings_list = parsed
+        except Exception:
+            warnings_list = []
+
+    if warnings_list:
+        out.append(_log_line(f"⚠ Avisos ({len(warnings_list)}):"))
+        for w in warnings_list:
+            out.append(_log_line(f"↳ ⚠ {_formatear_warning_item(w)}"))
+
+    # warnings_message (texto suelto).
+    wm = getattr(ing, "warnings_message", None)
+    if wm:
+        out.append(_log_line(f"⚠ Avisos: {wm}"))
+
+    # error_message si status=error.
+    status_value = str(getattr(ing, "status", "") or "").lower()
+    if status_value == "error":
+        err = getattr(ing, "error_message", None) or "(sin detalle)"
+        out.append(_log_line(f"↳ Motivo: {err}"))
+
+    return out
+
+
 def _path_destino_local(*, tenant_id: int, empresa_id: int, anio: int, mes: int, nombre_sin_bz2: str) -> Path:
     """
     Misma estructura que la carga manual:
@@ -573,7 +654,7 @@ def _procesar_item(
     nombre: str,
     replace: bool,
     uploaded_by: int,
-) -> dict:
+) -> Tuple[dict, List[str]]:
     """
     Procesa UN item: descarga del SFTP + importa a BD.
 
@@ -582,6 +663,8 @@ def _procesar_item(
       🟠 Actualizable + replace=True → reemplazar IngestionFile + reimportar
       🟠 Actualizable + replace=False→ ERROR
       Igual o inferior ya en BD      → ERROR
+
+    Devuelve (resultado_dict, logs_lines).
     """
     from app.comunicaciones.services import (
         _get_config_by_id_activa,
@@ -589,20 +672,24 @@ def _procesar_item(
         leer_fichero_ftp,
     )
 
+    logs: List[str] = []
+
     parsed = parse_publicacion_filename(nombre)
     if parsed is None:
         msg = "Nombre de fichero no reconocido como publicación REE válida."
+        logs.append(_log_line(f"❌ Error procesando \"{nombre}\": {msg}"))
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
              rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
              estado="error", mensaje_error=msg, modulo="publicaciones")
-        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}, logs
 
     if parsed.tipo not in _TIPOS_PUBLICACION:
         msg = f"Tipo '{parsed.tipo}' no soportado todavía."
+        logs.append(_log_line(f"❌ Error procesando \"{nombre}\": {msg}"))
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
              rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
              estado="error", mensaje_error=msg, modulo="publicaciones")
-        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}, logs
 
     anio, mes = _periodo_yyyymm_a_anio_mes(parsed.aaaamm)
 
@@ -627,22 +714,25 @@ def _procesar_item(
     if version_bd is not None:
         if parsed.version < version_bd:
             msg = f"Existe versión .{version_bd} más nueva en BD — esta (.{parsed.version}) es obsoleta."
+            logs.append(_log_line(f"⚠ Fichero \"{nombre}\": {msg} Se omite."))
             _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
                  rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
                  estado="error", mensaje_error=msg, modulo="publicaciones")
-            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+            return {"nombre": nombre, "resultado": "error", "mensaje": msg}, logs
         if parsed.version == version_bd:
             msg = f"Versión .{parsed.version} ya está importada."
+            logs.append(_log_line(f"⚠ Fichero \"{nombre}\": {msg} Se omite."))
             _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
                  rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
                  estado="error", mensaje_error=msg, modulo="publicaciones")
-            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+            return {"nombre": nombre, "resultado": "error", "mensaje": msg}, logs
         if not replace:
             msg = f"Existe versión .{version_bd} importada. Confirma reemplazo para sustituirla."
+            logs.append(_log_line(f"⚠ Fichero \"{nombre}\": {msg} Se omite."))
             _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
                  rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
                  estado="error", mensaje_error=msg, modulo="publicaciones")
-            return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+            return {"nombre": nombre, "resultado": "error", "mensaje": msg}, logs
         es_reemplazo = True
     else:
         es_reemplazo = False
@@ -652,12 +742,14 @@ def _procesar_item(
         _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
     except ValueError as e:
         msg = str(e)
+        logs.append(_log_line(f"❌ Error procesando \"{nombre}\": {msg}"))
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
              rule_id=None, origen="manual", nombre_fichero=nombre, tamanio=None,
              estado="error", mensaje_error=msg, modulo="publicaciones")
-        return {"nombre": nombre, "resultado": "error", "mensaje": msg}
+        return {"nombre": nombre, "resultado": "error", "mensaje": msg}, logs
 
     # 3) Descargar del SFTP.
+    logs.append(_log_line(f"→ Descargando \"{parsed.nombre}\" del SFTP (empresa {empresa_id}, ruta {ruta_sftp})..."))
     try:
         contenido_bruto = leer_fichero_ftp(
             db,
@@ -669,10 +761,11 @@ def _procesar_item(
         )
     except Exception as e:
         msg = f"Error descargando del SFTP: {str(e)[:200]}"
+        logs.append(_log_line(f"❌ Error subiendo \"{parsed.nombre}\": {msg}"))
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
              rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2, tamanio=None,
              estado="error", mensaje_error=msg, modulo="publicaciones")
-        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
+        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}, logs
 
     tamanio_original = len(contenido_bruto)
 
@@ -682,13 +775,16 @@ def _procesar_item(
             contenido = bz2.decompress(contenido_bruto)
         except Exception as e:
             msg = f"Error descomprimiendo bz2: {str(e)[:200]}"
+            logs.append(_log_line(f"❌ Error procesando \"{parsed.nombre_sin_bz2}\": {msg}"))
             _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
                  rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
                  tamanio=tamanio_original,
                  estado="error", mensaje_error=msg, modulo="publicaciones")
-            return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
+            return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}, logs
+        logs.append(_log_line(f"✅ Descargado y descomprimido \"{parsed.nombre}\" ({tamanio_original} B → {len(contenido)} B)."))
     else:
         contenido = contenido_bruto
+        logs.append(_log_line(f"✅ Descargado \"{parsed.nombre}\" ({tamanio_original} B)."))
 
     # 5) Guardar a fichero local en la misma estructura que la subida manual.
     dest_path = _path_destino_local(
@@ -704,11 +800,12 @@ def _procesar_item(
             fh.write(contenido)
     except Exception as e:
         msg = f"Error guardando fichero local: {str(e)[:200]}"
+        logs.append(_log_line(f"❌ Error procesando \"{parsed.nombre_sin_bz2}\": {msg}"))
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
              rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
              tamanio=tamanio_original,
              estado="error", mensaje_error=msg, modulo="publicaciones")
-        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
+        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}, logs
 
     storage_key = str(dest_path)
 
@@ -733,6 +830,7 @@ def _procesar_item(
         if old_storage_key and old_storage_key != storage_key:
             safe_unlink(old_storage_key)
         ingestion = existing
+        logs.append(_log_line(f"✅ Subido \"{parsed.nombre_sin_bz2}\" (id={ingestion.id}, periodo={anio}{str(mes).zfill(2)}, tipo=BALD) — reemplaza versión .{version_bd}."))
     else:
         ingestion_data: Dict[str, Any] = {
             "tenant_id":     tenant_id,
@@ -750,17 +848,20 @@ def _procesar_item(
         db.add(ingestion)
         db.commit()
         db.refresh(ingestion)
+        logs.append(_log_line(f"✅ Subido \"{parsed.nombre_sin_bz2}\" (id={ingestion.id}, periodo={anio}{str(mes).zfill(2)}, tipo=BALD)."))
 
     # 7) Procesar (mismo dispatcher que la subida manual).
+    logs.append(_log_line(f"⚙ Procesando id={ingestion.id} ({parsed.nombre_sin_bz2}, tipo=BALD)..."))
     try:
         process_ingestion_file(db=db, ingestion=ingestion, tenant_id=tenant_id)
     except Exception as e:
         msg = f"Error procesando: {str(e)[:200]}"
+        logs.append(_log_line(f"❌ Error procesando id={ingestion.id}: {msg}"))
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
              rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
              tamanio=tamanio_original,
              estado="error", mensaje_error=msg, modulo="publicaciones")
-        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}
+        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": msg}, logs
 
     # Re-leer el ingestion para conocer su estado final.
     refreshed = (
@@ -769,13 +870,19 @@ def _procesar_item(
         .first()
     )
     final_status = cast(str, getattr(refreshed, "status", "")) if refreshed else ""
+    rows_ok = int(getattr(refreshed, "rows_ok", 0) or 0) if refreshed else 0
+    rows_err = int(getattr(refreshed, "rows_error", 0) or 0) if refreshed else 0
+    logs.append(_log_line(f"✅ Procesado id={ingestion.id} (status={final_status}, filas OK={rows_ok}, error={rows_err})."))
+    # Avisos / notas / error_message del IngestionFile.
+    logs.extend(_logs_desde_ingestion(refreshed))
+
     if final_status != IngestionFile.STATUS_OK:
         err_msg = cast(str, getattr(refreshed, "error_message", "") or "Error en procesado.")
         _log(db, tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
              rule_id=None, origen="manual", nombre_fichero=parsed.nombre_sin_bz2,
              tamanio=tamanio_original,
              estado="error", mensaje_error=err_msg, modulo="publicaciones")
-        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": err_msg}
+        return {"nombre": parsed.nombre_sin_bz2, "resultado": "error", "mensaje": err_msg}, logs
 
     # 8) Log OK + respuesta.
     if es_reemplazo:
@@ -790,7 +897,7 @@ def _procesar_item(
          tamanio=tamanio_original,
          estado="ok", modulo="publicaciones")
 
-    return {"nombre": parsed.nombre_sin_bz2, "resultado": resultado, "mensaje": mensaje}
+    return {"nombre": parsed.nombre_sin_bz2, "resultado": resultado, "mensaje": mensaje}, logs
 
 
 def descargar_e_importar(
@@ -815,6 +922,9 @@ def descargar_e_importar(
     reemplazados = 0
     errores      = 0
     detalle: List[dict] = []
+    logs: List[str]    = []
+
+    logs.append(_log_line(f"Iniciando descarga de {len(items)} fichero(s) del SFTP..."))
 
     for item in items:
         empresa_id = int(item.get("empresa_id") or 0)
@@ -824,23 +934,27 @@ def descargar_e_importar(
 
         if not (empresa_id and config_id and ruta_sftp and nombre):
             errores += 1
+            msg = "Item incompleto: faltan empresa_id, config_id, ruta_sftp o nombre."
+            logs.append(_log_line(f"❌ Error procesando \"{nombre or '(sin nombre)'}\": {msg}"))
             detalle.append({
                 "nombre": nombre or "(sin nombre)",
                 "resultado": "error",
-                "mensaje": "Item incompleto: faltan empresa_id, config_id, ruta_sftp o nombre.",
+                "mensaje": msg,
             })
             continue
 
         if empresa_id not in empresas_accesibles_ids:
             errores += 1
+            msg = "Sin permiso sobre la empresa indicada."
+            logs.append(_log_line(f"❌ Error procesando \"{nombre}\": {msg}"))
             detalle.append({
                 "nombre": nombre,
                 "resultado": "error",
-                "mensaje": "Sin permiso sobre la empresa indicada.",
+                "mensaje": msg,
             })
             continue
 
-        res = _procesar_item(
+        res, item_logs = _procesar_item(
             db,
             tenant_id=tenant_id,
             empresa_id=empresa_id,
@@ -851,6 +965,7 @@ def descargar_e_importar(
             uploaded_by=uploaded_by,
         )
         detalle.append(res)
+        logs.extend(item_logs)
 
         if res["resultado"] == "ok":
             importados += 1
@@ -859,9 +974,12 @@ def descargar_e_importar(
         else:
             errores += 1
 
+    logs.append(_log_line("✔ Carga y procesado de ficheros finalizados."))
+
     return {
         "importados":   importados,
         "reemplazados": reemplazados,
         "errores":      errores,
         "detalle":      detalle,
+        "logs":         logs,
     }
