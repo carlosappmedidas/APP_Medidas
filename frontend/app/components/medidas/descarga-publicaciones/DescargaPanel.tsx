@@ -221,21 +221,12 @@ export default function DescargaPanel({ token }: DescargaPanelProps) {
             </div>
           )}
 
-          <DescargaTabla
-            resultados={resultados}
-            loading={loading}
-            seleccionados={seleccionados}
-            setSeleccionados={setSeleccionados}
-            buscado={buscado}
-          />
-
-          {/* Footer de acción */}
+          {/* Barra de acción Ejecutar — ENTRE filtros y tabla, igual que en Objeciones */}
           {buscado && resultados.length > 0 && (
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
-              marginTop: 12, padding: "10px 12px",
-              background: "var(--field-bg-soft)",
-              border: "1px solid var(--card-border)",
+              marginBottom: 12, padding: "6px 10px",
+              background: "rgba(0,0,0,0.3)",
               borderRadius: 6,
             }}>
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -262,6 +253,14 @@ export default function DescargaPanel({ token }: DescargaPanelProps) {
               </button>
             </div>
           )}
+
+          <DescargaTabla
+            resultados={resultados}
+            loading={loading}
+            seleccionados={seleccionados}
+            setSeleccionados={setSeleccionados}
+            buscado={buscado}
+          />
         </div>
       )}
 
