@@ -144,6 +144,9 @@ class MensualBandaPendienteGrupo(BaseModel):
     """Cabecera ya formateada lista para mostrar, ej. 'falta M11 jun 2025'."""
     empresas: list[str]
     """Nombres de las empresas que faltan en este grupo."""
+    fecha_publicacion: str | None = None
+    """Fecha de publicación según calendario REE, ya formateada 'dd mmm yyyy'.
+    None si no se encuentra el hito en el calendario activo del tenant."""
 
 
 class MensualBandaSalud(BaseModel):

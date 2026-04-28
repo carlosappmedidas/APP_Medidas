@@ -203,8 +203,15 @@ _MES_NOMBRE_A_NUM: dict[str, int] = {
 }
 
 
+# Mapeo abreviaturas -> número de mes (formato 'Jun 25').
+_MES_ABREV_A_NUM: dict[str, int] = {
+    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+    "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12,
+}
+
+
 def _parse_mes_afectado(texto: str) -> tuple[int, int] | None:
-    """Convierte 'Junio 2025' -> (2025, 6). None si no parsea."""
+    """Convierte 'Junio 2025' o 'Jun 25' -> (2025, 6). None si no parsea."""
     if not texto:
         return None
     parts = texto.strip().split()
@@ -213,9 +220,16 @@ def _parse_mes_afectado(texto: str) -> tuple[int, int] | None:
     nombre, anio_str = parts
     mes = _MES_NOMBRE_A_NUM.get(nombre.lower())
     if mes is None:
+        # Intentar abreviatura (3 letras): 'Jun', 'Sep', ...
+        mes = _MES_ABREV_A_NUM.get(nombre.lower()[:3])
+    if mes is None:
         return None
     try:
-        return int(anio_str), mes
+        anio = int(anio_str)
+        # Si viene en formato corto 'Jun 25' -> año 2025
+        if anio < 100:
+            anio += 2000
+        return anio, mes
     except ValueError:
         return None
 
@@ -281,6 +295,81 @@ def _meses_objetivo_por_calendario_ree(
             if parsed is not None:
                 resultado[ventana] = parsed
                 break
+
+    return resultado
+
+
+def _fecha_publicacion_por_grupo(
+    db: Session,
+    tenant_id: int,
+    grupos: list[tuple[VentanaCode, int, int, list[str]]],
+) -> dict[tuple[VentanaCode, int, int], str | None]:
+    """
+    Para cada (ventana, anio_objetivo, mes_objetivo) busca la fecha de
+    publicación REAL en el calendario REE activo del tenant.
+
+    El calendario REE almacena un evento por hito. Para encontrar la fecha
+    de publicación de M11 jun 2025 buscamos: categoria='Definitivo',
+    evento contiene 'CIERRE DEFINITIVO', mes_afectado parsea a (2025, 6).
+
+    Devuelve dict {(ventana, anio, mes): "30 abr 2026"} o None si no se
+    encuentra.
+    """
+    resultado: dict[tuple[VentanaCode, int, int], str | None] = {
+        (v, a, m): None for (v, a, m, _) in grupos
+    }
+    if not grupos:
+        return resultado
+
+    # Calendario activo del tenant (mismo criterio que en _meses_objetivo).
+    active_file = (
+        db.query(ReeCalendarFile)
+        .filter(
+            ReeCalendarFile.tenant_id == tenant_id,
+            ReeCalendarFile.is_active.is_(True),
+        )
+        .order_by(
+            ReeCalendarFile.anio.desc(),
+            ReeCalendarFile.created_at.desc(),
+            ReeCalendarFile.id.desc(),
+        )
+        .first()
+    )
+    if active_file is None:
+        return resultado
+
+    # Traemos TODOS los hitos del fichero activo. Son ~50-60 al año, no es
+    # caro y evita una query por grupo.
+    eventos = (
+        db.query(ReeCalendarEvent)
+        .filter(
+            ReeCalendarEvent.tenant_id == tenant_id,
+            ReeCalendarEvent.calendar_file_id == active_file.id,
+        )
+        .all()
+    )
+
+    for ventana, anio_v, mes_v, _ in grupos:
+        categoria_esperada, evento_substring = VENTANA_HITO_CALENDARIO[ventana]
+        for ev in eventos:
+            if str(ev.categoria) != categoria_esperada:
+                continue
+            if evento_substring not in str(ev.evento):
+                continue
+            parsed = _parse_mes_afectado(str(ev.mes_afectado))
+            if parsed != (anio_v, mes_v):
+                continue
+            # Match: formatear la fecha como '30 abr 2026'
+            fecha = ev.fecha
+            if fecha is None:
+                continue
+            try:
+                resultado[(ventana, anio_v, mes_v)] = (
+                    f"{fecha.day} {_MESES_CORTOS[fecha.month]} {fecha.year}"
+                )
+            except (AttributeError, IndexError):
+                pass
+            break
 
     return resultado
 
@@ -711,9 +800,12 @@ def get_dashboard_tablas_mensual(
     pendientes_grupos: list[MensualBandaPendienteGrupo] = []
     pendientes_resumen: str | None = None
     if pendientes_grupos_raw:
+        # Buscar fechas de publicación en el calendario REE para todos los grupos
+        fechas_pub = _fecha_publicacion_por_grupo(db, tenant_id, pendientes_grupos_raw)
         partes: list[str] = []
         for ventana, anio_v, mes_v, faltantes in pendientes_grupos_raw:
             label = f"falta {ventana.upper()} {_mes_corto(mes_v)} {anio_v}"
+            fecha_pub = fechas_pub.get((ventana, anio_v, mes_v))
             pendientes_grupos.append(
                 MensualBandaPendienteGrupo(
                     ventana=ventana,
@@ -721,6 +813,7 @@ def get_dashboard_tablas_mensual(
                     mes=mes_v,
                     label=label,
                     empresas=faltantes,
+                    fecha_publicacion=fecha_pub,
                 )
             )
             partes.append(f"{label}: {', '.join(faltantes)}")

@@ -100,8 +100,9 @@ type MensualBandaPendienteGrupo = {
   ventana: VentanaCode;
   anio: number;
   mes: number;
-  label: string;          // ej: "falta M11 jun 2025"
-  empresas: string[];     // ej: ["Las Mercedes", "San Pedro"]
+  label: string;                     // ej: "falta M11 jun 2025"
+  empresas: string[];                // ej: ["Las Mercedes", "San Pedro"]
+  fecha_publicacion?: string | null; // ej: "30 abr 2026"
 };
 
 type MensualBandaSalud = {
@@ -485,19 +486,37 @@ function MensualView({ data }: { data: MensualResponse }) {
             <div style={{ fontSize: 12, fontWeight: 500 }}>
               Carga del mes · {banda.ficheros_recibidos}/{banda.ficheros_esperados} ficheros ·{" "}
               {banda.pendientes_grupos && banda.pendientes_grupos.length > 0 ? (
-                banda.pendientes_grupos.map((g, i) => (
-                  <span key={`${g.ventana}-${g.anio}-${g.mes}`}>
-                    {i > 0 && <span style={{ color: "var(--text-muted)" }}> · </span>}
-                    <strong style={{
-                      background: "rgba(255,255,255,0.06)",
-                      padding: "1px 6px",
-                      borderRadius: 4,
-                    }}>
-                      {g.label}
-                    </strong>
-                    {g.empresas.length > 0 && <>: {g.empresas.join(", ")}</>}
-                  </span>
-                ))
+                banda.pendientes_grupos.map((g, i) => {
+                  const tooltip = g.empresas.length > 0
+                    ? `Empresas pendientes:\n${g.empresas.map(e => `· ${e}`).join("\n")}`
+                    : "";
+                  return (
+                    <span key={`${g.ventana}-${g.anio}-${g.mes}`}>
+                      {i > 0 && <span style={{ color: "var(--text-muted)" }}> · </span>}
+                      <strong
+                        title={tooltip}
+                        style={{
+                          background: "rgba(255,255,255,0.06)",
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                          cursor: g.empresas.length > 0 ? "help" : "default",
+                        }}
+                      >
+                        {g.label}
+                        {g.fecha_publicacion && (
+                          <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+                            {" "}(publ. {g.fecha_publicacion})
+                          </span>
+                        )}
+                        {g.empresas.length > 0 && (
+                          <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: 10 }}>
+                            {" "}· {g.empresas.length} {g.empresas.length === 1 ? "empresa" : "empresas"} ⓘ
+                          </span>
+                        )}
+                      </strong>
+                    </span>
+                  );
+                })
               ) : (
                 banda.pendientes_resumen
               )}
