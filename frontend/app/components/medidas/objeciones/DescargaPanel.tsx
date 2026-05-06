@@ -200,7 +200,7 @@ export default function DescargaPanel({
     try { intencionRaw = localStorage.getItem("objeciones_autoabrir_descarga"); } catch { /* */ }
     if (!intencionRaw) return;
 
-    let intencion: { empresa_id?: number; periodo?: string; timestamp?: number } | null = null;
+    let intencion: { empresa_id?: number; periodo?: string; fecha_desde?: string; timestamp?: number } | null = null;
     try { intencion = JSON.parse(intencionRaw); } catch { intencion = null; }
 
     try { localStorage.removeItem("objeciones_autoabrir_descarga"); } catch { /* */ }
@@ -218,6 +218,9 @@ export default function DescargaPanel({
     if (intencion.periodo) {
       setPeriodo(intencion.periodo);
     }
+    if (intencion.fecha_desde) {
+      setFechaDesde(intencion.fecha_desde);
+    }
     setOpen(true);
 
     // Disparar búsqueda en el siguiente tick para que los setters hayan surtido efecto.
@@ -231,6 +234,9 @@ export default function DescargaPanel({
         }
         if (intencion.periodo) {
           params.set("periodo", intencion.periodo);
+        }
+        if (intencion.fecha_desde) {
+          params.set("fecha_desde", intencion.fecha_desde);
         }
         const res = await fetch(
           `${API_BASE_URL}/objeciones/descarga/buscar?${params}`,

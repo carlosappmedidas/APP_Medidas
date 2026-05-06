@@ -148,13 +148,28 @@ export default function CampanaAlertasObjeciones({ token, onAbrirDescarga }: Pro
 
   // Pulsar "Abrir en Descarga" — replicamos el patrón de AlertasObjecionesSection
   // (localStorage) para que el DescargaPanel auto-aplique filtros al remontarse.
+  // fecha_desde = fecha_hito + 1 día (el AOB aparece en SFTP el día siguiente al hito).
   const handleAbrirDescarga = (a: AlertaItem) => {
     setOpen(false);
+
+    let fechaDesde: string | undefined;
+    if (a.fecha_hito) {
+      try {
+        const d = new Date(a.fecha_hito);
+        d.setDate(d.getDate() + 1);
+        const yyyy = d.getFullYear();
+        const mm   = String(d.getMonth() + 1).padStart(2, "0");
+        const dd   = String(d.getDate()).padStart(2, "0");
+        fechaDesde = `${yyyy}-${mm}-${dd}`;
+      } catch { /* sin fecha_desde */ }
+    }
+
     try {
       localStorage.setItem("objeciones_autoabrir_descarga", JSON.stringify({
-        empresa_id: a.empresa_id,
-        periodo:    periodoToFiltro(a.periodo),
-        timestamp:  Date.now(),
+        empresa_id:  a.empresa_id,
+        periodo:     periodoToFiltro(a.periodo),
+        fecha_desde: fechaDesde,
+        timestamp:   Date.now(),
       }));
     } catch { /* silencioso */ }
     onAbrirDescarga();
