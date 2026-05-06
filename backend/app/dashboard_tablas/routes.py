@@ -238,10 +238,16 @@ def _parse_mes_afectado(texto: str) -> tuple[int, int] | None:
 def _meses_objetivo_por_calendario_ree(
     db: Session,
     tenant_id: int,
+    mes_publicacion: tuple[int, int] | None = None,
 ) -> dict[VentanaCode, tuple[int, int] | None]:
     """
     Para cada ventana, devuelve el (anio, mes) que SEGÚN EL CALENDARIO REE
-    debe estar publicado en el mes de carga vigente (= mes natural de hoy).
+    debe estar publicado en el mes de publicación indicado.
+
+    Por defecto usa el mes natural de hoy (comportamiento histórico). Si se
+    pasa `mes_publicacion=(anio, mes)`, mira los hitos cuya fecha cae dentro
+    de ESE mes — usado para que el frontend pueda pedir el periodo anterior
+    sin tocar el resto de la lógica.
 
     Si no hay calendario activo para el tenant, o no hay hito que cuadre,
     devuelve None para esa ventana — el caller hará fallback al cálculo
@@ -249,12 +255,17 @@ def _meses_objetivo_por_calendario_ree(
     """
     resultado: dict[VentanaCode, tuple[int, int] | None] = {v: None for v in VENTANAS}
 
-    hoy = date.today()
-    primer_dia_mes = date(hoy.year, hoy.month, 1)
-    if hoy.month == 12:
-        primer_dia_mes_siguiente = date(hoy.year + 1, 1, 1)
+    if mes_publicacion is not None:
+        anio_p, mes_p = mes_publicacion
     else:
-        primer_dia_mes_siguiente = date(hoy.year, hoy.month + 1, 1)
+        hoy = date.today()
+        anio_p, mes_p = hoy.year, hoy.month
+
+    primer_dia_mes = date(anio_p, mes_p, 1)
+    if mes_p == 12:
+        primer_dia_mes_siguiente = date(anio_p + 1, 1, 1)
+    else:
+        primer_dia_mes_siguiente = date(anio_p, mes_p + 1, 1)
 
     # Calendario activo del tenant. Si no hay → todas las ventanas a None.
     active_file = (
@@ -381,9 +392,20 @@ def _fecha_publicacion_por_grupo(
 
 @router.get("/mensual", response_model=MensualResponse)
 def get_dashboard_tablas_mensual(
+    carga_anio: int | None = None,
+    carga_mes:  int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MensualResponse:
+    """
+    Si se pasan `carga_anio` y `carga_mes` (ambos), el endpoint usa ese periodo
+    de carga forzado en lugar del calculado automáticamente. Útil para que el
+    frontend pueda pedir el periodo anterior al actual sin tocar el resto de
+    la lógica.
+
+    Si NO se pasan (o solo se pasa uno), el comportamiento es el de siempre:
+    se calcula la "carga" como ultimo_m1 - 1 mes.
+    """
     tenant_id = int(cast(int, current_user.tenant_id))
     allowed = get_allowed_empresa_ids(db, current_user)
 
@@ -456,15 +478,32 @@ def get_dashboard_tablas_mensual(
         ultimo_m1_anio, ultimo_m1_mes = 0, 0
 
     # El "mes de carga" es ultimo_m1 + 1 mes (M1 es +1m respecto a su publicación).
-    carga_anio, carga_mes = _shift_mes(ultimo_m1_anio, ultimo_m1_mes, -1)
+    # Si el caller fuerza carga_anio + carga_mes, los usamos en lugar del cálculo.
+    if carga_anio is not None and carga_mes is not None:
+        # Para que el resto del código siga funcionando, ajustamos también
+        # ultimo_m1 a (carga - 1 mes) — toda la lógica de meses-objetivo de
+        # ventana se basa en este punto de partida.
+        ultimo_m1_anio, ultimo_m1_mes = _shift_mes(carga_anio, carga_mes, 1)
+    else:
+        carga_anio, carga_mes = _shift_mes(ultimo_m1_anio, ultimo_m1_mes, -1)
 
     # ----- Pipeline (5 tarjetas de ventana) -----
     pipeline: list[MensualGeneralVentanaCard] = []
     # Para cada ventana, el (anio, mes) objetivo = el que dice el calendario
-    # REE (hito de cierre/publicación que cae dentro del mes natural de hoy).
+    # REE (hito de cierre/publicación que cae dentro del mes de publicación).
+    # Por defecto el mes de publicación es el mes natural de hoy. Si el caller
+    # forzó un `carga_anio/carga_mes`, miramos los hitos del MES SIGUIENTE a esa
+    # carga (porque la convención es que carga = ultimo_m1, y M1 se publica el
+    # mes siguiente al que cubre).
     # Si el calendario no responde para alguna ventana, hacemos fallback al
     # último (anio, mes) con datos en BD para esa ventana.
-    objetivo_calendario = _meses_objetivo_por_calendario_ree(db, tenant_id)
+    mes_publicacion_override: tuple[int, int] | None = None
+    if carga_anio is not None and carga_mes is not None:
+        # carga = mes cubierto por el M1 último -> M1 se publica al mes siguiente
+        mes_publicacion_override = _shift_mes(carga_anio, carga_mes, -1)
+    objetivo_calendario = _meses_objetivo_por_calendario_ree(
+        db, tenant_id, mes_publicacion=mes_publicacion_override,
+    )
     ultimo_periodo_por_ventana: dict[VentanaCode, tuple[int, int] | None] = {}
     for ventana in VENTANAS:
         from_cal = objetivo_calendario.get(ventana)

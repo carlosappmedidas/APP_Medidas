@@ -128,7 +128,9 @@ export default function DescargaFiltros({
             <div style={{
               position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 100,
               background: "var(--card-bg)", border: "1px solid var(--card-border)",
-              borderRadius: 8, minWidth: 240, maxHeight: 320, overflowY: "auto",
+              borderRadius: 8, minWidth: 240,
+              maxHeight: "max(280px, min(480px, calc(100vh - 160px)))",
+              overflowY: "auto",
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
             }}>
               <div style={{

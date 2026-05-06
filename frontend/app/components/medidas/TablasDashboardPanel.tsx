@@ -474,7 +474,15 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
       )}
 
       {/* ═══════ VISTA MENSUAL ═══════ */}
-      {vista === "mensual" && mensual && <MensualView data={mensual} token={token} filtrosDescarga={filtrosDescarga} />}
+      {vista === "mensual" && mensual && (
+        <MensualView
+          data={mensual}
+          token={token}
+          filtrosDescarga={filtrosDescarga}
+          cargaActualAnio={mensual.carga_anio}
+          cargaActualMes={mensual.carga_mes}
+        />
+      )}
 
       {/* ═══════ VISTA HISTÓRICO ═══════ */}
       {vista === "historico" && historico && <HistoricoView data={historico} />}
@@ -486,7 +494,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
 // VISTA MENSUAL
 // ═══════════════════════════════════════════════════════════════════════
 
-function MensualView({ data, token, filtrosDescarga }: {
+function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActualMes }: {
   data: MensualResponse;
   token: string | null;
   filtrosDescarga: {
@@ -495,11 +503,75 @@ function MensualView({ data, token, filtrosDescarga }: {
     fechaDesde?: string;
     nonce: number;
   } | null;
+  cargaActualAnio: number;
+  cargaActualMes: number;
 }) {
   const [empresasExpandidas, setEmpresasExpandidas] = useState<Set<number>>(new Set());
   const [vistaRepartoPS, setVistaRepartoPS] = useState<"tarifa" | "tipo">("tarifa");
   const [detalleGeneralAbierto, setDetalleGeneralAbierto] = useState(false);
   const [detallePSAbierto, setDetallePSAbierto] = useState(false);
+
+  // ── Toggle del periodo a mostrar en el bloque GENERAL ───────────────────
+  // "actual"   = lo que viene en `data` (el carga_anio/mes que calculó el backend).
+  // "anterior" = un mes hacia atrás. Pedimos los datos al backend y los mezclamos.
+  type VistaPeriodo = "actual" | "anterior";
+  const [vistaPeriodoGeneral, setVistaPeriodoGeneral] = useState<VistaPeriodo>("actual");
+
+  // Datos del bloque GENERAL del periodo "anterior" (cargados bajo demanda).
+  const [generalAnterior, setGeneralAnterior] = useState<MensualResponse | null>(null);
+  const [loadingAnterior, setLoadingAnterior] = useState(false);
+  const [errorAnterior, setErrorAnterior] = useState<string | null>(null);
+
+  // Calcula el (anio, mes) del periodo anterior (1 mes atrás).
+  const periodoAnterior = useMemo(() => {
+    let a = cargaActualAnio;
+    let m = cargaActualMes - 1;
+    if (m < 1) { m = 12; a -= 1; }
+    return { anio: a, mes: m };
+  }, [cargaActualAnio, cargaActualMes]);
+
+  // ¿General y PS están sincronizados en el periodo actual?
+  // Si lo están, al cambiar a "anterior" también desplazamos PS.
+  // Si no (el caso típico — General va 1 mes adelantado vs PS), solo afecta a General.
+  const generalYPSSincronizados = useMemo(() => {
+    return cargaActualAnio === data.ps.anio && cargaActualMes === data.ps.mes;
+  }, [cargaActualAnio, cargaActualMes, data.ps.anio, data.ps.mes]);
+
+  // Cargar datos del periodo anterior cuando se selecciona y aún no están en cache.
+  useEffect(() => {
+    if (vistaPeriodoGeneral !== "anterior") return;
+    if (generalAnterior !== null) return; // ya cacheado
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingAnterior(true);
+      setErrorAnterior(null);
+      try {
+        const url = `${API_BASE_URL}/dashboard/tablas/mensual?carga_anio=${periodoAnterior.anio}&carga_mes=${periodoAnterior.mes}`;
+        const res = await fetch(url, { headers: getAuthHeaders(token) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json: MensualResponse = await res.json();
+        if (!cancelled) setGeneralAnterior(json);
+      } catch (e: any) {
+        if (!cancelled) setErrorAnterior(e?.message ?? "Error cargando periodo anterior");
+      } finally {
+        if (!cancelled) setLoadingAnterior(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [vistaPeriodoGeneral, generalAnterior, token, periodoAnterior.anio, periodoAnterior.mes]);
+
+  // Datos efectivos del bloque GENERAL según el toggle.
+  // Si la vista es "anterior" y ya tenemos los datos cargados, los usamos.
+  // Si no (cargando / error), seguimos mostrando los actuales.
+  const generalEfectivo = (vistaPeriodoGeneral === "anterior" && generalAnterior)
+    ? generalAnterior.general
+    : data.general;
+
+  // Datos efectivos del bloque PS — solo cambia si los dos estaban sincronizados.
+  const psEfectivo = (vistaPeriodoGeneral === "anterior" && generalAnterior && generalYPSSincronizados)
+    ? generalAnterior.ps
+    : data.ps;
 
   const toggleEmpresa = (id: number) => {
     setEmpresasExpandidas(prev => {
@@ -575,13 +647,43 @@ function MensualView({ data, token, filtrosDescarga }: {
 
       {/* ═══════ Bloque GENERAL ═══════ */}
       <div style={{ background: "var(--field-bg)", borderRadius: 12, border: "1px solid var(--card-border)", padding: "14px 18px", marginBottom: 12 }}>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginBottom: 12 }}>
-          Medidas General · pipeline de carga
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+            Medidas General · pipeline de carga
+            {loadingAnterior && (
+              <span style={{ marginLeft: 10, fontSize: 9, color: "var(--text-muted)", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>
+                · cargando…
+              </span>
+            )}
+            {errorAnterior && (
+              <span style={{ marginLeft: 10, fontSize: 9, color: "#F09595", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>
+                · {errorAnterior}
+              </span>
+            )}
+          </div>
+          {/* Toggle Actual / Anterior */}
+          <div style={{
+            display: "inline-flex", background: "var(--card-bg)",
+            border: "1px solid var(--card-border)", borderRadius: 4, padding: 1,
+          }}>
+            <button type="button" onClick={() => setVistaPeriodoGeneral("actual")}
+              className={vistaPeriodoGeneral === "actual" ? "ui-btn ui-btn-xs" : "ui-btn ui-btn-ghost ui-btn-xs"}
+              style={{ padding: "3px 12px", fontSize: 10, borderRadius: 3 }}
+              title={`Periodo actual (${mesCorto(cargaActualMes)} ${cargaActualAnio})`}>
+              {mesCorto(cargaActualMes)} {String(cargaActualAnio).slice(2)}
+            </button>
+            <button type="button" onClick={() => setVistaPeriodoGeneral("anterior")}
+              className={vistaPeriodoGeneral === "anterior" ? "ui-btn ui-btn-xs" : "ui-btn ui-btn-ghost ui-btn-xs"}
+              style={{ padding: "3px 12px", fontSize: 10, borderRadius: 3 }}
+              title={`Periodo anterior (${mesCorto(periodoAnterior.mes)} ${periodoAnterior.anio})`}>
+              {mesCorto(periodoAnterior.mes)} {String(periodoAnterior.anio).slice(2)}
+            </button>
+          </div>
         </div>
 
         {/* 5 tarjetas de ventana */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-          {data.general.pipeline.map(card => {
+          {generalEfectivo.pipeline.map(card => {
             const meta = VENTANA_META[card.ventana];
             const completa = card.empresas_con_dato === card.empresas_total && card.empresas_total > 0;
             const tienePendientes = !completa && card.empresas_total > 0;
@@ -634,8 +736,8 @@ function MensualView({ data, token, filtrosDescarga }: {
 
           {detalleGeneralAbierto && (
             <DetallePorEmpresaTabla
-              pipeline={data.general.pipeline}
-              empresas={data.general.detalle_por_empresa}
+              pipeline={generalEfectivo.pipeline}
+              empresas={generalEfectivo.detalle_por_empresa}
               empresasExpandidas={empresasExpandidas}
               onToggle={toggleEmpresa}
             />
@@ -645,7 +747,7 @@ function MensualView({ data, token, filtrosDescarga }: {
 
       {/* ═══════ Bloque PS ═══════ */}
       <BloquePS
-        data={data.ps}
+        data={psEfectivo}
         vistaReparto={vistaRepartoPS}
         onChangeVistaReparto={setVistaRepartoPS}
         detalleAbierto={detallePSAbierto}
