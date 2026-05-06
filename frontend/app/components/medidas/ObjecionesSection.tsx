@@ -8,6 +8,7 @@ import DashboardPanel from "./objeciones/DashboardPanel";
 import DescargaPanel from "./objeciones/DescargaPanel";
 import GestionPanel from "./objeciones/GestionPanel";
 import HistorialPanel from "./objeciones/HistorialPanel";
+import CampanaAlertasObjeciones from "./CampanaAlertasObjeciones";
 
 interface ObjecionesSectionProps {
   token: string | null;
@@ -44,6 +45,23 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
 
   const [dash, setDash]               = useState<DashData | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
+
+  // Nonce para forzar remount del DescargaPanel cuando la campanita pulsa
+  // "Abrir en Descarga". El DescargaPanel lee localStorage solo al montarse,
+  // así que cambiando su `key` lo obligamos a remontar y leer la intención.
+  const [descargaRemountNonce, setDescargaRemountNonce] = useState(0);
+
+  const handleAbrirDescargaDesdeCampana = () => {
+    // Asegurar que el panel de Resumen esté abierto (no afecta al Descarga, pero queda más claro).
+    setDescargaRemountNonce((n) => n + 1);
+    // Scroll al panel de Descarga tras un pequeño delay para que React lo remonte.
+    setTimeout(() => {
+      const el = document.querySelector('[data-panel="objeciones-descarga"]') as HTMLElement | null;
+      if (el && typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 100);
+  };
 
   const [empresas, setEmpresas]               = useState<EmpresaOption[]>([]);
   const [empresaFiltroId, setEmpresaFiltroId] = useState<number | null>(null);
@@ -153,10 +171,16 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
             <div style={panelTitleStyle}>Resumen de objeciones</div>
             <div style={panelDescStyle}>{dashDesc}</div>
           </div>
-          <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-            onClick={(e) => { e.stopPropagation(); setDashOpen((v) => !v); }}>
-            {dashOpen ? "Ocultar" : "Mostrar"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+            <CampanaAlertasObjeciones
+              token={token}
+              onAbrirDescarga={handleAbrirDescargaDesdeCampana}
+            />
+            <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+              onClick={(e) => { e.stopPropagation(); setDashOpen((v) => !v); }}>
+              {dashOpen ? "Ocultar" : "Mostrar"}
+            </button>
+          </div>
         </div>
         {dashOpen && (
           <DashboardPanel
@@ -172,12 +196,15 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
       </div>
 
       {/* ── PANEL 2: Descarga en Objeciones ──────────────────────────── */}
-      <DescargaPanel
-        token={token}
-        empresas={empresas}
-        onDashRefresh={cargarDash}
-        onError={setError}
-      />
+      <div data-panel="objeciones-descarga">
+        <DescargaPanel
+          key={descargaRemountNonce}
+          token={token}
+          empresas={empresas}
+          onDashRefresh={cargarDash}
+          onError={setError}
+        />
+      </div>
 
       {/* ── PANEL 3: Gestión ───────────────────────────────────────────── */}
       <GestionPanel
