@@ -628,6 +628,58 @@ def get_dashboard_summary(
         energia_variation_eur_delta = _absolute_change(importe_total_eur, previous_importe_eur)
         perdidas_variation_kwh_delta = _absolute_change(perdidas_e_facturada_kwh, previous_perdidas_kwh)
 
+    # ── Variación vs mismo periodo año anterior ─────────────────────────
+    # Buscamos el mismo (mes) del año anterior. Si no hay datos, los deltas
+    # quedan a None y el frontend no muestra la línea.
+    previous_year_anio = periodo_anio - 1
+    previous_year_mes = periodo_mes
+    previous_year_period: tuple[int, int] | None = None
+
+    # Comprobar si existe periodo común (anio_anterior, mes_actual) en BD
+    previous_year_general_exists = (
+        _apply_scope_filters(
+            db.query(MedidaGeneral.id),
+            MedidaGeneral,
+            tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
+            empresa_id=empresa_id,
+            anio=previous_year_anio,
+            mes=previous_year_mes,
+        ).first()
+        is not None
+    )
+    previous_year_ps_exists = (
+        _apply_scope_filters(
+            db.query(MedidaPS.id),
+            MedidaPS,
+            tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
+            empresa_id=empresa_id,
+            anio=previous_year_anio,
+            mes=previous_year_mes,
+        ).first()
+        is not None
+    )
+
+    energia_variation_yoy_kwh_delta: float | None = None
+    energia_variation_yoy_eur_delta: float | None = None
+    perdidas_variation_yoy_kwh_delta: float | None = None
+
+    if previous_year_general_exists and previous_year_ps_exists:
+        previous_year_period = (previous_year_anio, previous_year_mes)
+        py_energia_kwh, py_perdidas_kwh, py_importe_eur = _sum_dashboard_values(
+            db,
+            tenant_id=tenant_id_int,
+            allowed_empresa_ids=allowed_empresa_ids,
+            empresa_id=empresa_id,
+            anio=previous_year_anio,
+            mes=previous_year_mes,
+            aggregation_mode=aggregation_mode,
+        )
+        energia_variation_yoy_kwh_delta = _absolute_change(energia_neta_facturada_kwh, py_energia_kwh)
+        energia_variation_yoy_eur_delta = _absolute_change(importe_total_eur, py_importe_eur)
+        perdidas_variation_yoy_kwh_delta = _absolute_change(perdidas_e_facturada_kwh, py_perdidas_kwh)
+
     return {
         "filters": {
             "tenant_id": tenant_id_int,
@@ -644,6 +696,11 @@ def get_dashboard_summary(
             if previous_period is not None
             else None
         ),
+        "previous_year_period": (
+            {"anio": previous_year_period[0], "mes": previous_year_period[1]}
+            if previous_year_period is not None
+            else None
+        ),
         "aggregation_mode": aggregation_mode,
         "energia_facturada": {
             "energia_neta_facturada_kwh_total": energia_neta_facturada_kwh,
@@ -652,12 +709,19 @@ def get_dashboard_summary(
                 "energia_neta_facturada_kwh_delta": energia_variation_kwh_delta,
                 "importe_total_eur_delta": energia_variation_eur_delta,
             },
+            "variation_vs_previous_year": {
+                "energia_neta_facturada_kwh_delta": energia_variation_yoy_kwh_delta,
+                "importe_total_eur_delta": energia_variation_yoy_eur_delta,
+            },
         },
         "perdidas": {
             "perdidas_e_facturada_kwh_total": perdidas_e_facturada_kwh,
             "perdidas_e_facturada_eur_total": None,
             "variation_vs_previous": {
                 "perdidas_e_facturada_kwh_delta": perdidas_variation_kwh_delta,
+            },
+            "variation_vs_previous_year": {
+                "perdidas_e_facturada_kwh_delta": perdidas_variation_yoy_kwh_delta,
             },
         },
     }
@@ -852,131 +916,4 @@ def get_dashboard_losses_trend_chart(
             "to_mes": chart_max_mes,
         },
         "series": series,
-    }
-
-
-@router.get("/losses-consistency")
-def get_dashboard_losses_consistency(
-    empresa_id: int | None = None,
-    anio: int | None = None,
-    mes: int | None = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    tenant_id_int = int(cast(int, current_user.tenant_id))
-    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
-
-    _ensure_empresa_belongs_to_tenant(
-        db,
-        current_user=current_user,
-        empresa_id=empresa_id,
-    )
-
-    periodo_anio, periodo_mes = _resolve_common_period(
-        db,
-        tenant_id=tenant_id_int,
-        allowed_empresa_ids=allowed_empresa_ids,
-        empresa_id=empresa_id,
-        anio=anio,
-        mes=mes,
-    )
-
-    aggregation_mode = "ytd" if anio is not None and mes is None else "month"
-
-    q = db.query(
-        func.sum(MedidaGeneral.energia_neta_facturada_kwh).label("m1_kwh"),
-        func.sum(MedidaGeneral.energia_neta_facturada_m2_kwh).label("m2_kwh"),
-        func.sum(MedidaGeneral.energia_neta_facturada_m7_kwh).label("m7_kwh"),
-        func.sum(MedidaGeneral.energia_neta_facturada_m11_kwh).label("m11_kwh"),
-        func.sum(MedidaGeneral.energia_neta_facturada_art15_kwh).label("art15_kwh"),
-        func.sum(MedidaGeneral.perdidas_e_facturada_kwh).label("perdidas_m1_kwh"),
-        func.sum(MedidaGeneral.perdidas_e_facturada_m2_kwh).label("perdidas_m2_kwh"),
-        func.sum(MedidaGeneral.perdidas_e_facturada_m7_kwh).label("perdidas_m7_kwh"),
-        func.sum(MedidaGeneral.perdidas_e_facturada_m11_kwh).label("perdidas_m11_kwh"),
-        func.sum(MedidaGeneral.perdidas_e_facturada_art15_kwh).label("perdidas_art15_kwh"),
-        func.sum(MedidaGeneral.energia_pf_final_kwh).label("pf_final_kwh"),
-        func.sum(MedidaGeneral.energia_pf_m2_kwh).label("pf_m2_kwh"),
-        func.sum(MedidaGeneral.energia_pf_m7_kwh).label("pf_m7_kwh"),
-        func.sum(MedidaGeneral.energia_pf_m11_kwh).label("pf_m11_kwh"),
-        func.sum(MedidaGeneral.energia_pf_art15_kwh).label("pf_art15_kwh"),
-        func.avg(MedidaGeneral.perdidas_e_facturada_pct).label("perdidas_m1_pct"),
-        func.avg(MedidaGeneral.perdidas_e_facturada_m2_pct).label("perdidas_m2_pct"),
-        func.avg(MedidaGeneral.perdidas_e_facturada_m7_pct).label("perdidas_m7_pct"),
-        func.avg(MedidaGeneral.perdidas_e_facturada_m11_pct).label("perdidas_m11_pct"),
-        func.avg(MedidaGeneral.perdidas_e_facturada_art15_pct).label("perdidas_art15_pct"),
-    ).filter(
-        MedidaGeneral.tenant_id == tenant_id_int,
-        MedidaGeneral.anio == periodo_anio,
-        MedidaGeneral.empresa_id.in_(allowed_empresa_ids),
-    )
-
-    if empresa_id is not None:
-        q = q.filter(MedidaGeneral.empresa_id == empresa_id)
-
-    if aggregation_mode == "ytd":
-        q = q.filter(MedidaGeneral.mes <= periodo_mes)
-    else:
-        q = q.filter(MedidaGeneral.mes == periodo_mes)
-
-    row = q.first()
-
-    def _f(v: Any) -> float | None:
-        if v is None:
-            return None
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return None
-
-    m1_kwh = _f(getattr(row, "m1_kwh", None))
-    m2_kwh = _f(getattr(row, "m2_kwh", None))
-    m7_kwh = _f(getattr(row, "m7_kwh", None))
-    m11_kwh = _f(getattr(row, "m11_kwh", None))
-    art15_kwh = _f(getattr(row, "art15_kwh", None))
-    perdidas_m1_kwh = _f(getattr(row, "perdidas_m1_kwh", None))
-    perdidas_m2_kwh = _f(getattr(row, "perdidas_m2_kwh", None))
-    perdidas_m7_kwh = _f(getattr(row, "perdidas_m7_kwh", None))
-    perdidas_m11_kwh = _f(getattr(row, "perdidas_m11_kwh", None))
-    perdidas_art15_kwh = _f(getattr(row, "perdidas_art15_kwh", None))
-    pf_final_kwh = _f(getattr(row, "pf_final_kwh", None))
-    pf_m2_kwh = _f(getattr(row, "pf_m2_kwh", None))
-    pf_m7_kwh = _f(getattr(row, "pf_m7_kwh", None))
-    pf_m11_kwh = _f(getattr(row, "pf_m11_kwh", None))
-    pf_art15_kwh = _f(getattr(row, "pf_art15_kwh", None))
-    perdidas_m1_pct = _f(getattr(row, "perdidas_m1_pct", None))
-    perdidas_m2_pct = _f(getattr(row, "perdidas_m2_pct", None))
-    perdidas_m7_pct = _f(getattr(row, "perdidas_m7_pct", None))
-    perdidas_m11_pct = _f(getattr(row, "perdidas_m11_pct", None))
-    perdidas_art15_pct = _f(getattr(row, "perdidas_art15_pct", None))
-
-    def _diff(a: float | None, b: float | None) -> float | None:
-        if a is None or b is None:
-            return None
-        return round(b - a, 4)
-
-    return {
-        "filters": {
-            "tenant_id": tenant_id_int,
-            "empresa_id": empresa_id,
-            "anio": anio,
-            "mes": mes,
-        },
-        "common_period": {
-            "anio": periodo_anio,
-            "mes": periodo_mes,
-        },
-        "aggregation_mode": aggregation_mode,
-        "ventanas": {
-            "m1": {"kwh": m1_kwh, "perdidas_kwh": perdidas_m1_kwh, "perdidas_pct": perdidas_m1_pct, "pf_kwh": pf_final_kwh},
-            "m2": {"kwh": m2_kwh, "perdidas_kwh": perdidas_m2_kwh, "perdidas_pct": perdidas_m2_pct, "pf_kwh": pf_m2_kwh},
-            "m7": {"kwh": m7_kwh, "perdidas_kwh": perdidas_m7_kwh, "perdidas_pct": perdidas_m7_pct, "pf_kwh": pf_m7_kwh},
-            "m11": {"kwh": m11_kwh, "perdidas_kwh": perdidas_m11_kwh, "perdidas_pct": perdidas_m11_pct, "pf_kwh": pf_m11_kwh},
-            "art15": {"kwh": art15_kwh, "perdidas_kwh": perdidas_art15_kwh, "perdidas_pct": perdidas_art15_pct, "pf_kwh": pf_art15_kwh},
-        },
-        "comparaciones": {
-            "m1_vs_m2": _diff(perdidas_m1_pct, perdidas_m2_pct),
-            "m2_vs_m7": _diff(perdidas_m2_pct, perdidas_m7_pct),
-            "m7_vs_m11": _diff(perdidas_m7_pct, perdidas_m11_pct),
-            "m11_vs_art15": _diff(perdidas_m11_pct, perdidas_art15_pct),
-        },
     }

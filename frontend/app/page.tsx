@@ -431,7 +431,12 @@ export default function HomePage() {
           </div>
         </header>
 
-        {activeTab === "dashboard"      && <DashboardSection token={token} />}
+        {activeTab === "dashboard"      && (
+          <DashboardSection
+            token={token}
+            onNavigateToAlertas={() => setActiveTab("alertas")}
+          />
+        )}
         {activeTab === "objeciones" && !isViewer && (
           <ObjecionesSection
             token={token}

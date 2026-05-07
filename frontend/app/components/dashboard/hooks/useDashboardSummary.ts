@@ -17,6 +17,10 @@ export type DashboardSummaryResponse = {
     anio: number;
     mes: number;
   } | null;
+  previous_year_period: {
+    anio: number;
+    mes: number;
+  } | null;
   aggregation_mode: "month" | "ytd";
   energia_facturada: {
     energia_neta_facturada_kwh_total: number;
@@ -25,11 +29,18 @@ export type DashboardSummaryResponse = {
       energia_neta_facturada_kwh_delta: number | null;
       importe_total_eur_delta: number | null;
     };
+    variation_vs_previous_year: {
+      energia_neta_facturada_kwh_delta: number | null;
+      importe_total_eur_delta: number | null;
+    };
   };
   perdidas: {
     perdidas_e_facturada_kwh_total: number;
     perdidas_e_facturada_eur_total?: number | null;
     variation_vs_previous: {
+      perdidas_e_facturada_kwh_delta: number | null;
+    };
+    variation_vs_previous_year: {
       perdidas_e_facturada_kwh_delta: number | null;
     };
   };

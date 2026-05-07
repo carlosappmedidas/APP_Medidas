@@ -5,13 +5,11 @@ import { useDashboardFilters } from "./hooks/useDashboardFilters";
 import { useDashboardEnergyComparisonChart } from "./hooks/useDashboardEnergyComparisonChart";
 import { useDashboardEnergyTrendChart } from "./hooks/useDashboardEnergyTrendChart";
 import { useDashboardLossesTrendChart } from "./hooks/useDashboardLossesTrendChart";
-import { useDashboardLossesConsistency } from "./hooks/useDashboardLossesConsistency";
 import DashboardMiniCard from "./ui/DashboardMiniCard";
 import DashboardPlaceholderBox from "./ui/DashboardPlaceholderBox";
 import DashboardEnergyComparisonChart from "./charts/DashboardEnergyComparisonChart";
 import DashboardEnergyTrendChart from "./charts/DashboardEnergyTrendChart";
 import DashboardLossesTrendChart from "./charts/DashboardLossesTrendChart";
-import LossesConsistencyCard from "./ui/LossesConsistencyCard";
 import {
   formatKwhEur,
   formatKwhOnly,
@@ -22,6 +20,7 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
 type Props = {
   token: string | null;
+  onNavigateToAlertas?: () => void;
 };
 
 type ReeDashboardHitosResponse = {
@@ -75,7 +74,7 @@ function extractDay(value: string | null): string {
   return String(parseInt(parts[2], 10));
 }
 
-export default function DashboardSection({ token }: Props) {
+export default function DashboardSection({ token, onNavigateToAlertas }: Props) {
   const isLogged = !!token;
   const [empresa, setEmpresa] = useState("");
   const [anio, setAnio] = useState("");
@@ -83,6 +82,10 @@ export default function DashboardSection({ token }: Props) {
   const [reeHitosData, setReeHitosData] = useState<ReeDashboardHitosResponse | null>(null);
   const [reeHitosLoading, setReeHitosLoading] = useState(false);
   const [reeHitosError, setReeHitosError] = useState<string | null>(null);
+
+  // Contadores para la tarjeta de Alertas (objeciones + publicaciones REE)
+  const [alertasObjecionesCount, setAlertasObjecionesCount] = useState<number | null>(null);
+  const [alertasPublicacionesCount, setAlertasPublicacionesCount] = useState<number | null>(null);
 
   const empresaId = empresa ? Number(empresa) : null;
   const anioValue = anio ? Number(anio) : null;
@@ -103,20 +106,6 @@ export default function DashboardSection({ token }: Props) {
 
   const { data: lossesTrendChartData, loading: lossesTrendChartLoading, error: lossesTrendChartError } =
     useDashboardLossesTrendChart({ token, empresaId, anio: anioValue, mes: mesValue });
-
-  const lossesConsistencyAnio = useMemo(() => {
-    if (anioValue !== null) return anioValue;
-    const lastAnio = data?.common_period?.anio;
-    if (!lastAnio) return null;
-    const lastMes = data?.common_period?.mes;
-    if (lastMes !== undefined && lastMes !== null && lastMes <= 3) {
-      return lastAnio - 1;
-    }
-    return lastAnio;
-  }, [anioValue, data]);
-
-  const { data: lossesConsistencyData, loading: lossesConsistencyLoading, error: lossesConsistencyError } =
-    useDashboardLossesConsistency({ token, empresaId, anio: lossesConsistencyAnio, mes: mesValue });
 
   useEffect(() => { setMes(""); }, [empresa]);
   useEffect(() => { setMes(""); }, [anio]);
@@ -154,6 +143,48 @@ export default function DashboardSection({ token }: Props) {
     };
     void loadReeDashboardHitos();
   }, [token, anioValue, mesValue]);
+
+  // Cargar contadores de alertas activas (Objeciones + Publicaciones REE)
+  useEffect(() => {
+    if (!token) {
+      setAlertasObjecionesCount(null);
+      setAlertasPublicacionesCount(null);
+      return;
+    }
+    let cancelled = false;
+    const cargarContadores = async () => {
+      try {
+        const [resObj, resPub] = await Promise.all([
+          fetch(`${API_BASE_URL}/objeciones/alertas?estado=activa`, { headers: getAuthHeaders(token) }),
+          fetch(`${API_BASE_URL}/measures/descarga/automatizacion/alertas?estado=activa`, { headers: getAuthHeaders(token) }),
+        ]);
+        if (cancelled) return;
+
+        // Objeciones: el endpoint devuelve un array directamente
+        if (resObj.ok) {
+          const dataObj = await resObj.json();
+          setAlertasObjecionesCount(Array.isArray(dataObj) ? dataObj.length : 0);
+        } else {
+          setAlertasObjecionesCount(0);
+        }
+
+        // Publicaciones REE: devuelve { total, activas, items }
+        if (resPub.ok) {
+          const dataPub = await resPub.json();
+          const activas = typeof dataPub?.activas === "number" ? dataPub.activas : (Array.isArray(dataPub?.items) ? dataPub.items.length : 0);
+          setAlertasPublicacionesCount(activas);
+        } else {
+          setAlertasPublicacionesCount(0);
+        }
+      } catch {
+        if (cancelled) return;
+        setAlertasObjecionesCount(0);
+        setAlertasPublicacionesCount(0);
+      }
+    };
+    void cargarContadores();
+    return () => { cancelled = true; };
+  }, [token]);
 
   const empresaOptions = useMemo(() => {
     const base = [{ value: "", label: "Todas" }];
@@ -298,6 +329,38 @@ export default function DashboardSection({ token }: Props) {
     return formatSignedNumberEs(displayDelta);
   }, [isLogged, loading, data]);
 
+  // Variación vs mismo periodo año anterior — solo se muestra si existe dato.
+  const energiaFacturadaVariationYoyKwh = useMemo(() => {
+    if (!isLogged || loading || !data?.previous_year_period) return null;
+    return formatSignedNumberEs(
+      data.energia_facturada.variation_vs_previous_year.energia_neta_facturada_kwh_delta
+    );
+  }, [isLogged, loading, data]);
+
+  const energiaFacturadaVariationYoyEur = useMemo(() => {
+    if (!isLogged || loading || !data?.previous_year_period) return null;
+    return formatSignedNumberEs(
+      data.energia_facturada.variation_vs_previous_year.importe_total_eur_delta
+    );
+  }, [isLogged, loading, data]);
+
+  const perdidasVariationYoy = useMemo(() => {
+    if (!isLogged || loading || !data?.previous_year_period) return null;
+    const currentLosses = data.perdidas.perdidas_e_facturada_kwh_total;
+    const rawDelta = data.perdidas.variation_vs_previous_year.perdidas_e_facturada_kwh_delta;
+    if (rawDelta == null || Number.isNaN(rawDelta)) return null;
+    const previousLosses = currentLosses - rawDelta;
+    const displayDelta = Math.abs(currentLosses) - Math.abs(previousLosses);
+    return formatSignedNumberEs(displayDelta);
+  }, [isLogged, loading, data]);
+
+  // Etiqueta del periodo año anterior (ej. "Feb 2025")
+  const previousYearPeriodLabel = useMemo(() => {
+    if (!data?.previous_year_period) return "";
+    const { anio: a, mes: m } = data.previous_year_period;
+    return `${NOMBRES_MES[m] ?? m} ${a}`;
+  }, [data]);
+
   const dashboardErrorText = useMemo(() => {
     if (!isLogged) return null;
     return error;
@@ -319,42 +382,79 @@ export default function DashboardSection({ token }: Props) {
   const hayFiltrosActivos = !!(empresa || anio || mes);
 
   // ── Datos del calendario para el nuevo layout ────────────────────────
-  type ReeHito = { dia: string; label: string; mesAfectado: string; isAlert: boolean };
+  // Cada hito incluye su fecha completa (ISO) para poder calcular cuál es
+  // el "próximo" comparándolo con la fecha de hoy. El primero cuya fecha
+  // sea >= hoy se marca como `isNext`. Los anteriores como `isPast`.
+  type ReeHito = {
+    dia: string;
+    label: string;
+    mesAfectado: string;
+    fechaIso: string | null;
+    isNext: boolean;
+    isPast: boolean;
+  };
 
   const reeHitos: ReeHito[] = useMemo(() => {
     if (!reeHitosData) return [];
-    return [
+
+    // Construir lista base con fecha ISO original
+    const base = [
       {
         dia: extractDay(reeHitosData.fecha_publicacion_m2),
         label: "Publ. m-2",
         mesAfectado: reeHitosData.mes_afectado_publicacion_m2 ?? "—",
-        isAlert: false,
+        fechaIso: reeHitosData.fecha_publicacion_m2,
       },
       {
         dia: extractDay(reeHitosData.fecha_publicacion_m7),
         label: "Publ. m-7",
         mesAfectado: reeHitosData.mes_afectado_publicacion_m7 ?? "—",
-        isAlert: false,
+        fechaIso: reeHitosData.fecha_publicacion_m7,
       },
       {
         dia: extractDay(reeHitosData.fecha_limite_respuesta_objeciones),
         label: "Lím. objec.",
         mesAfectado: reeHitosData.mes_afectado_limite_respuesta_objeciones ?? "—",
-        isAlert: true,
+        fechaIso: reeHitosData.fecha_limite_respuesta_objeciones,
       },
       {
         dia: extractDay(reeHitosData.fecha_publicacion_m11),
         label: "Publ. m-11",
         mesAfectado: reeHitosData.mes_afectado_publicacion_m11 ?? "—",
-        isAlert: false,
+        fechaIso: reeHitosData.fecha_publicacion_m11,
       },
       {
         dia: extractDay(reeHitosData.fecha_publicacion_art15),
         label: "Publ. Art.15",
         mesAfectado: reeHitosData.mes_afectado_publicacion_art15 ?? "—",
-        isAlert: false,
+        fechaIso: reeHitosData.fecha_publicacion_art15,
       },
     ];
+
+    // Calcular fecha de hoy a las 00:00 (para que un hito de hoy cuente como "próximo")
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const hoyMs = hoy.getTime();
+
+    // Buscar el índice del PRIMER hito con fecha >= hoy en orden cronológico.
+    // Importante: hay que ordenar los hitos por fecha para encontrar el siguiente
+    // cronológicamente, no el primero del array (que va por tipo de publicación).
+    const conFechaMs = base.map((h, idx) => {
+      if (!h.fechaIso) return { idx, ms: NaN };
+      const d = new Date(`${h.fechaIso}T00:00:00`);
+      return { idx, ms: d.getTime() };
+    });
+    const futuros = conFechaMs
+      .filter((x) => !Number.isNaN(x.ms) && x.ms >= hoyMs)
+      .sort((a, b) => a.ms - b.ms);
+    const idxNext = futuros.length > 0 ? futuros[0].idx : -1;
+
+    return base.map((h, idx) => {
+      const ms = conFechaMs[idx].ms;
+      const isPast = !Number.isNaN(ms) && ms < hoyMs;
+      const isNext = idx === idxNext;
+      return { ...h, isNext, isPast };
+    });
   }, [reeHitosData]);
 
   const reeCalendarioMesLabel = useMemo(() => {
@@ -454,8 +554,8 @@ export default function DashboardSection({ token }: Props) {
           </div>
         )}
 
-        {/* ── Fila 1: Energía · Pérdidas · Consistencia ────────────── */}
-        <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
+        {/* ── Fila 1: Energía · Pérdidas · Alertas · Calendario ────── */}
+        <div className="grid gap-3 grid-cols-1 md:grid-cols-4">
 
           {/* Energía facturada — borde exterior + título muted + datos con field-bg */}
           <div
@@ -470,14 +570,17 @@ export default function DashboardSection({ token }: Props) {
               {energiaCardTitle}
             </div>
             <div
-              className="rounded-lg p-3 flex flex-col items-center justify-center text-center"
+              className="rounded-lg p-3 flex flex-col items-center justify-center text-center flex-1"
               style={{ background: "var(--field-bg)", minHeight: "80px" }}
             >
               <div
                 className="group relative cursor-default"
                 title={`${variationTooltipTitle}: ${energiaFacturadaVariationKwh} kWh · ${energiaFacturadaVariationEur} €`}
               >
-                <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
+                <div
+                  className="text-[22px] font-semibold leading-snug whitespace-nowrap"
+                  style={{ color: "var(--text)" }}
+                >
                   {energiaFacturadaTotal}
                 </div>
               </div>
@@ -488,6 +591,15 @@ export default function DashboardSection({ token }: Props) {
                 <span className="ui-muted">{variationTooltipTitle}:</span>{" "}
                 <span>{energiaFacturadaVariationKwh} · {energiaFacturadaVariationEur}</span>
               </div>
+              {energiaFacturadaVariationYoyKwh !== null && energiaFacturadaVariationYoyEur !== null && (
+                <div
+                  className="mt-1 w-full text-[11px]"
+                  style={{ color: "var(--text)" }}
+                >
+                  <span className="ui-muted">Variación vs {previousYearPeriodLabel}:</span>{" "}
+                  <span>{energiaFacturadaVariationYoyKwh} · {energiaFacturadaVariationYoyEur}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -504,84 +616,80 @@ export default function DashboardSection({ token }: Props) {
               {perdidasCardTitle}
             </div>
             <div
-              className="rounded-lg p-3 flex flex-col items-center justify-center text-center"
+              className="rounded-lg p-3 flex flex-col items-center justify-center text-center flex-1"
               style={{ background: "var(--field-bg)", minHeight: "80px" }}
             >
               <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
                 {perdidasTotal}
               </div>
-              <div
+               <div
                 className="mt-2 pt-2 w-full text-[11px]"
                 style={{ borderTop: "0.5px solid var(--card-border)", color: "var(--text)" }}
               >
                 <span className="ui-muted">{variationTooltipTitle}:</span>{" "}
                 <span>{perdidasVariation}</span>
               </div>
-            </div>
-          </div>
-
-          {/* Consistencia de pérdidas — sin cambios */}
-          <div
-            className="rounded-xl border p-4 flex flex-col items-center justify-center"
-            style={{
-              borderColor: "var(--card-border)",
-              background: "var(--card-bg)",
-              minHeight: "130px",
-            }}
-          >
-            <div className="text-center text-[10px] font-semibold uppercase tracking-[0.04em] ui-muted mb-1">
-              {`CONSISTENCIA PÉRDIDAS ${lossesConsistencyAnio ?? ""}`.trim()}
-            </div>
-            <div className="text-center text-[9px] ui-muted mb-2">
-              Comparativa entre publicaciones
-            </div>
-            <LossesConsistencyCard
-              data={lossesConsistencyData}
-              loading={lossesConsistencyLoading}
-              error={lossesConsistencyError}
-              compact
-            />
-          </div>
-        </div>
-
-        {/* ── Fila 2: Objeciones + Alertas (izq) · Calendario (der) ── */}
-        <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
-
-          {/* Objeciones */}
-          <div
-            className="rounded-xl border p-4"
-            style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
-          >
-            <div className="text-[10px] font-semibold uppercase tracking-[0.04em] ui-muted mb-3 text-center">
-              Objeciones
-            </div>
-            <div className="flex flex-col gap-2">
-              {[
-                { label: "Total activas", value: "—" },
-                { label: "Total respondidas en plazo", value: "—" },
-                { label: "Total respondidas fuera plazo", value: "—" },
-              ].map((row) => (
+              {perdidasVariationYoy !== null && (
                 <div
-                  key={row.label}
-                  className="flex items-center justify-between px-2 py-1.5 rounded-lg text-[11px]"
-                  style={{ background: "var(--field-bg)" }}
+                  className="mt-1 w-full text-[11px]"
+                  style={{ color: "var(--text)" }}
                 >
-                  <span className="ui-muted">{row.label}</span>
-                  <span className="font-semibold">{row.value}</span>
+                  <span className="ui-muted">Variación vs {previousYearPeriodLabel}:</span>{" "}
+                  <span>{perdidasVariationYoy}</span>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
-          {/* Alertas */}
+          {/* Alertas — tarjeta unificada con contadores y CTA */}
           <div
-            className="rounded-xl border p-4"
+            className="rounded-xl border p-4 flex flex-col cursor-pointer transition-transform hover:-translate-y-px"
             style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+            onClick={() => { if (onNavigateToAlertas) onNavigateToAlertas(); }}
           >
             <div className="text-[10px] font-semibold uppercase tracking-[0.04em] ui-muted mb-3 text-center">
-              Alertas
+              🔔 Alertas activas
             </div>
-            <DashboardPlaceholderBox heightClassName="min-h-[80px]" />
+            <div className="grid grid-cols-2 gap-2 flex-1 mb-3">
+              {/* Objeciones */}
+              <div
+                className="rounded-lg p-3 flex flex-col justify-center"
+                style={{ background: "var(--field-bg)" }}
+              >
+                <div className="text-[14px] mb-1">📥</div>
+                <div
+                  className="text-[22px] font-semibold leading-none"
+                  style={{ color: (alertasObjecionesCount ?? 0) > 0 ? "var(--text)" : "#1D9E75" }}
+                >
+                  {alertasObjecionesCount ?? "—"}
+                </div>
+                <div className="text-[9px] uppercase tracking-[0.05em] ui-muted mt-1">
+                  Objeciones
+                </div>
+              </div>
+              {/* Publicaciones REE */}
+              <div
+                className="rounded-lg p-3 flex flex-col justify-center"
+                style={{ background: "var(--field-bg)" }}
+              >
+                <div className="text-[14px] mb-1">📊</div>
+                <div
+                  className="text-[22px] font-semibold leading-none"
+                  style={{ color: (alertasPublicacionesCount ?? 0) > 0 ? "var(--text)" : "#1D9E75" }}
+                >
+                  {alertasPublicacionesCount ?? "—"}
+                </div>
+                <div className="text-[9px] uppercase tracking-[0.05em] ui-muted mt-1">
+                  Publicaciones
+                </div>
+              </div>
+            </div>
+            <div
+              className="text-[11px] font-medium flex items-center gap-1"
+              style={{ color: "#378ADD" }}
+            >
+              Ver todas las alertas →
+            </div>
           </div>
 
           {/* Calendario REE — compacto 2 col */}
@@ -599,48 +707,86 @@ export default function DashboardSection({ token }: Props) {
             )}
             {!reeHitosError && (
               <div className="grid grid-cols-2 gap-1.5">
-                {reeHitos.map((hito, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
-                    style={{
-                      background: hito.isAlert ? "#FEF2F2" : "var(--field-bg)",
-                      gridColumn: idx === 4 ? "1 / -1" : undefined,
-                    }}
-                  >
+                {reeHitos.map((hito, idx) => {
+                  // Estilos según el estado del hito
+                  const bgCelda = hito.isNext
+                    ? "rgba(245,158,11,0.10)"
+                    : "var(--field-bg)";
+                  const bgDia = hito.isNext
+                    ? "rgba(245,158,11,0.20)"
+                    : "var(--card-bg)";
+                  const colorTexto = hito.isNext ? "#D97706" : "var(--text)";
+                  const colorMes = hito.isNext
+                    ? "#D97706"
+                    : "var(--text-muted, var(--field-text))";
+                  const opacidad = hito.isPast ? 0.45 : 1;
+                  const borde = hito.isNext
+                    ? "1px solid rgba(245,158,11,0.5)"
+                    : "1px solid transparent";
+
+                  return (
                     <div
-                      className="flex items-center justify-center rounded flex-shrink-0 text-[10px] font-semibold"
+                      key={idx}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg relative"
                       style={{
-                        width: "20px",
-                        height: "20px",
-                        background: hito.isAlert ? "#FCEBEB" : "var(--card-bg)",
-                        color: hito.isAlert ? "#7F1D1D" : "var(--text)",
+                        background: bgCelda,
+                        border: borde,
+                        opacity: opacidad,
                       }}
                     >
-                      {reeHitosLoading ? "·" : hito.dia}
-                    </div>
-                    <div className="min-w-0 flex-1">
+                      {hito.isNext && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: "-7px",
+                            left: "8px",
+                            fontSize: "8px",
+                            fontWeight: 700,
+                            letterSpacing: "0.08em",
+                            background: "#F59E0B",
+                            color: "#0d1322",
+                            padding: "1px 6px",
+                            borderRadius: "6px",
+                          }}
+                        >
+                          PRÓXIMO
+                        </span>
+                      )}
                       <div
-                        className="text-[10px] font-semibold truncate"
-                        style={{ color: hito.isAlert ? "#7F1D1D" : "var(--text)" }}
+                        className="flex items-center justify-center rounded flex-shrink-0 text-[10px] font-semibold"
+                        style={{
+                          width: "20px",
+                          height: "20px",
+                          background: bgDia,
+                          color: colorTexto,
+                        }}
                       >
-                        {hito.label}
+                        {reeHitosLoading ? "·" : hito.dia}
                       </div>
-                      <div
-                        className="text-[9px]"
-                        style={{ color: hito.isAlert ? "#A32D2D" : "var(--text-muted, var(--field-text))" }}
-                      >
-                        {reeHitosLoading ? "..." : hito.mesAfectado}
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="text-[10px] font-semibold truncate"
+                          style={{ color: colorTexto }}
+                        >
+                          {hito.label}
+                        </div>
+                        <div
+                          className="text-[9px]"
+                          style={{ color: colorMes }}
+                        >
+                          {reeHitosLoading ? "..." : hito.mesAfectado}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
+
         </div>
 
-        {/* ── Fila 3: 3 gráficas ───────────────────────────────────── */}
+        {/* ── Fila 2: 3 gráficas ───────────────────────────────────── */}
         <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
 
           <DashboardMiniCard
