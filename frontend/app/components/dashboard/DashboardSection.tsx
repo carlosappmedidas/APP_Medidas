@@ -578,7 +578,7 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
                 title={`${variationTooltipTitle}: ${energiaFacturadaVariationKwh} kWh · ${energiaFacturadaVariationEur} €`}
               >
                 <div
-                  className="text-[22px] font-semibold leading-snug whitespace-nowrap"
+                  className="text-[18px] font-semibold leading-snug whitespace-nowrap"
                   style={{ color: "var(--text)" }}
                 >
                   {energiaFacturadaTotal}
@@ -619,7 +619,10 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
               className="rounded-lg p-3 flex flex-col items-center justify-center text-center flex-1"
               style={{ background: "var(--field-bg)", minHeight: "80px" }}
             >
-              <div className="text-[22px] font-semibold leading-snug" style={{ color: "var(--text)" }}>
+              <div
+                className="text-[18px] font-semibold leading-snug whitespace-nowrap"
+                style={{ color: "var(--text)" }}
+              >
                 {perdidasTotal}
               </div>
                <div
