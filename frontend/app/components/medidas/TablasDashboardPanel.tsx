@@ -350,6 +350,34 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
     });
   };
 
+  // ── Auto-abrir desde la pestaña Alertas ──────────────────────────────────
+  // Cuando el usuario pulsa "Abrir en Descarga" en una alerta de Publicaciones
+  // (sección AlertasPublicacionesSection), se guarda la intención en
+  // localStorage y se navega aquí. Al montarnos leemos esa intención y
+  // disparamos handleAlertaClick (mismo flujo que la campanita).
+  useEffect(() => {
+    let intencionRaw: string | null = null;
+    try { intencionRaw = localStorage.getItem("publicaciones_autoabrir_descarga"); } catch { /* */ }
+    if (!intencionRaw) return;
+    try { localStorage.removeItem("publicaciones_autoabrir_descarga"); } catch { /* */ }
+
+    let intencion: { empresa_id?: number; periodo?: string; fecha_desde?: string; timestamp?: number } | null = null;
+    try { intencion = JSON.parse(intencionRaw); } catch { intencion = null; }
+    if (!intencion || !intencion.timestamp) return;
+
+    // Ignorar intenciones viejas (> 10s) — evita auto-aplicar al recargar página.
+    if (Date.now() - intencion.timestamp > 10_000) return;
+
+    if (typeof intencion.empresa_id === "number" && intencion.periodo) {
+      handleAlertaClick({
+        empresaId:  intencion.empresa_id,
+        periodo:    intencion.periodo,
+        fechaDesde: intencion.fecha_desde,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [mensual, setMensual] = useState<MensualResponse | null>(null);
   const [historico, setHistorico] = useState<HistoricoResponse | null>(null);
   const [loading, setLoading] = useState(false);

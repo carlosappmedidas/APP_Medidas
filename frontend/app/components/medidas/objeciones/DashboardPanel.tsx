@@ -20,20 +20,12 @@ interface AutoConfig {
   buscar_respuestas_ree: AutoConfigItem;
 }
 
-interface AlertasResumen {
-  total_alertas: number;
-  empresas_afectadas: number;
-  periodos_afectados: number;
-  total_aobs_pendientes: number;
-}
-
 interface DashboardPanelProps {
   dash: DashData | null;
   loading: boolean;
   empresaFiltroId: number | null;
   empresas: EmpresaOption[];
   autoConfig: AutoConfig | null;
-  alertasResumen: AlertasResumen | null;
   onGoToObjecionesConfig?: () => void;
 }
 
@@ -124,7 +116,7 @@ function InfoTooltip({ text, children }: { text: string; children: React.ReactNo
 
 export default function DashboardPanel({
   dash, loading, empresaFiltroId, empresas,
-  autoConfig, alertasResumen,
+  autoConfig,
   onGoToObjecionesConfig,
 }: DashboardPanelProps) {
   // ── Toggle global: "Periodo actual" vs "Histórico" ─────────────────────
@@ -185,12 +177,10 @@ export default function DashboardPanel({
   // (mantiene el comportamiento visual que había antes). El resto (líneas
   // "Último" de los 3 tipos) se renderiza debajo, cada una con su propio timestamp.
   const autoActiva        = autoConfig?.fin_recepcion?.activa ?? false;
-  const alertasActivasNum = alertasResumen?.total_alertas ?? 0;
   const estadoLabel       = autoActiva ? "Activa" : "Desactivada";
   const estadoPuntoColor  = autoActiva ? "#1D9E75" : "#94A3B8";
   const iconoColor        = autoActiva ? "#1D9E75" : "var(--text-muted)";
   const iconoBg           = autoActiva ? "rgba(29,158,117,0.15)" : "rgba(148,163,184,0.12)";
-  const alertasColor      = alertasActivasNum > 0 ? "#A32D2D" : "var(--text-muted)";
 
   // Formateo del último run en hora Madrid: "23/04/2026 00:42 ✓"
   // El backend guarda los timestamps en UTC (datetime.utcnow) sin offset, así que
@@ -438,36 +428,14 @@ export default function DashboardPanel({
                   <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>{estadoLabel}</span>
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 10 }}>
-                <span style={{ fontSize: 28, fontWeight: 500, color: alertasColor, lineHeight: 1 }}>{alertasActivasNum}</span>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>alertas activas</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                {/* 3 líneas "Último" — una por tipo de automatización */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
-                  {ultimoRunLineas.map((linea) => (
-                    <div key={linea.label} style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      <span style={{ color: "var(--text)", fontWeight: 500 }}>{linea.label}:</span>{" "}
-                      <span>{linea.texto.replace(/^Último:\s*/, "")}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 4,
-                    padding: "4px 10px", borderRadius: 6,
-                    border: "0.5px solid var(--card-border)",
-                    background: "var(--field-bg-soft)", color: "var(--text)",
-                    fontSize: 11, fontWeight: 500, cursor: "pointer",
-                    flexShrink: 0, alignSelf: "flex-end",
-                  }}
-                >
-                  Ver alertas
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                </button>
+              {/* 3 líneas "Último" — una por tipo de automatización */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {ultimoRunLineas.map((linea) => (
+                  <div key={linea.label} style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <span style={{ color: "var(--text)", fontWeight: 500 }}>{linea.label}:</span>{" "}
+                    <span>{linea.texto.replace(/^Último:\s*/, "")}</span>
+                  </div>
+                ))}
               </div>
             </div>
 

@@ -4,6 +4,7 @@ import LoginSection from "./components/auth/Login-section";
 import DashboardSection from "./components/dashboard/DashboardSection";
 import AlertsSection from "./components/admin/AlertsSection";
 import AlertasObjecionesSection from "./components/admin/AlertasObjecionesSection";
+import AlertasPublicacionesSection from "./components/admin/AlertasPublicacionesSection";
 import AlertConfigSection from "./components/admin/AlertConfigSection";
 import ObjecionesSection from "./components/medidas/ObjecionesSection";
 import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
@@ -124,7 +125,8 @@ export default function HomePage() {
   const [showTopologia,   setShowTopologia]   = useState(false);
   const [showObjeciones,  setShowObjeciones]  = useState(false);
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
-  const [showAlertasObjeciones, setShowAlertasObjeciones] = useState(false)
+  const [showAlertasObjeciones, setShowAlertasObjeciones] = useState(false);
+  const [showAlertasPublicaciones, setShowAlertasPublicaciones] = useState(false);
 
   const {
     appearance, setAppearance,
@@ -200,6 +202,7 @@ export default function HomePage() {
     if (activeTab === "alertas") {
       setShowAlertasGeneral(false);
       setShowAlertasObjeciones(false);
+      setShowAlertasPublicaciones(false);
     }
   }, [activeTab]);
 
@@ -487,6 +490,30 @@ export default function HomePage() {
                 )}
               </div>
             )}
+
+            {/* ─── ALERTAS · PUBLICACIONES REE ──────────────────────────────── */}
+            <div className="ui-collapsible-card">
+              <button type="button" className="ui-collapsible-card__trigger"
+                onClick={() => setShowAlertasPublicaciones((v) => !v)}>
+                <div>
+                  <div className="ui-collapsible-card__title">ALERTAS · PUBLICACIONES REE</div>
+                  <p className="ui-collapsible-card__subtitle">
+                    Ficheros BALD nuevos publicados por REE (M2, M7, M11, ART15) detectados por el scheduler automático.
+                  </p>
+                </div>
+                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+                  {showAlertasPublicaciones ? "Ocultar" : "Mostrar"}
+                </span>
+              </button>
+              {showAlertasPublicaciones && (
+                <div className="ui-collapsible-card__body">
+                  <AlertasPublicacionesSection
+                    token={token}
+                    onNavigateToTablasResumen={() => setActiveTab("tablas-resumen")}
+                  />
+                </div>
+              )}
+            </div>
           </section>
         )}
 

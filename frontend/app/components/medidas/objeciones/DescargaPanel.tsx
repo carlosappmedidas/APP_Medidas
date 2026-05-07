@@ -226,6 +226,14 @@ export default function DescargaPanel({
     // Disparar búsqueda en el siguiente tick para que los setters hayan surtido efecto.
     // El endpoint acepta parámetros directos, por lo que podemos construir la request
     // sin depender del estado del componente.
+    //
+    // Importante: ponemos loading=true y buscado=true al INICIO para que la UI
+    // muestre "Buscando..." en vez del placeholder "Configura los filtros..."
+    // mientras la petición está en curso.
+    setLoading(true);
+    setBuscado(true);
+    setSeleccionados(new Set());
+    setResultados([]);
     (async () => {
       try {
         const params = new URLSearchParams();
@@ -245,9 +253,10 @@ export default function DescargaPanel({
         if (!res.ok) return;
         const data = await res.json();
         setResultados(data.resultados ?? []);
-        setBuscado(true);
-        setSeleccionados(new Set());
       } catch { /* silencioso */ }
+      finally {
+        setLoading(false);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, empresas]);

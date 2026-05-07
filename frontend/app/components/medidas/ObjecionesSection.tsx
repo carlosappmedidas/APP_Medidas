@@ -83,12 +83,6 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
     buscar_respuestas_ree: AutoConfigItem;
   };
   const [autoConfig, setAutoConfig] = useState<AutoConfigAll | null>(null);
-  const [alertasResumen, setAlertasResumen] = useState<{
-    total_alertas: number;
-    empresas_afectadas: number;
-    periodos_afectados: number;
-    total_aobs_pendientes: number;
-  } | null>(null);
 
   // ── Cargar empresas ───────────────────────────────────────────────────────
 
@@ -122,15 +116,15 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
 
   useEffect(() => { cargarDash(); }, [cargarDash]);
 
-  // ── Cargar automatización + resumen alertas (para tarjeta "Automatización") ──
+  // ── Cargar automatización (para tarjeta "Automatización") ──
   useEffect(() => {
     if (!token) return;
     const cargar = async () => {
       try {
-        const [resConfig, resResumen] = await Promise.all([
-          fetch(`${API_BASE_URL}/objeciones/automatizacion/config`, { headers: getAuthHeaders(token) }),
-          fetch(`${API_BASE_URL}/objeciones/alertas/resumen`,       { headers: getAuthHeaders(token) }),
-        ]);
+        const resConfig = await fetch(
+          `${API_BASE_URL}/objeciones/automatizacion/config`,
+          { headers: getAuthHeaders(token) },
+        );
         if (resConfig.ok) {
           // El endpoint devuelve un objeto con 3 claves. Normalizamos por seguridad.
           const data = await resConfig.json();
@@ -146,7 +140,6 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
             buscar_respuestas_ree: norm(data.buscar_respuestas_ree),
           });
         }
-        if (resResumen.ok) setAlertasResumen(await resResumen.json());
       } catch { /* silencioso */ }
     };
     void cargar();
@@ -189,7 +182,6 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
             empresaFiltroId={empresaFiltroId}
             empresas={empresas}
             autoConfig={autoConfig}
-            alertasResumen={alertasResumen}
             onGoToObjecionesConfig={onGoToObjecionesConfig}
           />
         )}

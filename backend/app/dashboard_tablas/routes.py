@@ -688,7 +688,13 @@ def get_dashboard_tablas_mensual(
         {(a, m) for (_, a, m), _ in ps_agg.items()},
         reverse=True,
     )
-    ps_anio, ps_mes = ps_periodos[0] if ps_periodos else (carga_anio, carga_mes)
+    # PS sigue al mes de carga (igual que M1): cuando la carga es Abr 2026,
+    # PS evalúa Abr 2026. Si las empresas aún no han subido el PS de ese mes,
+    # los KPIs saldrán a 0 y la cabecera mostrará "0/N empresas" — coherente
+    # con cómo se comporta General cuando no hay datos del mes objetivo.
+    # `ps_periodos` se sigue calculando para saber si hay datos históricos
+    # (lo usamos abajo para decidir si mostrar `cups_delta_vs_mes_anterior`).
+    ps_anio, ps_mes = (carga_anio, carga_mes)
     # Mes anterior para deltas
     ps_anio_prev, ps_mes_prev = _shift_mes(ps_anio, ps_mes, 1)
 

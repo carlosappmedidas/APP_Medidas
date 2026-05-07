@@ -1,7 +1,11 @@
-// app/components/admin/AlertasObjecionesSection.tsx
-// Sección "ALERTAS · OBJECIONES": listado de alertas generadas por el scheduler
-// de fin de recepción de objeciones. Permite descartar, resolver, y abrir la
-// descarga filtrada por empresa + periodo.
+// app/components/admin/AlertasPublicacionesSection.tsx
+// Sección "ALERTAS · PUBLICACIONES REE": listado de alertas generadas por el
+// scheduler de búsqueda de publicaciones REE en SFTP. Mismo patrón visual y
+// funcional que AlertasObjecionesSection: filtros + listado + botones
+// (Abrir en Descarga / Resolver / Descartar).
+//
+// Comparte endpoint con la campanita 🔔 de Resumen Tablas, así que resolver
+// o descartar desde aquí se refleja allí al refrescar y viceversa.
 
 "use client";
 
@@ -11,29 +15,30 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface AlertaRead {
-  id: number;
-  tenant_id: number;
-  empresa_id: number;
-  tipo: string;
-  periodo: string;              // YYYYMM
-  fecha_hito: string | null;
-  num_pendientes: number;
-  severidad: string;
-  estado: string;               // "activa" | "resuelta" | "descartada"
-  detalle: unknown[] | null;
-  resuelta_at: string | null;
-  resuelta_by: number | null;
-  created_at: string | null;
-  updated_at: string | null;
+  id:             number;
+  tenant_id:      number;
+  empresa_id:     number;
   empresa_nombre: string | null;
-  empresa_codigo_ree: string | null;
+  tipo:           string;          // publicacion_m2 | _m7 | _m11 | _art15
+  periodo:        string;          // YYYYMM
+  fecha_hito:     string | null;
+  num_pendientes: number;
+  severidad:      string;
+  estado:         string;          // "activa" | "resuelta" | "descartada"
+  created_at:     string | null;
 }
+
+type AlertasResponse = {
+  total:   number;
+  activas: number;
+  items:   AlertaRead[];
+};
 
 type EstadoFiltro = "activa" | "resuelta" | "descartada" | "todas";
 
 interface Props {
   token: string | null;
-  onNavigateToObjeciones?: () => void;
+  onNavigateToTablasResumen?: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -63,19 +68,28 @@ const colorEstado: Record<string, string> = {
   descartada: "#94A3B8",
 };
 
+// Chips por tipo — mismos colores que la campanita de Publicaciones.
+const TIPO_META: Record<string, { label: string; chipBg: string; chipColor: string }> = {
+  publicacion_m2:    { label: "M2",    chipBg: "rgba(55,138,221,0.18)", chipColor: "#85B7EB" },
+  publicacion_m7:    { label: "M7",    chipBg: "rgba(15,110,86,0.22)",  chipColor: "#5DCAA5" },
+  publicacion_m11:   { label: "M11",   chipBg: "rgba(186,117,23,0.18)", chipColor: "#FAC775" },
+  publicacion_art15: { label: "ART15", chipBg: "rgba(83,74,183,0.22)",  chipColor: "#AFA9EC" },
+};
+
 // ── Componente ────────────────────────────────────────────────────────────────
 
-export default function AlertasObjecionesSection({ token, onNavigateToObjeciones }: Props) {
+export default function AlertasPublicacionesSection({ token, onNavigateToTablasResumen }: Props) {
   const [alertas, setAlertas] = useState<AlertaRead[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
   // Filtros
-  const [filtroEstado, setFiltroEstado]     = useState<EstadoFiltro>("activa");
-  const [filtroEmpresa, setFiltroEmpresa]   = useState<string>("");    // nombre empresa o ""
-  const [filtroPeriodo, setFiltroPeriodo]   = useState<string>("");    // YYYYMM o ""
+  const [filtroEstado, setFiltroEstado]   = useState<EstadoFiltro>("activa");
+  const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
+  const [filtroPeriodo, setFiltroPeriodo] = useState<string>("");
+  const [filtroTipo, setFiltroTipo]       = useState<string>("");
 
-  // Estado transitorio por alerta (descartando/resolviendo)
+  // Estado transitorio por alerta
   const [procesandoId, setProcesandoId] = useState<number | null>(null);
 
   // ── Cargar alertas ───────────────────────────────────────────────────────
@@ -85,28 +99,30 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
     try {
       const params = new URLSearchParams();
       if (filtroEstado !== "todas") params.set("estado", filtroEstado);
-      if (filtroPeriodo)            params.set("periodo", filtroPeriodo);
-      const url = `${API_BASE_URL}/objeciones/alertas${params.toString() ? `?${params}` : ""}`;
+      const url = `${API_BASE_URL}/measures/descarga/automatizacion/alertas${params.toString() ? `?${params}` : ""}`;
       const res = await fetch(url, { headers: getAuthHeaders(token) });
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      setAlertas(await res.json());
+      const data: AlertasResponse = await res.json();
+      setAlertas(Array.isArray(data.items) ? data.items : []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error cargando alertas");
     } finally {
       setLoading(false);
     }
-  }, [token, filtroEstado, filtroPeriodo]);
+  }, [token, filtroEstado]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  // ── Filtrado client-side por empresa ─────────────────────────────────────
+  // ── Filtrado client-side ─────────────────────────────────────────────────
   const alertasVisibles = useMemo(() => {
-    if (!filtroEmpresa.trim()) return alertas;
-    const q = filtroEmpresa.trim().toLowerCase();
-    return alertas.filter(a => (a.empresa_nombre ?? "").toLowerCase().includes(q));
-  }, [alertas, filtroEmpresa]);
+    return alertas.filter(a => {
+      if (filtroEmpresa && (a.empresa_nombre ?? "") !== filtroEmpresa) return false;
+      if (filtroPeriodo && a.periodo !== filtroPeriodo) return false;
+      if (filtroTipo    && a.tipo    !== filtroTipo)    return false;
+      return true;
+    });
+  }, [alertas, filtroEmpresa, filtroPeriodo, filtroTipo]);
 
-  // ── Opciones dinámicas para filtros (empresas y periodos únicos) ─────────
   const empresasOpciones = useMemo(() => {
     const set = new Set<string>();
     alertas.forEach(a => { if (a.empresa_nombre) set.add(a.empresa_nombre); });
@@ -119,12 +135,18 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
     return Array.from(set).sort().reverse();
   }, [alertas]);
 
+  const tiposOpciones = useMemo(() => {
+    const set = new Set<string>();
+    alertas.forEach(a => { if (a.tipo) set.add(a.tipo); });
+    return Array.from(set).sort();
+  }, [alertas]);
+
   // ── Acciones sobre una alerta ────────────────────────────────────────────
   const accion = async (id: number, verbo: "descartar" | "resolver") => {
     if (!token) return;
     setProcesandoId(id); setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/objeciones/alertas/${id}/${verbo}`, {
+      const res = await fetch(`${API_BASE_URL}/measures/descarga/automatizacion/alertas/${id}/${verbo}`, {
         method: "POST",
         headers: getAuthHeaders(token),
       });
@@ -138,28 +160,19 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
   };
 
   const handleAbrirDescarga = (a: AlertaRead) => {
-    // Convertir periodo YYYYMM → YYYY-MM para el panel Descarga
+    // Convertir periodo YYYYMM → YYYY-MM
     const periodoDashed = a.periodo.length === 6
       ? `${a.periodo.substring(0, 4)}-${a.periodo.substring(4, 6)}`
       : a.periodo;
 
-    // Calcular fecha_desde = fecha_hito + 1 día (formato YYYY-MM-DD).
-    // El AOB suele aparecer en SFTP el día siguiente al hito de fin de recepción.
-    let fechaDesde: string | undefined;
-    if (a.fecha_hito) {
-      try {
-        const d = new Date(a.fecha_hito);
-        d.setDate(d.getDate() + 1);
-        const yyyy = d.getFullYear();
-        const mm   = String(d.getMonth() + 1).padStart(2, "0");
-        const dd   = String(d.getDate()).padStart(2, "0");
-        fechaDesde = `${yyyy}-${mm}-${dd}`;
-      } catch { /* sin fecha_desde */ }
-    }
+    // Criterio campana: fecha_desde = fecha_hito (sin sumar día) — coherente
+    // con CampanaAlertasPublicaciones.
+    const fechaDesde = a.fecha_hito ? a.fecha_hito.slice(0, 10) : undefined;
 
-    // Guardar intención en localStorage — el DescargaPanel la leerá al montarse
+    // Guardar intención en localStorage. Clave distinta a la de objeciones
+    // para que TablasDashboardPanel sepa que es para publicaciones.
     try {
-      localStorage.setItem("objeciones_autoabrir_descarga", JSON.stringify({
+      localStorage.setItem("publicaciones_autoabrir_descarga", JSON.stringify({
         empresa_id:  a.empresa_id,
         periodo:     periodoDashed,
         fecha_desde: fechaDesde,
@@ -167,9 +180,8 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
       }));
     } catch { /* silencioso */ }
 
-    // Navegar a Medidas > Objeciones (el padre se encarga)
-    if (onNavigateToObjeciones) {
-      onNavigateToObjeciones();
+    if (onNavigateToTablasResumen) {
+      onNavigateToTablasResumen();
     }
   };
 
@@ -204,13 +216,30 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <label style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Tipo
+          </label>
+          <select
+            value={filtroTipo}
+            onChange={e => setFiltroTipo(e.target.value)}
+            className="ui-input"
+            style={{ fontSize: 11, height: 30, minWidth: 110 }}
+          >
+            <option value="">Todos</option>
+            {tiposOpciones.map(t => (
+              <option key={t} value={t}>{TIPO_META[t]?.label ?? t}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <label style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Empresa
           </label>
           <select
             value={filtroEmpresa}
             onChange={e => setFiltroEmpresa(e.target.value)}
             className="ui-input"
-            style={{ fontSize: 11, height: 32, minWidth: 130 }}
+            style={{ fontSize: 11, height: 30, minWidth: 130 }}
           >
             <option value="">Todas</option>
             {empresasOpciones.map(e => (
@@ -227,7 +256,7 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
             value={filtroPeriodo}
             onChange={e => setFiltroPeriodo(e.target.value)}
             className="ui-input"
-            style={{ fontSize: 11, height: 32, minWidth: 130 }}
+            style={{ fontSize: 11, height: 30, minWidth: 130 }}
           >
             <option value="">Todos</option>
             {periodosOpciones.map(p => (
@@ -272,6 +301,7 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
           {alertasVisibles.map(a => {
             const proc = procesandoId === a.id;
             const colorPunto = colorEstado[a.estado] || "#94A3B8";
+            const meta = TIPO_META[a.tipo] ?? { label: a.tipo, chipBg: "rgba(255,255,255,0.06)", chipColor: "var(--text-muted)" };
             return (
               <div key={a.id} style={{
                 display: "grid",
@@ -283,7 +313,7 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
                 border: "0.5px solid var(--card-border)",
                 borderRadius: 8,
               }}>
-                {/* Icono izquierda */}
+                {/* Punto de estado */}
                 <div style={{
                   width: 8, height: 8, borderRadius: "50%",
                   background: colorPunto,
@@ -292,14 +322,15 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
                 {/* Info central */}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{
+                      background: meta.chipBg, color: meta.chipColor,
+                      padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600,
+                    }}>
+                      {meta.label}
+                    </span>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
                       {a.empresa_nombre || "Empresa desconocida"}
                     </span>
-                    {a.empresa_codigo_ree && (
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                        {a.empresa_codigo_ree}
-                      </span>
-                    )}
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>·</span>
                     <span style={{ fontSize: 12, color: "var(--text)" }}>{periodoLabel(a.periodo)}</span>
                     <span style={{
@@ -308,11 +339,11 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
                       background: "rgba(226,75,74,0.12)",
                       color: "#A32D2D",
                     }}>
-                      {a.num_pendientes} AOBs pendientes
+                      {a.num_pendientes} fichero{a.num_pendientes !== 1 ? "s" : ""} disponible{a.num_pendientes !== 1 ? "s" : ""}
                     </span>
                   </div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                    Fin recepción: {fechaCorta(a.fecha_hito)}
+                    Fecha hito: {fechaCorta(a.fecha_hito)}
                     {a.estado !== "activa" && (
                       <> · <span style={{ color: colorPunto, fontWeight: 500 }}>{a.estado}</span></>
                     )}
