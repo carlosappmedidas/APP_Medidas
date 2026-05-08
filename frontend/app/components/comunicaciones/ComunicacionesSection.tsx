@@ -864,22 +864,24 @@ export default function ComunicacionesSection({ token }: Props) {
     }
   };
 
-  // ── Descarga múltiple: servidor + PC ──────────────────────────────────────────
+  // ── Descarga múltiple al PC ──────────────────────────────────────────────────
   // Estrategia:
-  //  - Si hay 1 fichero seleccionado → descarga directa al PC + servidor.
+  //  - Si hay 1 fichero seleccionado → descarga directa al PC.
   //  - Si hay 2 o más → el backend empaqueta todos en 1 ZIP y descarga ese ZIP.
+  //
+  // El backend registra los logs con origen='manual' para que aparezcan en
+  // el historial. NO se guarda en el disco del servidor — el módulo Pérdidas
+  // sigue alimentándose del scheduler automático que SÍ guarda en disco.
   //
   // Para minimizar la latencia percibida del diálogo "Guardar como":
   //  1. PRIMERO pedimos al usuario el destino (showSaveFilePicker si está
   //     disponible) — aparece inmediatamente al click.
-  //  2. Mientras el usuario elige, ya disparamos las peticiones al backend
-  //     en paralelo (servidor + PC).
+  //  2. Mientras el usuario elige, ya disparamos la petición al backend.
   //  3. Cuando llega el blob, lo escribimos en el handle ya elegido (sin
   //     más diálogos) o disparamos el fallback `<a download>`.
   //
   // En navegadores sin showSaveFilePicker (Firefox, Safari, HTTP plano) el
-  // diálogo lo abre el navegador automáticamente al recibir el blob, así que
-  // mantenemos el flujo clásico.
+  // diálogo lo abre el navegador automáticamente al recibir el blob.
   const handleDescargar = async () => {
     if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
 
@@ -915,17 +917,13 @@ export default function ComunicacionesSection({ token }: Props) {
 
     setDescargando(true); setErrorExplorer(null);
     try {
-      // ── PASO 2: lanzar petición al servidor (FTP descargar al disco del server) ──
-      const promesaServidor = fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
-        method: "POST",
-        headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ path: explorerResult.path_actual, ficheros: ficherosArr }),
-      });
-
-      // ── PASO 3: lanzar petición de descarga al PC ───────────────────────
+      // ── PASO 2: lanzar petición de descarga al PC ───────────────────────
+      // Caso 1 fichero: endpoint individual (que ya registra en log).
+      // Caso 2+ ficheros: endpoint ZIP con registrar=true para que registre
+      // cada fichero en el historial igual que la descarga individual.
       let promesaPC: Promise<Response>;
       if (esZip) {
-        promesaPC = fetch(`${API_BASE_URL}/ftp/descargar-zip/${explorerConfigId}?registrar=false`, {
+        promesaPC = fetch(`${API_BASE_URL}/ftp/descargar-zip/${explorerConfigId}?registrar=true`, {
           method: "POST",
           headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -938,7 +936,7 @@ export default function ComunicacionesSection({ token }: Props) {
         const params = new URLSearchParams({
           path: explorerResult.path_actual,
           fichero: ficherosArr[0],
-          registrar: "false",
+          // registrar=true por defecto en este endpoint (no hace falta pasarlo)
         });
         promesaPC = fetch(
           `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
@@ -946,40 +944,34 @@ export default function ComunicacionesSection({ token }: Props) {
         );
       }
 
-      // ── PASO 4: esperar respuesta del PC y volcar al destino ────────────
+      // ── PASO 3: esperar respuesta y volcar al destino ───────────────────
       let copiadosAlPC = 0;
       const resPC = await promesaPC;
-      if (resPC.ok) {
-        const blob = await resPC.blob();
-        if (fileHandle) {
-          // Tenemos handle ya elegido → escribir directo, sin diálogo.
-          try {
-            const writable = await fileHandle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-            copiadosAlPC = ficherosArr.length;
-          } catch {
-            /* si falla el escribir, no contamos como copiado */
-          }
-        } else {
-          // Fallback clásico: <a download>. El navegador abre el diálogo
-          // o descarga directo según preferencias del usuario.
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = nombreSugerido;
-          a.click();
-          URL.revokeObjectURL(url);
+      if (!resPC.ok) throw new Error(`Error ${resPC.status}`);
+      const blob = await resPC.blob();
+      if (fileHandle) {
+        // Tenemos handle ya elegido → escribir directo, sin diálogo.
+        try {
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
           copiadosAlPC = ficherosArr.length;
+        } catch {
+          /* si falla el escribir, no contamos como copiado */
         }
+      } else {
+        // Fallback clásico: <a download>. El navegador abre el diálogo
+        // o descarga directo según preferencias del usuario.
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = nombreSugerido;
+        a.click();
+        URL.revokeObjectURL(url);
+        copiadosAlPC = ficherosArr.length;
       }
 
-      // ── PASO 5: esperar a que termine la descarga al servidor ───────────
-      const resServidor = await promesaServidor;
-      if (!resServidor.ok) throw new Error(`Error ${resServidor.status}`);
-      const data = await resServidor.json();
-
-      alert(`${data.descargados ?? 0} fichero(s) descargados al servidor y ${copiadosAlPC} al PC.`);
+      alert(`${copiadosAlPC} fichero(s) descargados al PC.`);
       setSelectedFicheros(new Set());
       if (subHistManualOpen) cargarLogsManual();
     } catch (e: unknown) {
@@ -1686,8 +1678,8 @@ export default function ComunicacionesSection({ token }: Props) {
                       <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                         style={{ height: 30, display: "flex", alignItems: "center", gap: 5, marginLeft: estaEnCarpetaSalida ? undefined : "auto" }}
                         onClick={handleDescargar} disabled={descargando}
-                        title="Descarga al servidor + al PC y registra en historial">
-                        <IconDownload /> {descargando ? "Descargando..." : `Servidor + PC (${selectedFicheros.size}) · ${fmtSizeTotal(tamanoSeleccionados)}`}
+                        title="Descarga al PC y registra en historial">
+                        <IconDownload /> {descargando ? "Descargando..." : `Descargar (${selectedFicheros.size}) · ${fmtSizeTotal(tamanoSeleccionados)}`}
                       </button>
                     )}
                   </div>
