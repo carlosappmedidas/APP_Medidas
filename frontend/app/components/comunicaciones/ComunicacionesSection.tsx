@@ -866,68 +866,115 @@ export default function ComunicacionesSection({ token }: Props) {
 
   // ── Descarga múltiple: servidor + PC ──────────────────────────────────────────
   // Estrategia:
-  //  - Si hay 1 fichero seleccionado → descarga directa al PC + servidor (un solo "Guardar como").
-  //  - Si hay 2 o más → el backend empaqueta todos en 1 ZIP y descarga ese ZIP
-  //    (un solo "Guardar como" del navegador). Los ficheros del ZIP quedan en
-  //    la raíz al descomprimir, sin subcarpetas. En paralelo se descarga al
-  //    servidor como hasta ahora.
+  //  - Si hay 1 fichero seleccionado → descarga directa al PC + servidor.
+  //  - Si hay 2 o más → el backend empaqueta todos en 1 ZIP y descarga ese ZIP.
+  //
+  // Para minimizar la latencia percibida del diálogo "Guardar como":
+  //  1. PRIMERO pedimos al usuario el destino (showSaveFilePicker si está
+  //     disponible) — aparece inmediatamente al click.
+  //  2. Mientras el usuario elige, ya disparamos las peticiones al backend
+  //     en paralelo (servidor + PC).
+  //  3. Cuando llega el blob, lo escribimos en el handle ya elegido (sin
+  //     más diálogos) o disparamos el fallback `<a download>`.
+  //
+  // En navegadores sin showSaveFilePicker (Firefox, Safari, HTTP plano) el
+  // diálogo lo abre el navegador automáticamente al recibir el blob, así que
+  // mantenemos el flujo clásico.
   const handleDescargar = async () => {
     if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
 
+    const ficherosArr = Array.from(selectedFicheros);
+    const esZip = ficherosArr.length > 1;
+
+    // Calcular nombre sugerido según caso
+    const config = configs.find(c => c.id === explorerConfigId);
+    const empresa = (config?.empresa_nombre || "ficheros").replace(/[^\w\-]/g, "_");
+    const fechaHoy = new Date().toISOString().slice(0, 10);
+    const nombreSugerido = esZip
+      ? `ficheros_${empresa}_${fechaHoy}.zip`
+      : ficherosArr[0];
+
+    // ── PASO 1: pedir el handle de destino ANTES del fetch ────────────────
+    // Si el navegador soporta showSaveFilePicker (Chrome/Edge en HTTPS o
+    // localhost), abrimos el diálogo inmediatamente como respuesta al click.
+    // Si no, fileHandle será null y caeremos al fallback `<a download>` al
+    // final, que sí funciona aunque tarde un poco la respuesta del backend.
+    const win = window as unknown as {
+      showSaveFilePicker?: (opts?: SaveFilePickerOptions) => Promise<FileSystemFileHandleLike>;
+    };
+    let fileHandle: FileSystemFileHandleLike | null = null;
+    if (typeof win.showSaveFilePicker === "function") {
+      try {
+        fileHandle = await win.showSaveFilePicker({ suggestedName: nombreSugerido });
+      } catch (err) {
+        // Cancelado por el usuario → aborta toda la operación
+        if (err instanceof Error && err.name === "AbortError") return;
+        // Otro error → seguimos sin handle, fallback se encargará
+      }
+    }
+
     setDescargando(true); setErrorExplorer(null);
     try {
-      // 1) Disparar descarga al servidor (en paralelo con la del PC).
+      // ── PASO 2: lanzar petición al servidor (FTP descargar al disco del server) ──
       const promesaServidor = fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
         method: "POST",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ path: explorerResult.path_actual, ficheros: Array.from(selectedFicheros) }),
+        body: JSON.stringify({ path: explorerResult.path_actual, ficheros: ficherosArr }),
       });
 
-      // 2) Descarga al PC: 1 fichero → directo. 2+ → ZIP en memoria.
-      const ficherosArr = Array.from(selectedFicheros);
-      let copiadosAlPC = 0;
-
-      if (ficherosArr.length === 1) {
-        // Caso 1 fichero — usamos el endpoint individual de toda la vida
-        const nombre = ficherosArr[0];
-        const params = new URLSearchParams({
-          path: explorerResult.path_actual,
-          fichero: nombre,
-          registrar: "false",  // el endpoint de servidor ya registra
-        });
-        const resPC = await fetch(
-          `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
-          { headers: getAuthHeaders(token) }
-        );
-        if (resPC.ok) {
-          const blob = await resPC.blob();
-          const ok = await descargarConDialogo(blob, nombre);
-          if (ok) copiadosAlPC = 1;
-        }
-      } else {
-        // Caso 2+ ficheros — ZIP en backend, 1 sola descarga.
-        const config = configs.find(c => c.id === explorerConfigId);
-        const empresa = (config?.empresa_nombre || "ficheros").replace(/[^\w\-]/g, "_");
-        const fechaHoy = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-        const nombreZip = `ficheros_${empresa}_${fechaHoy}.zip`;
-
-        const resZip = await fetch(`${API_BASE_URL}/ftp/descargar-zip/${explorerConfigId}?registrar=false`, {
+      // ── PASO 3: lanzar petición de descarga al PC ───────────────────────
+      let promesaPC: Promise<Response>;
+      if (esZip) {
+        promesaPC = fetch(`${API_BASE_URL}/ftp/descargar-zip/${explorerConfigId}?registrar=false`, {
           method: "POST",
           headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
           body: JSON.stringify({
             path: explorerResult.path_actual,
             ficheros: ficherosArr,
-            nombre_zip: nombreZip,
+            nombre_zip: nombreSugerido,
           }),
         });
-        if (resZip.ok) {
-          const blob = await resZip.blob();
-          const ok = await descargarConDialogo(blob, nombreZip);
-          if (ok) copiadosAlPC = ficherosArr.length;
+      } else {
+        const params = new URLSearchParams({
+          path: explorerResult.path_actual,
+          fichero: ficherosArr[0],
+          registrar: "false",
+        });
+        promesaPC = fetch(
+          `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
+          { headers: getAuthHeaders(token) }
+        );
+      }
+
+      // ── PASO 4: esperar respuesta del PC y volcar al destino ────────────
+      let copiadosAlPC = 0;
+      const resPC = await promesaPC;
+      if (resPC.ok) {
+        const blob = await resPC.blob();
+        if (fileHandle) {
+          // Tenemos handle ya elegido → escribir directo, sin diálogo.
+          try {
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            copiadosAlPC = ficherosArr.length;
+          } catch {
+            /* si falla el escribir, no contamos como copiado */
+          }
+        } else {
+          // Fallback clásico: <a download>. El navegador abre el diálogo
+          // o descarga directo según preferencias del usuario.
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = nombreSugerido;
+          a.click();
+          URL.revokeObjectURL(url);
+          copiadosAlPC = ficherosArr.length;
         }
       }
 
-      // 3) Esperar también a que termine la descarga al servidor.
+      // ── PASO 5: esperar a que termine la descarga al servidor ───────────
       const resServidor = await promesaServidor;
       if (!resServidor.ok) throw new Error(`Error ${resServidor.status}`);
       const data = await resServidor.json();
