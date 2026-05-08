@@ -36,7 +36,7 @@ type MainTab =
 
 const PAGE_TITLES: Record<MainTab, string> = {
   "dashboard": "Dashboard",
-  "tablas-resumen": "Resumen de tablas",
+  "tablas-resumen": "Gestión publicaciones",
   "tablas-general": "Medidas (General)", "tablas-ps": "Medidas (PS)",
   "objeciones": "Objeciones", "calendario-ree": "Calendario REE",
   "graficos": "Gráficos", "alertas": "Alertas", "usuarios": "Usuarios",
@@ -300,29 +300,26 @@ export default function HomePage() {
               </button>
               {medidasOpen && (
                 <div className="ui-nav-sub">
-                  <>
-                    <button type="button" onClick={() => { setActiveTab("tablas-resumen"); setTablasOpen(v => !v); }}
-                      className={["ui-nav-subitem", ["tablas-resumen","tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
-                      <span>Tablas</span>
-                      <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
-                    </button>
-                    {tablasOpen && (
-                      <div className="ui-nav-sub">
-                        <button type="button" onClick={() => setActiveTab("tablas-resumen")}
-                          className={["ui-nav-subitem", activeTab === "tablas-resumen" ? "ui-nav-subitem--active" : ""].join(" ")}>
-                          <span>Resumen</span>
-                        </button>
-                        <button type="button" onClick={() => setActiveTab("tablas-general")}
-                          className={["ui-nav-subitem", activeTab === "tablas-general" ? "ui-nav-subitem--active" : ""].join(" ")}>
-                          <span>Medidas general</span>
-                        </button>
-                        <button type="button" onClick={() => setActiveTab("tablas-ps")}
-                          className={["ui-nav-subitem", activeTab === "tablas-ps" ? "ui-nav-subitem--active" : ""].join(" ")}>
-                          <span>Medidas PS</span>
-                        </button>
-                      </div>
-                    )}
-                  </>
+                  {/* Gestión publicaciones — expandible y navegable a la vez:
+                      al pulsarla muestra TablasDashboardPanel (tablas-resumen)
+                      y abre/cierra el sub-submenú con Medidas general / PS. */}
+                  <button type="button" onClick={() => { setActiveTab("tablas-resumen"); setTablasOpen(v => !v); }}
+                    className={["ui-nav-subitem", ["tablas-resumen","tablas-general","tablas-ps"].includes(activeTab) ? "ui-nav-subitem--active" : ""].join(" ")}>
+                    <span>Gestión publicaciones</span>
+                    <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {tablasOpen && (
+                    <div className="ui-nav-sub">
+                      <button type="button" onClick={() => setActiveTab("tablas-general")}
+                        className={["ui-nav-subitem", activeTab === "tablas-general" ? "ui-nav-subitem--active" : ""].join(" ")}>
+                        <span>Medidas general</span>
+                      </button>
+                      <button type="button" onClick={() => setActiveTab("tablas-ps")}
+                        className={["ui-nav-subitem", activeTab === "tablas-ps" ? "ui-nav-subitem--active" : ""].join(" ")}>
+                        <span>Medidas PS</span>
+                      </button>
+                    </div>
+                  )}
                   {!isViewer && (
                     <button type="button" onClick={() => setActiveTab("objeciones")}
                       className={["ui-nav-subitem", activeTab === "objeciones" ? "ui-nav-subitem--active" : ""].join(" ")}>
