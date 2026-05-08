@@ -80,6 +80,8 @@ def _config_to_dict(obj: FtpConfig, db: Session) -> dict:
         "directorio_remoto": obj.directorio_remoto,
         "carpeta_aob": obj.carpeta_aob,   # feature Descarga en Objeciones
         "carpeta_publicaciones": obj.carpeta_publicaciones,   # feature Descarga de Publicaciones REE
+        "carpeta_entrada_general": obj.carpeta_entrada_general,   # entrada general (admite plantillas)
+        "carpeta_salida": obj.carpeta_salida,   # carpeta para subidas (fija)
         "usar_tls": obj.usar_tls,
 
         "activo": obj.activo,
@@ -242,12 +244,16 @@ def create_config(db: Session, *, tenant_id: int, empresa_id: int, nombre: Optio
                   host: str, puerto: int, usuario: str, password: str,
                   directorio_remoto: str, carpeta_aob: Optional[str],
                   carpeta_publicaciones: Optional[str],
+                  carpeta_entrada_general: Optional[str],
+                  carpeta_salida: Optional[str],
                   usar_tls: bool, activo: bool) -> dict:
     obj = FtpConfig(tenant_id=tenant_id, empresa_id=empresa_id, nombre=nombre,
                     host=host, puerto=puerto, usuario=usuario,
                     password_cifrada=cifrar_password(password),
                     directorio_remoto=directorio_remoto, carpeta_aob=carpeta_aob,
                     carpeta_publicaciones=carpeta_publicaciones,
+                    carpeta_entrada_general=carpeta_entrada_general,
+                    carpeta_salida=carpeta_salida,
                     usar_tls=usar_tls, activo=activo)
     db.add(obj)
     db.commit()
@@ -260,6 +266,8 @@ def update_config(db: Session, *, config_id: int, tenant_id: int, nombre: Option
                   password: Optional[str], directorio_remoto: Optional[str],
                   carpeta_aob: Optional[str],
                   carpeta_publicaciones: Optional[str],
+                  carpeta_entrada_general: Optional[str],
+                  carpeta_salida: Optional[str],
                   usar_tls: Optional[bool], activo: Optional[bool]) -> dict:
     obj = db.query(FtpConfig).filter(FtpConfig.id == config_id, FtpConfig.tenant_id == tenant_id).first()
     if obj is None:
@@ -280,6 +288,10 @@ def update_config(db: Session, *, config_id: int, tenant_id: int, nombre: Option
         obj.carpeta_aob = carpeta_aob  # type: ignore
     if carpeta_publicaciones is not None:
         obj.carpeta_publicaciones = carpeta_publicaciones  # type: ignore
+    if carpeta_entrada_general is not None:
+        obj.carpeta_entrada_general = carpeta_entrada_general  # type: ignore
+    if carpeta_salida is not None:
+        obj.carpeta_salida = carpeta_salida  # type: ignore
     if usar_tls is not None:
         obj.usar_tls = usar_tls  # type: ignore
     if activo is not None:
@@ -631,6 +643,61 @@ def leer_fichero_ftp(db: Session, *, config_id: int, tenant_id: int,
              config_id=config_id, rule_id=None, origen="manual",
              nombre_fichero=fichero, tamanio=len(contenido), estado="ok")
     return contenido
+
+
+# ── Subir ficheros al SFTP ────────────────────────────────────────────────────
+
+def subir_ficheros(db: Session, *, config_id: int, tenant_id: int,
+                   path: str, ficheros: List[Tuple[str, bytes]]) -> Tuple[int, int, List[str]]:
+    """
+    Sube uno o varios ficheros al SFTP en la carpeta indicada por `path`.
+
+    Cada fichero se registra en el log con origen="upload" para distinguirlo
+    de las descargas manuales/automáticas. Si un upload falla, continúa con
+    los demás (no aborta el lote completo).
+
+    Args:
+      ficheros: lista de tuplas (nombre, contenido_bytes).
+
+    Returns:
+      (subidos, errores, detalle): contadores y lista de mensajes legibles.
+    """
+    config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
+
+    if not ficheros:
+        return 0, 0, ["Sin ficheros para subir"]
+
+    subidos = 0
+    errores = 0
+    detalle: List[str] = []
+
+    ftp = _conectar_en_path(config, path)
+    try:
+        for nombre, contenido in ficheros:
+            try:
+                buf = io.BytesIO(contenido)
+                ftp.storbinary(f"STOR {nombre}", buf)
+                tamanio = len(contenido)
+                _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id),
+                     config_id=config_id, rule_id=None, origen="upload",
+                     nombre_fichero=nombre, tamanio=tamanio, estado="ok")
+                subidos += 1
+                detalle.append(f"OK: {nombre} ({tamanio} bytes)")
+            except Exception as e:
+                errores += 1
+                msg = str(e)[:200]
+                _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id),
+                     config_id=config_id, rule_id=None, origen="upload",
+                     nombre_fichero=nombre, tamanio=None, estado="error",
+                     mensaje_error=msg)
+                detalle.append(f"ERROR: {nombre} — {msg}")
+    finally:
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+
+    return subidos, errores, detalle
 
 
 # ── Ejecutar regla automática ─────────────────────────────────────────────────

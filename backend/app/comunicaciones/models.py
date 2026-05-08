@@ -22,6 +22,8 @@ class FtpConfig(Base):
     directorio_remoto = Column(String(500), nullable=False, default="/")
     carpeta_aob            = Column(String(500), nullable=True)   # ← para feature Descarga en Objeciones (admite {mes_actual}/{mes_anterior} o ruta fija)
     carpeta_publicaciones  = Column(String(500), nullable=True)   # ← para feature Descarga de Publicaciones REE (BALD, M1, PS); admite {mes_actual}/{mes_anterior} o ruta fija
+    carpeta_entrada_general = Column(String(500), nullable=True)  # ← entrada general configurable por empresa; admite {mes_actual}/{mes_anterior}; NULL = usa directorio_remoto
+    carpeta_salida          = Column(String(500), nullable=True)  # ← carpeta donde subir ficheros desde la UI (FIJA, no admite plantillas); NULL = no se muestra botón subir
     usar_tls               = Column(Boolean, nullable=False, default=True)
     activo            = Column(Boolean, nullable=False, default=True)
     created_at        = Column(DateTime, nullable=False, server_default=func.now())

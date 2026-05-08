@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 import io
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -57,6 +57,8 @@ def create_config(payload: FtpConfigCreate, db: Session = Depends(get_db), curre
             password=payload.password, directorio_remoto=payload.directorio_remoto,
             carpeta_aob=payload.carpeta_aob,
             carpeta_publicaciones=payload.carpeta_publicaciones,
+            carpeta_entrada_general=payload.carpeta_entrada_general,
+            carpeta_salida=payload.carpeta_salida,
             usar_tls=payload.usar_tls, activo=payload.activo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -71,6 +73,8 @@ def update_config(config_id: int, payload: FtpConfigUpdate, db: Session = Depend
             password=payload.password, directorio_remoto=payload.directorio_remoto,
             carpeta_aob=payload.carpeta_aob,
             carpeta_publicaciones=payload.carpeta_publicaciones,
+            carpeta_entrada_general=payload.carpeta_entrada_general,
+            carpeta_salida=payload.carpeta_salida,
             usar_tls=payload.usar_tls, activo=payload.activo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
@@ -152,6 +156,51 @@ def descargar_archivo_navegador(config_id: int, path: str = Query(...), fichero:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
     return StreamingResponse(io.BytesIO(contenido), media_type="application/octet-stream",
                              headers={"Content-Disposition": f'attachment; filename="{fichero}"'})
+
+
+# ── Subida de ficheros al SFTP ────────────────────────────────────────────────
+
+@router.post("/subir-archivo/{config_id}")
+async def subir_archivos_sftp(
+    config_id: int,
+    path: str = Query(..., description="Carpeta destino dentro del SFTP"),
+    ficheros: List[UploadFile] = File(..., description="Ficheros a subir (uno o varios)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Sube uno o varios ficheros al SFTP en la carpeta indicada.
+    Cada fichero queda registrado en el historial con origen='upload'.
+    """
+    _assert_not_viewer(current_user)
+    if not ficheros:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se indicaron ficheros")
+
+    # Leer todos los contenidos en memoria (UploadFile.read() es async).
+    # Si en el futuro hay ficheros muy grandes habría que streamear, pero
+    # para AOB/REOB típicos (KBs) leer en memoria es lo más simple.
+    contenidos: List[Tuple[str, bytes]] = []
+    for f in ficheros:
+        try:
+            data = await f.read()
+            contenidos.append((f.filename or "sin_nombre", data))
+        finally:
+            await f.close()
+
+    try:
+        subidos, errores, detalle = services.subir_ficheros(
+            db,
+            config_id=config_id,
+            tenant_id=_tenant_id(current_user),
+            path=path,
+            ficheros=contenidos,
+        )
+        return {"subidos": subidos, "errores": errores, "detalle": detalle}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
 # ── Reglas de sync automática ─────────────────────────────────────────────────

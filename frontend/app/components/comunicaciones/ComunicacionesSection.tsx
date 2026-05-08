@@ -16,6 +16,8 @@ interface FtpConfig {
   puerto: number;
   usuario: string;
   directorio_remoto: string;
+  carpeta_entrada_general: string | null;
+  carpeta_salida: string | null;
   usar_tls: boolean;
   activo: boolean;
 }
@@ -28,6 +30,8 @@ interface FtpConfigForm {
   usuario: string;
   password: string;
   directorio_remoto: string;
+  carpeta_entrada_general: string;
+  carpeta_salida: string;
   usar_tls: boolean;
   activo: boolean;
 }
@@ -159,13 +163,133 @@ function fmtSizeTotal(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Mínimo de la API File System Access que usamos (showSaveFilePicker no
+// está aún en los tipos estándar de TypeScript en algunos entornos).
+type SaveFilePickerOptions = {
+  suggestedName?: string;
+  types?: { description?: string; accept: Record<string, string[]> }[];
+};
+type FileSystemWritableFileStreamLike = {
+  write: (data: Blob | ArrayBuffer | string) => Promise<void>;
+  close: () => Promise<void>;
+};
+type FileSystemFileHandleLike = {
+  createWritable: () => Promise<FileSystemWritableFileStreamLike>;
+};
+
+/**
+ * Descarga un blob al PC del usuario.
+ *
+ * 1) Si el navegador soporta `window.showSaveFilePicker` (Chrome/Edge/Opera
+ *    en desktop), abre el diálogo nativo "Guardar como..." y deja al
+ *    usuario elegir carpeta y nombre.
+ * 2) Si no (Firefox / Safari / móvil), hace fallback al método clásico
+ *    `<a download>` que descarga directo a la carpeta de descargas
+ *    configurada en el navegador.
+ *
+ * Devuelve true si la descarga se completó (o se inició en fallback),
+ * false si el usuario canceló el diálogo.
+ */
+async function descargarConDialogo(blob: Blob, nombreSugerido: string): Promise<boolean> {
+  const win = window as unknown as {
+    showSaveFilePicker?: (opts?: SaveFilePickerOptions) => Promise<FileSystemFileHandleLike>;
+  };
+
+  if (typeof win.showSaveFilePicker === "function") {
+    try {
+      const handle = await win.showSaveFilePicker({ suggestedName: nombreSugerido });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return true;
+    } catch (err) {
+      // El usuario canceló el diálogo o falló por otro motivo.
+      // Si fue cancelación (AbortError) no hacemos fallback, simplemente cancelamos.
+      if (err instanceof Error && err.name === "AbortError") return false;
+      // Para cualquier otro error (permisos, etc.) caemos al fallback clásico.
+    }
+  }
+
+  // Fallback clásico: descarga directa a la carpeta por defecto del navegador.
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombreSugerido;
+  a.click();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+// Tipos mínimos para `showDirectoryPicker` (el TS estándar aún no los incluye).
+type DirectoryPickerOptions = {
+  id?: string;
+  mode?: "read" | "readwrite";
+  startIn?: "desktop" | "documents" | "downloads" | "music" | "pictures" | "videos";
+};
+type FileSystemDirectoryHandleLike = {
+  getFileHandle: (
+    name: string,
+    opts?: { create?: boolean }
+  ) => Promise<FileSystemFileHandleLike>;
+};
+
+/**
+ * Pide al usuario que elija una CARPETA destino una sola vez. Devuelve un
+ * handle que se puede usar para escribir múltiples ficheros en ella sin
+ * más diálogos. Si el navegador no soporta la API, devuelve null y el
+ * llamante debe usar fallback clásico (descarga al directorio por defecto).
+ *
+ * Devuelve null si:
+ *  - el navegador no soporta showDirectoryPicker (Firefox/Safari/móvil)
+ *  - el usuario canceló el diálogo
+ */
+async function pedirCarpetaDestino(): Promise<FileSystemDirectoryHandleLike | null> {
+  const win = window as unknown as {
+    showDirectoryPicker?: (opts?: DirectoryPickerOptions) => Promise<FileSystemDirectoryHandleLike>;
+  };
+
+  if (typeof win.showDirectoryPicker !== "function") {
+    return null;
+  }
+  try {
+    return await win.showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
+  } catch (err) {
+    // El usuario canceló o falló: tratamos ambos casos como "sin carpeta".
+    if (err instanceof Error && err.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/**
+ * Escribe un blob dentro de una carpeta ya elegida (no abre ningún
+ * diálogo). Si falla la escritura por cualquier motivo, devuelve false
+ * y el llamante puede decidir qué hacer.
+ */
+async function escribirEnCarpeta(
+  dirHandle: FileSystemDirectoryHandleLike,
+  nombreFichero: string,
+  blob: Blob,
+): Promise<boolean> {
+  try {
+    const fileHandle = await dirHandle.getFileHandle(nombreFichero, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function labelConexion(c: FtpConfig): string {
   return `${c.nombre || c.empresa_nombre} — ${c.host} (${c.usar_tls ? "TLS" : "FTP"})`;
 }
 
 const FORM_CONFIG_VACIO: FtpConfigForm = {
   empresa_id: "", nombre: "", host: "www.asemeservicios.com", puerto: 22221,
-  usuario: "", password: "", directorio_remoto: "/", usar_tls: true, activo: true,
+  usuario: "", password: "", directorio_remoto: "/",
+  carpeta_entrada_general: "", carpeta_salida: "",
+  usar_tls: true, activo: true,
 };
 
 const FORM_RULE_VACIO: FtpSyncRuleForm = {
@@ -229,6 +353,13 @@ const IconDownload = () => (
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
     <polyline points="7 10 12 15 17 10"/>
     <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+);
+const IconUpload = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/>
+    <line x1="12" y1="3" x2="12" y2="15"/>
   </svg>
 );
 const IconSearch = () => (
@@ -373,6 +504,7 @@ export default function ComunicacionesSection({ token }: Props) {
   const [filtroMesNum, setFiltroMesNum]           = useState("");
   const [filtroAnioNum, setFiltroAnioNum]         = useState("");
   const [descargando, setDescargando]             = useState(false);
+  const [subiendo, setSubiendo]                   = useState(false);
   const [requiereFiltro, setRequiereFiltro]       = useState(false);
   const [pageExplorer, setPageExplorer]           = useState(0);
   const [pageSizeExplorer, setPageSizeExplorer]   = useState(20);
@@ -388,6 +520,24 @@ export default function ComunicacionesSection({ token }: Props) {
   const filtroMes = filtroMesNum ? `${filtroAnioNum || anioDefault}-${filtroMesNum}` : filtroAnioNum ? filtroAnioNum : "";
   const hayFiltros = filtroNombre.trim() || filtroMes;
   const conexionesActivas = configs.filter(c => c.activo);
+
+  // Detectar si el usuario está navegando dentro de la carpeta de salida
+  // configurada para la conexión activa. El botón "Subir" solo aparece si:
+  //  1) Hay carpeta_salida configurada (no null/vacío).
+  //  2) El path actual coincide con esa carpeta o es subcarpeta de ella.
+  // Normalizamos quitando "/" finales para que "/02/salida" matchee con
+  // "/02/salida" y con "/02/salida/2026", pero NO con "/02/salida_otra".
+  const configActual = explorerConfigId
+    ? configs.find(c => c.id === explorerConfigId)
+    : undefined;
+  const carpetaSalida = (configActual?.carpeta_salida || "").trim();
+  const estaEnCarpetaSalida = (() => {
+    if (!carpetaSalida || !explorerResult) return false;
+    const normalizar = (p: string) => p.replace(/\/+$/, "") || "/";
+    const salida = normalizar(carpetaSalida);
+    const actual = normalizar(explorerResult.path_actual);
+    return actual === salida || actual.startsWith(salida + "/");
+  })();
 
   const ficherosPagina = explorerResult
     ? explorerResult.ficheros.slice(pageExplorer * pageSizeExplorer, (pageExplorer + 1) * pageSizeExplorer)
@@ -458,7 +608,12 @@ export default function ComunicacionesSection({ token }: Props) {
       const res = await fetch(url, {
         method,
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ ...configForm, nombre: configForm.nombre || null }),
+        body: JSON.stringify({
+          ...configForm,
+          nombre: configForm.nombre || null,
+          carpeta_entrada_general: configForm.carpeta_entrada_general.trim() || null,
+          carpeta_salida: configForm.carpeta_salida.trim() || null,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -702,12 +857,7 @@ export default function ComunicacionesSection({ token }: Props) {
       );
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fichero;
-      a.click();
-      URL.revokeObjectURL(url);
+      await descargarConDialogo(blob, fichero);
       if (subHistManualOpen) cargarLogsManual();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error descargando fichero");
@@ -715,8 +865,19 @@ export default function ComunicacionesSection({ token }: Props) {
   };
 
   // ── Descarga múltiple: servidor + PC ──────────────────────────────────────────
+  // Estrategia para la copia al PC:
+  //  - Pide al usuario una carpeta destino UNA SOLA VEZ con showDirectoryPicker.
+  //  - Si elige una carpeta, todos los ficheros se escriben ahí sin más diálogos.
+  //  - Si el navegador no lo soporta o cancela el diálogo, hacemos fallback al
+  //    método clásico: cada fichero se descarga directamente a la carpeta por
+  //    defecto del navegador (sin posibilidad de elegir destino).
   const handleDescargar = async () => {
     if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
+
+    // Pedimos la carpeta destino ANTES de arrancar las descargas para que
+    // el diálogo aparezca como respuesta directa al click del usuario.
+    const dirHandle = await pedirCarpetaDestino();
+
     setDescargando(true); setErrorExplorer(null);
     try {
       const res = await fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
@@ -727,6 +888,7 @@ export default function ComunicacionesSection({ token }: Props) {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
 
+      let copiadosAlPC = 0;
       for (const nombre of Array.from(selectedFicheros)) {
         try {
           const params = new URLSearchParams({ path: explorerResult.path_actual, fichero: nombre, registrar: "false" });
@@ -734,24 +896,88 @@ export default function ComunicacionesSection({ token }: Props) {
             `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
             { headers: getAuthHeaders(token) }
           );
-          if (resPC.ok) {
-            const blob = await resPC.blob();
+          if (!resPC.ok) continue;
+          const blob = await resPC.blob();
+
+          if (dirHandle) {
+            // Tenemos carpeta elegida → escribimos directamente sin diálogo.
+            const ok = await escribirEnCarpeta(dirHandle, nombre, blob);
+            if (ok) copiadosAlPC++;
+          } else {
+            // Fallback clásico: descarga directa a la carpeta de descargas del navegador.
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
             a.download = nombre;
             a.click();
             URL.revokeObjectURL(url);
+            copiadosAlPC++;
           }
         } catch { /* si falla uno, continuamos con el resto */ }
       }
 
-      alert(`${data.descargados ?? 0} fichero(s) descargados al servidor y al PC.`);
+      alert(`${data.descargados ?? 0} fichero(s) descargados al servidor y ${copiadosAlPC} al PC.`);
       setSelectedFicheros(new Set());
       if (subHistManualOpen) cargarLogsManual();
     } catch (e: unknown) {
       setErrorExplorer(e instanceof Error ? e.message : "Error descargando");
     } finally { setDescargando(false); }
+  };
+
+  // ── Subida de ficheros del PC al SFTP ────────────────────────────────────────
+  // Crea un input file invisible, deja que el usuario elija ficheros,
+  // los empaqueta en FormData y los envía al endpoint POST /ftp/subir-archivo.
+  const handleSubirFicheros = async () => {
+    if (!token || !explorerConfigId || !explorerResult || !estaEnCarpetaSalida) return;
+
+    // Crear input file invisible (multiple para subir varios a la vez)
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.style.display = "none";
+    document.body.appendChild(input);
+
+    // Esperamos a que el usuario seleccione ficheros (o cancele)
+    const ficheros: FileList | null = await new Promise((resolve) => {
+      input.addEventListener("change", () => resolve(input.files), { once: true });
+      input.addEventListener("cancel", () => resolve(null), { once: true });
+      input.click();
+    });
+
+    document.body.removeChild(input);
+    if (!ficheros || ficheros.length === 0) return;
+
+    setSubiendo(true);
+    setErrorExplorer(null);
+    try {
+      const formData = new FormData();
+      for (let i = 0; i < ficheros.length; i++) {
+        formData.append("ficheros", ficheros[i]);
+      }
+      const params = new URLSearchParams({ path: explorerResult.path_actual });
+      const res = await fetch(
+        `${API_BASE_URL}/ftp/subir-archivo/${explorerConfigId}?${params}`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(token),  // sin Content-Type — el browser lo pone con el boundary
+          body: formData,
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+      }
+      const data = await res.json();
+      alert(`${data.subidos ?? 0} fichero(s) subidos al SFTP, ${data.errores ?? 0} con errores.`);
+
+      // Recargar el listado del explorador para que se vean los ficheros nuevos.
+      explorarPath(explorerResult.path_actual, filtroNombre, filtroMes);
+      if (subHistManualOpen) cargarLogsManual();
+    } catch (e: unknown) {
+      setErrorExplorer(e instanceof Error ? e.message : "Error subiendo ficheros");
+    } finally {
+      setSubiendo(false);
+    }
   };
 
   const toggleFichero = (nombre: string) => {
@@ -1029,6 +1255,20 @@ export default function ComunicacionesSection({ token }: Props) {
                     <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Directorio raíz</label>
                     <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.directorio_remoto} onChange={e => setConfigForm(f => ({ ...f, directorio_remoto: e.target.value }))} placeholder="/" />
                   </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Carpeta entrada general <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.carpeta_entrada_general} onChange={e => setConfigForm(f => ({ ...f, carpeta_entrada_general: e.target.value }))} placeholder="ej: /01/entradaHistorico/{mes_actual}" />
+                    <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                      Admite <code>{"{mes_actual}"}</code> y <code>{"{mes_anterior}"}</code>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Carpeta salida <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.carpeta_salida} onChange={e => setConfigForm(f => ({ ...f, carpeta_salida: e.target.value }))} placeholder="ej: /02/salidaHistorico" />
+                    <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                      Carpeta fija para subir ficheros al SFTP
+                    </div>
+                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1084,7 +1324,7 @@ export default function ComunicacionesSection({ token }: Props) {
                       <td className="ui-td">
                         <div style={{ display: "flex", gap: 4 }}>
                           <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
-                            onClick={() => { setEditConfigId(c.id); setConfigForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, usar_tls: c.usar_tls, activo: c.activo }); setShowConfigForm(true); }}>
+                            onClick={() => { setEditConfigId(c.id); setConfigForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, carpeta_entrada_general: c.carpeta_entrada_general || "", carpeta_salida: c.carpeta_salida || "", usar_tls: c.usar_tls, activo: c.activo }); setShowConfigForm(true); }}>
                             <IconEdit />
                           </button>
                           <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }} onClick={() => handleDeleteConfig(c.id)}><IconTrash /></button>
@@ -1371,9 +1611,17 @@ export default function ComunicacionesSection({ token }: Props) {
                         </>
                       )}
                     </div>
+                    {estaEnCarpetaSalida && (
+                      <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                        style={{ height: 30, display: "flex", alignItems: "center", gap: 5, marginLeft: selectedFicheros.size > 0 ? undefined : "auto" }}
+                        onClick={handleSubirFicheros} disabled={subiendo}
+                        title="Subir ficheros del PC a esta carpeta del SFTP">
+                        <IconUpload /> {subiendo ? "Subiendo..." : "Subir ficheros"}
+                      </button>
+                    )}
                     {selectedFicheros.size > 0 && (
                       <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                        style={{ height: 30, display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}
+                        style={{ height: 30, display: "flex", alignItems: "center", gap: 5, marginLeft: estaEnCarpetaSalida ? undefined : "auto" }}
                         onClick={handleDescargar} disabled={descargando}
                         title="Descarga al servidor + al PC y registra en historial">
                         <IconDownload /> {descargando ? "Descargando..." : `Servidor + PC (${selectedFicheros.size}) · ${fmtSizeTotal(tamanoSeleccionados)}`}
