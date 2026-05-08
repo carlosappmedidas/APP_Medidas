@@ -865,56 +865,72 @@ export default function ComunicacionesSection({ token }: Props) {
   };
 
   // ── Descarga múltiple: servidor + PC ──────────────────────────────────────────
-  // Estrategia para la copia al PC:
-  //  - Pide al usuario una carpeta destino UNA SOLA VEZ con showDirectoryPicker.
-  //  - Si elige una carpeta, todos los ficheros se escriben ahí sin más diálogos.
-  //  - Si el navegador no lo soporta o cancela el diálogo, hacemos fallback al
-  //    método clásico: cada fichero se descarga directamente a la carpeta por
-  //    defecto del navegador (sin posibilidad de elegir destino).
+  // Estrategia:
+  //  - Si hay 1 fichero seleccionado → descarga directa al PC + servidor (un solo "Guardar como").
+  //  - Si hay 2 o más → el backend empaqueta todos en 1 ZIP y descarga ese ZIP
+  //    (un solo "Guardar como" del navegador). Los ficheros del ZIP quedan en
+  //    la raíz al descomprimir, sin subcarpetas. En paralelo se descarga al
+  //    servidor como hasta ahora.
   const handleDescargar = async () => {
     if (!token || !explorerConfigId || selectedFicheros.size === 0 || !explorerResult) return;
 
-    // Pedimos la carpeta destino ANTES de arrancar las descargas para que
-    // el diálogo aparezca como respuesta directa al click del usuario.
-    const dirHandle = await pedirCarpetaDestino();
-
     setDescargando(true); setErrorExplorer(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
+      // 1) Disparar descarga al servidor (en paralelo con la del PC).
+      const promesaServidor = fetch(`${API_BASE_URL}/ftp/descargar/${explorerConfigId}`, {
         method: "POST",
         headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
         body: JSON.stringify({ path: explorerResult.path_actual, ficheros: Array.from(selectedFicheros) }),
       });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      const data = await res.json();
 
+      // 2) Descarga al PC: 1 fichero → directo. 2+ → ZIP en memoria.
+      const ficherosArr = Array.from(selectedFicheros);
       let copiadosAlPC = 0;
-      for (const nombre of Array.from(selectedFicheros)) {
-        try {
-          const params = new URLSearchParams({ path: explorerResult.path_actual, fichero: nombre, registrar: "false" });
-          const resPC = await fetch(
-            `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
-            { headers: getAuthHeaders(token) }
-          );
-          if (!resPC.ok) continue;
-          const blob = await resPC.blob();
 
-          if (dirHandle) {
-            // Tenemos carpeta elegida → escribimos directamente sin diálogo.
-            const ok = await escribirEnCarpeta(dirHandle, nombre, blob);
-            if (ok) copiadosAlPC++;
-          } else {
-            // Fallback clásico: descarga directa a la carpeta de descargas del navegador.
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = nombre;
-            a.click();
-            URL.revokeObjectURL(url);
-            copiadosAlPC++;
-          }
-        } catch { /* si falla uno, continuamos con el resto */ }
+      if (ficherosArr.length === 1) {
+        // Caso 1 fichero — usamos el endpoint individual de toda la vida
+        const nombre = ficherosArr[0];
+        const params = new URLSearchParams({
+          path: explorerResult.path_actual,
+          fichero: nombre,
+          registrar: "false",  // el endpoint de servidor ya registra
+        });
+        const resPC = await fetch(
+          `${API_BASE_URL}/ftp/descargar-archivo/${explorerConfigId}?${params}`,
+          { headers: getAuthHeaders(token) }
+        );
+        if (resPC.ok) {
+          const blob = await resPC.blob();
+          const ok = await descargarConDialogo(blob, nombre);
+          if (ok) copiadosAlPC = 1;
+        }
+      } else {
+        // Caso 2+ ficheros — ZIP en backend, 1 sola descarga.
+        const config = configs.find(c => c.id === explorerConfigId);
+        const empresa = (config?.empresa_nombre || "ficheros").replace(/[^\w\-]/g, "_");
+        const fechaHoy = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const nombreZip = `ficheros_${empresa}_${fechaHoy}.zip`;
+
+        const resZip = await fetch(`${API_BASE_URL}/ftp/descargar-zip/${explorerConfigId}?registrar=false`, {
+          method: "POST",
+          headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: explorerResult.path_actual,
+            ficheros: ficherosArr,
+            nombre_zip: nombreZip,
+          }),
+        });
+        if (resZip.ok) {
+          const blob = await resZip.blob();
+          const ok = await descargarConDialogo(blob, nombreZip);
+          if (ok) copiadosAlPC = ficherosArr.length;
+        }
       }
+
+      // 3) Esperar también a que termine la descarga al servidor.
+      const resServidor = await promesaServidor;
+      if (!resServidor.ok) throw new Error(`Error ${resServidor.status}`);
+      const data = await resServidor.json();
 
       alert(`${data.descargados ?? 0} fichero(s) descargados al servidor y ${copiadosAlPC} al PC.`);
       setSelectedFicheros(new Set());

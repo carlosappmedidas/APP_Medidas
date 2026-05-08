@@ -700,6 +700,81 @@ def subir_ficheros(db: Session, *, config_id: int, tenant_id: int,
     return subidos, errores, detalle
 
 
+# ── Crear ZIP de varios ficheros del SFTP en memoria ─────────────────────────
+
+def crear_zip_ficheros(db: Session, *, config_id: int, tenant_id: int,
+                       path: str, nombres: List[str], registrar: bool = True) -> Tuple[bytes, int, int]:
+    """
+    Lee varios ficheros del SFTP y los empaqueta en un único ZIP en memoria.
+    Cada fichero queda en la RAÍZ del ZIP (no en subcarpetas) para que el
+    usuario al descomprimir vea los ficheros directamente sin estructura
+    intermedia.
+
+    Si registrar=True, cada fichero se registra en el log con origen='manual'
+    (igual que la descarga manual normal). Si un fichero falla, se sigue con
+    los demás (no aborta el ZIP completo).
+
+    Returns:
+      (contenido_zip_bytes, ok_count, error_count)
+    """
+    import zipfile
+
+    config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
+
+    if not nombres:
+        raise ValueError("No se indicaron ficheros")
+
+    # Pre-leer fechas FTP del LIST para registrar en log
+    fechas_ftp: Dict[str, str] = {}
+    try:
+        ftp_list = _conectar_en_path(config, path)
+        lineas: List[str] = []
+        ftp_list.retrlines("LIST", lineas.append)
+        for linea in lineas:
+            parsed = _parse_list_line(linea)
+            if parsed and parsed["tipo"] == "file" and parsed["nombre"] in nombres:
+                fechas_ftp[parsed["nombre"]] = parsed["fecha"]
+        ftp_list.quit()
+    except Exception:
+        pass
+
+    buf_zip = io.BytesIO()
+    ok_count = 0
+    error_count = 0
+
+    ftp = _conectar_en_path(config, path)
+    try:
+        with zipfile.ZipFile(buf_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for nombre in nombres:
+                try:
+                    buf_fichero = io.BytesIO()
+                    ftp.retrbinary(f"RETR {nombre}", buf_fichero.write)
+                    contenido = buf_fichero.getvalue()
+                    # Lo metemos en la raíz del ZIP (sin subcarpetas)
+                    zf.writestr(nombre, contenido)
+                    if registrar:
+                        _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id),
+                             config_id=config_id, rule_id=None, origen="manual",
+                             nombre_fichero=nombre, tamanio=len(contenido), estado="ok",
+                             fecha_ftp=fechas_ftp.get(nombre))
+                    ok_count += 1
+                except Exception as e:
+                    error_count += 1
+                    if registrar:
+                        _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id),
+                             config_id=config_id, rule_id=None, origen="manual",
+                             nombre_fichero=nombre, tamanio=None, estado="error",
+                             mensaje_error=str(e)[:200],
+                             fecha_ftp=fechas_ftp.get(nombre))
+    finally:
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+
+    return buf_zip.getvalue(), ok_count, error_count
+
+
 # ── Ejecutar regla automática ─────────────────────────────────────────────────
 
 def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:

@@ -203,6 +203,56 @@ async def subir_archivos_sftp(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
 
 
+# ── Descarga múltiple en ZIP al navegador ────────────────────────────────────
+
+class DescargarZipPayload(BaseModel):
+    path: str
+    ficheros: List[str]
+    nombre_zip: Optional[str] = None  # opcional, frontend puede sugerir uno
+
+
+@router.post("/descargar-zip/{config_id}")
+def descargar_zip_navegador(config_id: int, payload: DescargarZipPayload,
+                             registrar: bool = Query(True),
+                             db: Session = Depends(get_db),
+                             current_user: User = Depends(get_current_user)):
+    """
+    Empaqueta los ficheros indicados en un único ZIP en memoria y lo
+    devuelve como descarga al navegador. Pensado para reducir a 1 sola
+    pregunta 'Guardar como...' cuando se descargan varios ficheros.
+
+    Cada fichero se registra en el log con origen='manual' (si registrar=True),
+    igual que las descargas manuales individuales.
+    """
+    _assert_not_viewer(current_user)
+    if not payload.ficheros:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se indicaron ficheros")
+    try:
+        contenido_zip, _ok, _err = services.crear_zip_ficheros(
+            db,
+            config_id=config_id,
+            tenant_id=_tenant_id(current_user),
+            path=payload.path,
+            nombres=payload.ficheros,
+            registrar=registrar,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error FTP: {str(e)[:200]}") from e
+
+    nombre_zip = payload.nombre_zip or "ficheros.zip"
+    if not nombre_zip.lower().endswith(".zip"):
+        nombre_zip += ".zip"
+
+    return StreamingResponse(
+        io.BytesIO(contenido_zip),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{nombre_zip}"'},
+    )
+
+
 # ── Reglas de sync automática ─────────────────────────────────────────────────
 
 @router.get("/rules", response_model=List[FtpSyncRuleRead])
