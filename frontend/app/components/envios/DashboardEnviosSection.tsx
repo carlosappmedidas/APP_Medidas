@@ -175,7 +175,7 @@ export default function DashboardEnviosSection({ token }: Props) {
   // ── Cabecera principal: ENVÍOS MAY-2026 + toggle vista ──
   const headerLabel = vista === "mensual"
     ? `ENVÍOS ${MESES_LARGOS[mes]}-${anio} (mes en que se realiza el envío)`
-    : `ENVÍOS — Histórico (datos del periodo ${MESES_LARGOS[mes]}-${anio})`;
+    : `ENVÍOS — Histórico ${MESES_LARGOS[mes]}-${anio} (mes en que se realizó el envío)`;
 
   // ── Toggle de empresa expandida ──
   const toggleEmpresa = (empresa_id: number) => {
