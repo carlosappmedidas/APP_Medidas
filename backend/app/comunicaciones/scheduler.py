@@ -246,6 +246,97 @@ def _ejecutar_busqueda_respuestas_ree() -> None:
         logger.error(f"[obj_buscar_respuestas_ree] Error general: {e}")
 
 
+def _ejecutar_busqueda_respuestas_envios() -> None:
+    """
+    Job que corre cada día a las 07:30 (Europe/Madrid).
+    Busca respuestas REE (.ok / .bad) en el SFTP para los envíos
+    AGRECL/INMECL/MAGCL pendientes, iterando todos los tenants que tengan
+    la automatización 'buscar_respuestas_envios' activada.
+
+    Registra el ultimo_run_at/ok/msg por tenant en la tabla
+    envios_automatizaciones para que la UI de Configuración pueda mostrar
+    cuándo corrió por última vez.
+    """
+    try:
+        from app.core.db import SessionLocal
+        from app.envios.automatizacion.models import (
+            EnviosAutomatizacion,
+            TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+        )
+        from app.envios.automatizacion.services_config import (
+            marcar_ultimo_run as envios_marcar_ultimo_run,
+        )
+        from app.envios.services_respuestas_ree import buscar_respuestas_envios_tenant
+
+        db = SessionLocal()
+        try:
+            # Tenants con la automatización de envíos activada
+            tenants_con_auto = (
+                db.query(EnviosAutomatizacion.tenant_id)
+                .filter(
+                    EnviosAutomatizacion.tipo   == TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+                    EnviosAutomatizacion.activa == 1,
+                )
+                .all()
+            )
+            tenant_ids = sorted({int(row[0]) for row in tenants_con_auto})
+
+            if not tenant_ids:
+                logger.info("[env_buscar_respuestas_envios_job] No hay tenants con la automatización activa. Nada que hacer.")
+                return
+
+            logger.info(f"[env_buscar_respuestas_envios_job] Procesando {len(tenant_ids)} tenants: {tenant_ids}")
+
+            for tid in tenant_ids:
+                try:
+                    resultado = buscar_respuestas_envios_tenant(db, tenant_id=tid)
+                    ok_n   = int(resultado.get("ok_marcados", 0) or 0)
+                    bad_n  = int(resultado.get("bad_marcados", 0) or 0)
+                    borr_n = int(resultado.get("bad_borrados", 0) or 0)
+                    rev_n  = int(resultado.get("respuestas_revisadas", 0) or 0)
+                    errs   = resultado.get("errores", []) or []
+                    err_n  = len(errs)
+
+                    partes = []
+                    if ok_n   > 0:
+                        partes.append(f"{ok_n} OK")
+                    if bad_n  > 0:
+                        partes.append(f"{bad_n} BAD")
+                    if borr_n > 0:
+                        partes.append(f"{borr_n} BAD borrados")
+                    mensaje = ", ".join(partes) if partes else "Sin cambios"
+                    if err_n > 0:
+                        mensaje += f" — {err_n} avisos"
+                    mensaje = f"{rev_n} respuestas revisadas · {mensaje}"
+
+                    envios_marcar_ultimo_run(
+                        db,
+                        tenant_id = tid,
+                        ok        = (err_n == 0),
+                        mensaje   = mensaje,
+                    )
+                    logger.info(
+                        f"[env_buscar_respuestas_envios_job] tenant={tid}: "
+                        f"revisadas={rev_n} ok={ok_n} bad={bad_n} bad_borrados={borr_n} avisos={err_n}"
+                    )
+                except Exception as e:
+                    logger.error(f"[env_buscar_respuestas_envios_job] Error en tenant={tid}: {e}")
+                    # Registrar también en config para que la UI vea el fallo.
+                    try:
+                        envios_marcar_ultimo_run(
+                            db,
+                            tenant_id = tid,
+                            ok        = False,
+                            mensaje   = f"Error: {str(e)[:200]}",
+                        )
+                    except Exception:
+                        pass
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"[env_buscar_respuestas_envios_job] Error general: {e}")
+
+
 def _ejecutar_buscar_publicaciones_ree() -> None:
     """
     Job que corre cada día a las 22:00 (Europe/Madrid).
@@ -418,6 +509,83 @@ def _catchup_jobs_perdidos() -> None:
             except Exception as e:
                 logger.error(f"[Scheduler catchup] Error general en bloque publicaciones: {e}")
 
+            # ── Catch-up de envíos: buscar respuestas REE (cron 07:30) ───
+            # Si el último run fue hace > 20h o nunca, recuperamos al arrancar.
+            try:
+                from app.envios.automatizacion.models import (
+                    EnviosAutomatizacion,
+                    TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+                )
+                from app.envios.automatizacion.services_config import (
+                    marcar_ultimo_run as envios_marcar_ultimo_run,
+                )
+                from app.envios.services_respuestas_ree import buscar_respuestas_envios_tenant
+
+                umbral_env = datetime.utcnow() - timedelta(hours=20)
+
+                if ahora_madrid.hour < 7 or (ahora_madrid.hour == 7 and ahora_madrid.minute < 30):
+                    logger.info(
+                        f"[Scheduler catchup] buscar_respuestas_envios: hora actual {ahora_madrid:%H:%M} < "
+                        f"07:30 Madrid — el cron correrá a su hora."
+                    )
+                else:
+                    configs_env = (
+                        db.query(EnviosAutomatizacion)
+                        .filter(
+                            EnviosAutomatizacion.tipo   == TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+                            EnviosAutomatizacion.activa == 1,
+                        )
+                        .all()
+                    )
+                    if not configs_env:
+                        logger.info("[Scheduler catchup] buscar_respuestas_envios: no hay tenants con la automatización activa.")
+                    for cfg in configs_env:
+                        tid = int(cfg.tenant_id)
+                        ultimo = cfg.ultimo_run_at
+                        necesita_catchup = (ultimo is None) or (ultimo < umbral_env)
+                        if not necesita_catchup:
+                            logger.info(
+                                f"[Scheduler catchup] buscar_respuestas_envios tenant={tid}: último run {ultimo} OK, no hace falta recuperar."
+                            )
+                            continue
+                        logger.warning(
+                            f"[Scheduler catchup] buscar_respuestas_envios tenant={tid}: ejecución perdida detectada "
+                            f"(último run: {ultimo}). Disparando recuperación..."
+                        )
+                        try:
+                            resultado = buscar_respuestas_envios_tenant(db, tenant_id=tid)
+                            ok_n   = int(resultado.get("ok_marcados", 0) or 0)
+                            bad_n  = int(resultado.get("bad_marcados", 0) or 0)
+                            borr_n = int(resultado.get("bad_borrados", 0) or 0)
+                            rev_n  = int(resultado.get("respuestas_revisadas", 0) or 0)
+                            errs   = resultado.get("errores", []) or []
+                            err_n  = len(errs)
+                            partes = []
+                            if ok_n   > 0:
+                                partes.append(f"{ok_n} OK")
+                            if bad_n  > 0:
+                                partes.append(f"{bad_n} BAD")
+                            if borr_n > 0:
+                                partes.append(f"{borr_n} BAD borrados")
+                            mensaje = ", ".join(partes) if partes else "Sin cambios"
+                            if err_n > 0:
+                                mensaje += f" — {err_n} avisos"
+                            mensaje = f"{rev_n} respuestas revisadas · {mensaje}"
+                            envios_marcar_ultimo_run(
+                                db,
+                                tenant_id = tid,
+                                ok        = (err_n == 0),
+                                mensaje   = mensaje,
+                            )
+                            logger.info(
+                                f"[Scheduler catchup] buscar_respuestas_envios tenant={tid}: recuperado — "
+                                f"revisadas={rev_n} ok={ok_n} bad={bad_n}"
+                            )
+                        except Exception as e:
+                            logger.error(f"[Scheduler catchup] Error recuperando buscar_respuestas_envios tenant={tid}: {e}")
+            except Exception as e:
+                logger.error(f"[Scheduler catchup] Error general en bloque envíos: {e}")
+
             umbral = datetime.utcnow() - timedelta(hours=20)
 
             for tipo, hora_min, fn, etiqueta in jobs_catchup:
@@ -518,6 +686,23 @@ def start_scheduler() -> None:
         misfire_grace_time=21600,
         coalesce=True,
     )
+
+    # Job diario para buscar respuestas .ok / .bad de REE en el SFTP sobre los
+    # ENVÍOS AGRECL/INMECL/MAGCL pendientes. Corre todos los días a las 07:30
+    # (Europe/Madrid) — separado 30 min del job de objeciones para no solapar
+    # carga del SFTP.
+    # misfire_grace_time + coalesce: ver comentarios del job FIN RECEPCIÓN arriba.
+    _scheduler.add_job(
+        _ejecutar_busqueda_respuestas_envios,
+        trigger=CronTrigger(hour=7, minute=30),
+        id="env_buscar_respuestas_envios_job",
+        name="Envíos — buscar respuestas REE (07:30 diario)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+        coalesce=True,
+    )
+
     # Job diario para chequear hitos FIN RESOLUCIÓN OBJECIONES del calendario REE.
     # Corre todos los días a las 23:30 (Europe/Madrid) y genera alertas para los
     # tenants con la automatización activada. Mira HACIA ADELANTE (próximos 3 días)
@@ -554,6 +739,7 @@ def start_scheduler() -> None:
     logger.info(
         "[Scheduler] Scheduler arrancado — FTP cada minuto + "
         "Objeciones FIN RECEPCIÓN 23:00 + FIN RESOLUCIÓN 23:30 + BUSCAR RESPUESTAS REE 07:00 + "
+        "Envíos BUSCAR RESPUESTAS REE 07:30 + "
         "Publicaciones BUSCAR PUBLICACIONES REE 22:00"
     )
 

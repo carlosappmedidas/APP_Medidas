@@ -164,6 +164,11 @@ def descargar_archivo_navegador(config_id: int, path: str = Query(...), fichero:
 async def subir_archivos_sftp(
     config_id: int,
     path: str = Query(..., description="Carpeta destino dentro del SFTP"),
+    m_para_agrecl: Optional[str] = Query(
+        None,
+        description="M1/M2/M7 para los AGRECL del lote (necesario porque AGRECL no lleva periodo en el nombre)",
+        pattern="^(M1|M2|M7)$",
+    ),
     ficheros: List[UploadFile] = File(..., description="Ficheros a subir (uno o varios)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -171,6 +176,11 @@ async def subir_archivos_sftp(
     """
     Sube uno o varios ficheros al SFTP en la carpeta indicada.
     Cada fichero queda registrado en el historial con origen='upload'.
+
+    Si algún fichero del lote es AGRECL/INMECL/MAGCL, también se registra
+    en la tabla `envios_m` con su clasificación M1/M2/M7. Para AGRECL hace
+    falta `m_para_agrecl` (lo elige el usuario en el frontend porque el
+    nombre no contiene periodo).
     """
     _assert_not_viewer(current_user)
     if not ficheros:
@@ -194,6 +204,7 @@ async def subir_archivos_sftp(
             tenant_id=_tenant_id(current_user),
             path=path,
             ficheros=contenidos,
+            m_para_agrecl=m_para_agrecl,
         )
         return {"subidos": subidos, "errores": errores, "detalle": detalle}
     except ValueError as e:

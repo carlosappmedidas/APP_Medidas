@@ -12,6 +12,7 @@ import GraficosSection from "./components/medidas/GraficosSection";
 import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
 import CargaSection from "./components/ingestion/CargaSection";
 import ComunicacionesSection from "./components/comunicaciones/ComunicacionesSection";
+import EnviosSection from "./components/envios/EnviosSection";
 import PerdidasSection from "./components/perdidas/PerdidasSection";
 import TopologiaSection from "./components/topologia/TopologiaSection";
 import UsersSection from "./components/admin/UsersSection";
@@ -31,13 +32,14 @@ import { API_BASE_URL, getAuthHeaders } from "./apiConfig";
 type MainTab =
   | "dashboard" | "objeciones" | "calendario-ree" | "graficos"
   | "alertas" | "usuarios" | "clientes"
-  | "tablas-resumen" | "tablas-general" | "tablas-ps"
+  | "tablas-resumen" | "tablas-general" | "tablas-ps" | "envios"
   | "carga" | "comunicaciones" | "perdidas" | "topologia" | "ajustes" | "sistema";
 
 const PAGE_TITLES: Record<MainTab, string> = {
   "dashboard": "Dashboard",
   "tablas-resumen": "Gestión publicaciones",
   "tablas-general": "Medidas (General)", "tablas-ps": "Medidas (PS)",
+  "envios": "Gestión envíos",
   "objeciones": "Objeciones", "calendario-ree": "Calendario REE",
   "graficos": "Gráficos", "alertas": "Alertas", "usuarios": "Usuarios",
   "clientes": "Clientes", "carga": "Carga de datos",
@@ -294,7 +296,7 @@ export default function HomePage() {
             </button>
             <div>
               <button onClick={handleMedidasClick}
-                className={["ui-nav-item", ["medidas","tablas-resumen","tablas-general","tablas-ps","objeciones","calendario-ree","graficos"].includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
+                className={["ui-nav-item", ["medidas","tablas-resumen","tablas-general","tablas-ps","envios","objeciones","calendario-ree","graficos"].includes(activeTab) ? "ui-nav-item--active" : ""].join(" ")}>
                 <span>Medidas</span>
                 <span className="text-[10px] ui-muted">{medidasOpen ? "▾" : "▸"}</span>
               </button>
@@ -308,7 +310,7 @@ export default function HomePage() {
                     <span>Gestión publicaciones</span>
                     <span className="text-[10px] ui-muted">{tablasOpen ? "▾" : "▸"}</span>
                   </button>
-                  {tablasOpen && (
+                   {tablasOpen && (
                     <div className="ui-nav-sub">
                       <button type="button" onClick={() => setActiveTab("tablas-general")}
                         className={["ui-nav-subitem", activeTab === "tablas-general" ? "ui-nav-subitem--active" : ""].join(" ")}>
@@ -319,6 +321,12 @@ export default function HomePage() {
                         <span>Medidas PS</span>
                       </button>
                     </div>
+                  )}
+                  {!isViewer && (
+                    <button type="button" onClick={() => setActiveTab("envios")}
+                      className={["ui-nav-subitem", activeTab === "envios" ? "ui-nav-subitem--active" : ""].join(" ")}>
+                      <span>Gestión envíos</span>
+                    </button>
                   )}
                   {!isViewer && (
                     <button type="button" onClick={() => setActiveTab("objeciones")}
@@ -547,6 +555,7 @@ export default function HomePage() {
 
         {activeTab === "carga"          && !isViewer && <CargaSection token={token} />}
         {activeTab === "comunicaciones" && !isViewer && <ComunicacionesSection token={token} currentUser={currentUser} />}
+        {activeTab === "envios"         && !isViewer && <EnviosSection token={token} />}
         {activeTab === "perdidas"       && !isViewer && <PerdidasSection token={token} currentUser={currentUser} />}
 
         {activeTab === "topologia" && !isViewer && (

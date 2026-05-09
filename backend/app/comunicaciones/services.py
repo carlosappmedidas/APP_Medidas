@@ -648,7 +648,8 @@ def leer_fichero_ftp(db: Session, *, config_id: int, tenant_id: int,
 # ── Subir ficheros al SFTP ────────────────────────────────────────────────────
 
 def subir_ficheros(db: Session, *, config_id: int, tenant_id: int,
-                   path: str, ficheros: List[Tuple[str, bytes]]) -> Tuple[int, int, List[str]]:
+                   path: str, ficheros: List[Tuple[str, bytes]],
+                   m_para_agrecl: Optional[str] = None) -> Tuple[int, int, List[str]]:
     """
     Sube uno o varios ficheros al SFTP en la carpeta indicada por `path`.
 
@@ -656,8 +657,14 @@ def subir_ficheros(db: Session, *, config_id: int, tenant_id: int,
     de las descargas manuales/automáticas. Si un upload falla, continúa con
     los demás (no aborta el lote completo).
 
+    Si el nombre del fichero encaja con AGRECL/INMECL/MAGCL, también se
+    registra en la tabla `envios_m` con su clasificación M1/M2/M7. Para
+    AGRECL hace falta `m_para_agrecl` (lo elige el usuario en el frontend
+    porque el nombre no contiene periodo).
+
     Args:
       ficheros: lista de tuplas (nombre, contenido_bytes).
+      m_para_agrecl: M1/M2/M7 para los AGRECL del lote (opcional).
 
     Returns:
       (subidos, errores, detalle): contadores y lista de mensajes legibles.
@@ -678,9 +685,18 @@ def subir_ficheros(db: Session, *, config_id: int, tenant_id: int,
                 buf = io.BytesIO(contenido)
                 ftp.storbinary(f"STOR {nombre}", buf)
                 tamanio = len(contenido)
-                _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id),
-                     config_id=config_id, rule_id=None, origen="upload",
-                     nombre_fichero=nombre, tamanio=tamanio, estado="ok")
+                log_id = _log(db, tenant_id=tenant_id, empresa_id=int(config.empresa_id),
+                              config_id=config_id, rule_id=None, origen="upload",
+                              nombre_fichero=nombre, tamanio=tamanio, estado="ok")
+                # Si encaja con AGRECL/INMECL/MAGCL → registrar también en envios_m
+                _registrar_envio_m(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=int(config.empresa_id),
+                    nombre_fichero=nombre,
+                    ftp_log_id=log_id,
+                    m_para_agrecl=m_para_agrecl,
+                )
                 subidos += 1
                 detalle.append(f"OK: {nombre} ({tamanio} bytes)")
             except Exception as e:
@@ -874,7 +890,8 @@ def _actualizar_tiempos_regla(db: Session, rule: FtpSyncRule) -> None:
 def _log(db: Session, *, tenant_id: int, empresa_id: int, config_id: Optional[int],
          rule_id: Optional[int], origen: str, nombre_fichero: str, tamanio: Optional[int],
          estado: str, mensaje_error: Optional[str] = None, fecha_ftp: Optional[str] = None,
-         modulo: Optional[str] = None) -> None:
+         modulo: Optional[str] = None) -> Optional[int]:
+    """Registra un log de sync. Devuelve el ID del log creado o None si falla."""
     try:
         entry = FtpSyncLog(
             tenant_id=tenant_id, empresa_id=empresa_id, config_id=config_id,
@@ -884,8 +901,11 @@ def _log(db: Session, *, tenant_id: int, empresa_id: int, config_id: Optional[in
         )
         db.add(entry)
         db.commit()
+        db.refresh(entry)
+        return int(entry.id)
     except Exception:
         db.rollback()
+        return None
 
 
 _MESES_EN = {
@@ -1056,3 +1076,70 @@ def get_dashboard(db: Session, *, tenant_id: int) -> dict:
         "proxima_sync_global": proxima_sync_global,
         "conexiones": conexiones,
     }
+
+# ── Registro automático en envios_m al subir AGRECL/INMECL/MAGCL ────────────
+
+def _registrar_envio_m(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    nombre_fichero: str,
+    ftp_log_id: Optional[int],
+    m_para_agrecl: Optional[str],
+) -> None:
+    """
+    Si el nombre del fichero encaja con AGRECL/INMECL/MAGCL → crea registro
+    en la tabla `envios_m`. Si no encaja, no hace nada (silencioso).
+
+    Para AGRECL: requiere `m_para_agrecl` (M1/M2/M7) elegido por el usuario,
+    porque el nombre no contiene periodo.
+    Para INMECL/MAGCL: calcula el M automáticamente desde periodo+fechagen.
+
+    Si por cualquier motivo el insert falla, se loguea silenciosamente —
+    no debe romper el flujo de upload al SFTP que ya tuvo éxito.
+    """
+    try:
+        from app.envios.models import EnvioM
+        from app.envios.parser import parsear_nombre_envio, clasificar_m
+
+        parsed = parsear_nombre_envio(nombre_fichero)
+        if parsed is None:
+            return  # No es AGRECL/INMECL/MAGCL → ignorar
+        if parsed.es_respuesta:
+            return  # Es un .ok / .bad → no se registran como envíos nuevos
+
+        # Determinar M
+        if parsed.tipo == "AGRECL":
+            if not m_para_agrecl:
+                return  # AGRECL sin M → no podemos clasificar, ignorar
+            m_clasificacion = m_para_agrecl
+        else:
+            m_calc = clasificar_m(parsed.periodo_anio, parsed.periodo_mes, parsed.fecha_generacion)
+            if m_calc is None:
+                return  # Periodo no encaja con M1/M2/M7 → ignorar
+            m_clasificacion = m_calc
+
+        envio = EnvioM(
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            codigo_ree_empresa=parsed.codigo_ree_empresa,
+            tipo=parsed.tipo,
+            comercializadora_codigo=parsed.comercializadora_codigo,
+            periodo_anio=parsed.periodo_anio,
+            periodo_mes=parsed.periodo_mes,
+            fecha_generacion=parsed.fecha_generacion,
+            version=parsed.version,
+            m_clasificacion=m_clasificacion,
+            nombre_fichero=nombre_fichero,
+            ftp_log_id=ftp_log_id,
+            estado_ree=None,
+            estado_ree_n=None,
+            reintentos=0,
+        )
+        db.add(envio)
+        db.commit()
+    except Exception:
+        # No queremos romper el upload si el registro en envios_m falla.
+        # El fichero ya está en el SFTP y registrado en FtpSyncLog.
+        db.rollback()

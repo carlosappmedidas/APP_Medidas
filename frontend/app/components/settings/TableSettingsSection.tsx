@@ -4,6 +4,7 @@
 import React from "react";
 import type { TableAppearance, TableColumnConfig } from "./hooks/useTableSettings";
 import PublicacionesSettingsSection from "./PublicacionesSettingsSection";
+import EnviosSettingsSection from "./EnviosSettingsSection";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -494,6 +495,20 @@ export default function TableSettingsSection({
           </div>
         </div>
         <PublicacionesSettingsSection token={token} />
+      </div>
+
+      {/* Separador visual */}
+      <div style={{ borderTop: "1px solid var(--card-border)" }} />
+
+      {/* SECCIÓN: ENVÍOS REE */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Envíos REE</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            Job diario de búsqueda automática de respuestas REE (.ok / .bad) para los envíos AGRECL / INMECL / MAGCL.
+          </div>
+        </div>
+        <EnviosSettingsSection token={token} />
       </div>
 
     </div>
