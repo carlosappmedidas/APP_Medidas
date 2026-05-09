@@ -165,9 +165,11 @@ interface DetalleMesProps {
   porEmpresa: EmpresaResumen[];
   expandedEmpresas: Set<number>;
   toggleEmpresa: (id: number) => void;
+  detalleAbierto: boolean;
+  toggleDetalle: () => void;
 }
 
-function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa }: DetalleMesProps) {
+function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detalleAbierto, toggleDetalle }: DetalleMesProps) {
   const tarjetaStyle: React.CSSProperties = {
     background: "var(--field-bg-soft)", borderRadius: 10,
     padding: "14px 16px", border: "0.5px solid var(--card-border)",
@@ -288,16 +290,38 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa }: Det
         })}
       </div>
 
-      {/* Detalle por empresa */}
+      {/* Detalle por empresa (desplegable) */}
       {porEmpresa.length > 0 && (
         <>
-          <div style={{
-            fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
-            letterSpacing: "0.08em", fontWeight: 600, marginBottom: 8,
-          }}>
-            Detalle por empresa
+          <div
+            onClick={toggleDetalle}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              cursor: "pointer", marginBottom: 8,
+              userSelect: "none",
+            }}
+          >
+            <div style={{
+              fontSize: 11,
+              color: detalleAbierto ? "#378ADD" : "var(--text-muted)",
+              transform: detalleAbierto ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 0.2s",
+            }}>▶</div>
+            <div style={{
+              fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
+              letterSpacing: "0.08em", fontWeight: 600,
+            }}>
+              Detalle por empresa
+            </div>
+            <div style={{
+              fontSize: 10, color: "var(--text-muted)",
+              fontStyle: "italic",
+            }}>
+              ({porEmpresa.length} {porEmpresa.length === 1 ? "empresa" : "empresas"})
+            </div>
           </div>
 
+          {detalleAbierto && (
           <div style={{
             background: "var(--field-bg-soft)", borderRadius: 8,
             border: "0.5px solid var(--card-border)",
@@ -321,9 +345,43 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa }: Det
 
             {porEmpresa.map((emp) => {
               const expanded = expandedEmpresas.has(emp.empresa_id);
-              const tot1 = emp.totales_por_grupo.PM_1_2_3?.enviados ?? 0;
-              const tot2 = emp.totales_por_grupo.PM_4_5?.enviados ?? 0;
-              const tot3 = emp.totales_por_grupo.GEN_4_5?.enviados ?? 0;
+              const g1 = emp.totales_por_grupo.PM_1_2_3 ?? { enviados: 0, ok: 0, bad: 0, pendiente: 0 };
+              const g2 = emp.totales_por_grupo.PM_4_5  ?? { enviados: 0, ok: 0, bad: 0, pendiente: 0 };
+              const g3 = emp.totales_por_grupo.GEN_4_5 ?? { enviados: 0, ok: 0, bad: 0, pendiente: 0 };
+
+              const renderCelda = (g: EmpresaGrupoTotales) => (
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  gap: 4, flexWrap: "wrap",
+                }}>
+                  <span style={{
+                    fontSize: 11,
+                    color: g.enviados > 0 ? "var(--text)" : "var(--text-muted)",
+                    fontWeight: g.enviados > 0 ? 500 : 400,
+                  }}>{g.enviados}</span>
+                  {g.ok > 0 && (
+                    <span style={{
+                      padding: "0px 4px", borderRadius: 6,
+                      background: "rgba(29,158,117,0.15)", color: "#0F6E56",
+                      fontSize: 8, fontWeight: 500,
+                    }}>🟢{g.ok}</span>
+                  )}
+                  {g.bad > 0 && (
+                    <span style={{
+                      padding: "0px 4px", borderRadius: 6,
+                      background: "rgba(226,75,74,0.15)", color: "#A32D2D",
+                      fontSize: 8, fontWeight: 500,
+                    }}>🔴{g.bad}</span>
+                  )}
+                  {g.pendiente > 0 && (
+                    <span style={{
+                      padding: "0px 4px", borderRadius: 6,
+                      background: "rgba(156,163,175,0.15)", color: "var(--text)",
+                      fontSize: 8, fontWeight: 500,
+                    }}>⚪{g.pendiente}</span>
+                  )}
+                </div>
+              );
 
               return (
                 <div key={emp.empresa_id}>
@@ -359,9 +417,9 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa }: Det
                         </div>
                       )}
                     </div>
-                    <div style={{ textAlign: "center", fontSize: 11, color: tot1 > 0 ? "var(--text)" : "var(--text-muted)", fontWeight: tot1 > 0 ? 500 : 400 }}>{tot1}</div>
-                    <div style={{ textAlign: "center", fontSize: 11, color: tot2 > 0 ? "var(--text)" : "var(--text-muted)", fontWeight: tot2 > 0 ? 500 : 400 }}>{tot2}</div>
-                    <div style={{ textAlign: "center", fontSize: 11, color: tot3 > 0 ? "var(--text)" : "var(--text-muted)", fontWeight: tot3 > 0 ? 500 : 400 }}>{tot3}</div>
+                    {renderCelda(g1)}
+                    {renderCelda(g2)}
+                    {renderCelda(g3)}
                     <div style={{ textAlign: "right", fontSize: 12, color: "#378ADD", fontWeight: 600 }}>
                       {emp.total_enviados_mes}
                     </div>
@@ -441,6 +499,7 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa }: Det
               );
             })}
           </div>
+          )}
         </>
       )}
     </>
@@ -467,6 +526,9 @@ export default function DashboardEnviosSection({ token }: Props) {
 
   // Empresas expandidas (key: "mes_envio:empresa_id")
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
+
+  // "Detalle por empresa" desplegable por mes_envio (plegado por defecto)
+  const [detalleEmpresaAbierto, setDetalleEmpresaAbierto] = useState<Set<string>>(new Set());
 
   // ── Cargar datos ──
   const cargar = useCallback(async () => {
@@ -526,6 +588,15 @@ export default function DashboardEnviosSection({ token }: Props) {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleDetalleEmpresa = (mesEnvio: string) => {
+    setDetalleEmpresaAbierto((prev) => {
+      const next = new Set(prev);
+      if (next.has(mesEnvio)) next.delete(mesEnvio);
+      else next.add(mesEnvio);
       return next;
     });
   };
@@ -657,6 +728,45 @@ export default function DashboardEnviosSection({ token }: Props) {
                         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
                           <span style={{ color: "#378ADD", fontWeight: 500 }}>{a.ficheros_enviados}</span> ficheros enviados
                         </div>
+                        {(() => {
+                          // Buscar OK/BAD/Pendiente sumando todas las líneas de los grupos para este M
+                          let ok = 0, bad = 0, pend = 0;
+                          for (const g of dataMensual.grupos) {
+                            for (const p of g.periodos) {
+                              if (p.M === m) {
+                                ok += p.respuestas_ok;
+                                bad += p.respuestas_bad;
+                                pend += p.respuestas_pendiente;
+                              }
+                            }
+                          }
+                          if (ok === 0 && bad === 0 && pend === 0) return null;
+                          return (
+                            <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                              {ok > 0 && (
+                                <span style={{
+                                  padding: "1px 6px", borderRadius: 8,
+                                  background: "rgba(29,158,117,0.15)", color: "#0F6E56",
+                                  fontSize: 9, fontWeight: 500,
+                                }}>🟢 {ok}</span>
+                              )}
+                              {bad > 0 && (
+                                <span style={{
+                                  padding: "1px 6px", borderRadius: 8,
+                                  background: "rgba(226,75,74,0.15)", color: "#A32D2D",
+                                  fontSize: 9, fontWeight: 500,
+                                }}>🔴 {bad}</span>
+                              )}
+                              {pend > 0 && (
+                                <span style={{
+                                  padding: "1px 6px", borderRadius: 8,
+                                  background: "rgba(156,163,175,0.15)", color: "var(--text)",
+                                  fontSize: 9, fontWeight: 500,
+                                }}>⚪ {pend}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -679,6 +789,8 @@ export default function DashboardEnviosSection({ token }: Props) {
                   .map((k) => Number(k.split(":")[1]))
               )}
               toggleEmpresa={(id) => toggleEmpresa(dataMensual.mes_envio, id)}
+              detalleAbierto={detalleEmpresaAbierto.has(dataMensual.mes_envio)}
+              toggleDetalle={() => toggleDetalleEmpresa(dataMensual.mes_envio)}
             />
             {dataMensual.por_empresa.length === 0 && (
               <div style={{
@@ -898,6 +1010,8 @@ export default function DashboardEnviosSection({ token }: Props) {
                                     .map((k) => Number(k.split(":")[1]))
                                 )}
                                 toggleEmpresa={(id) => toggleEmpresa(mesData.mes_envio, id)}
+                                detalleAbierto={detalleEmpresaAbierto.has(mesData.mes_envio)}
+                                toggleDetalle={() => toggleDetalleEmpresa(mesData.mes_envio)}
                               />
                             </div>
                           )}
