@@ -377,8 +377,8 @@ export default function EnviosSection({ token }: Props) {
           <div>
             <div style={panelTitleStyle}>📤 Envío de ficheros</div>
             <div style={panelDescStyle}>
-              Sube AGRECL, INMECL y MAGCL al SFTP REE. Se registran automáticamente
-              en el histórico al subirlos.
+              Sube F1, F1QH, AGRECL, INMECL, MAGCL, MCIL345 y MCIL345QH al SFTP REE.
+              Se registran automáticamente en el histórico al subirlos.
             </div>
           </div>
           <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
@@ -423,7 +423,7 @@ export default function EnviosSection({ token }: Props) {
             <div>
               <div style={panelTitleStyle}>📋 Histórico de envíos</div>
               <div style={panelDescStyle}>
-                Envíos AGRECL, INMECL, MAGCL con estado de respuesta REE. Selecciona la ventana M (M1, M2 o M7).
+                Envíos F1, F1QH, AGRECL, INMECL, MAGCL, MCIL345 y MCIL345QH con estado de respuesta REE. Selecciona la ventana M (M1, M2 o M7).
               </div>
             </div>
             {countEnvios && panelHistOpen && (
