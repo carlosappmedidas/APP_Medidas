@@ -528,7 +528,7 @@ def build_envios_resumen(
             "por_empresa": por_empresa,
         }
 
-    # ── Modo histórico ────────────────────────────────────────────────────
+# ── Modo histórico ────────────────────────────────────────────────────
     grupos = _build_grupos_historico(
         db,
         tenant_id=tenant_id,
