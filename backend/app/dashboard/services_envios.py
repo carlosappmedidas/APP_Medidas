@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover
 
 from sqlalchemy.orm import Session
 
+
 from app.calendario_laboral.services_db import cargar_festivos_set_activos
 from app.calendario_laboral.services_festivos import (
     nth_dia_habil_madrid,
@@ -420,3 +421,111 @@ def build_envios_resumen(
         "grupos": grupos,
         "por_empresa": por_empresa,
     }
+
+# ── Histórico jerárquico (Año → Mes → Detalle) ───────────────────────────
+
+def build_envios_historico(
+    db: Session,
+    *,
+    tenant_id: int,
+) -> dict[str, Any]:
+    """
+    Construye el JSON jerárquico del histórico: lista de años, cada uno con
+    su lista de meses, cada mes con su detalle completo (grupos + empresas).
+
+    Solo incluye años y meses que tengan al menos 1 envío.
+    Ordenado descendente: año más reciente primero, mes más reciente primero.
+    """
+    # Obtener pares distintos (año_subida_sftp, mes_subida_sftp) que tienen envíos
+    # Usamos subido_sftp_at para clasificar los envíos en su mes_envio real.
+    rows = (
+        _query_base_envios(db, tenant_id=tenant_id)
+        .with_entities(
+            EnvioM.subido_sftp_at,
+        )
+        .all()
+    )
+
+    # Agrupar manualmente (subido_sftp_at es DateTime, sacamos año y mes)
+    meses_envio: set[tuple[int, int]] = set()
+    for (subido_at,) in rows:
+        if subido_at is None:
+            continue
+        meses_envio.add((subido_at.year, subido_at.month))
+
+    if not meses_envio:
+        return {"anios": []}
+
+    # Agrupar por año
+    anios_dict: dict[int, list[int]] = {}
+    for anio_e, mes_e in meses_envio:
+        anios_dict.setdefault(anio_e, []).append(mes_e)
+
+    # Construir respuesta ordenada
+    anios_resp: list[dict[str, Any]] = []
+    for anio_e in sorted(anios_dict.keys(), reverse=True):
+        meses_del_anio: list[dict[str, Any]] = []
+        total_anio = 0
+        ok_anio = 0
+        bad_anio = 0
+        totales_grupo_anio: dict[str, int] = {g: 0 for g in GRUPOS_TIPOS}
+
+        for mes_e in sorted(anios_dict[anio_e], reverse=True):
+            # Construir bloque de cada mes igual que el modo mensual
+            grupos = _build_grupos_mensual(
+                db,
+                tenant_id=tenant_id,
+                mes_envio_anio=anio_e,
+                mes_envio_mes=mes_e,
+            )
+            periodos_a_consultar: list[tuple[int, int, str]] = []
+            for m_clas in ORDEN_MS:
+                p_anio, p_mes = _periodo_para_m(anio_e, mes_e, m_clas)
+                periodos_a_consultar.append((p_anio, p_mes, m_clas))
+            por_empresa = _build_por_empresa(
+                db,
+                tenant_id=tenant_id,
+                periodos_a_consultar=periodos_a_consultar,
+            )
+
+            # Totales del mes
+            total_mes = sum(
+                p["ficheros_enviados"] for g in grupos for p in g["periodos"]
+            )
+            ok_mes = sum(p["respuestas_ok"] for g in grupos for p in g["periodos"])
+            bad_mes = sum(p["respuestas_bad"] for g in grupos for p in g["periodos"])
+
+            if total_mes == 0:
+                continue
+
+            meses_del_anio.append({
+                "mes_envio": _periodo_str(anio_e, mes_e),
+                "total_enviados": total_mes,
+                "respuestas_ok": ok_mes,
+                "respuestas_bad": bad_mes,
+                "grupos": grupos,
+                "por_empresa": por_empresa,
+            })
+
+            # Acumular en totales del año
+            total_anio += total_mes
+            ok_anio += ok_mes
+            bad_anio += bad_mes
+            for g in grupos:
+                totales_grupo_anio[g["id"]] += sum(
+                    p["ficheros_enviados"] for p in g["periodos"]
+                )
+
+        if total_anio == 0:
+            continue
+
+        anios_resp.append({
+            "anio": anio_e,
+            "total_enviados": total_anio,
+            "respuestas_ok": ok_anio,
+            "respuestas_bad": bad_anio,
+            "totales_por_grupo": totales_grupo_anio,
+            "meses": meses_del_anio,
+        })
+
+    return {"anios": anios_resp}

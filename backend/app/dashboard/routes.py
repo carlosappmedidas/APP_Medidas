@@ -9,8 +9,8 @@ from sqlalchemy.orm import Query, Session
 from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.core.permissions import assert_empresa_access, get_allowed_empresa_ids
-from app.dashboard.schemas_envios import EnviosResumenResp
-from app.dashboard.services_envios import build_envios_resumen
+from app.dashboard.schemas_envios import EnviosHistoricoResp, EnviosResumenResp
+from app.dashboard.services_envios import build_envios_historico, build_envios_resumen
 from app.empresas.models import Empresa
 from app.measures.models import MedidaGeneral, MedidaPS
 from app.tenants.models import User
@@ -975,3 +975,18 @@ def get_dashboard_envios_resumen(
     )
 
     return EnviosResumenResp.model_validate(payload)
+
+@router.get("/envios-historico", response_model=EnviosHistoricoResp)
+def get_dashboard_envios_historico(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Histórico jerárquico de envíos: Año → Mes → Detalle.
+
+    Devuelve solo años y meses con al menos 1 envío. Cada mes incluye el
+    mismo detalle que el endpoint mensual (3 grupos + por_empresa).
+    """
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+    payload = build_envios_historico(db, tenant_id=tenant_id_int)
+    return EnviosHistoricoResp.model_validate(payload)

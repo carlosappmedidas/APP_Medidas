@@ -87,3 +87,33 @@ class EnviosResumenResp(BaseModel):
     alertas: dict[Literal["M1", "M2", "M7"], AlertaPlazo] | None
     grupos: list[GrupoResumen]
     por_empresa: list[EmpresaResumen]
+
+
+# ── Histórico jerárquico (Año → Mes → Detalle) ───────────────────────────
+
+class HistoricoMes(BaseModel):
+    """Detalle de un mes_envio dentro del histórico anual."""
+
+    mes_envio: str  # "YYYY-MM"
+    total_enviados: int
+    respuestas_ok: int
+    respuestas_bad: int
+    grupos: list[GrupoResumen]
+    por_empresa: list[EmpresaResumen]
+
+
+class HistoricoAnio(BaseModel):
+    """Resumen de un año completo con sus meses."""
+
+    anio: int
+    total_enviados: int
+    respuestas_ok: int
+    respuestas_bad: int
+    totales_por_grupo: dict[Literal["PM_1_2_3", "PM_4_5", "GEN_4_5"], int]
+    meses: list[HistoricoMes]
+
+
+class EnviosHistoricoResp(BaseModel):
+    """Respuesta de GET /dashboard/envios-historico."""
+
+    anios: list[HistoricoAnio]
