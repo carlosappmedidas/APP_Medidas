@@ -710,12 +710,67 @@ export default function DashboardEnviosSection({ token }: Props) {
           <>
             {dataMensual.alertas && (
               <>
-                <div style={{
-                  fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
-                  letterSpacing: "0.08em", fontWeight: 600, marginBottom: 8,
-                }}>
-                  Alertas de envíos
-                </div>
+                {(() => {
+                  // Calcular los 2 meses para el toggle: actual y anterior
+                  const ahora = getMesEnvioActual();
+                  const mesActual = { anio: ahora.anio, mes: ahora.mes };
+                  const mesAnt = mesActual.mes === 1
+                    ? { anio: mesActual.anio - 1, mes: 12 }
+                    : { anio: mesActual.anio, mes: mesActual.mes - 1 };
+                  const opciones = [mesActual, mesAnt];
+
+                  const labelCorto = (a: number, m: number) =>
+                    `${MESES[m]} ${String(a).slice(-2)}`;
+
+                  return (
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      marginBottom: 8, gap: 8, flexWrap: "wrap",
+                    }}>
+                      <div style={{
+                        fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
+                        letterSpacing: "0.08em", fontWeight: 600,
+                      }}>
+                        Alertas de envíos
+                      </div>
+                      <div style={{
+                        display: "inline-flex",
+                        background: "var(--card-bg)",
+                        border: "1px solid var(--card-border)",
+                        borderRadius: 4, padding: 1,
+                      }}>
+                        {opciones.map((opt) => {
+                          const seleccionado = opt.anio === anio && opt.mes === mes;
+                          return (
+                            <button
+                              key={`${opt.anio}-${opt.mes}`}
+                              type="button"
+                              onClick={() => {
+                                if (!seleccionado) {
+                                  setAnio(opt.anio);
+                                  setMes(opt.mes);
+                                }
+                              }}
+                              style={{
+                                padding: "3px 12px",
+                                fontSize: 10,
+                                borderRadius: 3,
+                                background: seleccionado ? "rgba(55,138,221,0.18)" : "transparent",
+                                color: seleccionado ? "#85B7EB" : "var(--text-muted)",
+                                border: "none",
+                                cursor: seleccionado ? "default" : "pointer",
+                                fontWeight: seleccionado ? 500 : 400,
+                                transition: "background 0.15s, color 0.15s",
+                              }}
+                            >
+                              {labelCorto(opt.anio, opt.mes)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{
                   display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))",
                   gap: 10, marginBottom: 16,
