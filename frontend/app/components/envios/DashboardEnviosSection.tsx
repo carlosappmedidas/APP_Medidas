@@ -68,7 +68,6 @@ interface EnviosResumenResp {
   por_empresa: EmpresaResumen[];
 }
 
-// Histórico jerárquico
 interface HistoricoMes {
   mes_envio: string;
   total_enviados: number;
@@ -119,6 +118,10 @@ function fmtPlazoFecha(iso: string): string {
       hour: "2-digit", minute: "2-digit",
     });
   } catch { return iso; }
+}
+
+function fmtNum(n: number): string {
+  return n.toLocaleString("es-ES");
 }
 
 const ORDEN_GRUPOS: GrupoId[] = ["PM_1_2_3", "PM_4_5", "GEN_4_5"];
@@ -452,18 +455,17 @@ export default function DashboardEnviosSection({ token }: Props) {
   const [anio, setAnio] = useState<number>(inicial.anio);
   const [mes, setMes]   = useState<number>(inicial.mes);
 
-  // Estado para modo MENSUAL
   const [dataMensual, setDataMensual] = useState<EnviosResumenResp | null>(null);
-
-  // Estado para modo HISTÓRICO (jerárquico)
   const [dataHist, setDataHist] = useState<EnviosHistoricoResp | null>(null);
-  const [aniosExpandidos, setAniosExpandidos] = useState<Set<number>>(new Set());
+
+  // En histórico: SOLO un año puede estar expandido a la vez (drill-down).
+  const [anioActivo, setAnioActivo] = useState<number | null>(null);
   const [mesesExpandidos, setMesesExpandidos] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
-  // expandidos por mes (key: "mes_envio:empresa_id")
+  // Empresas expandidas (key: "mes_envio:empresa_id")
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
 
   // ── Cargar datos ──
@@ -505,12 +507,8 @@ export default function DashboardEnviosSection({ token }: Props) {
   };
 
   const toggleAnio = (anio: number) => {
-    setAniosExpandidos((prev) => {
-      const next = new Set(prev);
-      if (next.has(anio)) next.delete(anio);
-      else next.add(anio);
-      return next;
-    });
+    setAnioActivo((prev) => (prev === anio ? null : anio));
+    setMesesExpandidos(new Set()); // resetear meses al cambiar de año
   };
 
   const toggleMes = (mesEnvio: string) => {
@@ -546,6 +544,10 @@ export default function DashboardEnviosSection({ token }: Props) {
   const headerLabel = vista === "mensual"
     ? `ENVÍOS ${MESES_LARGOS[mes]}-${anio} (mes en que se realiza el envío)`
     : `Histórico de envíos`;
+
+  // Para el histórico: limitar a los 5 años más recientes con datos
+  const aniosVisibles = (dataHist?.anios ?? []).slice(0, 5);
+  const anioActivoData = aniosVisibles.find((a) => a.anio === anioActivo) ?? null;
 
   return (
     <div style={panelStyle}>
@@ -604,7 +606,6 @@ export default function DashboardEnviosSection({ token }: Props) {
         {/* ═══ MODO MENSUAL ═══════════════════════════════════════════════ */}
         {!loading && !error && vista === "mensual" && dataMensual && (
           <>
-            {/* Alertas de plazo */}
             {dataMensual.alertas && (
               <>
                 <div style={{
@@ -663,7 +664,6 @@ export default function DashboardEnviosSection({ token }: Props) {
               </>
             )}
 
-            {/* 3 tarjetas de grupo + detalle empresa */}
             <div style={{
               fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
               letterSpacing: "0.08em", fontWeight: 600, marginBottom: 8,
@@ -691,10 +691,10 @@ export default function DashboardEnviosSection({ token }: Props) {
           </>
         )}
 
-        {/* ═══ MODO HISTÓRICO ════════════════════════════════════════════ */}
+        {/* ═══ MODO HISTÓRICO (tarjetas-año en grid + detalle abajo) ═════ */}
         {!loading && !error && vista === "historico" && dataHist && (
           <>
-            {dataHist.anios.length === 0 ? (
+            {aniosVisibles.length === 0 ? (
               <div style={{
                 fontSize: 11, color: "var(--text-muted)", fontStyle: "italic",
                 textAlign: "center", padding: "16px 0",
@@ -702,168 +702,209 @@ export default function DashboardEnviosSection({ token }: Props) {
                 Sin envíos registrados.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {dataHist.anios.map((anioData) => {
-                  const anioOpen = aniosExpandidos.has(anioData.anio);
-                  return (
-                    <div key={anioData.anio} style={{
-                      background: "var(--field-bg-soft)",
-                      borderRadius: 10,
-                      border: "0.5px solid var(--card-border)",
-                      overflow: "hidden",
-                    }}>
-                      {/* Cabecera del año (clickable) */}
+              <>
+                {/* Subtítulo */}
+                <div style={{
+                  fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
+                  letterSpacing: "0.08em", fontWeight: 600, marginBottom: 8,
+                }}>
+                  Histórico · últimos {aniosVisibles.length} {aniosVisibles.length === 1 ? "año" : "años"}
+                </div>
+
+                {/* Grid de tarjetas-año (auto-fit hasta 5 columnas) */}
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${aniosVisibles.length}, minmax(0, 1fr))`,
+                  gap: 8,
+                  marginBottom: 16,
+                }}>
+                  {aniosVisibles.map((anioData) => {
+                    const isActive = anioActivo === anioData.anio;
+                    return (
                       <div
+                        key={anioData.anio}
                         onClick={() => toggleAnio(anioData.anio)}
                         style={{
-                          padding: "14px 16px",
+                          background: "var(--card-bg)",
+                          border: isActive
+                            ? "1px solid rgba(55,138,221,0.6)"
+                            : "1px solid var(--card-border)",
+                          borderRadius: 6,
+                          padding: 10,
                           cursor: "pointer",
-                          transition: "background 0.15s",
+                          transition: "background 0.15s, border-color 0.15s",
+                          boxShadow: isActive ? "0 0 0 2px rgba(55,138,221,0.15)" : "none",
                         }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(55,138,221,0.04)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) e.currentTarget.style.borderColor = "rgba(55,138,221,0.4)";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) e.currentTarget.style.borderColor = "var(--card-border)";
+                        }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                          <div style={{
-                            fontSize: 12,
-                            color: anioOpen ? "#378ADD" : "var(--text-muted)",
-                            transform: anioOpen ? "rotate(90deg)" : "rotate(0deg)",
-                            transition: "transform 0.2s",
-                            userSelect: "none",
-                          }}>▶</div>
+                        {/* Fila 1: año + chevron */}
+                        <div style={{
+                          display: "flex", justifyContent: "space-between",
+                          alignItems: "baseline", marginBottom: 4,
+                        }}>
                           <div style={{
                             fontSize: 16, fontWeight: 600, color: "var(--text)",
                           }}>{anioData.anio}</div>
-                          <div style={{ flex: 1, textAlign: "right" }}>
-                            <span style={{ fontSize: 13, color: "#378ADD", fontWeight: 600 }}>
-                              {anioData.total_enviados.toLocaleString("es-ES")}
-                            </span>
-                            <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>
-                              ficheros enviados
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", gap: 5 }}>
-                            {anioData.respuestas_ok > 0 && (
-                              <span style={{
-                                padding: "2px 8px", borderRadius: 10,
-                                background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                                fontSize: 10, fontWeight: 500,
-                              }}>🟢 {anioData.respuestas_ok.toLocaleString("es-ES")}</span>
-                            )}
-                            {anioData.respuestas_bad > 0 && (
-                              <span style={{
-                                padding: "2px 8px", borderRadius: 10,
-                                background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                                fontSize: 10, fontWeight: 500,
-                              }}>🔴 {anioData.respuestas_bad.toLocaleString("es-ES")}</span>
-                            )}
-                          </div>
+                          <div style={{
+                            fontSize: 10,
+                            color: isActive ? "#378ADD" : "var(--text-muted)",
+                            transform: isActive ? "rotate(90deg)" : "rotate(0deg)",
+                            transition: "transform 0.2s",
+                          }}>▸</div>
                         </div>
+
+                        {/* Subtotal envíos */}
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
+                          {anioData.meses.length} {anioData.meses.length === 1 ? "mes" : "meses"} · {fmtNum(anioData.total_enviados)} envíos
+                        </div>
+
                         {/* Breakdown por grupo */}
                         <div style={{
-                          paddingLeft: 22,
-                          display: "flex", gap: 16,
-                          fontSize: 11, color: "var(--text-muted)",
-                          flexWrap: "wrap",
+                          fontSize: 10, color: "var(--text-muted)",
+                          marginBottom: 6, lineHeight: 1.6,
                         }}>
                           {ORDEN_GRUPOS.map((gid) => {
                             const tot = anioData.totales_por_grupo[gid] ?? 0;
                             return (
-                              <span key={gid}>
-                                <span style={{ color: "var(--text-muted)" }}>{GRUPO_LABEL_CORTO[gid]}:</span>{" "}
-                                <span style={{ color: tot > 0 ? "var(--text)" : "var(--text-muted)", fontWeight: tot > 0 ? 500 : 400 }}>
-                                  {tot.toLocaleString("es-ES")}
-                                </span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Lista de meses (si el año está expandido) */}
-                      {anioOpen && (
-                        <div style={{
-                          background: "rgba(55,138,221,0.04)",
-                          borderTop: "0.5px dashed rgba(55,138,221,0.18)",
-                          padding: "10px 14px",
-                        }}>
-                          {anioData.meses.map((mesData) => {
-                            const mesOpen = mesesExpandidos.has(mesData.mes_envio);
-                            return (
-                              <div key={mesData.mes_envio} style={{ marginBottom: 8 }}>
-                                {/* Cabecera del mes (clickable) */}
-                                <div
-                                  onClick={() => toggleMes(mesData.mes_envio)}
-                                  style={{
-                                    display: "flex", alignItems: "center", gap: 10,
-                                    padding: "8px 12px",
-                                    cursor: "pointer",
-                                    background: mesOpen ? "rgba(55,138,221,0.08)" : "var(--card-bg)",
-                                    border: "0.5px solid var(--card-border)",
-                                    borderRadius: 6,
-                                    transition: "background 0.15s",
-                                  }}
-                                >
-                                  <div style={{
-                                    fontSize: 11,
-                                    color: mesOpen ? "#378ADD" : "var(--text-muted)",
-                                    transform: mesOpen ? "rotate(90deg)" : "rotate(0deg)",
-                                    transition: "transform 0.2s",
-                                    userSelect: "none",
-                                  }}>▶</div>
-                                  <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
-                                    📅 {fmtMesEnvioLargo(mesData.mes_envio)}
-                                  </div>
-                                  <div style={{ flex: 1, textAlign: "right" }}>
-                                    <span style={{ fontSize: 12, color: "#378ADD", fontWeight: 600 }}>
-                                      {mesData.total_enviados.toLocaleString("es-ES")}
-                                    </span>
-                                    <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
-                                      envíos
-                                    </span>
-                                  </div>
-                                  <div style={{ display: "flex", gap: 4 }}>
-                                    {mesData.respuestas_ok > 0 && (
-                                      <span style={{
-                                        padding: "1px 6px", borderRadius: 8,
-                                        background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                                        fontSize: 9, fontWeight: 500,
-                                      }}>🟢 {mesData.respuestas_ok}</span>
-                                    )}
-                                    {mesData.respuestas_bad > 0 && (
-                                      <span style={{
-                                        padding: "1px 6px", borderRadius: 8,
-                                        background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                                        fontSize: 9, fontWeight: 500,
-                                      }}>🔴 {mesData.respuestas_bad}</span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Detalle del mes (3 tarjetas + por empresa) */}
-                                {mesOpen && (
-                                  <div style={{ padding: "10px 0 4px 0" }}>
-                                    <DetalleMes
-                                      grupos={mesData.grupos}
-                                      porEmpresa={mesData.por_empresa}
-                                      expandedEmpresas={new Set(
-                                        Array.from(expandedEmpresas)
-                                          .filter((k) => k.startsWith(`${mesData.mes_envio}:`))
-                                          .map((k) => Number(k.split(":")[1]))
-                                      )}
-                                      toggleEmpresa={(id) => toggleEmpresa(mesData.mes_envio, id)}
-                                    />
-                                  </div>
-                                )}
+                              <div key={gid} style={{
+                                display: "flex", justifyContent: "space-between",
+                              }}>
+                                <span>{GRUPO_LABEL_CORTO[gid]}:</span>
+                                <span style={{
+                                  color: tot > 0 ? "var(--text)" : "var(--text-muted)",
+                                  fontWeight: tot > 0 ? 500 : 400,
+                                }}>{fmtNum(tot)}</span>
                               </div>
                             );
                           })}
                         </div>
-                      )}
+
+                        {/* Respuestas REE */}
+                        <div style={{
+                          display: "flex", gap: 4,
+                          paddingTop: 6,
+                          borderTop: "0.5px solid var(--card-border)",
+                          flexWrap: "wrap",
+                        }}>
+                          {anioData.respuestas_ok > 0 && (
+                            <span style={{
+                              padding: "1px 6px", borderRadius: 8,
+                              background: "rgba(29,158,117,0.15)", color: "#0F6E56",
+                              fontSize: 9, fontWeight: 500,
+                            }}>🟢 {fmtNum(anioData.respuestas_ok)}</span>
+                          )}
+                          {anioData.respuestas_bad > 0 && (
+                            <span style={{
+                              padding: "1px 6px", borderRadius: 8,
+                              background: "rgba(226,75,74,0.15)", color: "#A32D2D",
+                              fontSize: 9, fontWeight: 500,
+                            }}>🔴 {fmtNum(anioData.respuestas_bad)}</span>
+                          )}
+                          {anioData.respuestas_ok === 0 && anioData.respuestas_bad === 0 && (
+                            <span style={{
+                              fontSize: 9, color: "var(--text-muted)", fontStyle: "italic",
+                            }}>Sin respuestas REE</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Detalle del año activo (debajo del grid) */}
+                {anioActivoData && (
+                  <div style={{
+                    background: "rgba(55,138,221,0.04)",
+                    border: "0.5px solid rgba(55,138,221,0.18)",
+                    borderRadius: 8,
+                    padding: "12px 14px",
+                  }}>
+                    <div style={{
+                      fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
+                      letterSpacing: "0.08em", fontWeight: 600, marginBottom: 10,
+                    }}>
+                      Detalle año <span style={{ color: "#378ADD" }}>{anioActivoData.anio}</span>
                     </div>
-                  );
-                })}
-              </div>
+
+                    {anioActivoData.meses.map((mesData) => {
+                      const mesOpen = mesesExpandidos.has(mesData.mes_envio);
+                      return (
+                        <div key={mesData.mes_envio} style={{ marginBottom: 8 }}>
+                          {/* Cabecera del mes */}
+                          <div
+                            onClick={() => toggleMes(mesData.mes_envio)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 10,
+                              padding: "8px 12px",
+                              cursor: "pointer",
+                              background: mesOpen ? "rgba(55,138,221,0.08)" : "var(--card-bg)",
+                              border: "0.5px solid var(--card-border)",
+                              borderRadius: 6,
+                              transition: "background 0.15s",
+                            }}
+                          >
+                            <div style={{
+                              fontSize: 11,
+                              color: mesOpen ? "#378ADD" : "var(--text-muted)",
+                              transform: mesOpen ? "rotate(90deg)" : "rotate(0deg)",
+                              transition: "transform 0.2s",
+                              userSelect: "none",
+                            }}>▶</div>
+                            <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
+                              📅 {fmtMesEnvioLargo(mesData.mes_envio)}
+                            </div>
+                            <div style={{ flex: 1, textAlign: "right" }}>
+                              <span style={{ fontSize: 12, color: "#378ADD", fontWeight: 600 }}>
+                                {fmtNum(mesData.total_enviados)}
+                              </span>
+                              <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
+                                envíos
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              {mesData.respuestas_ok > 0 && (
+                                <span style={{
+                                  padding: "1px 6px", borderRadius: 8,
+                                  background: "rgba(29,158,117,0.15)", color: "#0F6E56",
+                                  fontSize: 9, fontWeight: 500,
+                                }}>🟢 {mesData.respuestas_ok}</span>
+                              )}
+                              {mesData.respuestas_bad > 0 && (
+                                <span style={{
+                                  padding: "1px 6px", borderRadius: 8,
+                                  background: "rgba(226,75,74,0.15)", color: "#A32D2D",
+                                  fontSize: 9, fontWeight: 500,
+                                }}>🔴 {mesData.respuestas_bad}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Detalle del mes */}
+                          {mesOpen && (
+                            <div style={{ padding: "10px 0 4px 0" }}>
+                              <DetalleMes
+                                grupos={mesData.grupos}
+                                porEmpresa={mesData.por_empresa}
+                                expandedEmpresas={new Set(
+                                  Array.from(expandedEmpresas)
+                                    .filter((k) => k.startsWith(`${mesData.mes_envio}:`))
+                                    .map((k) => Number(k.split(":")[1]))
+                                )}
+                                toggleEmpresa={(id) => toggleEmpresa(mesData.mes_envio, id)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
