@@ -837,14 +837,6 @@ export default function DashboardEnviosSection({ token }: Props) {
               </div>
             ) : (
               <>
-                {/* Subtítulo */}
-                <div style={{
-                  fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
-                  letterSpacing: "0.08em", fontWeight: 600, marginBottom: 8,
-                }}>
-                  Histórico · últimos {aniosVisibles.length} {aniosVisibles.length === 1 ? "año" : "años"}
-                </div>
-
                 {/* Tarjetas-año en flex (ancho fijo, wrap si hay muchas) */}
                 <div style={{
                   display: "flex",
