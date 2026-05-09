@@ -711,10 +711,10 @@ export default function DashboardEnviosSection({ token }: Props) {
                   Histórico · últimos {aniosVisibles.length} {aniosVisibles.length === 1 ? "año" : "años"}
                 </div>
 
-                {/* Grid de tarjetas-año (auto-fit hasta 5 columnas) */}
+                {/* Tarjetas-año en flex (ancho fijo, wrap si hay muchas) */}
                 <div style={{
-                  display: "grid",
-                  gridTemplateColumns: `repeat(${aniosVisibles.length}, minmax(0, 1fr))`,
+                  display: "flex",
+                  flexWrap: "wrap",
                   gap: 8,
                   marginBottom: 16,
                 }}>
@@ -725,12 +725,14 @@ export default function DashboardEnviosSection({ token }: Props) {
                         key={anioData.anio}
                         onClick={() => toggleAnio(anioData.anio)}
                         style={{
-                          background: "var(--card-bg)",
+                          width: 220,
+                          flexShrink: 0,
+                          background: "var(--field-bg-soft)",
                           border: isActive
                             ? "1px solid rgba(55,138,221,0.6)"
-                            : "1px solid var(--card-border)",
-                          borderRadius: 6,
-                          padding: 10,
+                            : "0.5px solid var(--card-border)",
+                          borderRadius: 8,
+                          padding: 12,
                           cursor: "pointer",
                           transition: "background 0.15s, border-color 0.15s",
                           boxShadow: isActive ? "0 0 0 2px rgba(55,138,221,0.15)" : "none",
