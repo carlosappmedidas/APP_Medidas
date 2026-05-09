@@ -41,6 +41,8 @@ interface CountResult {
 
 interface EmpresaOption { id: number; nombre: string; codigo_ree: string | null; }
 
+type MClass = "M1" | "M2" | "M7";
+
 // ─── Estilos compartidos ──────────────────────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
@@ -123,6 +125,7 @@ export default function EnviosSection({ token }: Props) {
   const [errorEnvios, setErrorEnvios] = useState<string | null>(null);
   const [countEnvios, setCountEnvios] = useState<CountResult | null>(null);
 
+  const [filtroM, setFiltroM]             = useState<MClass>("M2");    // M1 / M2 / M7
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");      // "" o id
   const [filtroTipo, setFiltroTipo]       = useState<string>("");      // "" / AGRECL / INMECL / MAGCL
   const [filtroEstado, setFiltroEstado]   = useState<string>("");      // "" / pendiente / ok / bad
@@ -160,20 +163,20 @@ export default function EnviosSection({ token }: Props) {
       .catch(() => {});
   }, [token]);
 
-  // ── Cargar histórico M2 ────────────────────────────────────────────────────
+  // ── Cargar histórico (M1 / M2 / M7) ────────────────────────────────────────
   const cargarEnvios = useCallback(async () => {
     if (!token) return;
     setLoadingEnvios(true); setErrorEnvios(null);
     try {
-      // Siempre filtramos por M2 en esta tarjeta
-      const params = new URLSearchParams({ m_clasificacion: "M2", limit: "500" });
+      // Filtramos por la ventana M seleccionada en la tarjeta
+      const params = new URLSearchParams({ m_clasificacion: filtroM, limit: "500" });
       if (filtroEmpresa) params.set("empresa_id", filtroEmpresa);
       if (filtroTipo)    params.set("tipo", filtroTipo);
       if (filtroEstado)  params.set("estado", filtroEstado);
 
       const [resList, resCount] = await Promise.all([
         fetch(`${API_BASE_URL}/envios/historico?${params}`, { headers: getAuthHeaders(token) }),
-        fetch(`${API_BASE_URL}/envios/historico/count?m_clasificacion=M2`, { headers: getAuthHeaders(token) }),
+        fetch(`${API_BASE_URL}/envios/historico/count?m_clasificacion=${filtroM}`, { headers: getAuthHeaders(token) }),
       ]);
       if (!resList.ok) throw new Error(`Error ${resList.status}`);
       const list: EnvioM[] = await resList.json();
@@ -186,7 +189,7 @@ export default function EnviosSection({ token }: Props) {
     } catch (e: unknown) {
       setErrorEnvios(e instanceof Error ? e.message : "Error cargando histórico");
     } finally { setLoadingEnvios(false); }
-  }, [token, filtroEmpresa, filtroTipo, filtroEstado]);
+  }, [token, filtroM, filtroEmpresa, filtroTipo, filtroEstado]);
 
   // Recargar al abrir tarjeta o cambiar filtros
   useEffect(() => {
@@ -275,14 +278,14 @@ export default function EnviosSection({ token }: Props) {
         )}
       </div>
 
-      {/* ══ TARJETA 2 — HISTÓRICO M2 ═══════════════════════════════════════ */}
+      {/* ══ TARJETA 2 — HISTÓRICO DE ENVÍOS ════════════════════════════════ */}
       <div style={panelStyle}>
         <div style={panelHeaderStyle} onClick={() => setPanelHistOpen(v => !v)}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <div style={panelTitleStyle}>📋 Histórico M2</div>
+              <div style={panelTitleStyle}>📋 Histórico de envíos</div>
               <div style={panelDescStyle}>
-                Envíos M2 (AGRECL, INMECL, MAGCL) con estado de respuesta REE.
+                Envíos AGRECL, INMECL, MAGCL con estado de respuesta REE. Selecciona la ventana M (M1, M2 o M7).
               </div>
             </div>
             {countEnvios && panelHistOpen && (
@@ -314,6 +317,14 @@ export default function EnviosSection({ token }: Props) {
           <div style={{ borderTop: "1px solid var(--card-border)" }}>
             {/* Filtros */}
             <div style={{ display: "flex", gap: 8, padding: "10px 14px", flexWrap: "wrap", alignItems: "flex-end", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Ventana M</label>
+                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 90 }} value={filtroM} onChange={e => setFiltroM(e.target.value as MClass)}>
+                  <option value="M1">M1</option>
+                  <option value="M2">M2</option>
+                  <option value="M7">M7</option>
+                </select>
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Empresa</label>
                 <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 160 }} value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}>
@@ -380,7 +391,7 @@ export default function EnviosSection({ token }: Props) {
                     <tr className="ui-tr"><td colSpan={11} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : envios.length === 0 ? (
                     <tr className="ui-tr"><td colSpan={11} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
-                      Sin envíos M2 todavía. Sube ficheros AGRECL, INMECL o MAGCL desde la tarjeta superior y aparecerán aquí.
+                      Sin envíos {filtroM} todavía. Sube ficheros AGRECL, INMECL o MAGCL desde la tarjeta superior y aparecerán aquí.
                     </td></tr>
                   ) : enviosPagina.map(e => (
                     <tr key={e.id} className="ui-tr">
