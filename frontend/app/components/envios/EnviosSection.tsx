@@ -111,7 +111,7 @@ const IconRefresh = () => (
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function EnviosSection({ token }: Props) {
-  const [panelEnvioOpen, setPanelEnvioOpen] = useState(true);
+  const [panelEnvioOpen, setPanelEnvioOpen] = useState(false);
   const [panelHistOpen, setPanelHistOpen]   = useState(false);
 
   const [configs, setConfigs] = useState<FtpConfig[]>([]);
@@ -404,6 +404,7 @@ export default function EnviosSection({ token }: Props) {
                 token={token}
                 configs={configs}
                 titulo="Explorador SFTP"
+                inicialAbierto
                 onUploadCompleted={(r) => {
                   console.log("Subidos al SFTP:", r);
                   // Si la tarjeta del histórico está abierta → recargar para ver los nuevos

@@ -42,6 +42,8 @@ interface Props {
   onDownloadCompleted?: () => void;
   /** Título del sub-panel. Por defecto "Explorador FTP". */
   titulo?: string;
+  /** Si true, el sub-panel arranca abierto (por defecto false). */
+  inicialAbierto?: boolean;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -195,8 +197,9 @@ export default function ExploradorFtpPanel({
   onUploadCompleted,
   onDownloadCompleted,
   titulo = "Explorador FTP",
+  inicialAbierto = false,
 }: Props) {
-  const [subOpen, setSubOpen] = useState(false);
+  const [subOpen, setSubOpen] = useState(inicialAbierto);
 
   const [explorerConfigId, setExplorerConfigId] = useState<number | "">("");
   const [explorerResult, setExplorerResult]     = useState<ExplorerResult | null>(null);

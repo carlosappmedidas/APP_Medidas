@@ -290,35 +290,49 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
         })}
       </div>
 
-      {/* Detalle por empresa (desplegable) */}
+      {/* Detalle por empresa (desplegable como botón pill) */}
       {porEmpresa.length > 0 && (
         <>
-          <div
-            onClick={toggleDetalle}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              cursor: "pointer", marginBottom: 8,
-              userSelect: "none",
-            }}
-          >
-            <div style={{
-              fontSize: 11,
-              color: detalleAbierto ? "#378ADD" : "var(--text-muted)",
-              transform: detalleAbierto ? "rotate(90deg)" : "rotate(0deg)",
-              transition: "transform 0.2s",
-            }}>▶</div>
-            <div style={{
-              fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
-              letterSpacing: "0.08em", fontWeight: 600,
-            }}>
-              Detalle por empresa
-            </div>
-            <div style={{
-              fontSize: 10, color: "var(--text-muted)",
-              fontStyle: "italic",
-            }}>
-              ({porEmpresa.length} {porEmpresa.length === 1 ? "empresa" : "empresas"})
-            </div>
+          <div style={{ marginBottom: detalleAbierto ? 8 : 0 }}>
+            <button
+              type="button"
+              onClick={toggleDetalle}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "6px 12px",
+                fontSize: 11, fontWeight: 500,
+                color: detalleAbierto ? "#85B7EB" : "var(--text)",
+                background: detalleAbierto ? "rgba(55,138,221,0.15)" : "var(--field-bg-soft)",
+                border: detalleAbierto
+                  ? "0.5px solid rgba(55,138,221,0.5)"
+                  : "0.5px solid var(--card-border)",
+                borderRadius: 6,
+                cursor: "pointer",
+                transition: "background 0.15s, border-color 0.15s, color 0.15s",
+                userSelect: "none",
+              }}
+              onMouseEnter={(e) => {
+                if (!detalleAbierto) {
+                  e.currentTarget.style.borderColor = "rgba(55,138,221,0.4)";
+                  e.currentTarget.style.background = "rgba(55,138,221,0.06)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!detalleAbierto) {
+                  e.currentTarget.style.borderColor = "var(--card-border)";
+                  e.currentTarget.style.background = "var(--field-bg-soft)";
+                }
+              }}
+            >
+              <span style={{
+                fontSize: 10,
+                color: detalleAbierto ? "#85B7EB" : "var(--text-muted)",
+                transform: detalleAbierto ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+                display: "inline-block",
+              }}>▶</span>
+              <span>Detalle por empresa ({porEmpresa.length})</span>
+            </button>
           </div>
 
           {detalleAbierto && (
