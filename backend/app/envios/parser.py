@@ -1,7 +1,7 @@
 # app/envios/parser.py
 # pyright: reportMissingImports=false
 """
-Parser para nombres de ficheros AGRECL/INMECL/MAGCL/F1/MCIL345QH
+Parser para nombres de ficheros AGRECL/INMECL/MAGCL/F1/MCIL345QH/F1QH
 enviados al SFTP REE.
 
 Estructuras soportadas:
@@ -10,10 +10,11 @@ Estructuras soportadas:
   INMECL_{empresa}_{comerc}_{periodo}_{fechagen}.{ver}.bz2
   F1_{empresa}_{periodo_dia}_{fechagen}.{ver}.bz2
   MCIL345QH_{empresa}_{periodo_dia}_{fechagen}.{ver}.bz2
+  F1QH_{empresa}_{periodo_dia}_{fechagen}.{ver}.bz2
 
 Notas:
   - {periodo}      = AAAAMM       (mensual: INMECL, MAGCL)
-  - {periodo_dia}  = AAAAMMDD     (diario: F1, MCIL345QH)
+  - {periodo_dia}  = AAAAMMDD     (diario: F1, MCIL345QH, F1QH)
     El día se descarta al guardar en BD: solo se almacena
     periodo_anio + periodo_mes para que los 30 ficheros del
     mismo mes salgan agrupados al filtrar.
@@ -73,6 +74,10 @@ _RE_MCIL345QH = re.compile(
     rf"^MCIL345QH_(?P<empresa>\d+)_(?P<periodo_dia>\d{{8}})_(?P<fechagen>\d{{8}})\.(?P<ver>\d+){_RESP}{_EXT}$"
 )
 
+_RE_F1QH = re.compile(
+    rf"^F1QH_(?P<empresa>\d+)_(?P<periodo_dia>\d{{8}})_(?P<fechagen>\d{{8}})\.(?P<ver>\d+){_RESP}{_EXT}$"
+)
+
 
 def _parse_fecha(yyyymmdd: str) -> date:
     return date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
@@ -108,6 +113,13 @@ def parsear_nombre_envio(nombre: str) -> Optional[ParsedEnvio]:
     if m:
         anio, mes = _parse_periodo(m.group("periodo"))
         return _build_parsed("INMECL", m, comerc=m.group("comerc"), periodo=(anio, mes), nombre=nombre)
+
+    # F1QH (diario, mismo patrón que F1) — comprobar ANTES que F1 por prefijo común
+    m = _RE_F1QH.match(nombre)
+    if m:
+        periodo_dia = m.group("periodo_dia")
+        anio, mes = int(periodo_dia[0:4]), int(periodo_dia[4:6])
+        return _build_parsed("F1QH", m, comerc=None, periodo=(anio, mes), nombre=nombre)
 
     # F1 (diario, periodo en AAAAMMDD → guardamos solo año/mes)
     m = _RE_F1.match(nombre)
