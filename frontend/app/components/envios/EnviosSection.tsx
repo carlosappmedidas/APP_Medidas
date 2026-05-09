@@ -472,11 +472,13 @@ export default function EnviosSection({ token }: Props) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Tipo</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 110 }} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
+                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 130 }} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
                   <option value="">Todos</option>
                   <option value="AGRECL">AGRECL</option>
                   <option value="INMECL">INMECL</option>
                   <option value="MAGCL">MAGCL</option>
+                  <option value="F1">F1</option>
+                  <option value="MCIL345QH">MCIL345QH</option>
                 </select>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>

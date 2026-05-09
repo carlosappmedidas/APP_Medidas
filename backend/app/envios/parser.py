@@ -1,12 +1,22 @@
 # app/envios/parser.py
 # pyright: reportMissingImports=false
 """
-Parser para nombres de ficheros AGRECL/INMECL/MAGCL enviados al SFTP REE.
+Parser para nombres de ficheros AGRECL/INMECL/MAGCL/F1/MCIL345QH
+enviados al SFTP REE.
 
 Estructuras soportadas:
   AGRECL_{empresa}_{fechagen}.{ver}.bz2
   MAGCL_{empresa}_{periodo}_{fechagen}.{ver}.bz2
   INMECL_{empresa}_{comerc}_{periodo}_{fechagen}.{ver}.bz2
+  F1_{empresa}_{periodo_dia}_{fechagen}.{ver}.bz2
+  MCIL345QH_{empresa}_{periodo_dia}_{fechagen}.{ver}.bz2
+
+Notas:
+  - {periodo}      = AAAAMM       (mensual: INMECL, MAGCL)
+  - {periodo_dia}  = AAAAMMDD     (diario: F1, MCIL345QH)
+    El día se descarta al guardar en BD: solo se almacena
+    periodo_anio + periodo_mes para que los 30 ficheros del
+    mismo mes salgan agrupados al filtrar.
 
 Variantes de respuesta REE:
   ...{ver}.ok.bz2       → REE aceptó el fichero
@@ -52,6 +62,17 @@ _RE_INMECL = re.compile(
     rf"^INMECL_(?P<empresa>\d+)_(?P<comerc>\d+)_(?P<periodo>\d{{6}})_(?P<fechagen>\d{{8}})\.(?P<ver>\d+){_RESP}{_EXT}$"
 )
 
+# F1 / MCIL345QH son diarios: el periodo viene como AAAAMMDD (8 dígitos),
+# pero solo guardaremos año/mes en BD (el día se descarta al construir el
+# ParsedEnvio en _build_parsed_diario).
+_RE_F1 = re.compile(
+    rf"^F1_(?P<empresa>\d+)_(?P<periodo_dia>\d{{8}})_(?P<fechagen>\d{{8}})\.(?P<ver>\d+){_RESP}{_EXT}$"
+)
+
+_RE_MCIL345QH = re.compile(
+    rf"^MCIL345QH_(?P<empresa>\d+)_(?P<periodo_dia>\d{{8}})_(?P<fechagen>\d{{8}})\.(?P<ver>\d+){_RESP}{_EXT}$"
+)
+
 
 def _parse_fecha(yyyymmdd: str) -> date:
     return date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
@@ -87,6 +108,20 @@ def parsear_nombre_envio(nombre: str) -> Optional[ParsedEnvio]:
     if m:
         anio, mes = _parse_periodo(m.group("periodo"))
         return _build_parsed("INMECL", m, comerc=m.group("comerc"), periodo=(anio, mes), nombre=nombre)
+
+    # F1 (diario, periodo en AAAAMMDD → guardamos solo año/mes)
+    m = _RE_F1.match(nombre)
+    if m:
+        periodo_dia = m.group("periodo_dia")
+        anio, mes = int(periodo_dia[0:4]), int(periodo_dia[4:6])
+        return _build_parsed("F1", m, comerc=None, periodo=(anio, mes), nombre=nombre)
+
+    # MCIL345QH (diario, mismo patrón que F1)
+    m = _RE_MCIL345QH.match(nombre)
+    if m:
+        periodo_dia = m.group("periodo_dia")
+        anio, mes = int(periodo_dia[0:4]), int(periodo_dia[4:6])
+        return _build_parsed("MCIL345QH", m, comerc=None, periodo=(anio, mes), nombre=nombre)
 
     return None
 

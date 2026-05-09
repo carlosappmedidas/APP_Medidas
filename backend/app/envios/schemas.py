@@ -49,14 +49,14 @@ class EnvioMRead(BaseModel):
 
 class ParsedEnvio(BaseModel):
     """
-    Resultado de parsear un nombre de fichero AGRECL/INMECL/MAGCL.
+    Resultado de parsear un nombre de fichero AGRECL/INMECL/MAGCL/F1/MCIL345QH.
     El parser devuelve este objeto si el nombre encaja, o None si no.
     """
-    tipo: Literal["AGRECL", "INMECL", "MAGCL"]
+    tipo: Literal["AGRECL", "INMECL", "MAGCL", "F1", "MCIL345QH"]
     codigo_ree_empresa: str
     comercializadora_codigo: Optional[str]      # solo INMECL
-    periodo_anio: Optional[int]                 # solo INMECL/MAGCL
-    periodo_mes:  Optional[int]                 # solo INMECL/MAGCL
+    periodo_anio: Optional[int]                 # solo INMECL/MAGCL/F1/MCIL345QH
+    periodo_mes:  Optional[int]                 # solo INMECL/MAGCL/F1/MCIL345QH
     fecha_generacion: date
     version: int
     nombre_base: str                            # sin extensión .bz2 ni respuesta
