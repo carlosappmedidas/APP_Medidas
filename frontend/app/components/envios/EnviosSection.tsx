@@ -479,6 +479,7 @@ export default function EnviosSection({ token }: Props) {
                   <option value="MAGCL">MAGCL</option>
                   <option value="F1">F1</option>
                   <option value="F1QH">F1QH</option>
+                  <option value="MCIL345">MCIL345</option>
                   <option value="MCIL345QH">MCIL345QH</option>
                 </select>
               </div>

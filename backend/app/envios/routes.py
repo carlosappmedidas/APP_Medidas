@@ -41,7 +41,7 @@ def get_historico(
     tipo: Optional[str] = Query(
         None,
         description="Filtrar por tipo de fichero",
-        pattern="^(AGRECL|INMECL|MAGCL|F1|MCIL345QH|F1QH)$",
+        pattern="^(AGRECL|INMECL|MAGCL|F1|MCIL345QH|F1QH|MCIL345)$",
     ),
     periodo_anio: Optional[int] = Query(None, description="Año del periodo de datos"),
     periodo_mes: Optional[int] = Query(None, ge=1, le=12, description="Mes del periodo (1-12)"),
