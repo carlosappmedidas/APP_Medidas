@@ -3,21 +3,16 @@
 """
 Servicio del dashboard de envíos (`/dashboard/envios-resumen`).
 
-Encapsula:
-  • Cálculo de plazos REE (M1, M2, M7) para un mes_envio dado, usando los
-    festivos Madrid (lazy load desde calendario_laboral).
-  • Determinación del periodo asociado a cada M (M1=mes-1, M2=mes-2, M7=mes-7).
-  • Agregación de envios_m por (grupo, periodo, M) y por (empresa, grupo).
-  • Construcción del JSON completo del endpoint en modos "mensual" e "historico".
+Modos:
+  • "mensual"   → con alertas de plazo. Header: ENVÍOS {mes_envio}.
+                  Cada grupo agrupa M1/M2/M7 con sus periodos (mes-1, mes-2, mes-7).
+  • "historico" → sin alertas (los plazos ya pasaron). Misma lógica que
+                  "mensual" pero el mes_envio es uno pasado seleccionable.
 
-Grupos de tipos (PS = punto de suministro):
+Grupos de tipos:
   - PM_1_2_3   = F1, F1QH                         (PS tipos 1-3)
   - PM_4_5     = AGRECL, INMECL, MAGCL            (PS tipos 4-5)
   - GEN_4_5    = MCIL345, MCIL345QH               (Generación 4-5)
-
-NOTA: cualquier tipo PUEDE enviarse en cualquier M; las líneas de cada grupo
-se construyen dinámicamente a partir de los datos reales (si no hay envíos
-de un (grupo, M) ese mes, esa línea no aparece).
 """
 from __future__ import annotations
 
@@ -29,7 +24,6 @@ try:
 except ImportError:  # pragma: no cover
     ZoneInfo = None  # type: ignore[assignment,misc]
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.calendario_laboral.services_db import cargar_festivos_set_activos
@@ -43,7 +37,6 @@ from app.envios.models import EnvioM
 
 # ── Constantes ───────────────────────────────────────────────────────────
 
-# Mapeo grupo → tipos
 GRUPOS_TIPOS: dict[str, dict[str, Any]] = {
     "PM_1_2_3": {
         "label": "PM 1, 2 y 3 — F1 y F1QH",
@@ -59,10 +52,8 @@ GRUPOS_TIPOS: dict[str, dict[str, Any]] = {
     },
 }
 
-# Lista de Ms en orden lógico de presentación
 ORDEN_MS = ("M1", "M2", "M7")
 
-# Configuración de plazos REE
 PLAZOS_CONFIG: dict[str, dict[str, Any]] = {
     "M1": {"meses_offset": 1, "label": "4º día hábil 08:00h"},
     "M2": {"meses_offset": 2, "label": "12º día natural 08:00h"},
@@ -244,7 +235,7 @@ def _build_grupos_mensual(
     mes_envio_anio: int,
     mes_envio_mes: int,
 ) -> list[dict[str, Any]]:
-    """Modo MENSUAL: para cada grupo, una línea por cada M con datos."""
+    """Para cada grupo, una línea por cada M con datos."""
     grupos: list[dict[str, Any]] = []
 
     for grupo_id, info in GRUPOS_TIPOS.items():
@@ -254,63 +245,6 @@ def _build_grupos_mensual(
             periodo_anio, periodo_mes = _periodo_para_m(
                 mes_envio_anio, mes_envio_mes, m_clas
             )
-            agg = _agregar_envios_grupo(
-                db,
-                tenant_id=tenant_id,
-                tipos=info["tipos"],
-                periodo_anio=periodo_anio,
-                periodo_mes=periodo_mes,
-                m_clas=m_clas,
-            )
-            if agg["total"] == 0:
-                continue
-            periodos_lista.append({
-                "periodo": _periodo_str(periodo_anio, periodo_mes),
-                "M": m_clas,
-                "ficheros_enviados": agg["total"],
-                "respuestas_ok": agg["ok"],
-                "respuestas_bad": agg["bad"],
-                "respuestas_pendiente": agg["pendiente"],
-            })
-
-        grupos.append({
-            "id": grupo_id,
-            "label": info["label"],
-            "tipos": list(info["tipos"]),
-            "periodos": periodos_lista,
-        })
-
-    return grupos
-
-
-def _build_grupos_historico(
-    db: Session,
-    *,
-    tenant_id: int,
-    periodo_anio: int,
-    periodo_mes: int,
-) -> list[dict[str, Any]]:
-    """Modo HISTÓRICO: para un periodo concreto, líneas por cada M con datos."""
-    grupos: list[dict[str, Any]] = []
-
-    for grupo_id, info in GRUPOS_TIPOS.items():
-        rows = (
-            _query_base_envios(db, tenant_id=tenant_id)
-            .filter(
-                EnvioM.tipo.in_(info["tipos"]),
-                EnvioM.periodo_anio == periodo_anio,
-                EnvioM.periodo_mes == periodo_mes,
-            )
-            .with_entities(EnvioM.m_clasificacion, func.count(EnvioM.id))
-            .group_by(EnvioM.m_clasificacion)
-            .all()
-        )
-        ms_con_datos = {cast(str, r[0]) for r in rows}
-
-        periodos_lista: list[dict[str, Any]] = []
-        for m_clas in ORDEN_MS:
-            if m_clas not in ms_con_datos:
-                continue
             agg = _agregar_envios_grupo(
                 db,
                 tenant_id=tenant_id,
@@ -350,8 +284,6 @@ def _build_por_empresa(
     Bloque "Detalle por empresa".
 
     `periodos_a_consultar`: lista de tuplas (periodo_anio, periodo_mes, M).
-        - En modo mensual: 3 tuplas (una por cada M con su periodo).
-        - En modo histórico: 1 tupla con M="" (subagrupar por M real).
     """
     empresas = (
         db.query(Empresa)
@@ -377,81 +309,37 @@ def _build_por_empresa(
 
         for periodo_anio, periodo_mes, m_clas in periodos_a_consultar:
             for grupo_id, info in GRUPOS_TIPOS.items():
-                if m_clas:
-                    # Modo mensual: contar 1 (grupo, periodo, M) directamente
-                    base = (
-                        _query_base_envios(db, tenant_id=tenant_id)
-                        .filter(
-                            EnvioM.empresa_id == empresa_id,
-                            EnvioM.tipo.in_(info["tipos"]),
-                            EnvioM.periodo_anio == periodo_anio,
-                            EnvioM.periodo_mes == periodo_mes,
-                            EnvioM.m_clasificacion == m_clas,
-                        )
+                base = (
+                    _query_base_envios(db, tenant_id=tenant_id)
+                    .filter(
+                        EnvioM.empresa_id == empresa_id,
+                        EnvioM.tipo.in_(info["tipos"]),
+                        EnvioM.periodo_anio == periodo_anio,
+                        EnvioM.periodo_mes == periodo_mes,
+                        EnvioM.m_clasificacion == m_clas,
                     )
-                    total = base.count()
-                    if total == 0:
-                        continue
-                    ok = base.filter(EnvioM.estado_ree == "ok").count()
-                    bad = base.filter(EnvioM.estado_ree == "bad").count()
-                    pendiente = total - ok - bad
+                )
+                total = base.count()
+                if total == 0:
+                    continue
+                ok = base.filter(EnvioM.estado_ree == "ok").count()
+                bad = base.filter(EnvioM.estado_ree == "bad").count()
+                pendiente = total - ok - bad
 
-                    totales_por_grupo[grupo_id]["enviados"] += total
-                    totales_por_grupo[grupo_id]["ok"] += ok
-                    totales_por_grupo[grupo_id]["bad"] += bad
-                    totales_por_grupo[grupo_id]["pendiente"] += pendiente
-                    total_enviados_mes += total
+                totales_por_grupo[grupo_id]["enviados"] += total
+                totales_por_grupo[grupo_id]["ok"] += ok
+                totales_por_grupo[grupo_id]["bad"] += bad
+                totales_por_grupo[grupo_id]["pendiente"] += pendiente
+                total_enviados_mes += total
 
-                    detalle_por_grupo[grupo_id].append({
-                        "periodo": _periodo_str(periodo_anio, periodo_mes),
-                        "M": m_clas,
-                        "enviados": total,
-                        "ok": ok,
-                        "bad": bad,
-                        "pendiente": pendiente,
-                    })
-                else:
-                    # Modo histórico: subagrupar por M real existente en BD
-                    base_sin_m = (
-                        _query_base_envios(db, tenant_id=tenant_id)
-                        .filter(
-                            EnvioM.empresa_id == empresa_id,
-                            EnvioM.tipo.in_(info["tipos"]),
-                            EnvioM.periodo_anio == periodo_anio,
-                            EnvioM.periodo_mes == periodo_mes,
-                        )
-                    )
-                    sub_rows = (
-                        base_sin_m.with_entities(EnvioM.m_clasificacion)
-                        .group_by(EnvioM.m_clasificacion)
-                        .all()
-                    )
-                    for (sub_m,) in sub_rows:
-                        sub_m_str = cast(str, sub_m)
-                        sub_base = base_sin_m.filter(
-                            EnvioM.m_clasificacion == sub_m_str
-                        )
-                        sub_total = sub_base.count()
-                        if sub_total == 0:
-                            continue
-                        sub_ok = sub_base.filter(EnvioM.estado_ree == "ok").count()
-                        sub_bad = sub_base.filter(EnvioM.estado_ree == "bad").count()
-                        sub_pend = sub_total - sub_ok - sub_bad
-
-                        totales_por_grupo[grupo_id]["enviados"] += sub_total
-                        totales_por_grupo[grupo_id]["ok"] += sub_ok
-                        totales_por_grupo[grupo_id]["bad"] += sub_bad
-                        totales_por_grupo[grupo_id]["pendiente"] += sub_pend
-                        total_enviados_mes += sub_total
-
-                        detalle_por_grupo[grupo_id].append({
-                            "periodo": _periodo_str(periodo_anio, periodo_mes),
-                            "M": sub_m_str,
-                            "enviados": sub_total,
-                            "ok": sub_ok,
-                            "bad": sub_bad,
-                            "pendiente": sub_pend,
-                        })
+                detalle_por_grupo[grupo_id].append({
+                    "periodo": _periodo_str(periodo_anio, periodo_mes),
+                    "M": m_clas,
+                    "enviados": total,
+                    "ok": ok,
+                    "bad": bad,
+                    "pendiente": pendiente,
+                })
 
         if total_enviados_mes == 0:
             continue
@@ -481,21 +369,42 @@ def build_envios_resumen(
     """
     Construye el JSON completo de /dashboard/envios-resumen.
 
-    Parameters
-    ----------
-    tenant_id : int
-    anio, mes : int
-        Modo "mensual"   → mes_envio (mes en que se realiza el envío).
-        Modo "historico" → periodo de los datos a consultar.
-    modo : str
-        "mensual" o "historico".
+    En ambos modos (mensual e histórico) (anio, mes) representa el mes_envio
+    (el mes en que se realizó/realiza el envío al SFTP REE). La única
+    diferencia es:
+      • mensual   → incluye alertas de plazo (calculadas desde festivos Madrid)
+      • historico → sin alertas (los plazos ya pasaron y no aplican)
+
+    En ambos modos los grupos contienen líneas por cada M (M1/M2/M7) con su
+    periodo correspondiente (mes_envio - N).
     """
     if modo not in ("mensual", "historico"):
         raise ValueError(f"Modo inválido: {modo}")
 
+    # Grupos: misma lógica para ambos modos (M1/M2/M7 con periodos calculados)
+    grupos = _build_grupos_mensual(
+        db,
+        tenant_id=tenant_id,
+        mes_envio_anio=anio,
+        mes_envio_mes=mes,
+    )
+
+    # Por empresa: misma lógica también
+    periodos_a_consultar: list[tuple[int, int, str]] = []
+    for m_clas in ORDEN_MS:
+        p_anio, p_mes = _periodo_para_m(anio, mes, m_clas)
+        periodos_a_consultar.append((p_anio, p_mes, m_clas))
+
+    por_empresa = _build_por_empresa(
+        db,
+        tenant_id=tenant_id,
+        periodos_a_consultar=periodos_a_consultar,
+    )
+
+    # Alertas: solo en modo "mensual"
+    alertas: dict[str, dict[str, Any]] | None = None
     if modo == "mensual":
         festivos = cargar_festivos_set_activos(db, tenant_id=tenant_id, anio=anio)
-
         alertas = _build_alertas(
             db,
             tenant_id=tenant_id,
@@ -503,48 +412,11 @@ def build_envios_resumen(
             mes_envio_mes=mes,
             festivos=festivos,
         )
-        grupos = _build_grupos_mensual(
-            db,
-            tenant_id=tenant_id,
-            mes_envio_anio=anio,
-            mes_envio_mes=mes,
-        )
-        periodos_a_consultar: list[tuple[int, int, str]] = []
-        for m_clas in ORDEN_MS:
-            p_anio, p_mes = _periodo_para_m(anio, mes, m_clas)
-            periodos_a_consultar.append((p_anio, p_mes, m_clas))
-
-        por_empresa = _build_por_empresa(
-            db,
-            tenant_id=tenant_id,
-            periodos_a_consultar=periodos_a_consultar,
-        )
-
-        return {
-            "mes_envio": _periodo_str(anio, mes),
-            "modo": "mensual",
-            "alertas": alertas,
-            "grupos": grupos,
-            "por_empresa": por_empresa,
-        }
-
-# ── Modo histórico ────────────────────────────────────────────────────
-    grupos = _build_grupos_historico(
-        db,
-        tenant_id=tenant_id,
-        periodo_anio=anio,
-        periodo_mes=mes,
-    )
-    por_empresa = _build_por_empresa(
-        db,
-        tenant_id=tenant_id,
-        periodos_a_consultar=[(anio, mes, "")],
-    )
 
     return {
         "mes_envio": _periodo_str(anio, mes),
-        "modo": "historico",
-        "alertas": None,
+        "modo": modo,
+        "alertas": alertas,
         "grupos": grupos,
         "por_empresa": por_empresa,
     }
