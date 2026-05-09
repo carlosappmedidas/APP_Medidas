@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import ExploradorFtpPanel, { type FtpConfig } from "../comunicaciones/ExploradorFtpPanel";
 import TablePaginationFooter from "../ui/TablePaginationFooter";
+import DashboardEnviosSection from "./DashboardEnviosSection";
 
 interface Props { token: string | null; }
 
@@ -366,6 +367,9 @@ export default function EnviosSection({ token }: Props) {
 
   return (
     <div className="text-sm">
+
+      {/* ══ DASHBOARD DE ENVÍOS ═════════════════════════════════════════════ */}
+      <DashboardEnviosSection token={token} />
 
       {/* ══ TARJETA 1 — ENVÍO DE FICHEROS ══════════════════════════════════ */}
       <div style={panelStyle}>

@@ -9,6 +9,8 @@ from sqlalchemy.orm import Query, Session
 from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.core.permissions import assert_empresa_access, get_allowed_empresa_ids
+from app.dashboard.schemas_envios import EnviosResumenResp
+from app.dashboard.services_envios import build_envios_resumen
 from app.empresas.models import Empresa
 from app.measures.models import MedidaGeneral, MedidaPS
 from app.tenants.models import User
@@ -917,3 +919,59 @@ def get_dashboard_losses_trend_chart(
         },
         "series": series,
     }
+
+
+# ── Dashboard de envíos REE ──────────────────────────────────────────────
+# Endpoint independiente del resto del dashboard. No mezcla datos de medidas
+# (kWh, importes, pérdidas) sino métricas de envíos al SFTP REE: plazos M1/M2/M7,
+# contadores por grupo de tipos y detalle por empresa.
+
+@router.get("/envios-resumen", response_model=EnviosResumenResp)
+def get_dashboard_envios_resumen(
+    anio: int,
+    mes: int,
+    modo: str = "mensual",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Devuelve el resumen del dashboard de envíos para un (anio, mes).
+
+    Parameters
+    ----------
+    anio : int
+    mes : int  (1-12)
+    modo : str  ("mensual" | "historico")
+        - "mensual"   → (anio, mes) es el mes_envio. Calcula plazos REE
+          y muestra alertas. Cada grupo agrupa M1/M2/M7 con sus periodos
+          (mes-1, mes-2, mes-7).
+        - "historico" → (anio, mes) es el periodo de los datos. Sin alertas
+          de plazo. Cada grupo muestra los Ms con datos en ese periodo.
+    """
+    if modo not in ("mensual", "historico"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="modo debe ser 'mensual' o 'historico'.",
+        )
+    if mes < 1 or mes > 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="mes inválido (1-12).",
+        )
+    if anio < 2020 or anio > 2099:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="anio fuera de rango (2020-2099).",
+        )
+
+    tenant_id_int = int(cast(int, current_user.tenant_id))
+
+    payload = build_envios_resumen(
+        db,
+        tenant_id=tenant_id_int,
+        anio=anio,
+        mes=mes,
+        modo=modo,
+    )
+
+    return EnviosResumenResp.model_validate(payload)

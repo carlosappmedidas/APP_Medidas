@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.alerts.routes import router as alerts_router
+from app.calendario_laboral.routes import router as calendario_laboral_router
 from app.calendario_ree.routes import router as calendario_ree_router
 from app.comunicaciones.routes import router as comunicaciones_router
 from app.core.config import get_settings
@@ -36,6 +37,7 @@ from app.topologia.routes import router as topologia_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
+from app.calendario_laboral.models import DiaFestivoMadrid  # noqa: F401
 from app.calendario_ree.models import ReeCalendarFile  # noqa: F401
 from app.comunicaciones.models import FtpConfig, FtpSyncLog, FtpSyncRule  # noqa: F401
 from app.measures.models import MedidaGeneral, MedidaMicro, MedidaPS  # noqa: F401
@@ -112,6 +114,7 @@ app.include_router(alerts_router)
 app.include_router(dashboard_router)
 app.include_router(dashboard_tablas_router)
 app.include_router(calendario_ree_router)
+app.include_router(calendario_laboral_router)
 app.include_router(medidas_graficos_router)
 app.include_router(medidas_graficos_ps_router)
 app.include_router(objeciones_router)
