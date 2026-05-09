@@ -41,7 +41,7 @@ interface CountResult {
 
 interface EmpresaOption { id: number; nombre: string; codigo_ree: string | null; }
 
-type MClass = "M1" | "M2" | "M7";
+type MClass = "" | "M1" | "M2" | "M7";
 
 // ─── Estilos compartidos ──────────────────────────────────────────────────────
 
@@ -175,7 +175,10 @@ export default function EnviosSection({ token }: Props) {
   useEffect(() => {
     if (!token) return;
     if (!panelHistOpen) return;
-    fetch(`${API_BASE_URL}/envios/historico/periodos?m_clasificacion=${filtroM}`, { headers: getAuthHeaders(token) })
+    const url = filtroM
+      ? `${API_BASE_URL}/envios/historico/periodos?m_clasificacion=${filtroM}`
+      : `${API_BASE_URL}/envios/historico/periodos`;
+    fetch(url, { headers: getAuthHeaders(token) })
       .then(r => r.ok ? r.json() : [])
       .then((d: { anio: number; mes: number }[]) => setPeriodosDisponibles(d))
       .catch(() => setPeriodosDisponibles([]));
@@ -186,8 +189,9 @@ export default function EnviosSection({ token }: Props) {
     if (!token) return;
     setLoadingEnvios(true); setErrorEnvios(null);
     try {
-      // Filtramos por la ventana M seleccionada en la tarjeta
-      const params = new URLSearchParams({ m_clasificacion: filtroM, limit: "500" });
+      // Filtramos por la ventana M seleccionada (vacío = todos)
+      const params = new URLSearchParams({ limit: "500" });
+      if (filtroM)       params.set("m_clasificacion", filtroM);
       if (filtroEmpresa) params.set("empresa_id", filtroEmpresa);
       if (filtroTipo)    params.set("tipo", filtroTipo);
       if (filtroEstado)  params.set("estado", filtroEstado);
@@ -197,9 +201,13 @@ export default function EnviosSection({ token }: Props) {
         if (mesStr)  params.set("periodo_mes", mesStr);
       }
 
+      // Para count usamos el mismo filtro M (si está vacío, count global)
+      const countUrl = filtroM
+        ? `${API_BASE_URL}/envios/historico/count?m_clasificacion=${filtroM}`
+        : `${API_BASE_URL}/envios/historico/count`;
       const [resList, resCount] = await Promise.all([
         fetch(`${API_BASE_URL}/envios/historico?${params}`, { headers: getAuthHeaders(token) }),
-        fetch(`${API_BASE_URL}/envios/historico/count?m_clasificacion=${filtroM}`, { headers: getAuthHeaders(token) }),
+        fetch(countUrl, { headers: getAuthHeaders(token) }),
       ]);
       if (!resList.ok) throw new Error(`Error ${resList.status}`);
       const list: EnvioM[] = await resList.json();
@@ -445,6 +453,7 @@ export default function EnviosSection({ token }: Props) {
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Ventana M</label>
                 <select className="ui-select" style={{ fontSize: 11, height: 28, width: 90 }} value={filtroM} onChange={e => setFiltroM(e.target.value as MClass)}>
+                  <option value="">Todos</option>
                   <option value="M1">M1</option>
                   <option value="M2">M2</option>
                   <option value="M7">M7</option>
@@ -512,6 +521,7 @@ export default function EnviosSection({ token }: Props) {
                     <th className="ui-th">Empresa</th>
                     <th className="ui-th">Tipo</th>
                     <th className="ui-th">Comerc.</th>
+                    <th className="ui-th" style={{ textAlign: "center", width: 50 }}>M</th>
                     <th className="ui-th">Periodo</th>
                     <th className="ui-th">Fecha gen.</th>
                     <th className="ui-th" style={{ textAlign: "center" }}>Ver.</th>
@@ -525,10 +535,10 @@ export default function EnviosSection({ token }: Props) {
                 </thead>
                 <tbody>
                   {loadingEnvios ? (
-                    <tr className="ui-tr"><td colSpan={12} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
+                    <tr className="ui-tr"><td colSpan={13} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : envios.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={12} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
-                      Sin envíos {filtroM} todavía. Sube ficheros AGRECL, INMECL o MAGCL desde la tarjeta superior y aparecerán aquí.
+                    <tr className="ui-tr"><td colSpan={13} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                      Sin envíos {filtroM || "(todos)"} todavía. Sube ficheros AGRECL, INMECL o MAGCL desde la tarjeta superior y aparecerán aquí.
                     </td></tr>
                   ) : enviosPagina.map(e => (
                     <tr key={e.id} className="ui-tr">
@@ -538,6 +548,7 @@ export default function EnviosSection({ token }: Props) {
                       </td>
                       <td className="ui-td"><span className="ui-badge ui-badge--neutral" style={{ fontSize: 9 }}>{e.tipo}</span></td>
                       <td className="ui-td" style={{ fontFamily: "monospace", fontSize: 10 }}>{e.comercializadora_codigo ?? "—"}</td>
+                      <td className="ui-td" style={{ textAlign: "center" }}><span className="ui-badge ui-badge--neutral" style={{ fontSize: 9 }}>{e.m_clasificacion}</span></td>
                       <td className="ui-td">{fmtPeriodo(e.periodo_anio, e.periodo_mes)}</td>
                       <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtFechaSimple(e.fecha_generacion)}</td>
                       <td className="ui-td" style={{ textAlign: "center" }}>{e.version}</td>
