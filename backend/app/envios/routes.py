@@ -119,3 +119,102 @@ def buscar_respuestas_ree(
     # Import perezoso para no acoplar el router al servicio si el módulo cambia
     from app.envios.services_respuestas_ree import buscar_respuestas_envios_tenant
     return buscar_respuestas_envios_tenant(db, tenant_id=_tenant_id(current_user))
+
+
+# ── Periodos disponibles para el filtro del histórico ────────────────────────
+
+@router.get("/historico/periodos")
+def get_historico_periodos(
+    m_clasificacion: Optional[str] = Query(
+        None,
+        description="Filtrar por M (M1/M2/M7)",
+        pattern="^(M1|M2|M7)$",
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Devuelve la lista de periodos (anio, mes) que tienen al menos un envío
+    en BD para el tenant. Usado para poblar el selector "Periodo" en el
+    histórico. Orden: más recientes primero.
+    """
+    _assert_not_viewer(current_user)
+    return services.list_periodos_disponibles(
+        db,
+        tenant_id=_tenant_id(current_user),
+        m_clasificacion=m_clasificacion,
+    )
+
+
+# ── Borrado de un envío del histórico ─────────────────────────────────────────
+
+@router.delete("/{envio_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_envio(
+    envio_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Borra un envío del histórico (solo de la BD `envios_m`).
+    NO toca el SFTP — el fichero sigue allí.
+    """
+    _assert_not_viewer(current_user)
+    try:
+        services.delete_envio(
+            db,
+            tenant_id=_tenant_id(current_user),
+            envio_id=envio_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    return None
+
+
+# ── Descarga de fichero enviado (original) o de su respuesta REE (.ok/.bad) ──
+
+@router.get("/{envio_id}/descargar/{tipo}")
+def descargar_fichero_envio(
+    envio_id: int,
+    tipo: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Descarga del SFTP el fichero asociado a un envío.
+
+    `tipo`:
+      - `original`    → busca en `carpeta_salida_general` el fichero subido
+      - `respuesta`   → busca en `carpeta_entrada_general` el .ok/.bad recibido
+
+    Devuelve el binario como attachment para que el navegador
+    pueda preguntar "Guardar como...".
+    """
+    _assert_not_viewer(current_user)
+    if tipo not in ("original", "respuesta"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tipo debe ser 'original' o 'respuesta'",
+        )
+    try:
+        contenido, nombre_fichero = services.descargar_fichero_envio(
+            db,
+            tenant_id=_tenant_id(current_user),
+            envio_id=envio_id,
+            tipo=tipo,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error FTP: {str(e)[:200]}",
+        ) from e
+
+    import io
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        io.BytesIO(contenido),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{nombre_fichero}"'},
+    )

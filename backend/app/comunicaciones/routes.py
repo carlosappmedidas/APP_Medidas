@@ -59,6 +59,7 @@ def create_config(payload: FtpConfigCreate, db: Session = Depends(get_db), curre
             carpeta_publicaciones=payload.carpeta_publicaciones,
             carpeta_entrada_general=payload.carpeta_entrada_general,
             carpeta_salida=payload.carpeta_salida,
+            carpeta_salida_general=payload.carpeta_salida_general,
             usar_tls=payload.usar_tls, activo=payload.activo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -75,6 +76,7 @@ def update_config(config_id: int, payload: FtpConfigUpdate, db: Session = Depend
             carpeta_publicaciones=payload.carpeta_publicaciones,
             carpeta_entrada_general=payload.carpeta_entrada_general,
             carpeta_salida=payload.carpeta_salida,
+            carpeta_salida_general=payload.carpeta_salida_general,
             usar_tls=payload.usar_tls, activo=payload.activo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

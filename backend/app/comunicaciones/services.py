@@ -82,6 +82,7 @@ def _config_to_dict(obj: FtpConfig, db: Session) -> dict:
         "carpeta_publicaciones": obj.carpeta_publicaciones,   # feature Descarga de Publicaciones REE
         "carpeta_entrada_general": obj.carpeta_entrada_general,   # entrada general (admite plantillas)
         "carpeta_salida": obj.carpeta_salida,   # carpeta para subidas (fija)
+        "carpeta_salida_general": obj.carpeta_salida_general,   # histórico de salida (admite plantillas)
         "usar_tls": obj.usar_tls,
 
         "activo": obj.activo,
@@ -246,6 +247,7 @@ def create_config(db: Session, *, tenant_id: int, empresa_id: int, nombre: Optio
                   carpeta_publicaciones: Optional[str],
                   carpeta_entrada_general: Optional[str],
                   carpeta_salida: Optional[str],
+                  carpeta_salida_general: Optional[str],
                   usar_tls: bool, activo: bool) -> dict:
     obj = FtpConfig(tenant_id=tenant_id, empresa_id=empresa_id, nombre=nombre,
                     host=host, puerto=puerto, usuario=usuario,
@@ -254,6 +256,7 @@ def create_config(db: Session, *, tenant_id: int, empresa_id: int, nombre: Optio
                     carpeta_publicaciones=carpeta_publicaciones,
                     carpeta_entrada_general=carpeta_entrada_general,
                     carpeta_salida=carpeta_salida,
+                    carpeta_salida_general=carpeta_salida_general,
                     usar_tls=usar_tls, activo=activo)
     db.add(obj)
     db.commit()
@@ -268,6 +271,7 @@ def update_config(db: Session, *, config_id: int, tenant_id: int, nombre: Option
                   carpeta_publicaciones: Optional[str],
                   carpeta_entrada_general: Optional[str],
                   carpeta_salida: Optional[str],
+                  carpeta_salida_general: Optional[str],
                   usar_tls: Optional[bool], activo: Optional[bool]) -> dict:
     obj = db.query(FtpConfig).filter(FtpConfig.id == config_id, FtpConfig.tenant_id == tenant_id).first()
     if obj is None:
@@ -292,6 +296,8 @@ def update_config(db: Session, *, config_id: int, tenant_id: int, nombre: Option
         obj.carpeta_entrada_general = carpeta_entrada_general  # type: ignore
     if carpeta_salida is not None:
         obj.carpeta_salida = carpeta_salida  # type: ignore
+    if carpeta_salida_general is not None:
+        obj.carpeta_salida_general = carpeta_salida_general  # type: ignore
     if usar_tls is not None:
         obj.usar_tls = usar_tls  # type: ignore
     if activo is not None:

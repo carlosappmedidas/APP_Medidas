@@ -23,6 +23,7 @@ class FtpConfigCreate(BaseModel):
     carpeta_publicaciones:  Optional[str] = None   # feature Descarga de Publicaciones REE
     carpeta_entrada_general: Optional[str] = None  # entrada general configurable; admite plantillas
     carpeta_salida:          Optional[str] = None  # carpeta para subidas (FIJA, sin plantillas)
+    carpeta_salida_general:  Optional[str] = None  # histórico de salida; admite plantillas; usado por Envíos
     usar_tls:               bool = True
     activo:            bool = True
 
@@ -38,6 +39,7 @@ class FtpConfigUpdate(BaseModel):
     carpeta_publicaciones:  Optional[str]  = None   # feature Descarga de Publicaciones REE
     carpeta_entrada_general: Optional[str] = None   # entrada general configurable; admite plantillas
     carpeta_salida:          Optional[str] = None   # carpeta para subidas (FIJA, sin plantillas)
+    carpeta_salida_general:  Optional[str] = None   # histórico de salida; admite plantillas; usado por Envíos
     usar_tls:               Optional[bool] = None
     activo:            Optional[bool] = None
 
@@ -55,6 +57,7 @@ class FtpConfigRead(BaseModel):
     carpeta_publicaciones:  Optional[str]   # feature Descarga de Publicaciones REE
     carpeta_entrada_general: Optional[str]  # entrada general configurable; admite plantillas
     carpeta_salida:          Optional[str]  # carpeta para subidas (FIJA, sin plantillas)
+    carpeta_salida_general:  Optional[str]  # histórico de salida; admite plantillas; usado por Envíos
     usar_tls:               bool
     activo:            bool
 

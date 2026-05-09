@@ -18,6 +18,7 @@ interface FtpConfig {
   directorio_remoto: string;
   carpeta_entrada_general: string | null;
   carpeta_salida: string | null;
+  carpeta_salida_general: string | null;
   usar_tls: boolean;
   activo: boolean;
 }
@@ -32,6 +33,7 @@ interface FtpConfigForm {
   directorio_remoto: string;
   carpeta_entrada_general: string;
   carpeta_salida: string;
+  carpeta_salida_general: string;
   usar_tls: boolean;
   activo: boolean;
 }
@@ -288,7 +290,7 @@ function labelConexion(c: FtpConfig): string {
 const FORM_CONFIG_VACIO: FtpConfigForm = {
   empresa_id: "", nombre: "", host: "www.asemeservicios.com", puerto: 22221,
   usuario: "", password: "", directorio_remoto: "/",
-  carpeta_entrada_general: "", carpeta_salida: "",
+  carpeta_entrada_general: "", carpeta_salida: "", carpeta_salida_general: "",
   usar_tls: true, activo: true,
 };
 
@@ -613,6 +615,7 @@ export default function ComunicacionesSection({ token }: Props) {
           nombre: configForm.nombre || null,
           carpeta_entrada_general: configForm.carpeta_entrada_general.trim() || null,
           carpeta_salida: configForm.carpeta_salida.trim() || null,
+          carpeta_salida_general: configForm.carpeta_salida_general.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -1324,6 +1327,13 @@ export default function ComunicacionesSection({ token }: Props) {
                       Carpeta fija para subir ficheros al SFTP
                     </div>
                   </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Carpeta salida general <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                    <input className="ui-input" style={{ width: "100%", fontSize: 11, height: 30 }} value={configForm.carpeta_salida_general} onChange={e => setConfigForm(f => ({ ...f, carpeta_salida_general: e.target.value }))} placeholder="ej: /01/salidaHistorico" />
+                    <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
+                      Histórico de salida (donde REE mueve los ficheros tras procesar). Admite <code>{"{mes_actual}"}</code> y <code>{"{mes_anterior}"}</code>
+                    </div>
+                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1379,7 +1389,7 @@ export default function ComunicacionesSection({ token }: Props) {
                       <td className="ui-td">
                         <div style={{ display: "flex", gap: 4 }}>
                           <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }}
-                            onClick={() => { setEditConfigId(c.id); setConfigForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, carpeta_entrada_general: c.carpeta_entrada_general || "", carpeta_salida: c.carpeta_salida || "", usar_tls: c.usar_tls, activo: c.activo }); setShowConfigForm(true); }}>
+                            onClick={() => { setEditConfigId(c.id); setConfigForm({ empresa_id: c.empresa_id, nombre: c.nombre || "", host: c.host, puerto: c.puerto, usuario: c.usuario, password: "", directorio_remoto: c.directorio_remoto, carpeta_entrada_general: c.carpeta_entrada_general || "", carpeta_salida: c.carpeta_salida || "", carpeta_salida_general: c.carpeta_salida_general || "", usar_tls: c.usar_tls, activo: c.activo }); setShowConfigForm(true); }}>
                             <IconEdit />
                           </button>
                           <button type="button" className="ui-btn ui-btn-danger ui-btn-xs" style={{ padding: "4px 6px", display: "flex", alignItems: "center" }} onClick={() => handleDeleteConfig(c.id)}><IconTrash /></button>

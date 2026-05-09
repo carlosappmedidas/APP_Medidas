@@ -17,6 +17,7 @@ export interface FtpConfig {
   directorio_remoto: string;
   carpeta_entrada_general: string | null;
   carpeta_salida: string | null;
+  carpeta_salida_general: string | null;
   usar_tls: boolean;
   activo: boolean;
 }

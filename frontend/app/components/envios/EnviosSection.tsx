@@ -129,11 +129,17 @@ export default function EnviosSection({ token }: Props) {
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");      // "" o id
   const [filtroTipo, setFiltroTipo]       = useState<string>("");      // "" / AGRECL / INMECL / MAGCL
   const [filtroEstado, setFiltroEstado]   = useState<string>("");      // "" / pendiente / ok / bad
+  const [filtroPeriodo, setFiltroPeriodo] = useState<string>("");      // "" o "anio-mes" (ej: "2026-3")
+
+  const [periodosDisponibles, setPeriodosDisponibles] = useState<{ anio: number; mes: number }[]>([]);
 
   const [pageEnvios, setPageEnvios]         = useState(0);
   const [pageSizeEnvios, setPageSizeEnvios] = useState(20);
 
   const [revisandoRespuestas, setRevisandoRespuestas] = useState(false);
+  const [borrandoId, setBorrandoId]                   = useState<number | null>(null);
+  const [descargandoId, setDescargandoId]             = useState<number | null>(null);
+  const [menuAbiertoId, setMenuAbiertoId]             = useState<number | null>(null);
 
   // ── Cargar configs FTP (para tarjeta Envío) ────────────────────────────────
   useEffect(() => {
@@ -163,6 +169,18 @@ export default function EnviosSection({ token }: Props) {
       .catch(() => {});
   }, [token]);
 
+  // ── Cargar periodos disponibles para el filtro Periodo ─────────────────────
+  // Cada vez que cambie filtroM o se abra el panel, refrescamos la lista de
+  // periodos disponibles (anio, mes) que tienen al menos un envío.
+  useEffect(() => {
+    if (!token) return;
+    if (!panelHistOpen) return;
+    fetch(`${API_BASE_URL}/envios/historico/periodos?m_clasificacion=${filtroM}`, { headers: getAuthHeaders(token) })
+      .then(r => r.ok ? r.json() : [])
+      .then((d: { anio: number; mes: number }[]) => setPeriodosDisponibles(d))
+      .catch(() => setPeriodosDisponibles([]));
+  }, [token, filtroM, panelHistOpen]);
+
   // ── Cargar histórico (M1 / M2 / M7) ────────────────────────────────────────
   const cargarEnvios = useCallback(async () => {
     if (!token) return;
@@ -173,6 +191,11 @@ export default function EnviosSection({ token }: Props) {
       if (filtroEmpresa) params.set("empresa_id", filtroEmpresa);
       if (filtroTipo)    params.set("tipo", filtroTipo);
       if (filtroEstado)  params.set("estado", filtroEstado);
+      if (filtroPeriodo) {
+        const [anioStr, mesStr] = filtroPeriodo.split("-");
+        if (anioStr) params.set("periodo_anio", anioStr);
+        if (mesStr)  params.set("periodo_mes", mesStr);
+      }
 
       const [resList, resCount] = await Promise.all([
         fetch(`${API_BASE_URL}/envios/historico?${params}`, { headers: getAuthHeaders(token) }),
@@ -189,7 +212,7 @@ export default function EnviosSection({ token }: Props) {
     } catch (e: unknown) {
       setErrorEnvios(e instanceof Error ? e.message : "Error cargando histórico");
     } finally { setLoadingEnvios(false); }
-  }, [token, filtroM, filtroEmpresa, filtroTipo, filtroEstado]);
+  }, [token, filtroM, filtroEmpresa, filtroTipo, filtroEstado, filtroPeriodo]);
 
   // Recargar al abrir tarjeta o cambiar filtros
   useEffect(() => {
@@ -230,6 +253,108 @@ export default function EnviosSection({ token }: Props) {
       setRevisandoRespuestas(false);
     }
   };
+
+  // ── Descargar fichero enviado o respuesta REE (con "Guardar como...") ──────
+  const handleDescargarEnvio = async (envio: EnvioM, tipo: "original" | "respuesta") => {
+    if (!token) return;
+    setMenuAbiertoId(null);
+    setDescargandoId(envio.id);
+    setErrorEnvios(null);
+
+    // Nombre sugerido según tipo
+    const nombreSugerido = tipo === "original"
+      ? envio.nombre_fichero
+      : (envio.respuesta_nombre_fichero || `${envio.nombre_fichero}.respuesta`);
+
+    // PASO 1: pedir destino al usuario ANTES del fetch (diálogo nativo si soporta API)
+    type SaveFilePickerOptions = { suggestedName?: string };
+    type FileSystemWritableFileStreamLike = {
+      write: (data: Blob | ArrayBuffer | string) => Promise<void>;
+      close: () => Promise<void>;
+    };
+    type FileSystemFileHandleLike = {
+      createWritable: () => Promise<FileSystemWritableFileStreamLike>;
+    };
+    const win = window as unknown as {
+      showSaveFilePicker?: (opts?: SaveFilePickerOptions) => Promise<FileSystemFileHandleLike>;
+    };
+
+    let fileHandle: FileSystemFileHandleLike | null = null;
+    if (typeof win.showSaveFilePicker === "function") {
+      try {
+        fileHandle = await win.showSaveFilePicker({ suggestedName: nombreSugerido });
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setDescargandoId(null);
+          return;
+        }
+      }
+    }
+
+    try {
+      // PASO 2: fetch del fichero al backend
+      const res = await fetch(`${API_BASE_URL}/envios/${envio.id}/descargar/${tipo}`, {
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+      }
+      const blob = await res.blob();
+
+      // PASO 3: escribir en destino o fallback <a download>
+      if (fileHandle) {
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = nombreSugerido;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e: unknown) {
+      setErrorEnvios(e instanceof Error ? e.message : "Error descargando fichero");
+    } finally {
+      setDescargandoId(null);
+    }
+  };
+
+  // ── Borrar envío del histórico (solo BD, no toca SFTP) ─────────────────────
+  const handleBorrarEnvio = async (envio: EnvioM) => {
+    if (!token) return;
+    setMenuAbiertoId(null);
+    if (!confirm(`¿Borrar este envío del histórico?\n\nFichero: ${envio.nombre_fichero}\n\nEsto NO toca el SFTP — el fichero seguirá allí.`)) return;
+
+    setBorrandoId(envio.id);
+    setErrorEnvios(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/envios/${envio.id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok && res.status !== 204) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+      }
+      // Refrescar histórico
+      await cargarEnvios();
+    } catch (e: unknown) {
+      setErrorEnvios(e instanceof Error ? e.message : "Error borrando envío");
+    } finally {
+      setBorrandoId(null);
+    }
+  };
+
+  // ── Cerrar menú "⋯" al hacer click fuera ───────────────────────────────────
+  useEffect(() => {
+    if (menuAbiertoId === null) return;
+    const onClick = () => setMenuAbiertoId(null);
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [menuAbiertoId]);
 
   return (
     <div className="text-sm">
@@ -354,9 +479,20 @@ export default function EnviosSection({ token }: Props) {
                   <option value="bad">BAD</option>
                 </select>
               </div>
-              {(filtroEmpresa || filtroTipo || filtroEstado) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Periodo</label>
+                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 130 }} value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}>
+                  <option value="">Todos</option>
+                  {periodosDisponibles.map(p => (
+                    <option key={`${p.anio}-${p.mes}`} value={`${p.anio}-${p.mes}`}>
+                      {fmtPeriodo(p.anio, p.mes)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {(filtroEmpresa || filtroTipo || filtroEstado || filtroPeriodo) && (
                 <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 28 }}
-                  onClick={() => { setFiltroEmpresa(""); setFiltroTipo(""); setFiltroEstado(""); }}>
+                  onClick={() => { setFiltroEmpresa(""); setFiltroTipo(""); setFiltroEstado(""); setFiltroPeriodo(""); }}>
                   ✕ Limpiar
                 </button>
               )}
@@ -384,13 +520,14 @@ export default function EnviosSection({ token }: Props) {
                     <th className="ui-th" style={{ textAlign: "center" }}>Estado REE</th>
                     <th className="ui-th">Respuesta</th>
                     <th className="ui-th" style={{ textAlign: "center" }}>Reint.</th>
+                    <th className="ui-th" style={{ textAlign: "center", width: 50 }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingEnvios ? (
-                    <tr className="ui-tr"><td colSpan={11} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
+                    <tr className="ui-tr"><td colSpan={12} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : envios.length === 0 ? (
-                    <tr className="ui-tr"><td colSpan={11} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
+                    <tr className="ui-tr"><td colSpan={12} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
                       Sin envíos {filtroM} todavía. Sube ficheros AGRECL, INMECL o MAGCL desde la tarjeta superior y aparecerán aquí.
                     </td></tr>
                   ) : enviosPagina.map(e => (
@@ -413,6 +550,59 @@ export default function EnviosSection({ token }: Props) {
                       </td>
                       <td className="ui-td ui-muted" style={{ fontSize: 10 }}>{fmtDate(e.respuesta_recibida_at)}</td>
                       <td className="ui-td" style={{ textAlign: "center" }}>{e.reintentos}</td>
+                      <td className="ui-td" style={{ textAlign: "center", position: "relative" }}>
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn-ghost ui-btn-xs"
+                          style={{ padding: "2px 8px", fontWeight: 700, fontSize: 14, lineHeight: "14px" }}
+                          title="Acciones"
+                          disabled={borrandoId === e.id || descargandoId === e.id}
+                          onClick={ev => { ev.stopPropagation(); setMenuAbiertoId(menuAbiertoId === e.id ? null : e.id); }}>
+                          {borrandoId === e.id || descargandoId === e.id ? "…" : "⋯"}
+                        </button>
+                        {menuAbiertoId === e.id && (
+                          <div
+                            onClick={ev => ev.stopPropagation()}
+                            style={{
+                              position: "absolute",
+                              right: 0,
+                              top: "100%",
+                              zIndex: 50,
+                              background: "var(--card-bg)",
+                              border: "1px solid var(--card-border)",
+                              borderRadius: 6,
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                              minWidth: 220,
+                              padding: 4,
+                              textAlign: "left",
+                            }}>
+                            <button
+                              type="button"
+                              className="ui-btn ui-btn-ghost ui-btn-xs"
+                              style={{ display: "block", width: "100%", textAlign: "left", fontSize: 11, padding: "6px 10px" }}
+                              onClick={() => handleDescargarEnvio(e, "original")}>
+                              ⬇ Descargar fichero enviado
+                            </button>
+                            <button
+                              type="button"
+                              className="ui-btn ui-btn-ghost ui-btn-xs"
+                              style={{ display: "block", width: "100%", textAlign: "left", fontSize: 11, padding: "6px 10px" }}
+                              disabled={!e.respuesta_nombre_fichero}
+                              title={e.respuesta_nombre_fichero ? undefined : "Aún no hay respuesta REE"}
+                              onClick={() => handleDescargarEnvio(e, "respuesta")}>
+                              ⬇ Descargar respuesta REE
+                            </button>
+                            <div style={{ borderTop: "1px solid var(--card-border)", margin: "4px 0" }} />
+                            <button
+                              type="button"
+                              className="ui-btn ui-btn-ghost ui-btn-xs"
+                              style={{ display: "block", width: "100%", textAlign: "left", fontSize: 11, padding: "6px 10px", color: "#E24B4A" }}
+                              onClick={() => handleBorrarEnvio(e)}>
+                              🗑 Borrar
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
