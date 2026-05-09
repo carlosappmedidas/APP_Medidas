@@ -727,6 +727,28 @@ export default function DashboardEnviosSection({ token }: Props) {
                         </div>
                         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
                           <span style={{ color: "#378ADD", fontWeight: 500 }}>{a.ficheros_enviados}</span> ficheros enviados
+                          {(() => {
+                            // Contar empresas distintas que enviaron AL MENOS un fichero para este M
+                            const empresasConEnvio = new Set<number>();
+                            for (const emp of dataMensual.por_empresa) {
+                              for (const grupoId of ORDEN_GRUPOS) {
+                                const items = emp.detalle_por_grupo[grupoId] ?? [];
+                                if (items.some((it) => it.M === m && it.enviados > 0)) {
+                                  empresasConEnvio.add(emp.empresa_id);
+                                  break;
+                                }
+                              }
+                            }
+                            const n = empresasConEnvio.size;
+                            if (n === 0) return null;
+                            return (
+                              <>
+                                {" · "}
+                                <span style={{ color: "var(--text)", fontWeight: 500 }}>{n}</span>{" "}
+                                {n === 1 ? "empresa" : "empresas"}
+                              </>
+                            );
+                          })()}
                         </div>
                         {(() => {
                           // Buscar OK/BAD/Pendiente sumando todas las líneas de los grupos para este M
