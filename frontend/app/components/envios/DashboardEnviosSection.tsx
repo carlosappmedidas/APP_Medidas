@@ -461,66 +461,90 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                       background: "rgba(55,138,221,0.04)",
                       borderTop: "0.5px dashed rgba(55,138,221,0.18)",
                       borderBottom: "0.5px solid rgba(31,41,55,0.3)",
-                      padding: "8px 12px 12px 36px",
+                      padding: "8px 12px",
                     }}>
                       {ORDEN_GRUPOS.map((grupoId) => {
                         const items = emp.detalle_por_grupo[grupoId] ?? [];
                         if (items.length === 0) return null;
                         const grupoLabel = grupos.find((g) => g.id === grupoId)?.label ?? grupoId;
+
+                        const renderCeldaItem = (it: EmpresaGrupoDetalleItem | null) => {
+                          if (!it) {
+                            return (
+                              <div style={{
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 10, color: "var(--text-muted)",
+                              }}>—</div>
+                            );
+                          }
+                          return (
+                            <div style={{
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              gap: 4, flexWrap: "wrap",
+                            }}>
+                              <span style={{ color: "var(--text)", fontWeight: 500, fontSize: 10 }}>
+                                {it.enviados} env.
+                              </span>
+                              {it.ok > 0 && (
+                                <span style={{
+                                  padding: "0px 4px", borderRadius: 6,
+                                  background: "rgba(29,158,117,0.15)", color: "#0F6E56",
+                                  fontSize: 8, fontWeight: 500,
+                                }}>🟢{it.ok}</span>
+                              )}
+                              {it.bad > 0 && (
+                                <span style={{
+                                  padding: "0px 4px", borderRadius: 6,
+                                  background: "rgba(226,75,74,0.15)", color: "#A32D2D",
+                                  fontSize: 8, fontWeight: 500,
+                                }}>🔴{it.bad}</span>
+                              )}
+                              {it.pendiente > 0 && (
+                                <span style={{
+                                  padding: "0px 4px", borderRadius: 6,
+                                  background: "rgba(156,163,175,0.15)", color: "var(--text)",
+                                  fontSize: 8, fontWeight: 500,
+                                }}>⚪{it.pendiente}</span>
+                              )}
+                            </div>
+                          );
+                        };
+
                         return (
-                          <div key={grupoId} style={{ marginBottom: 8 }}>
+                          <div key={grupoId} style={{ marginBottom: 6 }}>
                             <div style={{
                               fontSize: 9, color: "var(--text-muted)",
                               textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600,
-                              marginBottom: 3,
+                              marginBottom: 3, paddingLeft: 24,
                             }}>
                               {grupoLabel}
                             </div>
-                            {items.map((it, idx) => {
-                              const chip = ESTILO_M[it.M];
-                              return (
-                                <div key={idx} style={{
-                                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                                  padding: "2px 0", fontSize: 10,
-                                }}>
-                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                    <span style={{
-                                      ...chip, padding: "1px 5px", borderRadius: 3,
-                                      fontSize: 8, fontWeight: 600, letterSpacing: "0.04em",
-                                    }}>{it.M}</span>
-                                    <span style={{ color: "var(--text-muted)" }}>
-                                      {fmtPeriodoLabel(it.periodo)}
-                                    </span>
-                                  </div>
-                                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                                    <span style={{ color: "var(--text)", fontWeight: 500 }}>
-                                      {it.enviados} env.
-                                    </span>
-                                    {it.ok > 0 && (
-                                      <span style={{
-                                        padding: "0px 5px", borderRadius: 6,
-                                        background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                                        fontSize: 8, fontWeight: 500,
-                                      }}>🟢 {it.ok}</span>
-                                    )}
-                                    {it.bad > 0 && (
-                                      <span style={{
-                                        padding: "0px 5px", borderRadius: 6,
-                                        background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                                        fontSize: 8, fontWeight: 500,
-                                      }}>🔴 {it.bad}</span>
-                                    )}
-                                    {it.pendiente > 0 && (
-                                      <span style={{
-                                        padding: "0px 5px", borderRadius: 6,
-                                        background: "rgba(156,163,175,0.15)", color: "var(--text)",
-                                        fontSize: 8, fontWeight: 500,
-                                      }}>⚪ {it.pendiente}</span>
-                                    )}
-                                  </div>
+                            {items.map((it, idx) => (
+                              <div key={idx} style={{
+                                display: "grid",
+                                gridTemplateColumns: "24px 1.5fr repeat(3, 1fr) 0.7fr",
+                                gap: 8, padding: "2px 0",
+                                alignItems: "center",
+                              }}>
+                                <div></div>
+                                <div style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 12 }}>
+                                  <span style={{
+                                    ...ESTILO_M[it.M], padding: "1px 5px", borderRadius: 3,
+                                    fontSize: 8, fontWeight: 600, letterSpacing: "0.04em",
+                                  }}>{it.M}</span>
+                                  <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
+                                    {fmtPeriodoLabel(it.periodo)}
+                                  </span>
                                 </div>
-                              );
-                            })}
+                                {/* Columna F1/F1QH (solo si grupo es PM_1_2_3) */}
+                                {renderCeldaItem(grupoId === "PM_1_2_3" ? it : null)}
+                                {/* Columna AGRECL/INMECL/MAGCL (solo si grupo es PM_4_5) */}
+                                {renderCeldaItem(grupoId === "PM_4_5" ? it : null)}
+                                {/* Columna MCIL345/QH (solo si grupo es GEN_4_5) */}
+                                {renderCeldaItem(grupoId === "GEN_4_5" ? it : null)}
+                                <div></div>
+                              </div>
+                            ))}
                           </div>
                         );
                       })}
