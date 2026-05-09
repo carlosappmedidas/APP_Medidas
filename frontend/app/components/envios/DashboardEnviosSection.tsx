@@ -290,7 +290,7 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
         })}
       </div>
 
-      {/* Detalle por empresa (desplegable como botón pill) */}
+      {/* Detalle por empresa (desplegable como botón pill ancho completo) */}
       {porEmpresa.length > 0 && (
         <>
           <div style={{ marginBottom: detalleAbierto ? 8 : 0 }}>
@@ -298,15 +298,16 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
               type="button"
               onClick={toggleDetalle}
               style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "6px 12px",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                width: "100%",
+                padding: "10px 14px",
                 fontSize: 11, fontWeight: 500,
                 color: detalleAbierto ? "#85B7EB" : "var(--text)",
                 background: detalleAbierto ? "rgba(55,138,221,0.15)" : "var(--field-bg-soft)",
                 border: detalleAbierto
                   ? "0.5px solid rgba(55,138,221,0.5)"
                   : "0.5px solid var(--card-border)",
-                borderRadius: 6,
+                borderRadius: 8,
                 cursor: "pointer",
                 transition: "background 0.15s, border-color 0.15s, color 0.15s",
                 userSelect: "none",
@@ -324,14 +325,30 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                 }
               }}
             >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{
+                  fontSize: 10,
+                  color: detalleAbierto ? "#85B7EB" : "var(--text-muted)",
+                  transform: detalleAbierto ? "rotate(90deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s",
+                  display: "inline-block",
+                }}>▶</span>
+                <span style={{
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  fontWeight: 600,
+                  fontSize: 11,
+                }}>
+                  🏢 Detalle por empresa
+                </span>
+              </span>
               <span style={{
                 fontSize: 10,
-                color: detalleAbierto ? "#85B7EB" : "var(--text-muted)",
-                transform: detalleAbierto ? "rotate(90deg)" : "rotate(0deg)",
-                transition: "transform 0.2s",
-                display: "inline-block",
-              }}>▶</span>
-              <span>Detalle por empresa ({porEmpresa.length})</span>
+                color: "var(--text-muted)",
+                fontWeight: 400,
+              }}>
+                {porEmpresa.length} {porEmpresa.length === 1 ? "empresa" : "empresas"}
+              </span>
             </button>
           </div>
 
