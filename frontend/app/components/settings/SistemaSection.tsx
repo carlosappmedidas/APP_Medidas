@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import MedidasPsSection from "../medidas/MedidasPsSection";
 import MedidasGeneralSection from "../medidas/MedidasGeneralSection";
 import AccordionCard from "../ui/AccordionCard";
+import UiCard from "../ui/UiCard";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 
 type Props = { token: string | null };
@@ -327,7 +328,7 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
 
       {/* ── Listado de alertas ── */}
       {tenantId !== "none" && (
-        <div style={{ border: "0.5px solid var(--card-border)", borderRadius: 10, overflow: "hidden", background: "var(--card-bg)" }}>
+        <UiCard padding="none" radius="md" style={{ border: "0.5px solid var(--card-border)", overflow: "hidden" }}>
           {/* Stats mini */}
           <div style={{ padding: "10px 14px", borderBottom: "0.5px solid var(--card-border)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {[
@@ -400,7 +401,7 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
               </tbody>
             </table>
           </div>
-        </div>
+        </UiCard>
       )}
 
     </div>
@@ -408,6 +409,7 @@ function AlertsAdminPanel({ token }: { token: string | null }) {
 }
 
 // ── Componente principal ───────────────────────────────────────────────────
+
 
 export default function SistemaSection({ token }: Props) {
   return (

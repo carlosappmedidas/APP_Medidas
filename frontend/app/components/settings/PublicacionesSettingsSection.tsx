@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiCard from "../ui/UiCard";
 
 type Props = { token: string | null };
 
@@ -295,13 +296,12 @@ export default function PublicacionesSettingsSection({ token }: Props) {
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       {/* TARJETA AUTOMATIZACIÓN · Búsqueda de publicaciones REE                  */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      <div style={{
-        background: "var(--field-bg-soft)",
-        border: "0.5px solid var(--card-border)",
-        borderRadius: 10,
-        padding: "16px 18px",
-        marginTop: 4,
-      }}>
+      <UiCard
+        variant="nested"
+        padding="none"
+        radius="md"
+        style={{ border: "0.5px solid var(--card-border)", padding: "16px 18px", marginTop: 4 }}
+      >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{
@@ -398,7 +398,7 @@ export default function PublicacionesSettingsSection({ token }: Props) {
             {autoRevisando ? "Revisando..." : "🔄 Revisar ahora"}
           </button>
         </div>
-      </div>
+      </UiCard>
 
     </div>
   );
