@@ -752,7 +752,7 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
 
         {/* Detalle por empresa (colapsable) */}
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
-          <button type="button" onClick={() => setDetalleGeneralAbierto(v => !v)}
+<button type="button" onClick={() => setDetalleGeneralAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
               width: "100%", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", cursor: "pointer",
@@ -1090,11 +1090,14 @@ function BloquePS({
             padding: "8px 12px", borderRadius: 6, marginBottom: detalleAbierto ? 8 : 0,
             transition: "background 0.15s ease",
           }}>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
-            Detalle por empresa
-          </div>
-          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-            {detalleAbierto ? "▾ ocultar" : "▸ mostrar"}
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, transform: detalleAbierto ? "rotate(90deg)" : "none", transition: "transform 0.15s ease", display: "inline-block" }}>▶</span>
+            <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text)" }}>
+              🏢 Detalle por empresa
+            </span>
+          </span>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>
+            {data.detalle_por_empresa.length} empresas
           </span>
         </button>
       </div>
@@ -1282,11 +1285,14 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
               padding: "8px 12px", borderRadius: 6, marginBottom: desgloseGeneralAbierto ? 12 : 0,
               transition: "background 0.15s ease",
             }}>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
-              Desglose por empresa · {data.general.por_empresa.length} empresas
-            </div>
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-              {desgloseGeneralAbierto ? "▾ ocultar" : "▸ mostrar"}
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, transform: desgloseGeneralAbierto ? "rotate(90deg)" : "none", transition: "transform 0.15s ease", display: "inline-block" }}>▶</span>
+              <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text)" }}>
+                🏢 Desglose por empresa
+              </span>
+            </span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>
+              {data.general.por_empresa.length} empresas
             </span>
           </button>
 
@@ -1379,11 +1385,14 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
               padding: "8px 12px", borderRadius: 6, marginBottom: desglosePSAbierto ? 12 : 0,
               transition: "background 0.15s ease",
             }}>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
-              Desglose por empresa · {data.ps.por_empresa.length} empresas
-            </div>
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-              {desglosePSAbierto ? "▾ ocultar" : "▸ mostrar"}
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, transform: desglosePSAbierto ? "rotate(90deg)" : "none", transition: "transform 0.15s ease", display: "inline-block" }}>▶</span>
+              <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text)" }}>
+                🏢 Desglose por empresa
+              </span>
+            </span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>
+              {data.ps.por_empresa.length} empresas
             </span>
           </button>
 
