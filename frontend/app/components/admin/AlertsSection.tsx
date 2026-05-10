@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import type { User } from "../../types";
 import UiChip, { type UiChipVariant } from "../ui/UiChip";
+import UiCard from "../ui/UiCard";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ function fmtDatetime(v: string | null): string {
 
 // ── Estilos ────────────────────────────────────────────────────────────────
 
-const cardStyle: React.CSSProperties = { background: "var(--card-bg)", border: "0.5px solid var(--card-border)", borderRadius: 12, marginBottom: 10 };
+// cardStyle eliminado — ahora usamos <UiCard padding="none" radius="lg">
 const thStyle: React.CSSProperties = { padding: "7px 10px", fontSize: 11, fontWeight: 500, color: "var(--text-muted)", borderBottom: "0.5px solid var(--card-border)", whiteSpace: "nowrap", textAlign: "left" };
 const tdStyle: React.CSSProperties = { padding: "8px 10px", fontSize: 12, color: "var(--text)", borderBottom: "0.5px solid var(--card-border)", verticalAlign: "middle" };
 const btnStyle: React.CSSProperties = { fontSize: 11, padding: "5px 10px", border: "0.5px solid var(--card-border)", borderRadius: 6, background: "var(--card-bg)", color: "var(--text)", cursor: "pointer", whiteSpace: "nowrap" };
@@ -382,7 +383,7 @@ export default function AlertsSection({ token, currentUser, onGoToAlertConfig }:
 
   // ── Detalle ────────────────────────────────────────────────────────────
   const renderDetail = (a: AlertRow) => (
-    <div style={{ margin: "0 12px 12px", padding: 16, background: "var(--field-bg-soft)", border: "0.5px solid var(--card-border)", borderRadius: 8 }}>
+    <UiCard variant="nested" style={{ margin: "0 12px 12px", padding: 16, borderRadius: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
         {[
           { label: "Valor actual", value: fmt(a.current_value, a.diff_unit === "%" ? "%" : undefined) },
@@ -391,16 +392,16 @@ export default function AlertsSection({ token, currentUser, onGoToAlertConfig }:
             value: a.category === "absoluta" ? fmt(a.threshold_value, a.diff_unit) : fmt(a.diff_value, a.diff_unit) },
           { label: "Detectada", value: fmtDatetime(a.created_at) },
         ].map((k) => (
-          <div key={k.label} style={{ background: "var(--card-bg)", border: "0.5px solid var(--card-border)", borderRadius: 6, padding: "8px 10px" }}>
+          <UiCard key={k.label} padding="sm" style={{ borderRadius: 6 }}>
             <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{k.label}</div>
             <div style={{ fontSize: 13, fontWeight: 500, marginTop: 3 }}>{k.value}</div>
-          </div>
+          </UiCard>
         ))}
       </div>
       {a.message && (
-        <div style={{ background: "var(--card-bg)", border: "0.5px solid var(--card-border)", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+        <UiCard padding="sm" style={{ borderRadius: 6, fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
           {a.message}
-        </div>
+        </UiCard>
       )}
       {canManage && (
         <div style={{ marginBottom: 12 }}>
@@ -468,7 +469,7 @@ export default function AlertsSection({ token, currentUser, onGoToAlertConfig }:
           {sendingComment ? "..." : "Comentar"}
         </button>
       </div>
-    </div>
+    </UiCard>
   );
 
   // ── Cabecera categoría ─────────────────────────────────────────────────
@@ -496,7 +497,7 @@ export default function AlertsSection({ token, currentUser, onGoToAlertConfig }:
       {infoMsg && <div style={{ padding: "8px 12px", background: "rgba(5,150,105,0.1)", border: "0.5px solid rgba(5,150,105,0.3)", borderRadius: 8, fontSize: 12, color: "#34d399" }}>{infoMsg}</div>}
       {recalcProgress && <div style={{ padding: "8px 12px", background: "rgba(37,99,235,0.1)", border: "0.5px solid rgba(37,99,235,0.3)", borderRadius: 8, fontSize: 12, color: "#60a5fa" }}>{recalcProgress}</div>}
 
-      <div style={cardStyle}>
+      <UiCard padding="none" radius="lg" style={{ marginBottom: 10 }}>
         {/* Header */}
         <div style={{ padding: "14px 16px", borderBottom: "0.5px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <div>
@@ -569,17 +570,17 @@ export default function AlertsSection({ token, currentUser, onGoToAlertConfig }:
             </div>
           ))}
         </div>
-      </div>
+      </UiCard>
 
       {/* Tablas por categoría */}
       {loading ? (
         <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Cargando alertas...</div>
       ) : (
         (["mes_anterior", "absoluta", "anio_anterior"] as Category[]).map((cat) => (
-          <div key={cat} style={cardStyle}>
+          <UiCard key={cat} padding="none" radius="lg" style={{ marginBottom: 10 }}>
             {renderCategoryHeader(cat, byCategory[cat].length)}
             {openCats[cat] && renderTable(cat, byCategory[cat])}
-          </div>
+          </UiCard>
         ))
       )}
     </section>
