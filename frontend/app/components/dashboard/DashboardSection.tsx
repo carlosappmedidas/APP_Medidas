@@ -27,6 +27,8 @@ type ReeDashboardHitosResponse = {
   anio: number | null;
   mes: number | null;
   mes_label: string | null;
+  fecha_publicacion_m1: string | null;
+  mes_afectado_publicacion_m1: string | null;
   fecha_publicacion_m2: string | null;
   mes_afectado_publicacion_m2: string | null;
   fecha_publicacion_m7: string | null;
@@ -412,6 +414,12 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
 
     // Construir lista base con fecha ISO original
     const base = [
+      {
+        dia: extractDay(reeHitosData.fecha_publicacion_m1),
+        label: "Publ. m+1",
+        mesAfectado: reeHitosData.mes_afectado_publicacion_m1 ?? "—",
+        fechaIso: reeHitosData.fecha_publicacion_m1,
+      },
       {
         dia: extractDay(reeHitosData.fecha_publicacion_m2),
         label: "Publ. m-2",

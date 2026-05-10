@@ -94,6 +94,9 @@ class ReeCalendarDashboardHitosResponse(BaseModel):
     mes: int | None
     mes_label: str | None
 
+    fecha_publicacion_m1: date | None
+    mes_afectado_publicacion_m1: str | None
+
     fecha_publicacion_m2: date | None
     mes_afectado_publicacion_m2: str | None
 

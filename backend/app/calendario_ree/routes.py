@@ -1143,6 +1143,13 @@ def get_dashboard_hitos(
         .all()
     )
 
+    item_m1 = _pick_first_dashboard_item_by_mes_visual(
+        all_items,
+        mes_visual=target_mes_label,
+        categoria="M+1",
+        evento_contains="cierre m+1",
+    )
+
     item_m2 = _pick_first_dashboard_item_by_mes_visual(
         all_items,
         mes_visual=target_mes_label,
@@ -1179,6 +1186,10 @@ def get_dashboard_hitos(
         anio=target_anio,
         mes=target_mes,
         mes_label=target_mes_label,
+        fecha_publicacion_m1=cast(date | None, _event_any(item_m1).fecha) if item_m1 else None,
+        mes_afectado_publicacion_m1=_format_mes_afectado_short(
+            cast(str | None, _event_any(item_m1).mes_afectado) if item_m1 else None
+        ),
         fecha_publicacion_m2=cast(date | None, _event_any(item_m2).fecha) if item_m2 else None,
         mes_afectado_publicacion_m2=_format_mes_afectado_short(
             cast(str | None, _event_any(item_m2).mes_afectado) if item_m2 else None
