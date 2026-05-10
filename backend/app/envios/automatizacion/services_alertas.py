@@ -307,7 +307,7 @@ def detectar_plazo_vencido_bad(
     ahora: datetime,
 ) -> tuple[int, int]:
     """
-    Para los últimos 3 mes_envio: detecta empresas con .bad sin reenviar
+    Para el mes_envio actual: detecta empresas con .bad sin reenviar
     cuyo plazo ya pasó.
 
     NO auto-resuelve: el usuario debe reenviar y marcar manualmente.
@@ -316,11 +316,8 @@ def detectar_plazo_vencido_bad(
     """
     creadas, actualizadas = 0, 0
 
-    # Revisar mes actual + 2 anteriores (alertas todavía relevantes)
-    meses_a_revisar: list[tuple[int, int]] = []
-    for offset in range(0, 3):
-        a, m = _restar_meses(ahora.year, ahora.month, offset)
-        meses_a_revisar.append((a, m))
+    # Solo revisar el mes_envio actual
+    meses_a_revisar: list[tuple[int, int]] = [(ahora.year, ahora.month)]
 
     for me_anio, me_mes in meses_a_revisar:
         periodo_envio = _periodo_str(me_anio, me_mes)
@@ -371,7 +368,7 @@ def detectar_plazo_vencido_pendiente(
     ahora: datetime,
 ) -> tuple[int, int]:
     """
-    Para los últimos 3 mes_envio: detecta empresas SIN ningún envío del M
+    Para el mes_envio actual: detecta empresas SIN ningún envío del M
     cuyo plazo ya pasó.
 
     NO auto-resuelve: el usuario debe enviar y marcar manualmente.
@@ -380,10 +377,8 @@ def detectar_plazo_vencido_pendiente(
     """
     creadas, actualizadas = 0, 0
 
-    meses_a_revisar: list[tuple[int, int]] = []
-    for offset in range(0, 3):
-        a, m = _restar_meses(ahora.year, ahora.month, offset)
-        meses_a_revisar.append((a, m))
+    # Solo revisar el mes_envio actual
+    meses_a_revisar: list[tuple[int, int]] = [(ahora.year, ahora.month)]
 
     for me_anio, me_mes in meses_a_revisar:
         periodo_envio = _periodo_str(me_anio, me_mes)
