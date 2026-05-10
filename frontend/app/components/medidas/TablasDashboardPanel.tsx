@@ -723,7 +723,7 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
             const tienePendientes = !completa && card.empresas_total > 0;
             return (
               <div key={card.ventana} style={{
-                background: "var(--card-bg)",
+                background: "var(--field-bg-soft)",
                 border: tienePendientes ? "1px solid #BA7517" : "1px solid var(--card-border)",
                 borderRadius: 6, padding: 10,
               }}>
@@ -1064,7 +1064,7 @@ function BloquePS({
           const pct = card && total > 0 ? (card.cups / total * 100).toFixed(1) : null;
           return (
             <div key={codigo} style={{
-              background: "var(--card-bg)", border: "1px solid var(--card-border)",
+              background: "var(--field-bg-soft)", border: "1px solid var(--card-border)",
               borderRadius: 6, padding: "8px 10px",
             }}>
               {meta ? (
@@ -1156,7 +1156,7 @@ function BloquePS({
 
 function KpiCard({ label, valor, delta, deltaColor }: { label: string; valor: string; delta?: string | null; deltaColor?: string }) {
   return (
-    <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 6, padding: "10px 12px" }}>
+    <div style={{ background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", borderRadius: 6, padding: "10px 12px" }}>
       <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 500 }}>{valor}</div>
       {delta && <div style={{ fontSize: 10, color: deltaColor ?? "var(--text-muted)" }}>{delta}</div>}
@@ -1235,7 +1235,7 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
             const cerrado = card.estado === "cerrado";
             return (
               <div key={card.anio} onClick={() => togglAnioGeneral(card.anio)} style={{
-                background: abierta ? "rgba(55,138,221,0.08)" : "var(--card-bg)",
+                background: abierta ? "rgba(55,138,221,0.08)" : "var(--field-bg-soft)",
                 border: abierta ? "1px solid var(--btn-secondary-bg)" : "1px solid var(--card-border)",
                 borderRadius: 6, padding: 10, cursor: "pointer",
                 transition: "background 0.15s ease, border-color 0.15s ease",
@@ -1336,7 +1336,7 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
             const cerrado = card.estado === "cerrado";
             return (
               <div key={card.anio} onClick={() => toggleAnioPS(card.anio)} style={{
-                background: abierta ? "rgba(55,138,221,0.08)" : "var(--card-bg)",
+                background: abierta ? "rgba(55,138,221,0.08)" : "var(--field-bg-soft)",
                 border: abierta ? "1px solid var(--btn-secondary-bg)" : "1px solid var(--card-border)",
                 borderRadius: 6, padding: 10, cursor: "pointer",
                 transition: "background 0.15s ease, border-color 0.15s ease",
