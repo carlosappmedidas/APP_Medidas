@@ -83,9 +83,10 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
   const [reeHitosLoading, setReeHitosLoading] = useState(false);
   const [reeHitosError, setReeHitosError] = useState<string | null>(null);
 
-  // Contadores para la tarjeta de Alertas (objeciones + publicaciones REE)
+  // Contadores para la tarjeta de Alertas (objeciones + publicaciones REE + envíos REE)
   const [alertasObjecionesCount, setAlertasObjecionesCount] = useState<number | null>(null);
   const [alertasPublicacionesCount, setAlertasPublicacionesCount] = useState<number | null>(null);
+  const [alertasEnviosCount, setAlertasEnviosCount] = useState<number | null>(null);
 
   const empresaId = empresa ? Number(empresa) : null;
   const anioValue = anio ? Number(anio) : null;
@@ -144,19 +145,21 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
     void loadReeDashboardHitos();
   }, [token, anioValue, mesValue]);
 
-  // Cargar contadores de alertas activas (Objeciones + Publicaciones REE)
+  // Cargar contadores de alertas activas (Objeciones + Publicaciones REE + Envíos REE)
   useEffect(() => {
     if (!token) {
       setAlertasObjecionesCount(null);
       setAlertasPublicacionesCount(null);
+      setAlertasEnviosCount(null);
       return;
     }
     let cancelled = false;
     const cargarContadores = async () => {
       try {
-        const [resObj, resPub] = await Promise.all([
+        const [resObj, resPub, resEnv] = await Promise.all([
           fetch(`${API_BASE_URL}/objeciones/alertas?estado=activa`, { headers: getAuthHeaders(token) }),
           fetch(`${API_BASE_URL}/measures/descarga/automatizacion/alertas?estado=activa`, { headers: getAuthHeaders(token) }),
+          fetch(`${API_BASE_URL}/envios/alertas/contador`, { headers: getAuthHeaders(token) }),
         ]);
         if (cancelled) return;
 
@@ -176,10 +179,20 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
         } else {
           setAlertasPublicacionesCount(0);
         }
+
+        // Envíos REE: devuelve { total, critical, warning, info }
+        if (resEnv.ok) {
+          const dataEnv = await resEnv.json();
+          const total = typeof dataEnv?.total === "number" ? dataEnv.total : 0;
+          setAlertasEnviosCount(total);
+        } else {
+          setAlertasEnviosCount(0);
+        }
       } catch {
         if (cancelled) return;
         setAlertasObjecionesCount(0);
         setAlertasPublicacionesCount(0);
+        setAlertasEnviosCount(0);
       }
     };
     void cargarContadores();
@@ -653,37 +666,53 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
             <div className="text-[10px] font-semibold uppercase tracking-[0.04em] ui-muted mb-3 text-center">
               🔔 Alertas activas
             </div>
-            <div className="grid grid-cols-2 gap-2 flex-1 mb-3">
+            <div className="grid grid-cols-3 gap-1.5 flex-1 mb-3">
               {/* Objeciones */}
               <div
-                className="rounded-lg p-3 flex flex-col justify-center"
+                className="rounded-lg p-2.5 flex flex-col justify-center"
                 style={{ background: "var(--field-bg)" }}
               >
-                <div className="text-[14px] mb-1">📥</div>
+                <div className="text-[13px] mb-1">📥</div>
                 <div
-                  className="text-[22px] font-semibold leading-none"
+                  className="text-[20px] font-semibold leading-none"
                   style={{ color: (alertasObjecionesCount ?? 0) > 0 ? "var(--text)" : "#1D9E75" }}
                 >
                   {alertasObjecionesCount ?? "—"}
                 </div>
-                <div className="text-[9px] uppercase tracking-[0.05em] ui-muted mt-1">
+                <div className="text-[9px] uppercase tracking-[0.04em] ui-muted mt-1">
                   Objeciones
                 </div>
               </div>
               {/* Publicaciones REE */}
               <div
-                className="rounded-lg p-3 flex flex-col justify-center"
+                className="rounded-lg p-2.5 flex flex-col justify-center"
                 style={{ background: "var(--field-bg)" }}
               >
-                <div className="text-[14px] mb-1">📊</div>
+                <div className="text-[13px] mb-1">📊</div>
                 <div
-                  className="text-[22px] font-semibold leading-none"
+                  className="text-[20px] font-semibold leading-none"
                   style={{ color: (alertasPublicacionesCount ?? 0) > 0 ? "var(--text)" : "#1D9E75" }}
                 >
                   {alertasPublicacionesCount ?? "—"}
                 </div>
-                <div className="text-[9px] uppercase tracking-[0.05em] ui-muted mt-1">
+                <div className="text-[9px] uppercase tracking-[0.04em] ui-muted mt-1">
                   Publicaciones
+                </div>
+              </div>
+              {/* Envíos REE */}
+              <div
+                className="rounded-lg p-2.5 flex flex-col justify-center"
+                style={{ background: "var(--field-bg)" }}
+              >
+                <div className="text-[13px] mb-1">📤</div>
+                <div
+                  className="text-[20px] font-semibold leading-none"
+                  style={{ color: (alertasEnviosCount ?? 0) > 0 ? "var(--text)" : "#1D9E75" }}
+                >
+                  {alertasEnviosCount ?? "—"}
+                </div>
+                <div className="text-[9px] uppercase tracking-[0.04em] ui-muted mt-1">
+                  Envíos REE
                 </div>
               </div>
             </div>

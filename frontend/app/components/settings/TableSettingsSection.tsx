@@ -5,6 +5,7 @@ import React from "react";
 import type { TableAppearance, TableColumnConfig } from "./hooks/useTableSettings";
 import PublicacionesSettingsSection from "./PublicacionesSettingsSection";
 import EnviosSettingsSection from "./EnviosSettingsSection";
+import AlertConfigSection from "../admin/AlertConfigSection";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -13,6 +14,8 @@ type ColumnMeta = { id: string; label: string; group: string };
 type Props = {
   // token (para sub-secciones que necesiten llamar a la API)
   token: string | null;
+  // ¿el usuario puede gestionar config de alertas?
+  canManageAlerts: boolean;
   // apariencia
   appearance: TableAppearance;
   onSetAppearance: (key: keyof TableAppearance, value: boolean) => void;
@@ -305,9 +308,104 @@ function ColumnsPanel({
   );
 }
 
+// ── Sub-desplegable estilo "pill ancho completo" ───────────────────────────
+function SubDesplegable({
+  title,
+  description,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  description: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          width: "100%",
+          padding: "10px 14px",
+          fontSize: 11,
+          fontWeight: 500,
+          color: open ? "#85B7EB" : "var(--text)",
+          background: open ? "rgba(55,138,221,0.15)" : "var(--field-bg-soft)",
+          border: open
+            ? "0.5px solid rgba(55,138,221,0.5)"
+            : "0.5px solid var(--card-border)",
+          borderRadius: 8,
+          cursor: "pointer",
+          transition: "background 0.15s, border-color 0.15s, color 0.15s",
+          userSelect: "none",
+        }}
+        onMouseEnter={(e) => {
+          if (!open) {
+            e.currentTarget.style.borderColor = "rgba(55,138,221,0.4)";
+            e.currentTarget.style.background = "rgba(55,138,221,0.06)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!open) {
+            e.currentTarget.style.borderColor = "var(--card-border)";
+            e.currentTarget.style.background = "var(--field-bg-soft)";
+          }
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              fontSize: 10,
+              color: open ? "#85B7EB" : "var(--text-muted)",
+              transform: open ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 0.2s",
+              display: "inline-block",
+            }}
+          >
+            ▶
+          </span>
+          <span
+            style={{
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              fontWeight: 600,
+              fontSize: 11,
+            }}
+          >
+            {title}
+          </span>
+        </span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>
+          {description}
+        </span>
+      </button>
+      {open && (
+        <div
+          style={{
+            padding: "12px 14px",
+            background: "var(--field-bg-soft)",
+            border: "0.5px solid var(--card-border)",
+            borderRadius: 8,
+            marginTop: -4,
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Componente principal ───────────────────────────────────────────────────
 export default function TableSettingsSection({
   token,
+  canManageAlerts,
   appearance,
   onSetAppearance,
   generalColumnOrder,
@@ -323,6 +421,10 @@ export default function TableSettingsSection({
   onResetAll,
 }: Props) {
   const [activeTable, setActiveTable] = React.useState<"general" | "ps">("general");
+  const [openApariencia,  setOpenApariencia]  = React.useState(false);
+  const [openDescarga,    setOpenDescarga]    = React.useState(false);
+  const [openEnvios,      setOpenEnvios]      = React.useState(false);
+  const [openAlertas,     setOpenAlertas]     = React.useState(false);
 
   const appearanceOptions: {
     key: keyof TableAppearance;
@@ -386,131 +488,137 @@ export default function TableSettingsSection({
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-      {/* Info */}
-      <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, marginBottom: 4 }}>
         ✅ Guardando en servidor — disponible desde cualquier navegador o dispositivo.
       </p>
 
-      {/* SECCIÓN: APARIENCIA */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Apariencia</div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-              Opciones visuales que aplican a ambas tablas (General y PS)
+      {/* SUB 1: APARIENCIA Y COLUMNAS DE TABLAS ───────────────────────── */}
+      <SubDesplegable
+        title="Apariencia y columnas de tablas"
+        description="Apariencia, orden, columnas visibles"
+        open={openApariencia}
+        onToggle={() => setOpenApariencia((v) => !v)}
+      >
+        {/* Apariencia */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Apariencia</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                Opciones visuales que aplican a ambas tablas (General y PS)
+              </div>
             </div>
-          </div>
-          <button
-            type="button"
-            className="ui-btn ui-btn-ghost ui-btn-xs"
-            onClick={onResetAll}
-          >
-            Restaurar todo
-          </button>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {appearanceOptions.map((opt) => (
-            <AppearanceRow
-              key={opt.key}
-              label={opt.label}
-              description={opt.description}
-              icon={opt.icon}
-              value={appearance[opt.key]}
-              onChange={(v) => onSetAppearance(opt.key, v)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Separador visual */}
-      <div style={{ borderTop: "1px solid var(--card-border)" }} />
-
-      {/* SECCIÓN: COLUMNAS */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Columnas y orden</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Controla qué columnas se muestran en las tablas de medidas. Arrastra para reordenar.</div>
-        </div>
-
-        {/* Tabs General / PS */}
-        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--card-border)" }}>
-          {(["general", "ps"] as const).map((t) => (
             <button
-              key={t}
               type="button"
-              onClick={() => setActiveTable(t)}
-              style={{
-                padding: "6px 14px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                background: "none",
-                border: "none",
-                borderBottom: activeTable === t ? "2px solid var(--primary)" : "2px solid transparent",
-                color: activeTable === t ? "var(--primary)" : "var(--text-muted)",
-              }}
+              className="ui-btn ui-btn-ghost ui-btn-xs"
+              onClick={onResetAll}
             >
-              {t === "general" ? "Medidas General" : "Medidas PS"}
+              Restaurar todo
             </button>
-          ))}
-        </div>
+          </div>
 
-        {activeTable === "general" && (
-          <ColumnsPanel
-            title="Medidas General"
-            meta={generalMeta}
-            columnOrder={generalColumnOrder}
-            hiddenColumns={generalHiddenColumns}
-            onSetOrder={onSetGeneralOrder}
-            onSetHidden={onSetGeneralHidden}
-            defaultOrder={generalMeta.map((m) => m.id)}
-          />
-        )}
-
-        {activeTable === "ps" && (
-          <ColumnsPanel
-            title="Medidas PS"
-            meta={psMeta}
-            columnOrder={psColumnOrder}
-            hiddenColumns={psHiddenColumns}
-            onSetOrder={onSetPsOrder}
-            onSetHidden={onSetPsHidden}
-            defaultOrder={psMeta.map((m) => m.id)}
-          />
-        )}
-      </div>
-
-      {/* Separador visual */}
-      <div style={{ borderTop: "1px solid var(--card-border)" }} />
-
-      {/* SECCIÓN: DESCARGA DE PUBLICACIONES REE */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Descarga de publicaciones REE</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            Carpeta SFTP donde buscar ficheros publicados por REE (BALD, M1, PS) por cada conexión activa.
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {appearanceOptions.map((opt) => (
+              <AppearanceRow
+                key={opt.key}
+                label={opt.label}
+                description={opt.description}
+                icon={opt.icon}
+                value={appearance[opt.key]}
+                onChange={(v) => onSetAppearance(opt.key, v)}
+              />
+            ))}
           </div>
         </div>
+
+        <div style={{ borderTop: "1px solid var(--card-border)", marginBottom: 16 }} />
+
+        {/* Columnas */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Columnas y orden</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Controla qué columnas se muestran en las tablas de medidas. Arrastra para reordenar.</div>
+          </div>
+
+          {/* Tabs General / PS */}
+          <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--card-border)" }}>
+            {(["general", "ps"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setActiveTable(t)}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: "none",
+                  border: "none",
+                  borderBottom: activeTable === t ? "2px solid var(--primary)" : "2px solid transparent",
+                  color: activeTable === t ? "var(--primary)" : "var(--text-muted)",
+                }}
+              >
+                {t === "general" ? "Medidas General" : "Medidas PS"}
+              </button>
+            ))}
+          </div>
+
+          {activeTable === "general" && (
+            <ColumnsPanel
+              title="Medidas General"
+              meta={generalMeta}
+              columnOrder={generalColumnOrder}
+              hiddenColumns={generalHiddenColumns}
+              onSetOrder={onSetGeneralOrder}
+              onSetHidden={onSetGeneralHidden}
+              defaultOrder={generalMeta.map((m) => m.id)}
+            />
+          )}
+
+          {activeTable === "ps" && (
+            <ColumnsPanel
+              title="Medidas PS"
+              meta={psMeta}
+              columnOrder={psColumnOrder}
+              hiddenColumns={psHiddenColumns}
+              onSetOrder={onSetPsOrder}
+              onSetHidden={onSetPsHidden}
+              defaultOrder={psMeta.map((m) => m.id)}
+            />
+          )}
+        </div>
+      </SubDesplegable>
+
+      {/* SUB 2: DESCARGA DE PUBLICACIONES REE ──────────────────────────── */}
+      <SubDesplegable
+        title="Descarga de publicaciones REE"
+        description="SFTP + automatización"
+        open={openDescarga}
+        onToggle={() => setOpenDescarga((v) => !v)}
+      >
         <PublicacionesSettingsSection token={token} />
-      </div>
+      </SubDesplegable>
 
-      {/* Separador visual */}
-      <div style={{ borderTop: "1px solid var(--card-border)" }} />
-
-      {/* SECCIÓN: ENVÍOS REE */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Envíos REE</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            Job diario de búsqueda automática de respuestas REE (.ok / .bad) para los envíos AGRECL / INMECL / MAGCL.
-          </div>
-        </div>
+      {/* SUB 3: ENVÍOS REE ─────────────────────────────────────────────── */}
+      <SubDesplegable
+        title="Envíos REE"
+        description="2 automatizaciones · 07:30 + 22:00"
+        open={openEnvios}
+        onToggle={() => setOpenEnvios((v) => !v)}
+      >
         <EnviosSettingsSection token={token} />
-      </div>
+      </SubDesplegable>
 
+      {/* SUB 4: ALERTAS ─────────────────────────────────────────────────── */}
+      <SubDesplegable
+        title="Alertas"
+        description="Umbrales y severidad por empresa"
+        open={openAlertas}
+        onToggle={() => setOpenAlertas((v) => !v)}
+      >
+        <AlertConfigSection token={token} canManage={canManageAlerts} />
+      </SubDesplegable>
     </div>
   );
 }

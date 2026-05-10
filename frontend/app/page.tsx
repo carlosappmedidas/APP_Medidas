@@ -6,8 +6,7 @@ import AlertsSection from "./components/admin/AlertsSection";
 import AlertasObjecionesSection from "./components/admin/AlertasObjecionesSection";
 import AlertasPublicacionesSection from "./components/admin/AlertasPublicacionesSection";
 import AlertasEnviosSection from "./components/admin/AlertasEnviosSection";
-import AlertConfigSection from "./components/admin/AlertConfigSection";
-import ObjecionesSection from "./components/medidas/ObjecionesSection";
+import AlertConfigSection from "./components/admin/AlertConfigSection";import ObjecionesSection from "./components/medidas/ObjecionesSection";
 import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
 import GraficosSection from "./components/medidas/GraficosSection";
 import MedidasGeneralSection from "./components/medidas/MedidasGeneralSection";
@@ -41,7 +40,7 @@ const PAGE_TITLES: Record<MainTab, string> = {
   "tablas-resumen": "Gestión publicaciones",
   "tablas-general": "Medidas (General)", "tablas-ps": "Medidas (PS)",
   "envios": "Gestión envíos",
-  "objeciones": "Objeciones", "calendario-ree": "Calendario REE",
+  "objeciones": "Gestión objeciones", "calendario-ree": "Calendario REE",
   "graficos": "Gráficos", "alertas": "Alertas", "usuarios": "Usuarios",
   "clientes": "Clientes", "carga": "Carga de datos",
   "comunicaciones": "Comunicaciones FTP",
@@ -124,7 +123,6 @@ export default function HomePage() {
 
   const [showApariencia,  setShowApariencia]  = useState(false);
   const [showTablas,      setShowTablas]      = useState(false);
-  const [showAlertConfig, setShowAlertConfig] = useState(false);
   const [showTopologia,   setShowTopologia]   = useState(false);
   const [showObjeciones,  setShowObjeciones]  = useState(false);
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
@@ -240,7 +238,7 @@ export default function HomePage() {
   };
 
   const handleGoToTableSettings    = () => { setActiveTab("ajustes"); setShowTablas(true); };
-  const handleGoToAlertConfig      = () => { setActiveTab("ajustes"); setShowAlertConfig(true); };
+  const handleGoToAlertConfig      = () => { setActiveTab("ajustes"); setShowTablas(true); };
   const handleGoToObjecionesConfig = () => { setActiveTab("ajustes"); setShowObjeciones(true); };
 
   if (!authReady) {
@@ -334,7 +332,7 @@ export default function HomePage() {
                   {!isViewer && (
                     <button type="button" onClick={() => setActiveTab("objeciones")}
                       className={["ui-nav-subitem", activeTab === "objeciones" ? "ui-nav-subitem--active" : ""].join(" ")}>
-                      <span>Objeciones</span>
+                      <span>Gestión objeciones</span>
                     </button>
                   )}
                   <button type="button" onClick={() => setActiveTab("calendario-ree")}
@@ -627,8 +625,8 @@ export default function HomePage() {
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowTablas((v) => !v)}>
                 <div>
-                  <div className="ui-collapsible-card__title">CONFIGURACIÓN DE TABLAS</div>
-                  <p className="ui-collapsible-card__subtitle">Apariencia, columnas y orden de las tablas de medidas. Se guarda en servidor.</p>
+                  <div className="ui-collapsible-card__title">CONFIGURACIÓN GESTIÓN PUBLICACIONES</div>
+                  <p className="ui-collapsible-card__subtitle">Apariencia de tablas, descarga de publicaciones REE, envíos REE y alertas.</p>
                 </div>
                 <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showTablas ? "Ocultar" : "Mostrar"}</span>
               </button>
@@ -636,6 +634,7 @@ export default function HomePage() {
                 <div className="ui-collapsible-card__body">
                   <TableSettingsSection
                     token={token}
+                    canManageAlerts={canManageAlerts}
                     appearance={appearance} onSetAppearance={setAppearance}
                     generalColumnOrder={generalColumnOrder} generalHiddenColumns={generalHiddenColumns}
                     generalMeta={ALL_COLUMNS_META}
@@ -644,20 +643,6 @@ export default function HomePage() {
                     psMeta={COLUMNS_PS_META}
                     onSetPsOrder={setPsColumnOrder} onSetPsHidden={setPsHiddenColumns}
                     onResetAll={resetTableSettings} />
-                </div>
-              )}
-            </div>
-            <div className="ui-collapsible-card">
-              <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowAlertConfig((v) => !v)}>
-                <div>
-                  <div className="ui-collapsible-card__title">CONFIGURACIÓN DE ALERTAS</div>
-                  <p className="ui-collapsible-card__subtitle">Umbrales y severidad de alertas por empresa y tipo de medida.</p>
-                </div>
-                <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showAlertConfig ? "Ocultar" : "Mostrar"}</span>
-              </button>
-              {showAlertConfig && (
-                <div className="ui-collapsible-card__body">
-                  <AlertConfigSection token={token} canManage={canManageAlerts} />
                 </div>
               )}
             </div>
@@ -699,7 +684,7 @@ export default function HomePage() {
             <div className="ui-collapsible-card">
               <button type="button" className="ui-collapsible-card__trigger" onClick={() => setShowObjeciones((v) => !v)}>
                 <div>
-                  <div className="ui-collapsible-card__title">CONFIGURACIÓN OBJECIONES</div>
+                  <div className="ui-collapsible-card__title">CONFIGURACIÓN GESTIÓN OBJECIONES</div>
                   <p className="ui-collapsible-card__subtitle">Define la carpeta SFTP donde buscar ficheros de objeciones (AOB) por cada conexión activa.</p>
                 </div>
                 <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">{showObjeciones ? "Ocultar" : "Mostrar"}</span>
