@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import type { DashData, DashEmpresa, DashTipoEnPeriodo, EmpresaOption } from "./shared/types";
+import UiCard from "../../ui/UiCard";
 // Nota: DashPeriodo ya no se importa aquí porque se accede vía dash.por_periodo
 // y TypeScript infiere los tipos desde DashData.
 
@@ -329,7 +330,7 @@ export default function DashboardPanel({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10, marginBottom: 14 }}>
 
             {/* ── Tarjeta 1: TOTAL ─────────────────────────────────────────── */}
-            <div style={{ background: "var(--field-bg-soft)", borderRadius: 10, padding: "14px 16px", border: "0.5px solid var(--card-border)" }}>
+            <UiCard variant="nested" padding="none" radius="md" style={{ padding: "14px 16px", border: "0.5px solid var(--card-border)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <div style={{ width: 24, height: 24, borderRadius: 6, background: "rgba(148,163,184,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -377,10 +378,10 @@ export default function DashboardPanel({
                   </div>
                 );
               })()}
-            </div>
+            </UiCard>
 
             {/* ── Tarjeta 2: ESTADO ────────────────────────────────────────── */}
-            <div style={{ background: "var(--field-bg-soft)", borderRadius: 10, padding: "14px 16px", border: "0.5px solid var(--card-border)" }}>
+            <UiCard variant="nested" padding="none" radius="md" style={{ padding: "14px 16px", border: "0.5px solid var(--card-border)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <div style={{ width: 24, height: 24, borderRadius: 6, background: "rgba(148,163,184,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -410,10 +411,10 @@ export default function DashboardPanel({
                   {err} rechazadas
                 </span>
               </div>
-            </div>
+            </UiCard>
 
             {/* ── Tarjeta 3: AUTOMATIZACIÓN ────────────────────────────── */}
-            <div style={{ background: "var(--field-bg-soft)", borderRadius: 10, padding: "14px 16px", border: "0.5px solid var(--card-border)" }}>
+            <UiCard variant="nested" padding="none" radius="md" style={{ padding: "14px 16px", border: "0.5px solid var(--card-border)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 24, height: 24, borderRadius: 6, background: iconoBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -437,7 +438,7 @@ export default function DashboardPanel({
                   </div>
                 ))}
               </div>
-            </div>
+            </UiCard>
 
           </div>
 
