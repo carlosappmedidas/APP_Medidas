@@ -23,6 +23,7 @@ import YearPillsFilter   from "../ui/YearPillsFilter";
 import MonthPillsFilter  from "../ui/MonthPillsFilter";
 import FilterDropdown, { type MultiCheckOption } from "../ui/FilterDropdown";
 import UiChip            from "../ui/UiChip";
+import UiCard            from "../ui/UiCard";
 import useElementSize    from "../../hooks/useElementSize";
 
 type Props = { token: string | null; currentUser?: User | null };
@@ -782,7 +783,16 @@ export default function GraficosSection({ token }: Props) {
 
         {expandedGrafica === null && (
           <>
-            <div className="rounded-xl border" style={{ background: "var(--card-bg)", borderColor: "var(--card-border)", padding: "10px 14px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <UiCard
+              padding="none"
+              style={{
+                padding: "10px 14px",
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-end",
+                flexWrap: "wrap",
+              }}
+            >
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Empresa</span>
                 {filtersLoading ? (
@@ -804,12 +814,12 @@ export default function GraficosSection({ token }: Props) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(226,232,240,.5)" }}>Mes</span>
-                <MonthPillsFilter selectedMeses={selectedMeses}
+<MonthPillsFilter selectedMeses={selectedMeses}
                   onToggle={(v) => toggleSelection(v, setSelectedMeses)}
                   onSelectAll={() => selectAll(Array.from({ length: 12 }, (_, i) => i + 1), selectedMeses, setSelectedMeses)} />
               </div>
               <div style={{ flex: 1 }} />
-            </div>
+            </UiCard>
 
             <div style={{ fontSize: 10, color: "rgba(96,165,250,.7)", background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.2)", borderRadius: 8, padding: "6px 12px", display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: "#60a5fa", fontSize: 12 }}>i</span>

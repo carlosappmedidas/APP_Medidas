@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import UiChip from "../ui/UiChip";
+import UiCard from "../ui/UiCard";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -191,13 +192,15 @@ export default function AlertasPublicacionesSection({ token, onNavigateToTablasR
     <div className="text-sm" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 
       {/* Filtros */}
-      <div style={{
-        display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center",
-        padding: "8px 10px",
-        background: "var(--field-bg-soft)",
-        border: "0.5px solid var(--card-border)",
-        borderRadius: 8,
-      }}>
+      <UiCard
+        variant="nested"
+        padding="none"
+        style={{
+          display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center",
+          padding: "8px 10px",
+          borderRadius: 8,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <label style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Estado
@@ -279,7 +282,7 @@ export default function AlertasPublicacionesSection({ token, onNavigateToTablasR
             {loading ? "Cargando..." : "🔄 Refrescar"}
           </button>
         </div>
-      </div>
+      </UiCard>
 
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
 
@@ -289,31 +292,37 @@ export default function AlertasPublicacionesSection({ token, onNavigateToTablasR
           Cargando alertas...
         </div>
       ) : alertasVisibles.length === 0 ? (
-        <div style={{
-          fontSize: 11, color: "var(--text-muted)",
-          padding: "24px 8px", textAlign: "center",
-          background: "var(--field-bg-soft)", borderRadius: 8,
-          border: "0.5px solid var(--card-border)",
-        }}>
+        <UiCard
+          variant="nested"
+          padding="none"
+          style={{
+            fontSize: 11, color: "var(--text-muted)",
+            padding: "24px 8px", textAlign: "center",
+            borderRadius: 8,
+          }}
+        >
           {filtroEstado === "activa" ? "No hay alertas activas." : "No hay alertas que coincidan con los filtros."}
-        </div>
+        </UiCard>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {alertasVisibles.map(a => {
             const proc = procesandoId === a.id;
             const colorPunto = colorEstado[a.estado] || "#94A3B8";
-           const meta = TIPO_META[a.tipo] ?? { label: a.tipo, variant: "muted" as const };
+            const meta = TIPO_META[a.tipo] ?? { label: a.tipo, variant: "muted" as const };
             return (
-              <div key={a.id} style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto",
-                gap: 10,
-                alignItems: "center",
-                padding: "10px 14px",
-                background: "var(--field-bg-soft)",
-                border: "0.5px solid var(--card-border)",
-                borderRadius: 8,
-              }}>
+              <UiCard
+                key={a.id}
+                variant="nested"
+                padding="none"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                }}
+              >
                 {/* Punto de estado */}
                 <div style={{
                   width: 8, height: 8, borderRadius: "50%",
@@ -377,7 +386,7 @@ export default function AlertasPublicacionesSection({ token, onNavigateToTablasR
                     </>
                   )}
                 </div>
-              </div>
+              </UiCard>
             );
           })}
         </div>

@@ -6,6 +6,7 @@ import ExploradorFtpPanel, { type FtpConfig } from "../comunicaciones/Explorador
 import TablePaginationFooter from "../ui/TablePaginationFooter";
 import DashboardEnviosSection from "./DashboardEnviosSection";
 import CampanaAlertasEnvios from "../medidas/CampanaAlertasEnvios";
+import UiCard from "../ui/UiCard";
 
 interface Props { token: string | null; }
 
@@ -47,10 +48,7 @@ type MClass = "" | "M1" | "M2" | "M7";
 
 // ─── Estilos compartidos ──────────────────────────────────────────────────────
 
-const panelStyle: React.CSSProperties = {
-  background: "var(--card-bg)", border: "1px solid var(--card-border)",
-  borderRadius: "10px", overflow: "hidden", marginBottom: "10px",
-};
+// panelStyle eliminado — ahora usamos <UiCard padding="none">
 const panelHeaderStyle: React.CSSProperties = {
   display: "flex", alignItems: "center", justifyContent: "space-between",
   padding: "14px 20px", cursor: "pointer", userSelect: "none",
@@ -373,7 +371,7 @@ export default function EnviosSection({ token }: Props) {
       <DashboardEnviosSection token={token} />
 
       {/* ══ TARJETA 1 — ENVÍO DE FICHEROS ══════════════════════════════════ */}
-      <div style={panelStyle}>
+      <UiCard padding="none" style={{ overflow: "hidden", marginBottom: "10px" }}>
         <div style={panelHeaderStyle} onClick={() => setPanelEnvioOpen(v => !v)}>
           <div>
             <div style={panelTitleStyle}>📤 Envío de ficheros</div>
@@ -415,10 +413,10 @@ export default function EnviosSection({ token }: Props) {
             )}
           </div>
         )}
-      </div>
+      </UiCard>
 
       {/* ══ TARJETA 2 — HISTÓRICO DE ENVÍOS ════════════════════════════════ */}
-      <div style={panelStyle}>
+      <UiCard padding="none" style={{ overflow: "hidden", marginBottom: "10px" }}>
         <div style={panelHeaderStyle} onClick={() => setPanelHistOpen(v => !v)}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div>
@@ -644,7 +642,7 @@ export default function EnviosSection({ token }: Props) {
             />
           </div>
         )}
-      </div>
+      </UiCard>
 
     </div>
   );

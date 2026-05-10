@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import UiChip from "../ui/UiChip";
+import UiCard from "../ui/UiCard";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -315,11 +316,7 @@ export default function AlertConfigSection({ token, canManage }: Props) {
       )}
 
       {/* ══ Sub-collapsible: ALERTAS · MEDIDAS GENERAL ══ */}
-      <div style={{
-        border: "0.5px solid var(--card-border)",
-        borderRadius: 10, overflow: "hidden",
-        background: "var(--card-bg)",
-      }}>
+      <UiCard padding="none" style={{ overflow: "hidden" }}>
         {/* Trigger */}
         <button
           type="button"
@@ -398,13 +395,15 @@ export default function AlertConfigSection({ token, canManage }: Props) {
                   { label: "críticas",      value: stats.criticas,     color: "#f87171" },
                   { label: "warning",       value: stats.warning,      color: "#fbbf24" },
                 ].map((s) => (
-                  <div key={s.label} style={{
-                    background: "var(--field-bg-soft)", borderRadius: 8,
-                    padding: "7px 12px", textAlign: "center", minWidth: 58,
-                  }}>
+                  <UiCard
+                    key={s.label}
+                    variant="nested"
+                    padding="none"
+                    style={{ padding: "7px 12px", textAlign: "center", minWidth: 58 }}
+                  >
                     <div style={{ fontSize: 18, fontWeight: 500, color: s.color }}>{s.value}</div>
                     <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{s.label}</div>
-                  </div>
+                  </UiCard>
                 ))}
                 {!canManage && (
                   <div style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
@@ -440,7 +439,7 @@ export default function AlertConfigSection({ token, canManage }: Props) {
             )}
           </div>
         )}
-      </div>
+      </UiCard>
 
       {/* ══ Placeholder: futuras secciones ══ */}
       <div style={{

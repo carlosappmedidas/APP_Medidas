@@ -7,6 +7,7 @@ import { useDashboardEnergyTrendChart } from "./hooks/useDashboardEnergyTrendCha
 import { useDashboardLossesTrendChart } from "./hooks/useDashboardLossesTrendChart";
 import DashboardMiniCard from "./ui/DashboardMiniCard";
 import DashboardPlaceholderBox from "./ui/DashboardPlaceholderBox";
+import UiCard from "../ui/UiCard";
 import DashboardEnergyComparisonChart from "./charts/DashboardEnergyComparisonChart";
 import DashboardEnergyTrendChart from "./charts/DashboardEnergyTrendChart";
 import DashboardLossesTrendChart from "./charts/DashboardLossesTrendChart";
@@ -579,11 +580,14 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
         <div className="grid gap-3 grid-cols-1 md:grid-cols-4">
 
           {/* Energía facturada — borde exterior + título muted + datos con field-bg */}
-          <div
-            className="rounded-xl border p-3 flex flex-col gap-2"
+          <UiCard
+            padding="none"
+            radius="lg"
             style={{
-              borderColor: "var(--card-border)",
-              background: "var(--card-bg)",
+              padding: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
               borderLeft: "3px solid #378ADD",
             }}
           >
@@ -622,14 +626,17 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
                 </div>
               )}
             </div>
-          </div>
+          </UiCard>
 
           {/* Pérdidas — borde exterior + título muted + datos con field-bg */}
-          <div
-            className="rounded-xl border p-3 flex flex-col gap-2"
+          <UiCard
+            padding="none"
+            radius="lg"
             style={{
-              borderColor: "var(--card-border)",
-              background: "var(--card-bg)",
+              padding: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
               borderLeft: "3px solid #D85A30",
             }}
           >
@@ -663,13 +670,19 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
                 </div>
               )}
             </div>
-          </div>
+          </UiCard>
 
-          {/* Alertas — tarjeta unificada con contadores y CTA */}
-          <div
-            className="rounded-xl border p-4 flex flex-col cursor-pointer transition-transform hover:-translate-y-px"
-            style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+{/* Alertas — tarjeta unificada con contadores y CTA */}
+          <UiCard
+            padding="none"
+            radius="lg"
             onClick={() => { if (onNavigateToAlertas) onNavigateToAlertas(); }}
+            className="cursor-pointer transition-transform hover:-translate-y-px"
+            style={{
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+            }}
           >
             <div className="text-[10px] font-semibold uppercase tracking-[0.04em] ui-muted mb-3 text-center">
               🔔 Alertas activas
@@ -730,12 +743,13 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
             >
               Ver todas las alertas →
             </div>
-          </div>
+          </UiCard>
 
           {/* Calendario REE — compacto 2 col */}
-          <div
-            className="rounded-xl border p-4"
-            style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+          <UiCard
+            padding="none"
+            radius="lg"
+            style={{ padding: 16 }}
           >
             <div className="text-[10px] font-semibold uppercase tracking-[0.04em] ui-muted mb-3 text-center">
               {reeHitosLoading
@@ -822,7 +836,7 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
                 })}
               </div>
             )}
-          </div>
+          </UiCard>
 
         </div>
 
