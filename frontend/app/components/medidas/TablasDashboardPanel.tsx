@@ -872,7 +872,7 @@ function FilaEmpresa({
         if (c.pendiente) {
           return (
             <div key={v} style={{
-              background: "var(--card-bg)", border: "1px dashed #BA7517",
+              background: "var(--field-bg-soft)", border: "1px dashed #BA7517",
               borderRadius: 5, padding: "5px 7px",
             }}>
               <div style={{ fontSize: 10, color: "#BA7517", fontWeight: 500 }}>⚠ pendiente</div>
@@ -882,7 +882,7 @@ function FilaEmpresa({
         }
         return (
           <div key={v} style={{
-            background: "var(--card-bg)", border: "1px solid var(--card-border)",
+            background: "var(--field-bg-soft)", border: "1px solid var(--card-border)",
             borderRadius: 5, padding: "5px 7px",
           }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
@@ -922,7 +922,7 @@ function FilaEmpresa({
 function DespliegueEmpresa({ despliegue }: { despliegue: MensualGeneralEmpresaDespliegueFila[] }) {
   return (
     <div style={{
-      background: "var(--card-bg)", borderTop: "1px solid var(--card-border)",
+      background: "var(--field-bg-soft)", borderTop: "1px solid var(--card-border)",
       borderBottomLeftRadius: 5, borderBottomRightRadius: 5, padding: "10px 14px",
     }}>
       <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500, marginBottom: 8 }}>
@@ -1127,7 +1127,7 @@ function BloquePS({
                   const sinDatos = !c || c.cups == null || c.cups === 0;
                   return (
                     <div key={codigo} style={{
-                      background: "var(--card-bg)", border: "1px solid var(--card-border)",
+                      background: "var(--field-bg-soft)", border: "1px solid var(--card-border)",
                       borderRadius: 5, padding: "5px 7px",
                     }}>
                       {sinDatos ? (
@@ -1416,7 +1416,7 @@ function DetalleAnioGeneral({
 }) {
   return (
     <div style={{
-      background: "var(--card-bg)", border: "1px solid var(--btn-secondary-bg)",
+      background: "var(--field-bg-soft)", border: "1px solid var(--btn-secondary-bg)",
       borderRadius: 6, padding: "12px 14px", marginTop: 10,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
@@ -1538,7 +1538,7 @@ function FilaMesHistorico({
     }}>
       {filaContent}
       <div style={{
-        background: "var(--card-bg)", borderTop: "1px solid var(--card-border)",
+        background: "var(--field-bg-soft)", borderTop: "1px solid var(--card-border)",
         borderBottomLeftRadius: 5, borderBottomRightRadius: 5, padding: "8px 12px",
       }}>
         <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
@@ -1599,7 +1599,7 @@ function DetalleAnioPS({
 
   return (
     <div style={{
-      background: "var(--card-bg)", border: "1px solid var(--btn-secondary-bg)",
+      background: "var(--field-bg-soft)", border: "1px solid var(--btn-secondary-bg)",
       borderRadius: 6, padding: "12px 14px", marginTop: 10,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
@@ -1746,7 +1746,7 @@ function DesgloseEmpresasGeneral({
                 if (card.sin_datos) {
                   return (
                     <div key={card.anio} style={{
-                      background: "var(--card-bg)", border: "1px dashed var(--card-border)",
+                      background: "var(--field-bg-soft)", border: "1px dashed var(--card-border)",
                       borderRadius: 5, padding: "5px 7px", opacity: 0.5,
                     }}>
                       <div style={{ fontSize: 11, fontWeight: 500 }}>{card.anio}</div>
@@ -1757,7 +1757,7 @@ function DesgloseEmpresasGeneral({
 
                 return (
                   <div key={card.anio} onClick={() => onToggleEmpresaAnio(emp.empresa.id, card.anio)} style={{
-                    background: tarjetaAbierta ? "rgba(55,138,221,0.08)" : "var(--card-bg)",
+                    background: tarjetaAbierta ? "rgba(55,138,221,0.08)" : "var(--field-bg-soft)",
                     border: tarjetaAbierta ? "1px solid var(--btn-secondary-bg)" : "1px solid var(--card-border)",
                     borderRadius: 5, padding: "5px 7px", cursor: "pointer",
                     transition: "background 0.15s ease, border-color 0.15s ease",
@@ -1849,7 +1849,7 @@ function DesgloseEmpresasPS({
                 if (card.sin_datos) {
                   return (
                     <div key={card.anio} style={{
-                      background: "var(--card-bg)", border: "1px dashed var(--card-border)",
+                      background: "var(--field-bg-soft)", border: "1px dashed var(--card-border)",
                       borderRadius: 5, padding: "5px 7px", opacity: 0.5,
                     }}>
                       <div style={{ fontSize: 11, fontWeight: 500 }}>{card.anio}</div>
@@ -1860,7 +1860,7 @@ function DesgloseEmpresasPS({
 
                 return (
                   <div key={card.anio} onClick={() => onToggleEmpresaAnio(emp.empresa.id, card.anio)} style={{
-                    background: tarjetaAbierta ? "rgba(55,138,221,0.08)" : "var(--card-bg)",
+                    background: tarjetaAbierta ? "rgba(55,138,221,0.08)" : "var(--field-bg-soft)",
                     border: tarjetaAbierta ? "1px solid var(--btn-secondary-bg)" : "1px solid var(--card-border)",
                     borderRadius: 5, padding: "5px 7px", cursor: "pointer",
                     transition: "background 0.15s ease, border-color 0.15s ease",
