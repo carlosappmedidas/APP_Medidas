@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import CampanaAlertasEnvios from "../medidas/CampanaAlertasEnvios";
 import UiChip from "../ui/UiChip";
+import UiCard from "../ui/UiCard";
 
 // ─── Tipos del JSON del backend ────────────────────────────────────────────────
 
@@ -166,11 +167,6 @@ interface DetalleMesProps {
 }
 
 function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detalleAbierto, toggleDetalle }: DetalleMesProps) {
-  const tarjetaStyle: React.CSSProperties = {
-    background: "var(--field-bg-soft)", borderRadius: 10,
-    padding: "14px 16px", border: "0.5px solid var(--card-border)",
-  };
-
   return (
     <>
       {/* 3 tarjetas de grupo */}
@@ -184,7 +180,7 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
           const totalEnviados = grupo.periodos.reduce((s, p) => s + p.ficheros_enviados, 0);
 
           return (
-            <div key={grupoId} style={tarjetaStyle}>
+            <UiCard key={grupoId} variant="nested" padding="md">
               <div style={{ marginBottom: 4 }}>
                 <span style={{
                   display: "inline-block",
@@ -275,7 +271,7 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                   </div>
                 </>
               )}
-            </div>
+            </UiCard>
           );
         })}
       </div>
@@ -343,11 +339,7 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
           </div>
 
           {detalleAbierto && (
-          <div style={{
-            background: "var(--field-bg-soft)", borderRadius: 8,
-            border: "0.5px solid var(--card-border)",
-            overflow: "hidden",
-          }}>
+          <UiCard variant="nested" padding="none" style={{ borderRadius: 8, overflow: "hidden" }}>
             <div style={{
               display: "grid",
               gridTemplateColumns: "24px 1.5fr repeat(3, 1fr) 0.7fr",
@@ -518,7 +510,7 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                 </div>
               );
             })}
-          </div>
+          </UiCard>
           )}
         </>
       )}
@@ -621,16 +613,6 @@ export default function DashboardEnviosSection({ token }: Props) {
     });
   };
 
-  // ── Estilos compartidos ──
-  const panelStyle: React.CSSProperties = {
-    background: "var(--card-bg)", border: "1px solid var(--card-border)",
-    borderRadius: "10px", overflow: "hidden", marginBottom: "10px",
-  };
-
-  const tarjetaStyle: React.CSSProperties = {
-    background: "var(--field-bg-soft)", borderRadius: 10,
-    padding: "14px 16px", border: "0.5px solid var(--card-border)",
-  };
 
   const headerLabel = vista === "mensual"
     ? `ENVÍOS ${MESES_LARGOS[mes]}-${anio} (mes en que se realiza el envío)`
@@ -641,7 +623,7 @@ export default function DashboardEnviosSection({ token }: Props) {
   const anioActivoData = aniosVisibles.find((a) => a.anio === anioActivo) ?? null;
 
   return (
-    <div style={panelStyle}>
+    <UiCard padding="none" style={{ overflow: "hidden", marginBottom: "10px" }}>
       {/* Cabecera */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -769,7 +751,7 @@ export default function DashboardEnviosSection({ token }: Props) {
                     const a = dataMensual.alertas![m];
                     const est = estiloPlazo(a.estado);
                     return (
-                      <div key={m} style={tarjetaStyle}>
+                      <UiCard key={m} variant="nested" padding="md">
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                           <UiChip variant={m.toLowerCase() as "m1" | "m2" | "m7"}>
                             {m}
@@ -851,7 +833,7 @@ export default function DashboardEnviosSection({ token }: Props) {
                             </div>
                           );
                         })()}
-                      </div>
+                      </UiCard>
                     );
                   })}
                 </div>
@@ -906,29 +888,25 @@ export default function DashboardEnviosSection({ token }: Props) {
                   gap: 8,
                   marginBottom: 16,
                 }}>
-                  {aniosVisibles.map((anioData) => {
+                   {aniosVisibles.map((anioData) => {
                     const isActive = anioActivo === anioData.anio;
                     return (
-                      <div
+                      <UiCard
                         key={anioData.anio}
+                        variant={isActive ? "accent" : "nested"}
                         onClick={() => toggleAnio(anioData.anio)}
                         style={{
                           width: 220,
                           flexShrink: 0,
-                          background: "var(--field-bg-soft)",
-                          border: isActive
-                            ? "1px solid rgba(55,138,221,0.6)"
-                            : "0.5px solid var(--card-border)",
-                          borderRadius: 8,
                           padding: 12,
-                          cursor: "pointer",
+                          borderRadius: 8,
                           transition: "background 0.15s, border-color 0.15s",
                           boxShadow: isActive ? "0 0 0 2px rgba(55,138,221,0.15)" : "none",
                         }}
-                        onMouseEnter={(e) => {
+                        onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => {
                           if (!isActive) e.currentTarget.style.borderColor = "rgba(55,138,221,0.4)";
                         }}
-                        onMouseLeave={(e) => {
+                        onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => {
                           if (!isActive) e.currentTarget.style.borderColor = "var(--card-border)";
                         }}
                       >
@@ -993,19 +971,22 @@ export default function DashboardEnviosSection({ token }: Props) {
                             }}>Sin respuestas REE</span>
                           )}
                         </div>
-                      </div>
+                      </UiCard>
                     );
                   })}
                 </div>
 
                 {/* Detalle del año activo (debajo del grid) */}
                 {anioActivoData && (
-                  <div style={{
-                    background: "rgba(55,138,221,0.04)",
-                    border: "0.5px solid rgba(55,138,221,0.18)",
-                    borderRadius: 8,
-                    padding: "12px 14px",
-                  }}>
+                  <UiCard
+                    variant="accent"
+                    style={{
+                      background: "rgba(55,138,221,0.04)",
+                      border: "0.5px solid rgba(55,138,221,0.18)",
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                    }}
+                  >
                     <div style={{
                       fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
                       letterSpacing: "0.08em", fontWeight: 600, marginBottom: 10,
@@ -1078,13 +1059,13 @@ export default function DashboardEnviosSection({ token }: Props) {
                         </div>
                       );
                     })}
-                  </div>
+                  </UiCard>
                 )}
               </>
             )}
           </>
         )}
       </div>
-    </div>
+    </UiCard>
   );
 }
