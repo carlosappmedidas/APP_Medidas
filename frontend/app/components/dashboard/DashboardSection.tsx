@@ -486,7 +486,7 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
   // ────────────────────────────────────────────────────────────────────
 
   return (
-    <section className="ui-card text-sm">
+    <div className="text-sm">
       <div className="flex flex-col gap-4">
 
         {/* ── Header ───────────────────────────────────────────────── */}
@@ -885,6 +885,6 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
         )}
 
       </div>
-    </section>
+    </div>
   );
 }
