@@ -752,18 +752,21 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
 
         {/* Detalle por empresa (colapsable) */}
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--card-border)" }}>
-<button type="button" onClick={() => setDetalleGeneralAbierto(v => !v)}
+          <button type="button" onClick={() => setDetalleGeneralAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
               width: "100%", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", cursor: "pointer",
               padding: "8px 12px", borderRadius: 6, marginBottom: detalleGeneralAbierto ? 10 : 0,
               transition: "background 0.15s ease",
             }}>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
-              Detalle por empresa {detalleGeneralAbierto && "· pulsa ▸ para ver meses afectados"}
-            </div>
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-              {detalleGeneralAbierto ? "▾ ocultar" : "▸ mostrar"}
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, transform: detalleGeneralAbierto ? "rotate(90deg)" : "none", transition: "transform 0.15s ease", display: "inline-block" }}>▶</span>
+              <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text)" }}>
+                🏢 Detalle por empresa
+              </span>
+            </span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>
+              {generalEfectivo.detalle_por_empresa.length} empresas
             </span>
           </button>
 
