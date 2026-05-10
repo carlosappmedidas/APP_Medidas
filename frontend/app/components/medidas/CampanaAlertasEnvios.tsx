@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiChip from "../ui/UiChip";
 
 type AlertaItem = {
   id:                  number;
@@ -57,12 +58,12 @@ function fmtFechaCorta(iso: string | null): string {
   }
 }
 
-// Etiquetas y colores por tipo de alerta
-const TIPO_META: Record<string, { label: string; chipBg: string; chipColor: string }> = {
-  plazo_proximo:           { label: "Próximo",  chipBg: "rgba(239,159,39,0.18)", chipColor: "#FAC775" },
-  plazo_vencido_bad:       { label: "Bad",      chipBg: "rgba(226,75,74,0.20)",  chipColor: "#F08585" },
-  plazo_vencido_pendiente: { label: "Vencido",  chipBg: "rgba(226,75,74,0.20)",  chipColor: "#F08585" },
-  respuesta_ree:           { label: "Resp.",    chipBg: "rgba(55,138,221,0.20)", chipColor: "#6FB1F0" },
+// Etiquetas y variantes por tipo de alerta (Design System)
+const TIPO_META: Record<string, { label: string; variant: "warning" | "danger" | "info" }> = {
+  plazo_proximo:           { label: "Próximo",  variant: "warning" },
+  plazo_vencido_bad:       { label: "Bad",      variant: "danger" },
+  plazo_vencido_pendiente: { label: "Vencido",  variant: "danger" },
+  respuesta_ree:           { label: "Resp.",    variant: "info" },
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -204,7 +205,7 @@ export default function CampanaAlertasEnvios({ token }: Props) {
           {/* Items */}
           <div>
             {items.map(a => {
-              const meta = TIPO_META[a.tipo] ?? { label: a.tipo.toUpperCase(), chipBg: "rgba(255,255,255,0.06)", chipColor: "var(--text-muted)" };
+              const meta = TIPO_META[a.tipo] ?? { label: a.tipo.toUpperCase(), variant: "muted" as const };
               const procesando = actionId === a.id;
 
               // Detalle adicional según tipo
@@ -229,18 +230,12 @@ export default function CampanaAlertasEnvios({ token }: Props) {
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
-                    <span style={{
-                      background: meta.chipBg, color: meta.chipColor,
-                      padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600,
-                    }}>
+                    <UiChip variant={meta.variant} size="sm">
                       {meta.label}
-                    </span>
-                    <span style={{
-                      background: "rgba(55,138,221,0.18)", color: "#6FB1F0",
-                      padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 600,
-                    }}>
+                    </UiChip>
+                    <UiChip variant={a.m_clas.toLowerCase() as "m1" | "m2" | "m7"} size="sm">
                       {a.m_clas}
-                    </span>
+                    </UiChip>
                     <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 500 }}>
                       {fmtPeriodo(a.periodo)}
                     </span>

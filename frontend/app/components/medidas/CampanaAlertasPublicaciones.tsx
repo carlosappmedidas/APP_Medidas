@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiChip from "../ui/UiChip";
 
 type AlertaItem = {
   id:              number;
@@ -38,11 +39,11 @@ interface Props {
 
 // ── Metadatos por tipo de alerta ──────────────────────────────────────────────
 
-const TIPO_META: Record<string, { label: string; chipBg: string; chipColor: string }> = {
-  publicacion_m2:    { label: "M2",    chipBg: "rgba(55,138,221,0.18)", chipColor: "#85B7EB" },
-  publicacion_m7:    { label: "M7",    chipBg: "rgba(15,110,86,0.22)",  chipColor: "#5DCAA5" },
-  publicacion_m11:   { label: "M11",   chipBg: "rgba(186,117,23,0.18)", chipColor: "#FAC775" },
-  publicacion_art15: { label: "ART15", chipBg: "rgba(83,74,183,0.22)",  chipColor: "#AFA9EC" },
+const TIPO_META: Record<string, { label: string; variant: "info" | "success" | "warning" | "accent" }> = {
+  publicacion_m2:    { label: "M2",    variant: "info" },
+  publicacion_m7:    { label: "M7",    variant: "success" },
+  publicacion_m11:   { label: "M11",   variant: "warning" },
+  publicacion_art15: { label: "ART15", variant: "accent" },
 };
 
 const MESES_CORTOS = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -212,7 +213,7 @@ export default function CampanaAlertasPublicaciones({ token, onIrADescarga }: Pr
           {/* Items */}
           <div>
             {data.items.map(a => {
-              const meta = TIPO_META[a.tipo] ?? { label: a.tipo, chipBg: "rgba(255,255,255,0.06)", chipColor: "var(--text-muted)" };
+              const meta = TIPO_META[a.tipo] ?? { label: a.tipo, variant: "muted" as const };
               const procesando = actionId === a.id;
               return (
                 <div key={a.id} style={{
@@ -226,12 +227,9 @@ export default function CampanaAlertasPublicaciones({ token, onIrADescarga }: Pr
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{
-                      background: meta.chipBg, color: meta.chipColor,
-                      padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600,
-                    }}>
+                    <UiChip variant={meta.variant} size="sm">
                       {meta.label}
-                    </span>
+                    </UiChip>
                     <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
                       publicado por REE
                     </span>

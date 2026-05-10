@@ -16,6 +16,7 @@ export type UiChipVariant =
   | "danger"    // rojo — BAD, error
   | "info"      // azul tenue — activo, seleccionado
   | "warning"   // naranja — aviso, vence pronto
+  | "accent"    // morado — destacado (ART15, especial)
   | "muted";    // gris — neutral, genérico
 
 export type UiChipSize = "sm" | "md";
@@ -43,6 +44,7 @@ const VARIANT_STYLES: Record<UiChipVariant, { bg: string; color: string }> = {
   danger:  { bg: "var(--ds-bg-danger-soft)",  color: "var(--ds-text-danger)" },
   info:    { bg: "var(--ds-bg-info-soft)",    color: "var(--ds-text-info)" },
   warning: { bg: "var(--ds-bg-warning-soft)", color: "var(--ds-text-warning)" },
+  accent:  { bg: "rgba(83,74,183,0.22)",      color: "#AFA9EC" },
   muted:   { bg: "var(--ds-bg-muted-soft)",   color: "rgba(241,239,232,0.85)" },
 };
 

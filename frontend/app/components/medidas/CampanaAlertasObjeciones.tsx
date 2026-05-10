@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiChip from "../ui/UiChip";
 
 type AlertaItem = {
   id:                  number;
@@ -70,12 +71,12 @@ function fmtFechaCorta(iso: string | null): string {
   }
 }
 
-// Etiquetas por tipo de alerta. Por ahora tratamos los 3 tipos con el mismo
-// chip neutro, pero dejamos el mapa listo para diferenciar después.
-const TIPO_META: Record<string, { label: string; chipBg: string; chipColor: string }> = {
-  fin_recepcion:         { label: "AOB",     chipBg: "rgba(239,159,39,0.18)",  chipColor: "#FAC775" },
-  fin_resolucion:        { label: "Pend.",   chipBg: "rgba(186,117,23,0.18)",  chipColor: "#FAC775" },
-  buscar_respuestas_ree: { label: "Resp.",   chipBg: "rgba(15,110,86,0.22)",   chipColor: "#5DCAA5" },
+// Etiquetas por tipo de alerta. Cada tipo se mapea a una variante semántica
+// del Design System (UiChip).
+const TIPO_META: Record<string, { label: string; variant: "warning" | "success" }> = {
+  fin_recepcion:         { label: "AOB",     variant: "warning" },
+  fin_resolucion:        { label: "Pend.",   variant: "warning" },
+  buscar_respuestas_ree: { label: "Resp.",   variant: "success" },
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -232,7 +233,7 @@ export default function CampanaAlertasObjeciones({ token, onAbrirDescarga }: Pro
           {/* Items */}
           <div>
             {items.map(a => {
-              const meta = TIPO_META[a.tipo] ?? { label: a.tipo.toUpperCase(), chipBg: "rgba(255,255,255,0.06)", chipColor: "var(--text-muted)" };
+              const meta = TIPO_META[a.tipo] ?? { label: a.tipo.toUpperCase(), variant: "muted" as const };
               const procesando = actionId === a.id;
               return (
                 <div key={a.id}
@@ -247,12 +248,9 @@ export default function CampanaAlertasObjeciones({ token, onAbrirDescarga }: Pro
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{
-                      background: meta.chipBg, color: meta.chipColor,
-                      padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600,
-                    }}>
+                    <UiChip variant={meta.variant} size="sm">
                       {meta.label}
-                    </span>
+                    </UiChip>
                     <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
                       Objeciones pendientes
                     </span>
