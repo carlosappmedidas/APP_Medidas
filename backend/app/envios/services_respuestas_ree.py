@@ -32,6 +32,10 @@ from app.comunicaciones.services import (
 )
 from app.envios.models import EnvioM
 from app.envios.parser import parsear_nombre_envio
+from app.envios.automatizacion.services_alertas import (
+    auto_resolver_alertas_respuesta_ree_por_ok,
+    crear_alerta_respuesta_ree_bad,
+)
 
 
 # ── Resultado agregado de la búsqueda ─────────────────────────────────────────
@@ -136,12 +140,33 @@ def _procesar_respuesta(
         # Idempotencia: si ya está como ok, no hacemos nada
         if estado_actual == "ok":
             return
+        # Recordamos si era un .bad antes (para auto-resolver alertas)
+        era_bad_antes = (estado_actual == "bad")
+
         envio.estado_ree = "ok"  # type: ignore
         envio.estado_ree_n = None  # type: ignore
         envio.respuesta_recibida_at = ahora  # type: ignore
         envio.respuesta_nombre_fichero = nombre_respuesta  # type: ignore
         envio.updated_at = ahora  # type: ignore
         res.ok_marcados += 1
+
+        # Auto-resolver alertas respuesta_ree si este envío estaba marcado como bad
+        if era_bad_antes:
+            envio_m_clas = getattr(envio, "m_clasificacion", None)
+            envio_subido = getattr(envio, "subido_sftp_at", None)
+            if envio_m_clas and envio_subido is not None:
+                try:
+                    periodo_envio = f"{envio_subido.year:04d}-{envio_subido.month:02d}"
+                    auto_resolver_alertas_respuesta_ree_por_ok(
+                        db,
+                        tenant_id=tenant_id,
+                        empresa_id=empresa_id,
+                        m_clas=str(envio_m_clas),
+                        periodo_envio=periodo_envio,
+                        nombre_fichero_original=str(getattr(envio, "nombre_fichero", "")),
+                    )
+                except Exception:
+                    pass
 
         # Borrar todas las filas .bad previas del mismo (tipo+empresa+comerc+periodo)
         # — la respuesta .ok hace obsoletos todos los .bad de la misma "serie"
@@ -187,6 +212,26 @@ def _procesar_respuesta(
         if n_anterior is None or n_nuevo > n_anterior:
             envio.reintentos = reintentos_actuales + 1  # type: ignore
         res.bad_marcados += 1
+
+        # Crear/actualizar alerta de tipo respuesta_ree para este .bad nuevo
+        envio_m_clas = getattr(envio, "m_clasificacion", None)
+        envio_subido = getattr(envio, "subido_sftp_at", None)
+        if envio_m_clas and envio_subido is not None:
+            try:
+                periodo_envio = f"{envio_subido.year:04d}-{envio_subido.month:02d}"
+                crear_alerta_respuesta_ree_bad(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=empresa_id,
+                    m_clas=str(envio_m_clas),
+                    periodo_envio=periodo_envio,
+                    nombre_fichero=str(getattr(envio, "nombre_fichero", "")),
+                    bad_n=n_nuevo,
+                )
+            except Exception:
+                # Si falla la creación de alerta, NO bloqueamos el marcado del envío
+                pass
+
         db.commit()
 
 

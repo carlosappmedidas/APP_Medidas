@@ -44,6 +44,7 @@ from app.envios.automatizacion.models import (
     TIPO_PLAZO_PROXIMO,
     TIPO_PLAZO_VENCIDO_BAD,
     TIPO_PLAZO_VENCIDO_PENDIENTE,
+    TIPO_RESPUESTA_REE,
 )
 from app.envios.models import EnvioM
 
@@ -417,11 +418,163 @@ def detectar_plazo_vencido_pendiente(
     return creadas, actualizadas
 
 
-# ── Alerta 4: respuesta_ree (gestionada externamente) ────────────────────────
-# Esta alerta la genera el job `buscar_respuestas_envios` cuando detecta
-# respuestas REE nuevas. Se implementa en el paso 3B+ desde ese servicio,
-# llamando a la función pública `crear_alerta_respuesta_ree` que añadiremos
-# en una iteración posterior. Por ahora la deja sin generar.
+# ── Alerta 4: respuesta_ree ──────────────────────────────────────────────────
+
+def crear_alerta_respuesta_ree_bad(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    m_clas: str,
+    periodo_envio: str,
+    nombre_fichero: str,
+    bad_n: int,
+) -> bool:
+    """
+    Llamada desde `services_respuestas_ree` cuando llega un .bad nuevo.
+
+    Lógica:
+      - Si NO hay alerta activa para (tenant, empresa, M, periodo_envio):
+         crear una nueva con num_pendientes=1 y detalle=[fichero].
+      - Si YA hay alerta ACTIVA: actualizar — sumar 1 al contador y añadir
+         el fichero al detalle (si no está ya).
+      - Si la alerta está RESUELTA o DESCARTADA: crear una NUEVA alerta
+         (los .bad nuevos son un evento distinto del anterior). El UNIQUE
+         de BD nos lo impide → en ese caso modificamos el periodo añadiendo
+         un sufijo con timestamp para que sea único.
+
+    Devuelve True si se creó una alerta nueva, False si solo se actualizó.
+    """
+    existing = db.query(EnvioAlerta).filter(
+        EnvioAlerta.tenant_id == tenant_id,
+        EnvioAlerta.empresa_id == empresa_id,
+        EnvioAlerta.tipo == TIPO_RESPUESTA_REE,
+        EnvioAlerta.m_clas == m_clas,
+        EnvioAlerta.periodo == periodo_envio,
+    ).first()
+
+    nuevo_item = {
+        "fichero": nombre_fichero,
+        "bad_n": bad_n,
+        "detectado_at": _madrid_now().replace(tzinfo=None).isoformat(),
+    }
+
+    if existing is None:
+        # Caso 1: no hay alerta → crear nueva
+        nueva = EnvioAlerta()
+        nueva.tenant_id = tenant_id  # type: ignore[assignment]
+        nueva.empresa_id = empresa_id  # type: ignore[assignment]
+        nueva.tipo = TIPO_RESPUESTA_REE  # type: ignore[assignment]
+        nueva.m_clas = m_clas  # type: ignore[assignment]
+        nueva.periodo = periodo_envio  # type: ignore[assignment]
+        nueva.plazo_fecha = None  # type: ignore[assignment]
+        nueva.num_pendientes = 1  # type: ignore[assignment]
+        nueva.detalle_json = json.dumps([nuevo_item], ensure_ascii=False)  # type: ignore[assignment]
+        nueva.severidad = SEVERIDAD_WARNING  # type: ignore[assignment]
+        nueva.estado = ESTADO_ACTIVA  # type: ignore[assignment]
+        db.add(nueva)
+        db.flush()
+        return True
+
+    if existing.estado == ESTADO_ACTIVA:
+        # Caso 2: alerta activa → sumar al contador y añadir al detalle
+        items_existentes: list[dict[str, Any]] = []
+        raw = getattr(existing, "detalle_json", None)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    items_existentes = parsed
+            except (json.JSONDecodeError, TypeError):
+                items_existentes = []
+        # Evitar duplicados por nombre_fichero
+        if not any(it.get("fichero") == nombre_fichero for it in items_existentes):
+            items_existentes.append(nuevo_item)
+            existing.num_pendientes = len(items_existentes)  # type: ignore[assignment]
+            existing.detalle_json = json.dumps(items_existentes, ensure_ascii=False)  # type: ignore[assignment]
+            db.flush()
+        return False
+
+    # Caso 3: alerta resuelta o descartada → crear NUEVA con periodo único
+    # Como el UNIQUE constraint nos impediría crear otra con el mismo
+    # (tenant, empresa, tipo, M, periodo), añadimos sufijo timestamp.
+    sufijo = _madrid_now().strftime("-%Y%m%d%H%M")
+    periodo_unico = f"{periodo_envio}{sufijo}"
+
+    nueva = EnvioAlerta()
+    nueva.tenant_id = tenant_id  # type: ignore[assignment]
+    nueva.empresa_id = empresa_id  # type: ignore[assignment]
+    nueva.tipo = TIPO_RESPUESTA_REE  # type: ignore[assignment]
+    nueva.m_clas = m_clas  # type: ignore[assignment]
+    nueva.periodo = periodo_unico  # type: ignore[assignment]
+    nueva.plazo_fecha = None  # type: ignore[assignment]
+    nueva.num_pendientes = 1  # type: ignore[assignment]
+    nueva.detalle_json = json.dumps([nuevo_item], ensure_ascii=False)  # type: ignore[assignment]
+    nueva.severidad = SEVERIDAD_WARNING  # type: ignore[assignment]
+    nueva.estado = ESTADO_ACTIVA  # type: ignore[assignment]
+    db.add(nueva)
+    db.flush()
+    return True
+
+
+def auto_resolver_alertas_respuesta_ree_por_ok(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    m_clas: str,
+    periodo_envio: str,
+    nombre_fichero_original: str,
+) -> int:
+    """
+    Llamada cuando llega un .ok que cierra un .bad anterior.
+
+    Busca alertas ACTIVAS de tipo respuesta_ree para esta empresa+M cuyo
+    detalle incluya este fichero, y elimina ese fichero del detalle. Si
+    el detalle queda vacío, marca la alerta como resuelta.
+
+    Devuelve nº de alertas resueltas.
+    """
+    resueltas = 0
+    # Buscar alertas activas para este (empresa, M) — el periodo puede tener
+    # sufijo de timestamp si es una "segunda tanda", así que filtramos por
+    # prefijo del periodo.
+    alertas = db.query(EnvioAlerta).filter(
+        EnvioAlerta.tenant_id == tenant_id,
+        EnvioAlerta.empresa_id == empresa_id,
+        EnvioAlerta.tipo == TIPO_RESPUESTA_REE,
+        EnvioAlerta.m_clas == m_clas,
+        EnvioAlerta.estado == ESTADO_ACTIVA,
+        EnvioAlerta.periodo.like(f"{periodo_envio}%"),
+    ).all()
+
+    for alerta in alertas:
+        items: list[dict[str, Any]] = []
+        raw = getattr(alerta, "detalle_json", None)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    items = parsed
+            except (json.JSONDecodeError, TypeError):
+                items = []
+        items_filtrados = [it for it in items if it.get("fichero") != nombre_fichero_original]
+        if len(items_filtrados) == len(items):
+            continue  # este fichero no estaba en esta alerta
+        if not items_filtrados:
+            # Detalle vacío → resolver la alerta
+            alerta.estado = ESTADO_RESUELTA  # type: ignore[assignment]
+            alerta.resuelta_at = _madrid_now().replace(tzinfo=None)  # type: ignore[assignment]
+            alerta.num_pendientes = 0  # type: ignore[assignment]
+            alerta.detalle_json = json.dumps([], ensure_ascii=False)  # type: ignore[assignment]
+            resueltas += 1
+        else:
+            # Aún quedan .bad sin resolver en esta alerta
+            alerta.num_pendientes = len(items_filtrados)  # type: ignore[assignment]
+            alerta.detalle_json = json.dumps(items_filtrados, ensure_ascii=False)  # type: ignore[assignment]
+        db.flush()
+
+    return resueltas
 
 
 # ── Función pública orquestadora ─────────────────────────────────────────────
