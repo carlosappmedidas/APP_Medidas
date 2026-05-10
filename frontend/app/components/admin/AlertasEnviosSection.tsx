@@ -16,14 +16,14 @@ interface AlertaRead {
   empresa_id: number;
   empresa_nombre: string | null;
   empresa_codigo_ree: string | null;
-  tipo: string;          // "plazo_proximo" | "plazo_vencido_bad" | "plazo_vencido_pendiente" | "respuesta_ree"
-  m_clas: string;        // "M1" | "M2" | "M7"
-  periodo: string;       // YYYY-MM (mes_envio)
+  tipo: string;
+  m_clas: string;
+  periodo: string;
   plazo_fecha: string | null;
   num_pendientes: number;
   detalle: Record<string, unknown> | unknown[] | null;
-  severidad: string;     // "info" | "warning" | "critical"
-  estado: string;        // "activa" | "resuelta" | "descartada"
+  severidad: string;
+  estado: string;
   resuelta_at: string | null;
   resuelta_by: number | null;
   created_at: string;
@@ -41,7 +41,6 @@ interface Props {
 
 const periodoLabel = (yyyymm: string): string => {
   if (!yyyymm) return "—";
-  // Acepta tanto "YYYY-MM" como "YYYYMM"
   const limpio = yyyymm.replace("-", "");
   if (limpio.length !== 6) return yyyymm;
   const anio = limpio.substring(0, 4);
@@ -96,6 +95,16 @@ export default function AlertasEnviosSection({ token, onNavigateToEnvios }: Prop
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
 
   const [procesandoId, setProcesandoId] = useState<number | null>(null);
+  const [expandidos, setExpandidos] = useState<Set<number>>(new Set());
+
+  const toggleExpandido = (id: number) => {
+    setExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // ── Cargar alertas ───────────────────────────────────────────────────────
   const cargar = useCallback(async () => {
@@ -312,98 +321,167 @@ export default function AlertasEnviosSection({ token, onNavigateToEnvios }: Prop
               }
             }
 
+            const tieneFicheros = a.tipo === "respuesta_ree" && Array.isArray(a.detalle) && a.detalle.length > 0;
+
             return (
               <div key={a.id} style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto",
-                gap: 10,
-                alignItems: "center",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
                 padding: "10px 14px",
                 background: "var(--field-bg-soft)",
                 border: "0.5px solid var(--card-border)",
                 borderRadius: 8,
               }}>
-                {/* Punto coloreado izquierda */}
                 <div style={{
-                  width: 8, height: 8, borderRadius: "50%",
-                  background: colorPunto,
-                }} />
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                }}>
+                  {/* Punto coloreado izquierda */}
+                  <div style={{
+                    width: 8, height: 8, borderRadius: "50%",
+                    background: colorPunto,
+                  }} />
 
-                {/* Info central */}
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
-                      {a.empresa_nombre || "Empresa desconocida"}
-                    </span>
-                    {a.empresa_codigo_ree && (
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                        {a.empresa_codigo_ree}
+                  {/* Info central */}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+                        {a.empresa_nombre || "Empresa desconocida"}
                       </span>
+                      {a.empresa_codigo_ree && (
+                        <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                          {a.empresa_codigo_ree}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>·</span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 600,
+                        padding: "2px 6px", borderRadius: 4,
+                        background: "rgba(55,138,221,0.12)",
+                        color: "#1D5DA5",
+                      }}>
+                        {a.m_clas}
+                      </span>
+                      <span style={{ fontSize: 12, color: "var(--text)" }}>{periodoLabel(a.periodo)}</span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 600,
+                        padding: "2px 7px", borderRadius: 10,
+                        background: tipoColors.bg,
+                        color: tipoColors.fg,
+                      }}>
+                        {tipoLabel}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                      {a.plazo_fecha && <>Plazo: {fechaCorta(a.plazo_fecha)}</>}
+                      {detalleExtra}
+                      {a.estado !== "activa" && (
+                        <> · <span style={{ color: colorPunto, fontWeight: 500 }}>{a.estado}</span></>
+                      )}
+                    </div>
+                    {tieneFicheros && (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandido(a.id)}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          padding: "4px 0", marginTop: 2,
+                          fontSize: 10, color: "#1D5DA5",
+                          display: "flex", alignItems: "center", gap: 4,
+                        }}
+                      >
+                        <span style={{
+                          display: "inline-block",
+                          transform: expandidos.has(a.id) ? "rotate(90deg)" : "rotate(0deg)",
+                          transition: "transform 0.15s",
+                        }}>▶</span>
+                        Ver ficheros ({(a.detalle as unknown[]).length})
+                      </button>
                     )}
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>·</span>
-                    <span style={{
-                      fontSize: 10, fontWeight: 600,
-                      padding: "2px 6px", borderRadius: 4,
-                      background: "rgba(55,138,221,0.12)",
-                      color: "#1D5DA5",
-                    }}>
-                      {a.m_clas}
-                    </span>
-                    <span style={{ fontSize: 12, color: "var(--text)" }}>{periodoLabel(a.periodo)}</span>
-                    <span style={{
-                      fontSize: 10, fontWeight: 600,
-                      padding: "2px 7px", borderRadius: 10,
-                      background: tipoColors.bg,
-                      color: tipoColors.fg,
-                    }}>
-                      {tipoLabel}
-                    </span>
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                    {a.plazo_fecha && <>Plazo: {fechaCorta(a.plazo_fecha)}</>}
-                    {detalleExtra}
-                    {a.estado !== "activa" && (
-                      <> · <span style={{ color: colorPunto, fontWeight: 500 }}>{a.estado}</span></>
+
+                  {/* Acciones */}
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    {onNavigateToEnvios && (
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn-outline ui-btn-xs"
+                        onClick={onNavigateToEnvios}
+                        disabled={proc}
+                        style={{ color: "#378ADD", borderColor: "rgba(55,138,221,0.4)" }}
+                      >
+                        Ir a envíos
+                      </button>
+                    )}
+                    {a.estado === "activa" && (
+                      <>
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn-outline ui-btn-xs"
+                          onClick={() => accion(a.id, "resolver")}
+                          disabled={proc}
+                          style={{ color: "#0F6E56", borderColor: "rgba(15,110,86,0.4)" }}
+                        >
+                          {proc ? "..." : "Resolver"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn-outline ui-btn-xs"
+                          onClick={() => accion(a.id, "descartar")}
+                          disabled={proc}
+                          style={{ color: "#94A3B8" }}
+                        >
+                          Descartar
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
 
-                {/* Acciones */}
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  {onNavigateToEnvios && (
-                    <button
-                      type="button"
-                      className="ui-btn ui-btn-outline ui-btn-xs"
-                      onClick={onNavigateToEnvios}
-                      disabled={proc}
-                      style={{ color: "#378ADD", borderColor: "rgba(55,138,221,0.4)" }}
-                    >
-                      Ir a envíos
-                    </button>
-                  )}
-                  {a.estado === "activa" && (
-                    <>
-                      <button
-                        type="button"
-                        className="ui-btn ui-btn-outline ui-btn-xs"
-                        onClick={() => accion(a.id, "resolver")}
-                        disabled={proc}
-                        style={{ color: "#0F6E56", borderColor: "rgba(15,110,86,0.4)" }}
-                      >
-                        {proc ? "..." : "Resolver"}
-                      </button>
-                      <button
-                        type="button"
-                        className="ui-btn ui-btn-outline ui-btn-xs"
-                        onClick={() => accion(a.id, "descartar")}
-                        disabled={proc}
-                        style={{ color: "#94A3B8" }}
-                      >
-                        Descartar
-                      </button>
-                    </>
-                  )}
-                </div>
+                {/* Desplegable de ficheros .bad */}
+                {tieneFicheros && expandidos.has(a.id) && (
+                  <div style={{
+                    padding: "8px 10px",
+                    background: "rgba(55,138,221,0.05)",
+                    border: "0.5px solid rgba(55,138,221,0.18)",
+                    borderRadius: 6,
+                    maxHeight: 220, overflowY: "auto",
+                    fontSize: 10, fontFamily: "monospace",
+                  }}>
+                    {(a.detalle as Array<Record<string, unknown>>).map((it, idx) => {
+                      const fichero = typeof it.fichero === "string" ? it.fichero : "?";
+                      const detectadoAt = typeof it.detectado_at === "string" ? it.detectado_at : null;
+                      const badN = typeof it.bad_n === "number" ? it.bad_n : null;
+                      return (
+                        <div key={idx} style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "3px 0",
+                          borderBottom: idx < (a.detalle as unknown[]).length - 1 ? "0.5px dashed rgba(55,138,221,0.12)" : "none",
+                          gap: 8,
+                        }}>
+                          <span style={{ color: "var(--text)", wordBreak: "break-all" }}>
+                            {fichero}
+                            {badN !== null && (
+                              <span style={{ color: "#A32D2D", marginLeft: 6, fontWeight: 600 }}>
+                                .bad{badN}
+                              </span>
+                            )}
+                          </span>
+                          {detectadoAt && (
+                            <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>
+                              {fechaCorta(detectadoAt)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -74,6 +74,16 @@ export default function CampanaAlertasEnvios({ token }: Props) {
   const [open, setOpen]        = useState(false);
   const dropdownRef            = useRef<HTMLDivElement | null>(null);
   const [actionId, setAction]  = useState<number | null>(null);
+  const [expandidos, setExpandidos] = useState<Set<number>>(new Set());
+
+  const toggleExpandido = (id: number) => {
+    setExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Cargar alertas activas
   const cargar = async () => {
@@ -250,6 +260,61 @@ export default function CampanaAlertasEnvios({ token }: Props) {
                       {a.plazo_fecha && <>Plazo: {fmtFechaCorta(a.plazo_fecha)}</>}
                     </div>
                   )}
+
+                  {/* Desplegable de ficheros .bad (solo respuesta_ree con detalle como array) */}
+                  {a.tipo === "respuesta_ree" && Array.isArray(a.detalle) && a.detalle.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleExpandido(a.id); }}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          padding: "4px 0", marginTop: 4,
+                          fontSize: 10, color: "#6FB1F0",
+                          display: "flex", alignItems: "center", gap: 4,
+                        }}
+                      >
+                        <span style={{
+                          display: "inline-block",
+                          transform: expandidos.has(a.id) ? "rotate(90deg)" : "rotate(0deg)",
+                          transition: "transform 0.15s",
+                        }}>▶</span>
+                        Ver ficheros ({a.detalle.length})
+                      </button>
+                      {expandidos.has(a.id) && (
+                        <div style={{
+                          marginTop: 4, marginBottom: 4,
+                          padding: "6px 8px",
+                          background: "rgba(55,138,221,0.05)",
+                          border: "0.5px solid rgba(55,138,221,0.18)",
+                          borderRadius: 6,
+                          maxHeight: 160, overflowY: "auto",
+                          fontSize: 10, fontFamily: "monospace",
+                          color: "var(--text-muted)",
+                        }}>
+                          {(a.detalle as Array<Record<string, unknown>>).map((it, idx) => {
+                            const fichero = typeof it.fichero === "string" ? it.fichero : "?";
+                            const detectadoAt = typeof it.detectado_at === "string" ? it.detectado_at : null;
+                            return (
+                              <div key={idx} style={{
+                                padding: "2px 0",
+                                borderBottom: idx < (a.detalle as unknown[]).length - 1 ? "0.5px dashed rgba(55,138,221,0.12)" : "none",
+                                wordBreak: "break-all",
+                              }}>
+                                <span style={{ color: "var(--text)" }}>{fichero}</span>
+                                {detectadoAt && (
+                                  <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                                    · {fmtFechaCorta(detectadoAt)}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
                   <div style={{ display: "flex", gap: 4, marginTop: 8 }}>
                     <button
                       type="button"
