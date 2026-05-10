@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiChip from "../ui/UiChip";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -37,10 +38,10 @@ const CATEGORY_SUBLABELS: Record<string, string> = {
   absoluta:      "Valores fuera de rango",
   anio_anterior: "Variación interanual",
 };
-const CATEGORY_COLORS: Record<string, { bg: string; color: string; border: string; headerBg: string }> = {
-  mes_anterior:  { bg: "rgba(37,99,235,0.12)",  color: "#60a5fa", border: "rgba(37,99,235,0.3)",  headerBg: "rgba(37,99,235,0.05)" },
-  absoluta:      { bg: "rgba(245,158,11,0.12)", color: "#fbbf24", border: "rgba(245,158,11,0.3)", headerBg: "rgba(245,158,11,0.05)" },
-  anio_anterior: { bg: "rgba(5,150,105,0.12)",  color: "#34d399", border: "rgba(5,150,105,0.3)",  headerBg: "rgba(5,150,105,0.05)" },
+const CATEGORY_COLORS: Record<string, { variant: "info" | "warning" | "success"; border: string; headerBg: string }> = {
+  mes_anterior:  { variant: "info",    border: "rgba(37,99,235,0.3)",  headerBg: "rgba(37,99,235,0.05)" },
+  absoluta:      { variant: "warning", border: "rgba(245,158,11,0.3)", headerBg: "rgba(245,158,11,0.05)" },
+  anio_anterior: { variant: "success", border: "rgba(5,150,105,0.3)",  headerBg: "rgba(5,150,105,0.05)" },
 };
 
 // Rango del slider por unidad
@@ -187,13 +188,9 @@ export default function AlertConfigSection({ token, canManage }: Props) {
           padding: "8px 14px", display: "flex", alignItems: "center", gap: 8,
           background: c.headerBg,
         }}>
-          <span style={{
-            display: "inline-block", padding: "2px 7px", borderRadius: 4,
-            fontSize: 10, fontWeight: 500, background: c.bg, color: c.color,
-            border: `0.5px solid ${c.border}`, textTransform: "uppercase", letterSpacing: "0.05em",
-          }}>
+          <UiChip variant={c.variant} size="sm">
             {CATEGORY_LABELS[cat] ?? cat}
-          </span>
+          </UiChip>
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
             {CATEGORY_SUBLABELS[cat] ?? ""} · {rows.length} reglas
           </span>

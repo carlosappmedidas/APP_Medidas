@@ -22,6 +22,7 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import YearPillsFilter   from "../ui/YearPillsFilter";
 import MonthPillsFilter  from "../ui/MonthPillsFilter";
 import FilterDropdown, { type MultiCheckOption } from "../ui/FilterDropdown";
+import UiChip            from "../ui/UiChip";
 import useElementSize    from "../../hooks/useElementSize";
 
 type Props = { token: string | null; currentUser?: User | null };
@@ -227,9 +228,16 @@ function ChartCard({
       <div style={{ padding: "8px 11px 6px", borderBottom: "1px solid var(--card-border)" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 2 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 9, background: `${accentColor}28`, color: accentColor, flexShrink: 0 }}>
+            <UiChip
+              size="sm"
+              style={{
+                background: `${accentColor}28`,
+                color: accentColor,
+                flexShrink: 0,
+              }}
+            >
               {badgeLabel}
-            </span>
+            </UiChip>
             <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text)" }}>{title}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -381,7 +389,14 @@ function ExpandedChart({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "12px 16px 10px", borderBottom: "1px solid rgba(30,58,95,.7)", background: "var(--card-bg)" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: `${accentColor}28`, color: accentColor }}>{badgeLabel}</span>
+            <UiChip
+              style={{
+                background: `${accentColor}28`,
+                color: accentColor,
+              }}
+            >
+              {badgeLabel}
+            </UiChip>
             <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>{title}</span>
           </div>
           <div style={{ fontSize: 10, color: "rgba(226,232,240,.4)" }}>{subtitle} — vista expandida · filtro ampliado a 4 años</div>

@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiChip from "../ui/UiChip"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -302,14 +303,9 @@ export default function AlertasObjecionesSection({ token, onNavigateToObjeciones
                     )}
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>·</span>
                     <span style={{ fontSize: 12, color: "var(--text)" }}>{periodoLabel(a.periodo)}</span>
-                    <span style={{
-                      fontSize: 10, fontWeight: 600,
-                      padding: "2px 7px", borderRadius: 10,
-                      background: "rgba(226,75,74,0.12)",
-                      color: "#A32D2D",
-                    }}>
+                    <UiChip variant="danger" size="sm">
                       {a.num_pendientes} AOBs pendientes
-                    </span>
+                    </UiChip>
                   </div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
                     Fin recepción: {fechaCorta(a.fecha_hito)}

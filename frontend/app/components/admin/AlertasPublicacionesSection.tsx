@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiChip from "../ui/UiChip";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -68,12 +69,12 @@ const colorEstado: Record<string, string> = {
   descartada: "#94A3B8",
 };
 
-// Chips por tipo — mismos colores que la campanita de Publicaciones.
-const TIPO_META: Record<string, { label: string; chipBg: string; chipColor: string }> = {
-  publicacion_m2:    { label: "M2",    chipBg: "rgba(55,138,221,0.18)", chipColor: "#85B7EB" },
-  publicacion_m7:    { label: "M7",    chipBg: "rgba(15,110,86,0.22)",  chipColor: "#5DCAA5" },
-  publicacion_m11:   { label: "M11",   chipBg: "rgba(186,117,23,0.18)", chipColor: "#FAC775" },
-  publicacion_art15: { label: "ART15", chipBg: "rgba(83,74,183,0.22)",  chipColor: "#AFA9EC" },
+// Chips por tipo — mismas variantes que la campanita de Publicaciones.
+const TIPO_META: Record<string, { label: string; variant: "info" | "success" | "warning" | "accent" }> = {
+  publicacion_m2:    { label: "M2",    variant: "info" },
+  publicacion_m7:    { label: "M7",    variant: "success" },
+  publicacion_m11:   { label: "M11",   variant: "warning" },
+  publicacion_art15: { label: "ART15", variant: "accent" },
 };
 
 // ── Componente ────────────────────────────────────────────────────────────────
@@ -301,7 +302,7 @@ export default function AlertasPublicacionesSection({ token, onNavigateToTablasR
           {alertasVisibles.map(a => {
             const proc = procesandoId === a.id;
             const colorPunto = colorEstado[a.estado] || "#94A3B8";
-            const meta = TIPO_META[a.tipo] ?? { label: a.tipo, chipBg: "rgba(255,255,255,0.06)", chipColor: "var(--text-muted)" };
+           const meta = TIPO_META[a.tipo] ?? { label: a.tipo, variant: "muted" as const };
             return (
               <div key={a.id} style={{
                 display: "grid",
@@ -322,25 +323,17 @@ export default function AlertasPublicacionesSection({ token, onNavigateToTablasR
                 {/* Info central */}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{
-                      background: meta.chipBg, color: meta.chipColor,
-                      padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600,
-                    }}>
+                    <UiChip variant={meta.variant} size="sm">
                       {meta.label}
-                    </span>
+                    </UiChip>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
                       {a.empresa_nombre || "Empresa desconocida"}
                     </span>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>·</span>
                     <span style={{ fontSize: 12, color: "var(--text)" }}>{periodoLabel(a.periodo)}</span>
-                    <span style={{
-                      fontSize: 10, fontWeight: 600,
-                      padding: "2px 7px", borderRadius: 10,
-                      background: "rgba(226,75,74,0.12)",
-                      color: "#A32D2D",
-                    }}>
+                    <UiChip variant="danger" size="sm">
                       {a.num_pendientes} fichero{a.num_pendientes !== 1 ? "s" : ""} disponible{a.num_pendientes !== 1 ? "s" : ""}
-                    </span>
+                    </UiChip>
                   </div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
                     Fecha hito: {fechaCorta(a.fecha_hito)}

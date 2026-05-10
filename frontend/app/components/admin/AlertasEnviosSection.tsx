@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import UiChip from "../ui/UiChip";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -73,11 +74,11 @@ const TIPOS_LABEL: Record<string, string> = {
   respuesta_ree:           "Respuesta REE",
 };
 
-const colorTipo: Record<string, { bg: string; fg: string }> = {
-  plazo_proximo:           { bg: "rgba(239,159,39,0.12)",  fg: "#B7791F" },
-  plazo_vencido_bad:       { bg: "rgba(226,75,74,0.12)",   fg: "#A32D2D" },
-  plazo_vencido_pendiente: { bg: "rgba(226,75,74,0.12)",   fg: "#A32D2D" },
-  respuesta_ree:           { bg: "rgba(55,138,221,0.12)",  fg: "#1D5DA5" },
+const colorTipo: Record<string, "warning" | "danger" | "info"> = {
+  plazo_proximo:           "warning",
+  plazo_vencido_bad:       "danger",
+  plazo_vencido_pendiente: "danger",
+  respuesta_ree:           "info",
 };
 
 // ── Componente ────────────────────────────────────────────────────────────────
@@ -304,7 +305,7 @@ export default function AlertasEnviosSection({ token, onNavigateToEnvios }: Prop
           {alertasVisibles.map(a => {
             const proc = procesandoId === a.id;
             const colorPunto = colorEstado[a.estado] || "#94A3B8";
-            const tipoColors = colorTipo[a.tipo] || { bg: "rgba(148,163,184,0.12)", fg: "#64748B" };
+            const tipoVariant = colorTipo[a.tipo] || "muted";
             const tipoLabel  = TIPOS_LABEL[a.tipo] || a.tipo;
 
             // Detalle adicional según el tipo (parsea detalle si es objeto)
@@ -357,23 +358,13 @@ export default function AlertasEnviosSection({ token, onNavigateToEnvios }: Prop
                         </span>
                       )}
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>·</span>
-                      <span style={{
-                        fontSize: 10, fontWeight: 600,
-                        padding: "2px 6px", borderRadius: 4,
-                        background: "rgba(55,138,221,0.12)",
-                        color: "#1D5DA5",
-                      }}>
+                      <UiChip variant={a.m_clas.toLowerCase() as "m1" | "m2" | "m7"} size="sm">
                         {a.m_clas}
-                      </span>
+                      </UiChip>
                       <span style={{ fontSize: 12, color: "var(--text)" }}>{periodoLabel(a.periodo)}</span>
-                      <span style={{
-                        fontSize: 10, fontWeight: 600,
-                        padding: "2px 7px", borderRadius: 10,
-                        background: tipoColors.bg,
-                        color: tipoColors.fg,
-                      }}>
+                      <UiChip variant={tipoVariant} size="sm">
                         {tipoLabel}
-                      </span>
+                      </UiChip>
                     </div>
                     <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
                       {a.plazo_fecha && <>Plazo: {fechaCorta(a.plazo_fecha)}</>}
