@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { User } from "../../types";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import TablePaginationFooter from "../ui/TablePaginationFooter";
+import UiCard from "../ui/UiCard";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -135,10 +136,7 @@ const FORM_VACIO: ConcentradorForm = {
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
-const panelStyle: React.CSSProperties = {
-  background: "var(--card-bg)", border: "1px solid var(--card-border)",
-  borderRadius: "10px", overflow: "hidden", marginBottom: "10px",
-};
+// panelStyle eliminado — ahora usamos <UiCard padding="none">
 const panelHeaderStyle: React.CSSProperties = {
   display: "flex", alignItems: "center", justifyContent: "space-between",
   padding: "14px 20px", cursor: "pointer", userSelect: "none",
@@ -528,7 +526,7 @@ export default function PerdidasSection({ token }: Props) {
     <div className="text-sm">
 
       {/* ══ PANEL 1 — CONFIGURACIÓN DE CTs ══ */}
-      <div style={panelStyle}>
+      <UiCard padding="none" style={{ overflow: "hidden", marginBottom: "10px" }}>
         <div style={panelHeaderStyle} onClick={() => setPanelConfigOpen(v => !v)}>
           <div>
             <div style={panelTitleStyle}>⚙️ Configuración de Centros de Transformación</div>
@@ -841,10 +839,10 @@ export default function PerdidasSection({ token }: Props) {
             </div>
           </div>
         )}
-      </div>
+      </UiCard>
 
       {/* ══ PANEL 2 — PROCESAMIENTO ══ */}
-      <div style={panelStyle}>
+      <UiCard padding="none" style={{ overflow: "hidden", marginBottom: "10px" }}>
         <div style={panelHeaderStyle} onClick={() => setPanelProcesarOpen(v => !v)}>
           <div>
             <div style={panelTitleStyle}>⚡ Procesamiento de S02</div>
@@ -910,10 +908,10 @@ export default function PerdidasSection({ token }: Props) {
             )}
           </div>
         )}
-      </div>
+      </UiCard>
 
       {/* ══ PANEL 3 — PÉRDIDAS DIARIAS ══ */}
-      <div style={panelStyle}>
+      <UiCard padding="none" style={{ overflow: "hidden", marginBottom: "10px" }}>
         <div style={panelHeaderStyle} onClick={() => setPanelDiariasOpen(v => !v)}>
           <div>
             <div style={panelTitleStyle}>📅 Pérdidas diarias</div>
@@ -1027,10 +1025,10 @@ export default function PerdidasSection({ token }: Props) {
             />
           </div>
         )}
-      </div>
+      </UiCard>
 
       {/* ══ PANEL 4 — PÉRDIDAS MENSUALES ══ */}
-      <div style={panelStyle}>
+      <UiCard padding="none" style={{ overflow: "hidden", marginBottom: "10px" }}>
         <div style={panelHeaderStyle} onClick={() => setPanelMensualesOpen(v => !v)}>
           <div>
             <div style={panelTitleStyle}>📊 Pérdidas mensuales</div>
@@ -1133,7 +1131,7 @@ export default function PerdidasSection({ token }: Props) {
             </div>
           </div>
         )}
-      </div>
+      </UiCard>
 
     </div>
   );
