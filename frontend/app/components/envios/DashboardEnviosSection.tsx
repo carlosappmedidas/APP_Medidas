@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import CampanaAlertasEnvios from "../medidas/CampanaAlertasEnvios";
+import UiChip from "../ui/UiChip";
 
 // ─── Tipos del JSON del backend ────────────────────────────────────────────────
 
@@ -142,12 +143,6 @@ function estiloPlazo(estado: EstadoPlazo): { bg: string; color: string; icon: st
   }
 }
 
-const ESTILO_M: Record<MClass, { background: string; color: string }> = {
-  M1: { background: "rgba(96,165,250,0.18)",  color: "#60a5fa" },
-  M2: { background: "rgba(192,132,252,0.18)", color: "#c084fc" },
-  M7: { background: "rgba(251,146,60,0.18)",  color: "#fb923c" },
-};
-
 function getMesEnvioActual(): { anio: number; mes: number } {
   const ahora = new Date();
   const fmt = new Intl.DateTimeFormat("es-ES", {
@@ -219,17 +214,15 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 10 }}>
                     {grupo.periodos.map((p, idx) => {
-                      const chip = ESTILO_M[p.M];
                       return (
                         <div key={idx} style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "3px 0", fontSize: 11,
                         }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{
-                              ...chip, padding: "1px 6px", borderRadius: 4,
-                              fontSize: 9, fontWeight: 600, letterSpacing: "0.04em",
-                            }}>{p.M}</span>
+                            <UiChip variant={p.M.toLowerCase() as "m1" | "m2" | "m7"} size="sm">
+                              {p.M}
+                            </UiChip>
                             <span style={{ color: "var(--text-muted)" }}>
                               Periodo {fmtPeriodoLabel(p.periodo)}
                             </span>
@@ -265,25 +258,13 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                         </span>
                         <div style={{ display: "flex", gap: 4 }}>
                           {p.respuestas_ok > 0 && (
-                            <span style={{
-                              padding: "1px 6px", borderRadius: 8,
-                              background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                              fontSize: 9, fontWeight: 500,
-                            }}>🟢 {p.respuestas_ok}</span>
+                            <UiChip variant="success" size="sm">🟢 {p.respuestas_ok}</UiChip>
                           )}
                           {p.respuestas_bad > 0 && (
-                            <span style={{
-                              padding: "1px 6px", borderRadius: 8,
-                              background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                              fontSize: 9, fontWeight: 500,
-                            }}>🔴 {p.respuestas_bad}</span>
+                            <UiChip variant="danger" size="sm">🔴 {p.respuestas_bad}</UiChip>
                           )}
                           {p.respuestas_pendiente > 0 && (
-                            <span style={{
-                              padding: "1px 6px", borderRadius: 8,
-                              background: "rgba(156,163,175,0.15)", color: "var(--text)",
-                              fontSize: 9, fontWeight: 500,
-                            }}>⚪ {p.respuestas_pendiente}</span>
+                            <UiChip variant="muted" size="sm">⚪ {p.respuestas_pendiente}</UiChip>
                           )}
                           {p.respuestas_ok === 0 && p.respuestas_bad === 0 && p.respuestas_pendiente === 0 && (
                             <span style={{ fontSize: 9, color: "var(--text-muted)", fontStyle: "italic" }}>—</span>
@@ -400,25 +381,13 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                     fontWeight: g.enviados > 0 ? 500 : 400,
                   }}>{g.enviados}</span>
                   {g.ok > 0 && (
-                    <span style={{
-                      padding: "0px 4px", borderRadius: 6,
-                      background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                      fontSize: 8, fontWeight: 500,
-                    }}>🟢{g.ok}</span>
+                    <UiChip variant="success" size="sm">🟢{g.ok}</UiChip>
                   )}
                   {g.bad > 0 && (
-                    <span style={{
-                      padding: "0px 4px", borderRadius: 6,
-                      background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                      fontSize: 8, fontWeight: 500,
-                    }}>🔴{g.bad}</span>
+                    <UiChip variant="danger" size="sm">🔴{g.bad}</UiChip>
                   )}
                   {g.pendiente > 0 && (
-                    <span style={{
-                      padding: "0px 4px", borderRadius: 6,
-                      background: "rgba(156,163,175,0.15)", color: "var(--text)",
-                      fontSize: 8, fontWeight: 500,
-                    }}>⚪{g.pendiente}</span>
+                    <UiChip variant="muted" size="sm">⚪{g.pendiente}</UiChip>
                   )}
                 </div>
               );
@@ -495,25 +464,13 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                                 {it.enviados} env.
                               </span>
                               {it.ok > 0 && (
-                                <span style={{
-                                  padding: "0px 4px", borderRadius: 6,
-                                  background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                                  fontSize: 8, fontWeight: 500,
-                                }}>🟢{it.ok}</span>
+                                <UiChip variant="success" size="sm">🟢{it.ok}</UiChip>
                               )}
                               {it.bad > 0 && (
-                                <span style={{
-                                  padding: "0px 4px", borderRadius: 6,
-                                  background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                                  fontSize: 8, fontWeight: 500,
-                                }}>🔴{it.bad}</span>
+                                <UiChip variant="danger" size="sm">🔴{it.bad}</UiChip>
                               )}
                               {it.pendiente > 0 && (
-                                <span style={{
-                                  padding: "0px 4px", borderRadius: 6,
-                                  background: "rgba(156,163,175,0.15)", color: "var(--text)",
-                                  fontSize: 8, fontWeight: 500,
-                                }}>⚪{it.pendiente}</span>
+                                <UiChip variant="muted" size="sm">⚪{it.pendiente}</UiChip>
                               )}
                             </div>
                           );
@@ -537,10 +494,9 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
                               }}>
                                 <div></div>
                                 <div style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 12 }}>
-                                  <span style={{
-                                    ...ESTILO_M[it.M], padding: "1px 5px", borderRadius: 3,
-                                    fontSize: 8, fontWeight: 600, letterSpacing: "0.04em",
-                                  }}>{it.M}</span>
+                                  <UiChip variant={it.M.toLowerCase() as "m1" | "m2" | "m7"} size="sm">
+                                    {it.M}
+                                  </UiChip>
                                   <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
                                     {fmtPeriodoLabel(it.periodo)}
                                   </span>
@@ -812,14 +768,12 @@ export default function DashboardEnviosSection({ token }: Props) {
                   {(["M1", "M2", "M7"] as MClass[]).map((m) => {
                     const a = dataMensual.alertas![m];
                     const est = estiloPlazo(a.estado);
-                    const chip = ESTILO_M[m];
                     return (
                       <div key={m} style={tarjetaStyle}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                          <span style={{
-                            ...chip, padding: "2px 8px", borderRadius: 4,
-                            fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
-                          }}>{m}</span>
+                          <UiChip variant={m.toLowerCase() as "m1" | "m2" | "m7"}>
+                            {m}
+                          </UiChip>
                           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             Periodo: <span style={{ color: "var(--text)", fontWeight: 500 }}>{fmtPeriodoLabel(a.periodo)}</span>
                           </span>
@@ -886,25 +840,13 @@ export default function DashboardEnviosSection({ token }: Props) {
                           return (
                             <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
                               {ok > 0 && (
-                                <span style={{
-                                  padding: "1px 6px", borderRadius: 8,
-                                  background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                                  fontSize: 9, fontWeight: 500,
-                                }}>🟢 {ok}</span>
+                                <UiChip variant="success" size="sm">🟢 {ok}</UiChip>
                               )}
                               {bad > 0 && (
-                                <span style={{
-                                  padding: "1px 6px", borderRadius: 8,
-                                  background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                                  fontSize: 9, fontWeight: 500,
-                                }}>🔴 {bad}</span>
+                                <UiChip variant="danger" size="sm">🔴 {bad}</UiChip>
                               )}
                               {pend > 0 && (
-                                <span style={{
-                                  padding: "1px 6px", borderRadius: 8,
-                                  background: "rgba(156,163,175,0.15)", color: "var(--text)",
-                                  fontSize: 9, fontWeight: 500,
-                                }}>⚪ {pend}</span>
+                                <UiChip variant="muted" size="sm">⚪ {pend}</UiChip>
                               )}
                             </div>
                           );
@@ -1040,18 +982,10 @@ export default function DashboardEnviosSection({ token }: Props) {
                           flexWrap: "wrap",
                         }}>
                           {anioData.respuestas_ok > 0 && (
-                            <span style={{
-                              padding: "1px 6px", borderRadius: 8,
-                              background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                              fontSize: 9, fontWeight: 500,
-                            }}>🟢 {fmtNum(anioData.respuestas_ok)}</span>
+                            <UiChip variant="success" size="sm">🟢 {fmtNum(anioData.respuestas_ok)}</UiChip>
                           )}
                           {anioData.respuestas_bad > 0 && (
-                            <span style={{
-                              padding: "1px 6px", borderRadius: 8,
-                              background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                              fontSize: 9, fontWeight: 500,
-                            }}>🔴 {fmtNum(anioData.respuestas_bad)}</span>
+                            <UiChip variant="danger" size="sm">🔴 {fmtNum(anioData.respuestas_bad)}</UiChip>
                           )}
                           {anioData.respuestas_ok === 0 && anioData.respuestas_bad === 0 && (
                             <span style={{
@@ -1116,18 +1050,10 @@ export default function DashboardEnviosSection({ token }: Props) {
                             </div>
                             <div style={{ display: "flex", gap: 4 }}>
                               {mesData.respuestas_ok > 0 && (
-                                <span style={{
-                                  padding: "1px 6px", borderRadius: 8,
-                                  background: "rgba(29,158,117,0.15)", color: "#0F6E56",
-                                  fontSize: 9, fontWeight: 500,
-                                }}>🟢 {mesData.respuestas_ok}</span>
+                                <UiChip variant="success" size="sm">🟢 {mesData.respuestas_ok}</UiChip>
                               )}
                               {mesData.respuestas_bad > 0 && (
-                                <span style={{
-                                  padding: "1px 6px", borderRadius: 8,
-                                  background: "rgba(226,75,74,0.15)", color: "#A32D2D",
-                                  fontSize: 9, fontWeight: 500,
-                                }}>🔴 {mesData.respuestas_bad}</span>
+                                <UiChip variant="danger" size="sm">🔴 {mesData.respuestas_bad}</UiChip>
                               )}
                             </div>
                           </div>

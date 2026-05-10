@@ -34,6 +34,70 @@
   --primary: #4f46e5;
   --primary-hover: #6366f1;
 
+  /* ═══════════════════════════════════════════════════════════
+     DESIGN SYSTEM v1 — tokens consolidados (Mayo 2026)
+     Documentación completa: frontend/STYLEGUIDE.md
+     Prefijo --ds-* para evitar colisión con tokens legacy.
+     ═══════════════════════════════════════════════════════════ */
+
+  /* DS · Superficies (fondos) */
+  --ds-surface-1: #0d1b2a;
+  --ds-surface-2: #131e2e;
+  --ds-surface-3: rgba(0, 0, 0, 0.35);
+  --ds-surface-accent: rgba(55, 138, 221, 0.15);
+  --ds-surface-hover: rgba(55, 138, 221, 0.06);
+
+  /* DS · Bordes */
+  --ds-border-soft: rgba(255, 255, 255, 0.06);
+  --ds-border-medium: rgba(255, 255, 255, 0.10);
+  --ds-border-accent: rgba(55, 138, 221, 0.5);
+  --ds-border-success: rgba(29, 158, 117, 0.4);
+  --ds-border-warning: rgba(186, 117, 23, 0.4);
+  --ds-border-danger: rgba(226, 75, 74, 0.4);
+  --ds-border-info: rgba(55, 138, 221, 0.4);
+
+  /* DS · Tipografía (escala 6 tamaños) */
+  --ds-text-2xl: 22px;
+  --ds-text-xl: 18px;
+  --ds-text-base: 14px;
+  --ds-text-md: 12px;
+  --ds-text-sm: 11px;   /* DEFAULT */
+  --ds-text-xs: 10px;
+
+  /* DS · Espaciados (escala múltiplos de 4) */
+  --ds-sp-1: 4px;
+  --ds-sp-2: 8px;
+  --ds-sp-3: 12px;
+  --ds-sp-4: 14px;   /* DEFAULT padding tarjeta */
+  --ds-sp-5: 20px;
+  --ds-sp-6: 24px;
+
+  /* DS · Border-radius */
+  --ds-r-sm: 4px;
+  --ds-r-md: 6px;
+  --ds-r-lg: 8px;
+  --ds-r-xl: 10px;   /* DEFAULT */
+  --ds-r-pill: 9999px;
+
+  /* DS · Texto semántico */
+  --ds-text-success: #1D9E75;
+  --ds-text-info:    #85B7EB;
+  --ds-text-warning: #FAC775;
+  --ds-text-danger:  #E5736E;
+  --ds-text-m1:      #60a5fa;
+  --ds-text-m2:      #c084fc;
+  --ds-text-m7:      #fb923c;
+
+  /* DS · Fondos suaves (semánticos) */
+  --ds-bg-success-soft: rgba(29, 158, 117, 0.15);
+  --ds-bg-info-soft:    rgba(55, 138, 221, 0.15);
+  --ds-bg-warning-soft: rgba(186, 117, 23, 0.15);
+  --ds-bg-danger-soft:  rgba(226, 75, 74, 0.15);
+  --ds-bg-muted-soft:   rgba(241, 239, 232, 0.10);
+  --ds-bg-m1-soft:      rgba(96, 165, 250, 0.18);
+  --ds-bg-m2-soft:      rgba(192, 132, 252, 0.18);
+  --ds-bg-m7-soft:      rgba(251, 146, 60, 0.18);
+
   /* Sizing */
   --radius-card: 16px;
   --pad-card: 32px;
@@ -148,6 +212,17 @@
   --text-muted: rgba(15, 23, 42, 0.65);
   --primary: #4f46e5;
   --primary-hover: #4338ca;
+
+  /* DS · Overrides para tema claro */
+  --ds-surface-1: #f8fafc;
+  --ds-surface-2: #ffffff;
+  --ds-surface-3: rgba(15, 23, 42, 0.04);
+  --ds-surface-accent: rgba(79, 70, 229, 0.10);
+  --ds-surface-hover: rgba(79, 70, 229, 0.05);
+  --ds-border-soft: rgba(15, 23, 42, 0.08);
+  --ds-border-medium: rgba(15, 23, 42, 0.14);
+  --ds-border-accent: rgba(79, 70, 229, 0.5);
+  /* (Los borders/textos/bg-soft semánticos se mantienen — funcionan en ambos temas) */
   --field-bg: rgba(255, 255, 255, 0.85);
   --field-bg-soft: rgba(255, 255, 255, 0.7);
   --field-border: rgba(15, 23, 42, 0.14);
