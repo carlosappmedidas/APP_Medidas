@@ -4,6 +4,7 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import { PctCell } from "./utils/pctBadge";
 import DescargaPanel from "./descarga-publicaciones/DescargaPanel";
 import CampanaAlertasPublicaciones from "./CampanaAlertasPublicaciones";
+import UiCard from "../ui/UiCard";
 
 // ═══════════════════════════════════════════════════════════════════════
 // TIPOS — espejan los schemas del backend (dashboard_tablas/schemas.py)
@@ -674,7 +675,12 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
       )}
 
       {/* ═══════ Bloque GENERAL ═══════ */}
-      <div style={{ background: "var(--field-bg)", borderRadius: 12, border: "1px solid var(--card-border)", padding: "14px 18px", marginBottom: 12 }}>
+      <UiCard
+        variant="nested"
+        padding="none"
+        radius="lg"
+        style={{ background: "var(--field-bg)", padding: "14px 18px", marginBottom: 12 }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
             Medidas General · pipeline de carga
@@ -771,7 +777,7 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
             />
           )}
         </div>
-      </div>
+      </UiCard>
 
       {/* ═══════ Bloque PS ═══════ */}
       <BloquePS
@@ -1008,7 +1014,12 @@ function BloquePS({
   const labelOf = (codigo: string) => vistaReparto === "tarifa" ? TARIFA_META[codigo]?.label ?? codigo : TIPO_META[codigo]?.label ?? codigo;
 
   return (
-    <div style={{ background: "var(--field-bg)", borderRadius: 12, border: "1px solid var(--card-border)", padding: "14px 18px" }}>
+    <UiCard
+      variant="nested"
+      padding="none"
+      radius="lg"
+      style={{ background: "var(--field-bg)", padding: "14px 18px" }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
         <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
           Medidas PS · {formatMesAnio(data.anio, data.mes)}
@@ -1139,7 +1150,7 @@ function BloquePS({
           })}
         </div>
       )}
-    </div>
+    </UiCard>
   );
 }
 
@@ -1203,7 +1214,12 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
   return (
     <>
       {/* ═══════ BLOQUE HISTÓRICO · GENERAL ═══════ */}
-      <div style={{ background: "var(--field-bg)", borderRadius: 12, border: "1px solid var(--card-border)", padding: "14px 18px", marginBottom: 12 }}>
+      <UiCard
+        variant="nested"
+        padding="none"
+        radius="lg"
+        style={{ background: "var(--field-bg)", padding: "14px 18px", marginBottom: 12 }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
             Medidas General · histórico por año
@@ -1297,10 +1313,15 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
             />
           )}
         </div>
-      </div>
+      </UiCard>
 
       {/* ═══════ BLOQUE HISTÓRICO · PS ═══════ */}
-      <div style={{ background: "var(--field-bg)", borderRadius: 12, border: "1px solid var(--card-border)", padding: "14px 18px" }}>
+      <UiCard
+        variant="nested"
+        padding="none"
+        radius="lg"
+        style={{ background: "var(--field-bg)", padding: "14px 18px" }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
             Medidas PS · histórico por año
@@ -1382,7 +1403,7 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
             />
           )}
         </div>
-      </div>
+      </UiCard>
     </>
   );
 }
