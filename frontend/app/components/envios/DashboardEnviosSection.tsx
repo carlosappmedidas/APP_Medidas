@@ -142,10 +142,10 @@ function estiloPlazo(estado: EstadoPlazo): { bg: string; color: string; icon: st
   }
 }
 
-const ESTILO_M: Record<MClass, { bg: string; color: string }> = {
-  M1: { bg: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
-  M2: { bg: "rgba(168,85,247,0.15)",  color: "#c084fc" },
-  M7: { bg: "rgba(251,146,60,0.15)",  color: "#fb923c" },
+const ESTILO_M: Record<MClass, { background: string; color: string }> = {
+  M1: { background: "rgba(96,165,250,0.18)",  color: "#60a5fa" },
+  M2: { background: "rgba(192,132,252,0.18)", color: "#c084fc" },
+  M7: { background: "rgba(251,146,60,0.18)",  color: "#fb923c" },
 };
 
 function getMesEnvioActual(): { anio: number; mes: number } {
@@ -190,11 +190,19 @@ function DetalleMes({ grupos, porEmpresa, expandedEmpresas, toggleEmpresa, detal
 
           return (
             <div key={grupoId} style={tarjetaStyle}>
-              <div style={{
-                fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
-                letterSpacing: "0.06em", fontWeight: 600, marginBottom: 4,
-              }}>
-                {grupo.label}
+              <div style={{ marginBottom: 4 }}>
+                <span style={{
+                  display: "inline-block",
+                  background: "rgba(241,239,232,0.10)",
+                  color: "rgba(241,239,232,0.85)",
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  letterSpacing: "0.04em",
+                }}>
+                  {grupo.label}
+                </span>
               </div>
               <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 10 }}>
                 Tipos: {grupo.tipos.join(", ")}

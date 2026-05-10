@@ -40,15 +40,15 @@ from app.envios.models import EnvioM
 
 GRUPOS_TIPOS: dict[str, dict[str, Any]] = {
     "PM_1_2_3": {
-        "label": "PM 1, 2 y 3 — F1 y F1QH",
+        "label": "PM 1, 2 y 3",
         "tipos": ["F1", "F1QH"],
     },
     "PM_4_5": {
-        "label": "PM 4 y 5 — AGRECL, INMECL, MAGCL",
+        "label": "PM 4 y 5",
         "tipos": ["AGRECL", "INMECL", "MAGCL"],
     },
     "GEN_4_5": {
-        "label": "GENERACIÓN 4 y 5 — MCIL345 y MCIL345QH",
+        "label": "GENERACIÓN 4 y 5",
         "tipos": ["MCIL345", "MCIL345QH"],
     },
 }
