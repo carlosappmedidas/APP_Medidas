@@ -420,9 +420,9 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
   };
 
   return (
-    <section className="ui-card text-sm">
+    <div className="text-sm" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {/* ═══════ Cabecera con toggle y menú ⋮ ═══════ */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
             Resumen tablas
@@ -515,7 +515,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
 
       {/* ═══════ VISTA HISTÓRICO ═══════ */}
       {vista === "historico" && historico && <HistoricoView data={historico} />}
-    </section>
+    </div>
   );
 }
 
@@ -676,10 +676,9 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
 
       {/* ═══════ Bloque GENERAL ═══════ */}
       <UiCard
-        variant="nested"
         padding="none"
         radius="lg"
-        style={{ background: "var(--field-bg)", padding: "14px 18px", marginBottom: 12 }}
+        style={{ padding: "14px 18px", marginBottom: 12 }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
@@ -1015,10 +1014,9 @@ function BloquePS({
 
   return (
     <UiCard
-      variant="nested"
       padding="none"
       radius="lg"
-      style={{ background: "var(--field-bg)", padding: "14px 18px" }}
+      style={{ padding: "14px 18px" }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
         <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
@@ -1215,13 +1213,13 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
     <>
       {/* ═══════ BLOQUE HISTÓRICO · GENERAL ═══════ */}
       <UiCard
-        variant="nested"
         padding="none"
         radius="lg"
-        style={{ background: "var(--field-bg)", padding: "14px 18px", marginBottom: 12 }}
+        style={{ padding: "14px 18px", marginBottom: 12 }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+            Medidas General · histórico por año
             Medidas General · histórico por año
           </div>
           <span style={{ fontSize: 10, color: "var(--text-muted)" }}>pulsa una tarjeta para ver el detalle</span>
@@ -1317,10 +1315,9 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
 
       {/* ═══════ BLOQUE HISTÓRICO · PS ═══════ */}
       <UiCard
-        variant="nested"
         padding="none"
         radius="lg"
-        style={{ background: "var(--field-bg)", padding: "14px 18px" }}
+        style={{ padding: "14px 18px" }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
