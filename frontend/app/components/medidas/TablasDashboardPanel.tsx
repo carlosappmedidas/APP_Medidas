@@ -755,7 +755,7 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
           <button type="button" onClick={() => setDetalleGeneralAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+              width: "100%", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", cursor: "pointer",
               padding: "8px 12px", borderRadius: 6, marginBottom: detalleGeneralAbierto ? 10 : 0,
               transition: "background 0.15s ease",
             }}>
@@ -1086,7 +1086,7 @@ function BloquePS({
         <button type="button" onClick={onToggleDetalle}
           style={{
             display: "flex", justifyContent: "space-between", alignItems: "center",
-            width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+            width: "100%", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", cursor: "pointer",
             padding: "8px 12px", borderRadius: 6, marginBottom: detalleAbierto ? 8 : 0,
             transition: "background 0.15s ease",
           }}>
@@ -1278,7 +1278,7 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
           <button type="button" onClick={() => setDesgloseGeneralAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+              width: "100%", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", cursor: "pointer",
               padding: "8px 12px", borderRadius: 6, marginBottom: desgloseGeneralAbierto ? 12 : 0,
               transition: "background 0.15s ease",
             }}>
@@ -1375,7 +1375,7 @@ function HistoricoView({ data }: { data: HistoricoResponse }) {
           <button type="button" onClick={() => setDesglosePSAbierto(v => !v)}
             style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              width: "100%", background: "var(--card-bg)", border: "1px solid var(--card-border)", cursor: "pointer",
+              width: "100%", background: "var(--field-bg-soft)", border: "1px solid var(--card-border)", cursor: "pointer",
               padding: "8px 12px", borderRadius: 6, marginBottom: desglosePSAbierto ? 12 : 0,
               transition: "background 0.15s ease",
             }}>
