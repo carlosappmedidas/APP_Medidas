@@ -20,6 +20,7 @@ from app.core.db import get_db
 from app.envios.automatizacion.models import (
     EnviosAutomatizacion,
     TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+    TIPO_REVISAR_ALERTAS_ENVIOS,
 )
 from app.envios.automatizacion.schemas import (
     AutomatizacionConfigAll,
@@ -45,6 +46,7 @@ router = APIRouter(
 
 _TIPOS_VALIDOS = {
     TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+    TIPO_REVISAR_ALERTAS_ENVIOS,
 }
 
 
@@ -96,6 +98,7 @@ def get_config(
     configs = get_all_configs(db, tenant_id=tid)
     return AutomatizacionConfigAll(
         buscar_respuestas_envios = _serializar_config(configs[TIPO_BUSCAR_RESPUESTAS_ENVIOS]),
+        revisar_alertas_envios   = _serializar_config(configs[TIPO_REVISAR_ALERTAS_ENVIOS]),
     )
 
 
@@ -135,25 +138,52 @@ def revisar_ahora(
     # Asegurar que la config existe (la crea si no)
     get_or_create_config(db, tenant_id=tid, tipo=t)
 
-    # Import perezoso para no acoplar el router al servicio de búsqueda
-    from app.envios.services_respuestas_ree import buscar_respuestas_envios_tenant
-
     try:
-        resultado = buscar_respuestas_envios_tenant(db, tenant_id=tid)
-        ok = len(resultado.get("errores", [])) == 0
-        # Construir mensaje legible para mostrar en la UI
-        partes = []
-        if resultado["ok_marcados"] > 0:
-            partes.append(f"{resultado['ok_marcados']} OK")
-        if resultado["bad_marcados"] > 0:
-            partes.append(f"{resultado['bad_marcados']} BAD")
-        if resultado["bad_borrados"] > 0:
-            partes.append(f"{resultado['bad_borrados']} BAD borrados")
-        mensaje = ", ".join(partes) if partes else "Sin cambios"
-        if not ok:
-            mensaje += f" — {len(resultado['errores'])} avisos"
-        marcar_ultimo_run(db, tenant_id=tid, tipo=t, ok=ok, mensaje=mensaje)
-        return RevisarAhoraResponse(**resultado)
+        # Despachar según el tipo
+        if t == TIPO_BUSCAR_RESPUESTAS_ENVIOS:
+            from app.envios.services_respuestas_ree import buscar_respuestas_envios_tenant
+            resultado = buscar_respuestas_envios_tenant(db, tenant_id=tid)
+            ok = len(resultado.get("errores", [])) == 0
+            partes = []
+            if resultado["ok_marcados"] > 0:
+                partes.append(f"{resultado['ok_marcados']} OK")
+            if resultado["bad_marcados"] > 0:
+                partes.append(f"{resultado['bad_marcados']} BAD")
+            if resultado["bad_borrados"] > 0:
+                partes.append(f"{resultado['bad_borrados']} BAD borrados")
+            mensaje = ", ".join(partes) if partes else "Sin cambios"
+            if not ok:
+                mensaje += f" — {len(resultado['errores'])} avisos"
+            marcar_ultimo_run(db, tenant_id=tid, tipo=t, ok=ok, mensaje=mensaje)
+            return RevisarAhoraResponse(**resultado)
+
+        elif t == TIPO_REVISAR_ALERTAS_ENVIOS:
+            from app.envios.automatizacion.services_alertas import (
+                recalcular_alertas_envios_tenant,
+            )
+            resultado_alertas = recalcular_alertas_envios_tenant(db, tenant_id=tid)
+            mensaje = (
+                f"{resultado_alertas['creadas']} creadas, "
+                f"{resultado_alertas['actualizadas']} actualizadas, "
+                f"{resultado_alertas['auto_resueltas']} auto-resueltas"
+            )
+            marcar_ultimo_run(db, tenant_id=tid, tipo=t, ok=True, mensaje=mensaje)
+            # Adaptar el formato a RevisarAhoraResponse (campos esperados)
+            return RevisarAhoraResponse(
+                respuestas_revisadas=0,
+                ok_marcados=resultado_alertas["creadas"],
+                bad_marcados=0,
+                bad_borrados=resultado_alertas["auto_resueltas"],
+                errores=[],
+            )
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tipo '{t}' no implementado.",
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         marcar_ultimo_run(db, tenant_id=tid, tipo=t, ok=False, mensaje=str(e)[:200])
         raise HTTPException(

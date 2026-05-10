@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -22,6 +22,7 @@ class AutomatizacionConfigRead(BaseModel):
 
 class AutomatizacionConfigAll(BaseModel):
     buscar_respuestas_envios: AutomatizacionConfigRead
+    revisar_alertas_envios:   AutomatizacionConfigRead
 
 
 # ── Patch (toggle ON/OFF) ─────────────────────────────────────────────────────
@@ -38,3 +39,55 @@ class RevisarAhoraResponse(BaseModel):
     bad_marcados: int
     bad_borrados: int
     errores: list[str]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Schemas de ALERTAS de envíos
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class EnvioAlertaRead(BaseModel):
+    """Alerta tal como se devuelve en GET /envios/alertas."""
+    id: int
+    tenant_id: int
+    empresa_id: int
+    empresa_nombre: Optional[str] = None
+    empresa_codigo_ree: Optional[str] = None
+
+    tipo: Literal[
+        "plazo_proximo",
+        "plazo_vencido_bad",
+        "plazo_vencido_pendiente",
+        "respuesta_ree",
+    ]
+    m_clas: Literal["M1", "M2", "M7"]
+    periodo: str
+
+    plazo_fecha: Optional[datetime] = None
+    num_pendientes: int
+    detalle: Optional[Any] = None  # lista o dict según el tipo de alerta
+
+    severidad: Literal["info", "warning", "critical"]
+    estado: Literal["activa", "resuelta", "descartada"]
+
+    resuelta_at: Optional[datetime] = None
+    resuelta_by: Optional[int] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class EnvioAlertaAccionResp(BaseModel):
+    """Respuesta de los endpoints /resolver y /descartar."""
+    id: int
+    estado: Literal["resuelta", "descartada"]
+    resuelta_at: Optional[datetime] = None
+    resuelta_by: Optional[int] = None
+
+
+class RecalcularAlertasResp(BaseModel):
+    """Respuesta de POST /envios/alertas/recalcular."""
+    creadas: int
+    actualizadas: int
+    auto_resueltas: int
+    detalle: dict  # contador por tipo: {"plazo_proximo": N, ...}

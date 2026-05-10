@@ -5,6 +5,7 @@ import DashboardSection from "./components/dashboard/DashboardSection";
 import AlertsSection from "./components/admin/AlertsSection";
 import AlertasObjecionesSection from "./components/admin/AlertasObjecionesSection";
 import AlertasPublicacionesSection from "./components/admin/AlertasPublicacionesSection";
+import AlertasEnviosSection from "./components/admin/AlertasEnviosSection";
 import AlertConfigSection from "./components/admin/AlertConfigSection";
 import ObjecionesSection from "./components/medidas/ObjecionesSection";
 import CalendarioReeSection from "./components/medidas/CalendarioReeSection";
@@ -129,6 +130,7 @@ export default function HomePage() {
   const [showAlertasGeneral, setShowAlertasGeneral] = useState(false);
   const [showAlertasObjeciones, setShowAlertasObjeciones] = useState(false);
   const [showAlertasPublicaciones, setShowAlertasPublicaciones] = useState(false);
+  const [showAlertasEnvios, setShowAlertasEnvios] = useState(false);
 
   const {
     appearance, setAppearance,
@@ -205,6 +207,7 @@ export default function HomePage() {
       setShowAlertasGeneral(false);
       setShowAlertasObjeciones(false);
       setShowAlertasPublicaciones(false);
+      setShowAlertasEnvios(false);
     }
   }, [activeTab]);
 
@@ -524,6 +527,32 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+
+            {/* ─── ALERTAS · ENVÍOS REE ─────────────────────────────────────── */}
+            {!isViewer && (
+              <div className="ui-collapsible-card">
+                <button type="button" className="ui-collapsible-card__trigger"
+                  onClick={() => setShowAlertasEnvios((v) => !v)}>
+                  <div>
+                    <div className="ui-collapsible-card__title">ALERTAS · ENVÍOS REE</div>
+                    <p className="ui-collapsible-card__subtitle">
+                      Plazos de envío M1/M2/M7 próximos a vencer, vencidos sin enviar, .bad sin reenviar y respuestas REE recibidas (scheduler 22:00 + 07:30).
+                    </p>
+                  </div>
+                  <span className="ui-btn ui-btn-ghost ui-btn-xs flex-shrink-0">
+                    {showAlertasEnvios ? "Ocultar" : "Mostrar"}
+                  </span>
+                </button>
+                {showAlertasEnvios && (
+                  <div className="ui-collapsible-card__body">
+                    <AlertasEnviosSection
+                      token={token}
+                      onNavigateToEnvios={() => setActiveTab("envios")}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
 

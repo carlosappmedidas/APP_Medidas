@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
+import CampanaAlertasEnvios from "../medidas/CampanaAlertasEnvios";
 
 // ─── Tipos del JSON del backend ────────────────────────────────────────────────
 
@@ -690,6 +691,7 @@ export default function DashboardEnviosSection({ token }: Props) {
           📊 {headerLabel}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <CampanaAlertasEnvios token={token} />
           <div style={{
             display: "inline-flex",
             background: "rgba(0,0,0,0.35)",

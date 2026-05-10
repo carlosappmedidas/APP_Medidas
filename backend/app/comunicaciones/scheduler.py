@@ -337,6 +337,23 @@ def _ejecutar_busqueda_respuestas_envios() -> None:
         logger.error(f"[env_buscar_respuestas_envios_job] Error general: {e}")
 
 
+def _ejecutar_revisar_alertas_envios() -> None:
+    """
+    Job que corre cada día a las 22:00 (Europe/Madrid).
+    Recalcula las alertas de envíos (plazo_proximo, plazo_vencido_bad,
+    plazo_vencido_pendiente) para todos los tenants que tengan la
+    automatización 'revisar_alertas_envios' activada.
+    """
+    try:
+        from app.core.db import SessionLocal
+        from app.envios.automatizacion.services_job_alertas import (
+            revisar_alertas_envios_all_tenants,
+        )
+        revisar_alertas_envios_all_tenants(SessionLocal)
+    except Exception as e:
+        logger.error(f"[env_revisar_alertas_envios_job] Error general: {e}")
+
+
 def _ejecutar_buscar_publicaciones_ree() -> None:
     """
     Job que corre cada día a las 22:00 (Europe/Madrid).
@@ -735,11 +752,27 @@ def start_scheduler() -> None:
         coalesce=True,
     )
 
+    # Job diario para recalcular ALERTAS de envíos (plazo_proximo,
+    # plazo_vencido_bad, plazo_vencido_pendiente). Corre todos los días a
+    # las 22:00 (Europe/Madrid) — coincide en hora con publicaciones pero
+    # no toca SFTP, así que no compiten por recursos.
+    # misfire_grace_time + coalesce: ver comentarios del job FIN RECEPCIÓN arriba.
+    _scheduler.add_job(
+        _ejecutar_revisar_alertas_envios,
+        trigger=CronTrigger(hour=22, minute=0),
+        id="env_revisar_alertas_envios_job",
+        name="Envíos — revisar alertas (22:00 diario)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+        coalesce=True,
+    )
+
     _scheduler.start()
     logger.info(
         "[Scheduler] Scheduler arrancado — FTP cada minuto + "
         "Objeciones FIN RECEPCIÓN 23:00 + FIN RESOLUCIÓN 23:30 + BUSCAR RESPUESTAS REE 07:00 + "
-        "Envíos BUSCAR RESPUESTAS REE 07:30 + "
+        "Envíos BUSCAR RESPUESTAS REE 07:30 + REVISAR ALERTAS 22:00 + "
         "Publicaciones BUSCAR PUBLICACIONES REE 22:00"
     )
 

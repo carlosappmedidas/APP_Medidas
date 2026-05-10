@@ -5,6 +5,7 @@ import { API_BASE_URL, getAuthHeaders } from "../../apiConfig";
 import ExploradorFtpPanel, { type FtpConfig } from "../comunicaciones/ExploradorFtpPanel";
 import TablePaginationFooter from "../ui/TablePaginationFooter";
 import DashboardEnviosSection from "./DashboardEnviosSection";
+import CampanaAlertasEnvios from "../medidas/CampanaAlertasEnvios";
 
 interface Props { token: string | null; }
 

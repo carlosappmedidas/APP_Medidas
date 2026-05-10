@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.envios.automatizacion.models import (
     EnviosAutomatizacion,
     TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+    TIPO_REVISAR_ALERTAS_ENVIOS,
 )
 
 
@@ -30,6 +31,7 @@ from app.envios.automatizacion.models import (
 # desactivados — el usuario debe activarlos explícitamente.
 _DEFAULTS_ACTIVA: Dict[str, int] = {
     TIPO_BUSCAR_RESPUESTAS_ENVIOS: 0,
+    TIPO_REVISAR_ALERTAS_ENVIOS:   0,
 }
 
 
@@ -108,5 +110,8 @@ def get_all_configs(
     return {
         TIPO_BUSCAR_RESPUESTAS_ENVIOS: get_or_create_config(
             db, tenant_id=tenant_id, tipo=TIPO_BUSCAR_RESPUESTAS_ENVIOS,
+        ),
+        TIPO_REVISAR_ALERTAS_ENVIOS: get_or_create_config(
+            db, tenant_id=tenant_id, tipo=TIPO_REVISAR_ALERTAS_ENVIOS,
         ),
     }
