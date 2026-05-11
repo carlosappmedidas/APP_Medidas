@@ -57,38 +57,78 @@ def list_envios(
     *,
     tenant_id: int,
     m_clasificacion: Optional[str] = None,
+    m_clasificaciones: Optional[List[str]] = None,
     empresa_id: Optional[int] = None,
+    empresa_ids: Optional[List[int]] = None,
     tipo: Optional[str] = None,
+    tipos: Optional[List[str]] = None,
     periodo_anio: Optional[int] = None,
     periodo_mes: Optional[int] = None,
+    periodos: Optional[List[tuple[int, int]]] = None,
     estado: Optional[str] = None,
+    estados: Optional[List[str]] = None,
     limit: int = 500,
 ) -> List[dict]:
     """
     Devuelve el histórico de envíos filtrado por los criterios indicados.
 
-    Filtros:
-      - m_clasificacion: 'M1' / 'M2' / 'M7'
-      - empresa_id: id de empresa
-      - tipo: 'AGRECL' / 'INMECL' / 'MAGCL'
-      - periodo_anio / periodo_mes: filtran por mes de los datos
-      - estado: 'pendiente' (NULL en BD) / 'ok' / 'bad'
+    Cada filtro acepta dos formas:
+      - Singular (`tipo`, `empresa_id`, etc.) — valor único, retrocompatible.
+      - Plural  (`tipos`, `empresa_ids`, etc.) — lista de valores, IN (...).
+    Si llegan ambos para un mismo filtro, el plural prevalece.
+
+    Filtros disponibles:
+      - m_clasificacion / m_clasificaciones: 'M1' / 'M2' / 'M7'
+      - empresa_id / empresa_ids: id(s) de empresa
+      - tipo / tipos: 'AGRECL' / 'INMECL' / 'MAGCL' / 'F1' / 'F1QH' / 'MCIL345' / 'MCIL345QH'
+      - periodo_anio + periodo_mes: filtran por UN periodo concreto (forma antigua)
+      - periodos: lista de tuplas (anio, mes) — admite varios periodos
+      - estado / estados: 'pendiente' (NULL en BD) / 'ok' / 'bad'
 
     Orden: subido_sftp_at descendente (más reciente primero).
     """
+    from sqlalchemy import tuple_, or_
+
     q = db.query(EnvioM).filter(EnvioM.tenant_id == tenant_id)
 
-    if m_clasificacion:
+    # M clasificacion
+    if m_clasificaciones:
+        q = q.filter(EnvioM.m_clasificacion.in_(m_clasificaciones))
+    elif m_clasificacion:
         q = q.filter(EnvioM.m_clasificacion == m_clasificacion)
-    if empresa_id is not None:
+
+    # Empresa
+    if empresa_ids:
+        q = q.filter(EnvioM.empresa_id.in_(empresa_ids))
+    elif empresa_id is not None:
         q = q.filter(EnvioM.empresa_id == empresa_id)
-    if tipo:
+
+    # Tipo
+    if tipos:
+        q = q.filter(EnvioM.tipo.in_(tipos))
+    elif tipo:
         q = q.filter(EnvioM.tipo == tipo)
-    if periodo_anio is not None:
-        q = q.filter(EnvioM.periodo_anio == periodo_anio)
-    if periodo_mes is not None:
-        q = q.filter(EnvioM.periodo_mes == periodo_mes)
-    if estado:
+
+    # Periodos (lista de tuplas)
+    if periodos:
+        q = q.filter(tuple_(EnvioM.periodo_anio, EnvioM.periodo_mes).in_(periodos))
+    else:
+        if periodo_anio is not None:
+            q = q.filter(EnvioM.periodo_anio == periodo_anio)
+        if periodo_mes is not None:
+            q = q.filter(EnvioM.periodo_mes == periodo_mes)
+
+    # Estado — "pendiente" en API = NULL en BD
+    if estados:
+        clauses = []
+        if "pendiente" in estados:
+            clauses.append(EnvioM.estado_ree.is_(None))
+        no_pend = [e for e in estados if e != "pendiente"]
+        if no_pend:
+            clauses.append(EnvioM.estado_ree.in_(no_pend))
+        if clauses:
+            q = q.filter(or_(*clauses))
+    elif estado:
         if estado == "pendiente":
             q = q.filter(EnvioM.estado_ree.is_(None))
         else:
@@ -105,16 +145,20 @@ def count_envios(
     *,
     tenant_id: int,
     m_clasificacion: Optional[str] = None,
+    m_clasificaciones: Optional[List[str]] = None,
 ) -> dict:
     """
     Devuelve contadores agregados para mostrar como badges en la cabecera
-    de la tarjeta del histórico.
+    de la tarjeta del histórico. Si llega `m_clasificaciones` (plural),
+    prevalece sobre `m_clasificacion`.
 
     Returns:
       { total, pendiente, ok, bad }
     """
     q = db.query(EnvioM).filter(EnvioM.tenant_id == tenant_id)
-    if m_clasificacion:
+    if m_clasificaciones:
+        q = q.filter(EnvioM.m_clasificacion.in_(m_clasificaciones))
+    elif m_clasificacion:
         q = q.filter(EnvioM.m_clasificacion == m_clasificacion)
 
     total = q.count()
@@ -131,11 +175,13 @@ def list_periodos_disponibles(
     *,
     tenant_id: int,
     m_clasificacion: Optional[str] = None,
+    m_clasificaciones: Optional[List[str]] = None,
 ) -> List[dict]:
     """
     Devuelve los periodos (anio, mes) que tienen al menos un envío en BD.
     Útil para poblar el selector "Periodo" del histórico sin mostrar
-    opciones vacías. Orden: más recientes primero.
+    opciones vacías. Si llega `m_clasificaciones` (plural), prevalece
+    sobre `m_clasificacion`. Orden: más recientes primero.
     """
     q = (
         db.query(EnvioM.periodo_anio, EnvioM.periodo_mes)
@@ -145,7 +191,9 @@ def list_periodos_disponibles(
             EnvioM.periodo_mes.isnot(None),
         )
     )
-    if m_clasificacion:
+    if m_clasificaciones:
+        q = q.filter(EnvioM.m_clasificacion.in_(m_clasificaciones))
+    elif m_clasificacion:
         q = q.filter(EnvioM.m_clasificacion == m_clasificacion)
 
     rows = q.distinct().all()

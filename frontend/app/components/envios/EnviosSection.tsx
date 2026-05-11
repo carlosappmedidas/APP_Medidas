@@ -44,7 +44,29 @@ interface CountResult {
 
 interface EmpresaOption { id: number; nombre: string; codigo_ree: string | null; }
 
-type MClass = "" | "M1" | "M2" | "M7";
+// Ya no necesitamos el tipo singular — ahora todo es lista de strings.
+type MValue = "M1" | "M2" | "M7";
+
+// Opciones para cada filtro (las usamos en el dropdown multi-select).
+const M_OPTIONS: { value: MValue; label: string }[] = [
+  { value: "M1", label: "M1" },
+  { value: "M2", label: "M2" },
+  { value: "M7", label: "M7" },
+];
+const TIPO_OPTIONS: { value: string; label: string }[] = [
+  { value: "AGRECL",     label: "AGRECL" },
+  { value: "INMECL",     label: "INMECL" },
+  { value: "MAGCL",      label: "MAGCL" },
+  { value: "F1",         label: "F1" },
+  { value: "F1QH",       label: "F1QH" },
+  { value: "MCIL345",    label: "MCIL345" },
+  { value: "MCIL345QH",  label: "MCIL345QH" },
+];
+const ESTADO_OPTIONS: { value: string; label: string }[] = [
+  { value: "pendiente", label: "Pendiente" },
+  { value: "ok",        label: "OK" },
+  { value: "bad",       label: "BAD" },
+];
 
 // ─── Estilos compartidos ──────────────────────────────────────────────────────
 
@@ -125,11 +147,16 @@ export default function EnviosSection({ token }: Props) {
   const [errorEnvios, setErrorEnvios] = useState<string | null>(null);
   const [countEnvios, setCountEnvios] = useState<CountResult | null>(null);
 
-  const [filtroM, setFiltroM]             = useState<MClass>("M2");    // M1 / M2 / M7
-  const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");      // "" o id
-  const [filtroTipo, setFiltroTipo]       = useState<string>("");      // "" / AGRECL / INMECL / MAGCL
-  const [filtroEstado, setFiltroEstado]   = useState<string>("");      // "" / pendiente / ok / bad
-  const [filtroPeriodo, setFiltroPeriodo] = useState<string>("");      // "" o "anio-mes" (ej: "2026-3")
+  // Filtros multi-select. Array vacío = "todos" (sin filtro).
+  // Por defecto M2 viene preseleccionado para mantener comportamiento previo.
+  const [filtroM, setFiltroM]             = useState<string[]>(["M2"]);
+  const [filtroEmpresa, setFiltroEmpresa] = useState<string[]>([]);
+  const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
+  const [filtroEstado, setFiltroEstado]   = useState<string[]>([]);
+  const [filtroPeriodo, setFiltroPeriodo] = useState<string[]>([]); // valores como "2025-8"
+
+  // Para los dropdowns: qué filtro está abierto ahora mismo (solo uno a la vez).
+  const [dropdownAbierto, setDropdownAbierto] = useState<string | null>(null);
 
   const [periodosDisponibles, setPeriodosDisponibles] = useState<{ anio: number; mes: number }[]>([]);
 
@@ -170,13 +197,13 @@ export default function EnviosSection({ token }: Props) {
   }, [token]);
 
   // ── Cargar periodos disponibles para el filtro Periodo ─────────────────────
-  // Cada vez que cambie filtroM o se abra el panel, refrescamos la lista de
-  // periodos disponibles (anio, mes) que tienen al menos un envío.
+  // Cada vez que cambien los M seleccionados o se abra el panel, refrescamos
+  // la lista de periodos disponibles (anio, mes) que tienen al menos un envío.
   useEffect(() => {
     if (!token) return;
     if (!panelHistOpen) return;
-    const url = filtroM
-      ? `${API_BASE_URL}/envios/historico/periodos?m_clasificacion=${filtroM}`
+    const url = filtroM.length > 0
+      ? `${API_BASE_URL}/envios/historico/periodos?m_clasificaciones=${filtroM.join(",")}`
       : `${API_BASE_URL}/envios/historico/periodos`;
     fetch(url, { headers: getAuthHeaders(token) })
       .then(r => r.ok ? r.json() : [])
@@ -184,27 +211,25 @@ export default function EnviosSection({ token }: Props) {
       .catch(() => setPeriodosDisponibles([]));
   }, [token, filtroM, panelHistOpen]);
 
-  // ── Cargar histórico (M1 / M2 / M7) ────────────────────────────────────────
+  // ── Cargar histórico ───────────────────────────────────────────────────────
+  // Los filtros son arrays multi-select. Cada array no vacío se envía como
+  // CSV en el query param plural (m_clasificaciones, empresa_ids, etc.).
   const cargarEnvios = useCallback(async () => {
     if (!token) return;
     setLoadingEnvios(true); setErrorEnvios(null);
     try {
-      // Filtramos por la ventana M seleccionada (vacío = todos)
       const params = new URLSearchParams({ limit: "500" });
-      if (filtroM)       params.set("m_clasificacion", filtroM);
-      if (filtroEmpresa) params.set("empresa_id", filtroEmpresa);
-      if (filtroTipo)    params.set("tipo", filtroTipo);
-      if (filtroEstado)  params.set("estado", filtroEstado);
-      if (filtroPeriodo) {
-        const [anioStr, mesStr] = filtroPeriodo.split("-");
-        if (anioStr) params.set("periodo_anio", anioStr);
-        if (mesStr)  params.set("periodo_mes", mesStr);
-      }
+      if (filtroM.length > 0)       params.set("m_clasificaciones", filtroM.join(","));
+      if (filtroEmpresa.length > 0) params.set("empresa_ids",       filtroEmpresa.join(","));
+      if (filtroTipo.length > 0)    params.set("tipos",             filtroTipo.join(","));
+      if (filtroEstado.length > 0)  params.set("estados",           filtroEstado.join(","));
+      if (filtroPeriodo.length > 0) params.set("periodos",          filtroPeriodo.join(","));
 
-      // Para count usamos el mismo filtro M (si está vacío, count global)
-      const countUrl = filtroM
-        ? `${API_BASE_URL}/envios/historico/count?m_clasificacion=${filtroM}`
+      // Para count usamos los mismos M seleccionados (si vacío, count global)
+      const countUrl = filtroM.length > 0
+        ? `${API_BASE_URL}/envios/historico/count?m_clasificaciones=${filtroM.join(",")}`
         : `${API_BASE_URL}/envios/historico/count`;
+
       const [resList, resCount] = await Promise.all([
         fetch(`${API_BASE_URL}/envios/historico?${params}`, { headers: getAuthHeaders(token) }),
         fetch(countUrl, { headers: getAuthHeaders(token) }),
@@ -356,13 +381,126 @@ export default function EnviosSection({ token }: Props) {
     }
   };
 
-  // ── Cerrar menú "⋯" al hacer click fuera ───────────────────────────────────
+// ── Cerrar dropdown de filtros al hacer click fuera ────────────────────────
   useEffect(() => {
-    if (menuAbiertoId === null) return;
-    const onClick = () => setMenuAbiertoId(null);
+    if (dropdownAbierto === null) return;
+    const onClick = (e: MouseEvent) => {
+      if (!(e.target as Element).closest("[data-filter-dropdown]")) {
+        setDropdownAbierto(null);
+      }
+    };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
-  }, [menuAbiertoId]);
+  }, [dropdownAbierto]);
+
+  // ── Componente inline: dropdown multi-select con checkboxes ─────────────
+  // Se renderiza tantas veces como filtros tengamos (5 veces).
+  // Está inline (no en otro fichero) según preferencia del usuario.
+  const renderMultiSelect = (
+    id: string,
+    label: string,
+    selected: string[],
+    setSelected: (vs: string[]) => void,
+    options: { value: string; label: string }[],
+    width: number = 140,
+  ) => {
+    const isOpen = dropdownAbierto === id;
+    const todoSeleccionado = options.length > 0 && selected.length === options.length;
+
+    const buttonText =
+      selected.length === 0 ? "Todos"
+      : selected.length === 1 ? (options.find(o => o.value === selected[0])?.label ?? selected[0])
+      : `${selected.length} seleccionados`;
+
+    const toggleOne = (value: string) => {
+      if (selected.includes(value)) {
+        setSelected(selected.filter(v => v !== value));
+      } else {
+        setSelected([...selected, value]);
+      }
+    };
+
+    const seleccionarTodo = () => setSelected(options.map(o => o.value));
+    const limpiar = () => setSelected([]);
+
+    return (
+      <div data-filter-dropdown style={{ position: "relative", display: "flex", flexDirection: "column", gap: 3 }}>
+        <label style={{ fontSize: 10, color: "var(--text-muted)" }}>{label}</label>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setDropdownAbierto(isOpen ? null : id); }}
+          className="ui-select"
+          style={{
+            fontSize: 11, height: 28, width, textAlign: "left",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "4px 8px", cursor: "pointer",
+            background: "var(--field-bg)",
+            border: "1px solid var(--card-border)",
+            borderRadius: 4,
+            color: selected.length === 0 ? "var(--text-muted)" : "var(--text)",
+          }}
+        >
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{buttonText}</span>
+          <span style={{ fontSize: 9, marginLeft: 4, color: "var(--text-muted)" }}>▾</span>
+        </button>
+
+        {isOpen && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute", top: "100%", left: 0, zIndex: 100, marginTop: 2,
+              background: "var(--card-bg)",
+              border: "1px solid var(--card-border)",
+              borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              minWidth: width, maxWidth: 280,
+              maxHeight: 280, overflowY: "auto",
+              padding: 4,
+            }}
+          >
+            <div style={{ display: "flex", gap: 4, padding: "4px 6px", borderBottom: "1px solid var(--card-border)", marginBottom: 4 }}>
+              <button type="button"
+                onClick={todoSeleccionado ? limpiar : seleccionarTodo}
+                className="ui-btn ui-btn-ghost ui-btn-xs"
+                style={{ fontSize: 10, padding: "3px 6px", flex: 1 }}>
+                {todoSeleccionado ? "✕ Limpiar" : "☑ Todos"}
+              </button>
+            </div>
+
+            {options.length === 0 ? (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "8px 6px", textAlign: "center" }}>
+                Sin opciones disponibles
+              </div>
+            ) : options.map((opt) => {
+              const checked = selected.includes(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "5px 6px", fontSize: 11, cursor: "pointer",
+                    borderRadius: 4,
+                    background: checked ? "rgba(96,165,250,0.10)" : "transparent",
+                  }}
+                  onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+                  onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleOne(opt.value)}
+                    style={{ cursor: "pointer", margin: 0 }}
+                  />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {opt.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="text-sm">
@@ -452,68 +590,67 @@ export default function EnviosSection({ token }: Props) {
         </div>
         {panelHistOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)" }}>
-            {/* Filtros */}
+            {/* Filtros (multi-select con checkboxes) */}
             <div style={{ display: "flex", gap: 8, padding: "10px 14px", flexWrap: "wrap", alignItems: "flex-end", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Ventana M</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 90 }} value={filtroM} onChange={e => setFiltroM(e.target.value as MClass)}>
-                  <option value="">Todos</option>
-                  <option value="M1">M1</option>
-                  <option value="M2">M2</option>
-                  <option value="M7">M7</option>
-                </select>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Empresa</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 28, minWidth: 160 }} value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}>
-                  <option value="">Todas</option>
-                  {empresas.map(emp => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.nombre}{emp.codigo_ree ? ` (${emp.codigo_ree})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Tipo</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 130 }} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-                  <option value="">Todos</option>
-                  <option value="AGRECL">AGRECL</option>
-                  <option value="INMECL">INMECL</option>
-                  <option value="MAGCL">MAGCL</option>
-                  <option value="F1">F1</option>
-                  <option value="F1QH">F1QH</option>
-                  <option value="MCIL345">MCIL345</option>
-                  <option value="MCIL345QH">MCIL345QH</option>
-                </select>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Estado REE</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 120 }} value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
-                  <option value="">Todos</option>
-                  <option value="pendiente">Pendiente</option>
-                  <option value="ok">OK</option>
-                  <option value="bad">BAD</option>
-                </select>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Periodo</label>
-                <select className="ui-select" style={{ fontSize: 11, height: 28, width: 130 }} value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}>
-                  <option value="">Todos</option>
-                  {periodosDisponibles.map(p => (
-                    <option key={`${p.anio}-${p.mes}`} value={`${p.anio}-${p.mes}`}>
-                      {fmtPeriodo(p.anio, p.mes)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {(filtroEmpresa || filtroTipo || filtroEstado || filtroPeriodo) && (
+              {renderMultiSelect(
+                "ventanaM",
+                "Ventana M",
+                filtroM,
+                setFiltroM,
+                M_OPTIONS,
+                100,
+              )}
+              {renderMultiSelect(
+                "empresa",
+                "Empresa",
+                filtroEmpresa,
+                setFiltroEmpresa,
+                empresas.map(emp => ({
+                  value: String(emp.id),
+                  label: `${emp.nombre}${emp.codigo_ree ? ` (${emp.codigo_ree})` : ""}`,
+                })),
+                180,
+              )}
+              {renderMultiSelect(
+                "tipo",
+                "Tipo",
+                filtroTipo,
+                setFiltroTipo,
+                TIPO_OPTIONS,
+                140,
+              )}
+              {renderMultiSelect(
+                "estado",
+                "Estado REE",
+                filtroEstado,
+                setFiltroEstado,
+                ESTADO_OPTIONS,
+                130,
+              )}
+              {renderMultiSelect(
+                "periodo",
+                "Periodo",
+                filtroPeriodo,
+                setFiltroPeriodo,
+                periodosDisponibles.map(p => ({
+                  value: `${p.anio}-${p.mes}`,
+                  label: fmtPeriodo(p.anio, p.mes),
+                })),
+                140,
+              )}
+
+              {(filtroEmpresa.length > 0 || filtroTipo.length > 0 || filtroEstado.length > 0 || filtroPeriodo.length > 0) && (
                 <button type="button" className="ui-btn ui-btn-ghost ui-btn-xs" style={{ height: 28 }}
-                  onClick={() => { setFiltroEmpresa(""); setFiltroTipo(""); setFiltroEstado(""); setFiltroPeriodo(""); }}>
+                  onClick={() => {
+                    setFiltroEmpresa([]); setFiltroTipo([]);
+                    setFiltroEstado([]); setFiltroPeriodo([]);
+                  }}>
                   ✕ Limpiar
                 </button>
               )}
-              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs" style={{ height: 28, display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}
+
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                style={{ height: 28, display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}
                 onClick={cargarEnvios} disabled={loadingEnvios}>
                 <IconRefresh /> {loadingEnvios ? "Cargando..." : "Actualizar"}
               </button>
@@ -546,7 +683,7 @@ export default function EnviosSection({ token }: Props) {
                     <tr className="ui-tr"><td colSpan={13} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>Cargando...</td></tr>
                   ) : envios.length === 0 ? (
                     <tr className="ui-tr"><td colSpan={13} className="ui-td text-center ui-muted" style={{ padding: "32px 16px" }}>
-                      Sin envíos {filtroM || "(todos)"} todavía. Sube ficheros AGRECL, INMECL o MAGCL desde la tarjeta superior y aparecerán aquí.
+                      Sin envíos {filtroM.length > 0 ? filtroM.join(", ") : "(todos)"} todavía. Sube ficheros desde la tarjeta superior y aparecerán aquí.
                     </td></tr>
                   ) : enviosPagina.map(e => (
                     <tr key={e.id} className="ui-tr">
