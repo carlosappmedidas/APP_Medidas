@@ -1179,7 +1179,7 @@ def get_dashboard_hitos(
         all_items,
         mes_visual=target_mes_label,
         categoria="Art. 15",
-        evento_contains="publicación del operador del sistema",
+        evento_contains="publicacion nuevo cierre",
     )
 
     return ReeCalendarDashboardHitosResponse(

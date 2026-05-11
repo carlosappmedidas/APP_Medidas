@@ -28,6 +28,7 @@ interface DashboardPanelProps {
   empresas: EmpresaOption[];
   autoConfig: AutoConfig | null;
   onGoToObjecionesConfig?: () => void;
+  onRefresh?: () => void;
 }
 
 // ── Estilos de los chips de tipo (AGRECL / CUPS / INCL / CIL) ─────────────────
@@ -119,6 +120,7 @@ export default function DashboardPanel({
   dash, loading, empresaFiltroId, empresas,
   autoConfig,
   onGoToObjecionesConfig,
+  onRefresh,
 }: DashboardPanelProps) {
   // ── Toggle global: "Periodo actual" vs "Histórico" ─────────────────────
   // Por defecto arranca en "actual". Solo en memoria (no persistente).
@@ -287,6 +289,41 @@ export default function DashboardPanel({
                   Histórico
                 </button>
               </div>
+
+              {/* ── Botón Actualizar (refresca datos sin recargar la página) ── */}
+              <button
+                type="button"
+                onClick={() => onRefresh?.()}
+                title="Actualizar datos"
+                aria-label="Actualizar datos"
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(0,0,0,0.35)",
+                  border: "0.5px solid var(--card-border)",
+                  borderRadius: 6,
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  transition: "color 0.15s, border-color 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#85B7EB";
+                  e.currentTarget.style.borderColor = "rgba(55,138,221,0.35)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.borderColor = "var(--card-border)";
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <polyline points="1 20 1 14 7 14" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+              </button>
 
               {/* ── Atajo a Configuración Objeciones ───────────────────────── */}
               {onGoToObjecionesConfig && (

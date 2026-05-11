@@ -89,15 +89,20 @@ def _parse_nombre_incl(nombre: str) -> Tuple[str, str, str, str]:
 
 
 def _parse_nombre_cups(nombre: str) -> Tuple[str, str, str, str]:
-    """AOBCUPS_DDDD_CCCC_AAAAMM_FFFFFFFF.0 → (dddd, cccc, aaaamm, fecha)"""
+    """AOBCUPS_DDDD_AAAAMM_FFFFFFFF.0 → (dddd, '', aaaamm, fecha)
+
+    Nota: el AOBCUPS NO lleva CCCC en el nombre — la comercializadora se
+    extrae del campo id_objecion de cada fila del CSV. Mantenemos la tupla
+    de 4 elementos por compatibilidad con quien la consuma; el segundo
+    elemento se devuelve vacío.
+    """
     import re as _re
     base = _re.sub(r'\.\d+(\.bz2)?$', '', nombre).replace(".bz2", "")
     partes = base.split("_")
     dddd   = partes[1] if len(partes) > 1 else "0000"
-    cccc   = partes[2] if len(partes) > 2 else "0000"
-    aaaamm = partes[3] if len(partes) > 3 else "000000"
-    fecha  = partes[4] if len(partes) > 4 else "00000000"
-    return dddd, cccc, aaaamm, fecha
+    aaaamm = partes[2] if len(partes) > 2 else "000000"
+    fecha  = partes[3] if len(partes) > 3 else "00000000"
+    return dddd, "", aaaamm, fecha
 
 
 def _parse_nombre_cil(nombre: str) -> Tuple[str, str, str, str]:

@@ -50,8 +50,11 @@ from app.objeciones.services import (
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-# Tipos AOB aceptados en la búsqueda.
-_TIPOS_AOB = ("OBJEINCL", "AOBAGRECL", "AOBCUPS", "AOBCIL")
+# Tipos AOB/OBJE aceptados en la búsqueda.
+# OBJEINCL se incluye explícitamente porque aunque REE no responde con .ok/.bad
+# para INCL, el usuario sí necesita verlos en el panel Descarga para poder
+# importarlos a BD y luego marcar respuestas manualmente.
+_TIPOS_AOB = ("AOBAGRECL", "OBJEINCL", "AOBCUPS", "AOBCIL")
 
 # Modelo SQLAlchemy por cada tipo — para saber dónde mirar versiones en BD.
 _TIPO_MODELO = {
@@ -305,7 +308,8 @@ def _explorar_empresa(
             parsed = parse_aob_filename(entry.nombre)
             if parsed is None:
                 continue
-            if parsed.tipo not in _TIPOS_AOB:
+            # Aceptar los 4 tipos: AOB* + OBJEINCL.
+            if parsed.tipo not in ("AOBAGRECL", "OBJEINCL", "AOBCUPS", "AOBCIL"):
                 continue
 
             # Filtro DDDD: la empresa SIEMPRE tiene codigo_ree aquí (Opción B).

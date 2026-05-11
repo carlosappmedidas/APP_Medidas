@@ -116,6 +116,48 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
 
   useEffect(() => { cargarDash(); }, [cargarDash]);
 
+  // ── Refrescar manualmente (botón "Actualizar" del DashboardPanel) ───────
+  // Recarga el dashboard + la config de automatización + la lista de empresas.
+  // No recarga la página entera para no perder el estado de la UI (paneles
+  // abiertos/cerrados, scroll, filtros aplicados en Descarga, etc.).
+  const refrescarTodo = useCallback(async () => {
+    if (!token) return;
+    // Lanza todo en paralelo
+    await Promise.all([
+      // Dashboard de objeciones
+      cargarDash(),
+      // Empresas
+      (async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/empresas/`, { headers: getAuthHeaders(token) });
+          if (res.ok) setEmpresas(await res.json());
+        } catch { /* silencioso */ }
+      })(),
+      // Config de automatización
+      (async () => {
+        try {
+          const res = await fetch(
+            `${API_BASE_URL}/objeciones/automatizacion/config`,
+            { headers: getAuthHeaders(token) },
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          const norm = (c: Partial<AutoConfigItem> | undefined): AutoConfigItem => ({
+            activa:         !!c?.activa,
+            ultimo_run_at:  c?.ultimo_run_at  ?? null,
+            ultimo_run_ok:  c?.ultimo_run_ok  ?? null,
+            ultimo_run_msg: c?.ultimo_run_msg ?? null,
+          });
+          setAutoConfig({
+            fin_recepcion:         norm(data.fin_recepcion),
+            fin_resolucion:        norm(data.fin_resolucion),
+            buscar_respuestas_ree: norm(data.buscar_respuestas_ree),
+          });
+        } catch { /* silencioso */ }
+      })(),
+    ]);
+  }, [token, cargarDash]);
+
   // ── Cargar automatización (para tarjeta "Automatización") ──
   useEffect(() => {
     if (!token) return;
@@ -183,6 +225,7 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
             empresas={empresas}
             autoConfig={autoConfig}
             onGoToObjecionesConfig={onGoToObjecionesConfig}
+            onRefresh={refrescarTodo}
           />
         )}
       </div>
