@@ -1107,7 +1107,11 @@ def _registrar_envio_m(
     """
     try:
         from app.envios.models import EnvioM
-        from app.envios.parser import parsear_nombre_envio, clasificar_m
+        from app.envios.parser import (
+            parsear_nombre_envio,
+            clasificar_m,
+            inferir_periodo_desde_m,
+        )
 
         parsed = parsear_nombre_envio(nombre_fichero)
         if parsed is None:
@@ -1115,11 +1119,24 @@ def _registrar_envio_m(
         if parsed.es_respuesta:
             return  # Es un .ok / .bad → no se registran como envíos nuevos
 
-        # Determinar M
+        # ── Determinar M y periodo ────────────────────────────────────────
+        # Para AGRECL el nombre del fichero NO incluye periodo, así que:
+        #   - M lo elige el usuario en el frontend (m_para_agrecl)
+        #   - periodo lo INFERIMOS restando N meses a la fecha_generacion
+        #     (M1→-1, M2→-2, M7→-7), porque "datos de hace N meses".
+        # Para INMECL/MAGCL ambos vienen ya en el nombre y se calcula M
+        # automáticamente desde periodo+fechagen.
+        periodo_anio = parsed.periodo_anio
+        periodo_mes  = parsed.periodo_mes
+
         if parsed.tipo == "AGRECL":
             if not m_para_agrecl:
                 return  # AGRECL sin M → no podemos clasificar, ignorar
             m_clasificacion = m_para_agrecl
+            # Inferir periodo a partir del M + fecha de generación
+            inferido = inferir_periodo_desde_m(m_para_agrecl, parsed.fecha_generacion)
+            if inferido is not None:
+                periodo_anio, periodo_mes = inferido
         else:
             m_calc = clasificar_m(parsed.periodo_anio, parsed.periodo_mes, parsed.fecha_generacion)
             if m_calc is None:
@@ -1132,8 +1149,8 @@ def _registrar_envio_m(
             codigo_ree_empresa=parsed.codigo_ree_empresa,
             tipo=parsed.tipo,
             comercializadora_codigo=parsed.comercializadora_codigo,
-            periodo_anio=parsed.periodo_anio,
-            periodo_mes=parsed.periodo_mes,
+            periodo_anio=periodo_anio,
+            periodo_mes=periodo_mes,
             fecha_generacion=parsed.fecha_generacion,
             version=parsed.version,
             m_clasificacion=m_clasificacion,

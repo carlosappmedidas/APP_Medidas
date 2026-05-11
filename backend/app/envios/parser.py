@@ -217,3 +217,37 @@ def clasificar_m(
     if diff_meses == 7:
         return "M7"
     return None
+
+
+# ── Función inversa: dado M + fecha_gen → calcular periodo ──────────────────
+
+def inferir_periodo_desde_m(
+    m_clasificacion: str,
+    fecha_generacion: date,
+) -> Optional[tuple[int, int]]:
+    """
+    Inferencia inversa a `clasificar_m`: dado el M elegido por el usuario
+    y la fecha de generación del fichero (extraída del nombre), calcula el
+    periodo (anio, mes) al que corresponden los datos.
+
+      M1 → fecha_gen - 1 mes   (datos de Abril, generado en Mayo)
+      M2 → fecha_gen - 2 meses (datos de Marzo, generado en Mayo)
+      M7 → fecha_gen - 7 meses (datos de Octubre del año anterior si gen en Mayo)
+
+    Se usa solo para AGRECL, cuyo nombre de fichero NO incluye el periodo.
+    Para INMECL/MAGCL el periodo ya viene en el nombre y no hace falta inferir.
+
+    Devuelve None si el M no es uno de los 3 esperados.
+    """
+    DESFASE: dict[str, int] = {"M1": 1, "M2": 2, "M7": 7}
+    n = DESFASE.get(m_clasificacion)
+    if n is None:
+        return None
+
+    # Restar N meses a fecha_generacion (cruzando año si hace falta)
+    año = fecha_generacion.year
+    mes = fecha_generacion.month - n
+    while mes <= 0:
+        mes += 12
+        año -= 1
+    return (año, mes)
