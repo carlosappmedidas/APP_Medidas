@@ -29,6 +29,11 @@ interface DashboardPanelProps {
   autoConfig: AutoConfig | null;
   onGoToObjecionesConfig?: () => void;
   onRefresh?: () => void;
+  /** Mes objetado vigente según el calendario REE, formato "Ago 25". */
+  mesObjetadoVigente?: string | null;
+  /** Toggle compartido con GestionPanel e HistorialPanel. */
+  vistaPeriodo: "actual" | "historico";
+  setVistaPeriodo: (v: "actual" | "historico") => void;
 }
 
 // ── Estilos de los chips de tipo (AGRECL / CUPS / INCL / CIL) ─────────────────
@@ -121,17 +126,43 @@ export default function DashboardPanel({
   autoConfig,
   onGoToObjecionesConfig,
   onRefresh,
+  mesObjetadoVigente,
+  vistaPeriodo,
+  setVistaPeriodo,
 }: DashboardPanelProps) {
   // ── Toggle global: "Periodo actual" vs "Histórico" ─────────────────────
-  // Por defecto arranca en "actual". Solo en memoria (no persistente).
-  // Afecta a las tarjetas TOTAL, ESTADO y POR EMPRESA.
-  // NO afecta a AUTOMATIZACIÓN (siempre tiempo real) ni POR PERIODO (siempre histórico).
-  const [vistaPeriodo, setVistaPeriodo] = useState<"actual" | "historico">("actual");
+  // Ahora vive en el padre (ObjecionesSection) porque afecta también a
+  // GestionPanel e HistorialPanel. Aquí solo lo leemos/escribimos vía props.
 
-  // ── Datos del periodo actual (último mes con datos) ────────────────────
-  // Se obtiene del primer item de por_periodo (el backend ya los devuelve
-  // ordenados reciente→antiguo). Si no hay datos, se trata como ceros.
-  const periodoActual = (dash?.por_periodo ?? [])[0] ?? null;
+  // ── Datos del periodo actual ──────────────────────────────────────────
+  // Si tenemos `mesObjetadoVigente` (del calendario REE, formato "Ago 25"),
+  // buscamos ese mes dentro de `por_periodo`. Si no se encuentra (= aún no
+  // hay objeciones de ese mes en BD), construimos un periodo "vacío" con
+  // todos los contadores a 0.
+  // Si no hay `mesObjetadoVigente` (fallback), usamos el primer elemento
+  // de por_periodo como antes (último mes con datos).
+  const periodoActual = (() => {
+    const periodos = dash?.por_periodo ?? [];
+    if (mesObjetadoVigente) {
+      // Convertir "Ago 25" → "Ago 2025" para casar con periodo_label de BD.
+      const m = mesObjetadoVigente.match(/^([A-Za-zÁÉÍÓÚáéíóú]+)\s+(\d{2})$/);
+      const labelLargo = m ? `${m[1]} 20${m[2]}` : mesObjetadoVigente;
+      // Buscar el periodo cuyo periodo_label coincida (case-insensitive).
+      const encontrado = periodos.find(
+        (p) => p.periodo_label.toLowerCase() === labelLargo.toLowerCase(),
+      );
+      if (encontrado) return encontrado;
+      // No hay datos en BD para ese mes → devolver periodo "vacío".
+      return {
+        periodo: "",
+        periodo_label: labelLargo,
+        total: 0, pendientes: 0, aceptadas: 0, rechazadas: 0, enviadas_sftp: 0,
+        ree_ok: 0, ree_bad: 0, ree_sin_resp: 0, ree_na: 0,
+        por_tipo: [],
+      };
+    }
+    return periodos[0] ?? null;
+  })();
   const labelPeriodoActual = periodoActual?.periodo_label ?? "";
 
   // ── Datos derivados según modo activo (TOTAL + ESTADO) ─────────────────

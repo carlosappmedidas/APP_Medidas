@@ -187,11 +187,66 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
     void cargar();
   }, [token]);
 
+  // ── Cargar mes objetado vigente desde calendario-ree/dashboard-hitos ──────
+  // Devuelve el campo `mes_afectado_limite_respuesta_objeciones` en formato
+  // "Ago 25" (mes corto + año 2 dígitos). Lo usamos para filtrar las 3 tarjetas
+  // del DashboardPanel (TOTAL · ESTADO · POR EMPRESA) en lugar de coger el
+  // primer elemento de por_periodo (que es el último mes con datos en BD).
+  const [mesObjetadoVigente, setMesObjetadoVigente] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    const cargar = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/calendario-ree/dashboard-hitos`,
+          { headers: getAuthHeaders(token) },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        setMesObjetadoVigente(data?.mes_afectado_limite_respuesta_objeciones ?? null);
+      } catch { /* silencioso */ }
+    };
+    void cargar();
+  }, [token]);
+
+  // ── Toggle global "Periodo actual / Histórico" ────────────────────────────
+  // Vive aquí (en el padre) en vez de en DashboardPanel, porque ahora afecta
+  // también a GestionPanel e HistorialPanel. Cada panel lo recibe como prop
+  // y filtra sus datos cuando vale "actual".
+  const [vistaPeriodo, setVistaPeriodo] = useState<"actual" | "historico">("actual");
+
+  // Convierte el formato del calendario REE ("Ago 25") al formato YYYYMM
+  // que usan los campos aaaamm de los ficheros/REOBs en BD ("202508").
+  // Devuelve null si no se puede parsear (entonces "Periodo actual" no filtra).
+  const MESES_CORTOS_ES: Record<string, string> = {
+    ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
+    jul: "07", ago: "08", sep: "09", oct: "10", nov: "11", dic: "12",
+  };
+  const mesObjetadoYYYYMM = (() => {
+    if (!mesObjetadoVigente) return null;
+    const m = mesObjetadoVigente.trim().match(/^([A-Za-zÁÉÍÓÚáéíóú]+)\s+(\d{2})$/);
+    if (!m) return null;
+    const mm = MESES_CORTOS_ES[m[1].toLowerCase().slice(0, 3)];
+    if (!mm) return null;
+    return `20${m[2]}${mm}`; // "Ago 25" → "202508"
+  })();
+
   // ── Descripción dashboard ─────────────────────────────────────────────────
 
   const dashDesc = empresaFiltroId
     ? `${empresas.find((e) => e.id === empresaFiltroId)?.nombre ?? "Empresa"} · ${dash?.total ?? 0} objeciones · ${dash?.pendientes ?? 0} pendientes`
     : `Todas las empresas · ${dash?.total ?? 0} objeciones · ${dash?.pendientes ?? 0} pendientes`;
+
+  // ── Título dinámico: "Objeciones · Mayo 2026" ─────────────────────────────
+  // Usa el mes calendario actual (no el último mes con datos). Cambia
+  // automáticamente cuando entra un mes nuevo. El cálculo se re-ejecuta en
+  // cada render, así que no necesita refresco manual ni state.
+  const MESES_ES_LARGO = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
+  const _hoy = new Date();
+  const tituloDashboard = `Objeciones · ${MESES_ES_LARGO[_hoy.getMonth()]} ${_hoy.getFullYear()}`;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -203,7 +258,15 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
       <div style={panelStyle}>
         <div style={panelHeaderStyle} onClick={() => setDashOpen((v) => !v)}>
           <div>
-            <div style={panelTitleStyle}>Resumen de objeciones</div>
+            <div style={{
+              fontSize: 18,
+              fontWeight: 600,
+              letterSpacing: "0.01em",
+              color: "var(--text)",
+              lineHeight: 1.2,
+            }}>
+              {tituloDashboard}
+            </div>
             <div style={panelDescStyle}>{dashDesc}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={(e) => e.stopPropagation()}>
@@ -226,6 +289,9 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
             autoConfig={autoConfig}
             onGoToObjecionesConfig={onGoToObjecionesConfig}
             onRefresh={refrescarTodo}
+            mesObjetadoVigente={mesObjetadoVigente}
+            vistaPeriodo={vistaPeriodo}
+            setVistaPeriodo={setVistaPeriodo}
           />
         )}
       </div>
@@ -250,6 +316,9 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
         dash={dash}
         onDashRefresh={cargarDash}
         onError={setError}
+        vistaPeriodo={vistaPeriodo}
+        mesObjetadoYYYYMM={mesObjetadoYYYYMM}
+        mesObjetadoLabel={mesObjetadoVigente}
       />
 
       {/* ── PANEL 3: Historial REOB ───────────────────────────────────── */}
@@ -258,6 +327,9 @@ export default function ObjecionesSection({ token, currentUser, onGoToObjeciones
         empresaFiltroId={empresaFiltroId}
         setEmpresaFiltroId={setEmpresaFiltroId}
         empresas={empresas}
+        vistaPeriodo={vistaPeriodo}
+        mesObjetadoYYYYMM={mesObjetadoYYYYMM}
+        mesObjetadoLabel={mesObjetadoVigente}
       />
     </div>
   );

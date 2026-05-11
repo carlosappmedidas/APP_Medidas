@@ -43,11 +43,18 @@ interface GestionPanelProps {
   dash: DashData | null;
   onDashRefresh: () => void;
   onError: (msg: string | null) => void;
+  /** Toggle compartido con DashboardPanel/HistorialPanel. */
+  vistaPeriodo: "actual" | "historico";
+  /** Mes vigente del calendario REE en YYYYMM (ej. "202508"). null si no se pudo parsear. */
+  mesObjetadoYYYYMM: string | null;
+  /** Label legible del mes vigente (ej. "Ago 25"). Para mensajes vacíos. */
+  mesObjetadoLabel: string | null;
 }
 
 export default function GestionPanel({
   token, empresas, empresaFiltroId, setEmpresaFiltroId,
   dash, onDashRefresh, onError,
+  vistaPeriodo, mesObjetadoYYYYMM, mesObjetadoLabel,
 }: GestionPanelProps) {
   const [gestOpen, setGestOpen]           = useState(false);
   const [activeTab, setActiveTab]         = useState<ObjecionTipo>("AOBAGRECL");
@@ -400,7 +407,11 @@ export default function GestionPanel({
                 <GestionFicherosLista
                   tab={tab}
                   activeTab={activeTab}
-                  ficheros={ficheros}
+                  ficheros={
+                    vistaPeriodo === "actual" && mesObjetadoYYYYMM
+                      ? ficheros.filter((f) => f.aaaamm === mesObjetadoYYYYMM)
+                      : ficheros
+                  }
                   loadingFicheros={loadingFicheros}
                   empresaIdGestion={empresaIdGestion}
                   importing={importing}

@@ -25,6 +25,12 @@ interface HistorialPanelProps {
   empresaFiltroId: number | null;
   setEmpresaFiltroId: (id: number | null) => void;
   empresas: EmpresaOption[];
+  /** Toggle compartido con DashboardPanel/GestionPanel. */
+  vistaPeriodo: "actual" | "historico";
+  /** Mes vigente del calendario REE en YYYYMM (ej. "202508"). null si no se pudo parsear. */
+  mesObjetadoYYYYMM: string | null;
+  /** Label legible del mes vigente (ej. "Ago 25"). Para mensajes vacíos. */
+  mesObjetadoLabel: string | null;
 }
 
 // ─── Estilos panel (mismo estilo que los demás paneles de Objeciones) ────────
@@ -68,6 +74,7 @@ function tipoDeReob(r: ReobGenerado): ObjecionTipo | null {
 
 export default function HistorialPanel({
   token, empresaFiltroId, setEmpresaFiltroId, empresas,
+  vistaPeriodo, mesObjetadoYYYYMM, mesObjetadoLabel,
 }: HistorialPanelProps) {
   const [historialOpen, setHistorialOpen] = useState(false);
   const [activeTab, setActiveTab]         = useState<ObjecionTipo>("AOBAGRECL");
@@ -394,12 +401,15 @@ export default function HistorialPanel({
     return acc;
   }, [historial]);
 
-  // ── Filtrar por pestaña activa ───────────────────────────────────────────
+// ── Filtrar por pestaña activa + (opcional) por periodo vigente ──────────
 
-  const historialFiltrado = useMemo(
-    () => historial.filter((r) => tipoDeReob(r) === activeTab),
-    [historial, activeTab],
-  );
+  const historialFiltrado = useMemo(() => {
+    let out = historial.filter((r) => tipoDeReob(r) === activeTab);
+    if (vistaPeriodo === "actual" && mesObjetadoYYYYMM) {
+      out = out.filter((r) => r.aaaamm === mesObjetadoYYYYMM);
+    }
+    return out;
+  }, [historial, activeTab, vistaPeriodo, mesObjetadoYYYYMM]);
 
   // ── Barra de pestañas (mismo estilo que GestionPanel) ────────────────────
 
@@ -439,7 +449,9 @@ export default function HistorialPanel({
     : loadingHistorial
       ? "Cargando..."
       : historialFiltrado.length === 0
-        ? `Sin registros para ${activeTab} — los ficheros aparecen aquí cuando se envían por SFTP`
+        ? (vistaPeriodo === "actual" && mesObjetadoLabel)
+          ? `Sin REOBs ${activeTab} en ${mesObjetadoLabel} — cambia a "Histórico" para ver todos`
+          : `Sin registros para ${activeTab} — los ficheros aparecen aquí cuando se envían por SFTP`
         : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
