@@ -7,6 +7,7 @@ import TablePaginationFooter from "../ui/TablePaginationFooter";
 import DashboardEnviosSection from "./DashboardEnviosSection";
 import CampanaAlertasEnvios from "../medidas/CampanaAlertasEnvios";
 import UiCard from "../ui/UiCard";
+import InventarioPanel, { type CountInventario } from "./InventarioPanel";
 
 interface Props { token: string | null; }
 
@@ -140,6 +141,13 @@ export default function EnviosSection({ token }: Props) {
   // - "inventario" → vista nueva, por ahora placeholder
   type PestañaHistorico = "envios" | "inventario";
   const [pestañaHistorico, setPestañaHistorico] = useState<PestañaHistorico>("envios");
+
+  // Contador y nonce de refresh para la pestaña Inventario.
+  // - countInventario: lo recibe el panel hijo y lo muestra arriba en chips/badge
+  // - recargarInventarioNonce: incrementar = forzar al panel a recargar
+  const [countInventario, setCountInventario] = useState<CountInventario | null>(null);
+  const [recargarInventarioNonce, setRecargarInventarioNonce] = useState(0);
+  const [revisandoRespuestasInv, setRevisandoRespuestasInv] = useState(false);
 
   const [configs, setConfigs] = useState<FtpConfig[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
@@ -290,6 +298,40 @@ export default function EnviosSection({ token }: Props) {
       setErrorEnvios(e instanceof Error ? e.message : "Error revisando respuestas");
     } finally {
       setRevisandoRespuestas(false);
+    }
+  };
+
+  // ── Revisar respuestas REE de INVENTARIO ───────────────────────────────────
+  // Espejo del handler de arriba pero contra el endpoint de inventario. El
+  // resultado se muestra en alert y luego forzamos refresh del panel hijo
+  // incrementando el nonce.
+  const handleRevisarRespuestasInventario = async () => {
+    if (!token) return;
+    setRevisandoRespuestasInv(true); setErrorEnvios(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/envios-inventario/buscar-respuestas`, {
+        method: "POST",
+        headers: getAuthHeaders(token),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || `Error ${res.status}`);
+      }
+      const data = await res.json();
+      const partes: string[] = [];
+      if (data.ok_marcados > 0)  partes.push(`${data.ok_marcados} marcados como OK`);
+      if (data.bad_marcados > 0) partes.push(`${data.bad_marcados} marcados como BAD`);
+      if (data.bad_borrados > 0) partes.push(`${data.bad_borrados} BAD obsoletos borrados`);
+      const resumen = partes.length > 0 ? partes.join(", ") : "Sin cambios";
+      const errs = (data.errores || []) as string[];
+      const msgErr = errs.length > 0 ? `\n\nAvisos:\n${errs.join("\n")}` : "";
+      alert(`Revisión de inventario completa.\n\n${resumen}.${msgErr}`);
+      // Forzar refresh del panel
+      setRecargarInventarioNonce(n => n + 1);
+    } catch (e: unknown) {
+      setErrorEnvios(e instanceof Error ? e.message : "Error revisando respuestas inventario");
+    } finally {
+      setRevisandoRespuestasInv(false);
     }
   };
 
@@ -577,6 +619,14 @@ export default function EnviosSection({ token }: Props) {
                 {countEnvios.bad > 0 && <span className="ui-badge ui-badge--err">{countEnvios.bad} BAD</span>}
               </div>
             )}
+            {countInventario && panelHistOpen && pestañaHistorico === "inventario" && (
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                <span className="ui-badge ui-badge--neutral">{countInventario.total} total</span>
+                {countInventario.pendiente > 0 && <span className="ui-badge ui-badge--neutral">{countInventario.pendiente} pendiente</span>}
+                {countInventario.ok > 0 && <span className="ui-badge ui-badge--ok">{countInventario.ok} OK</span>}
+                {countInventario.bad > 0 && <span className="ui-badge ui-badge--err">{countInventario.bad} BAD</span>}
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {panelHistOpen && pestañaHistorico === "envios" && (
@@ -584,8 +634,17 @@ export default function EnviosSection({ token }: Props) {
                 style={{ display: "flex", alignItems: "center", gap: 4 }}
                 onClick={e => { e.stopPropagation(); handleRevisarRespuestas(); }}
                 disabled={revisandoRespuestas}
-                title="Escanear el SFTP en busca de respuestas .ok/.bad de REE">
+                title="Escanear el SFTP en busca de respuestas .ok/.bad de REE para envíos M">
                 <IconRefresh /> {revisandoRespuestas ? "Revisando..." : "Revisar respuestas REE"}
+              </button>
+            )}
+            {panelHistOpen && pestañaHistorico === "inventario" && (
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
+                style={{ display: "flex", alignItems: "center", gap: 4 }}
+                onClick={e => { e.stopPropagation(); handleRevisarRespuestasInventario(); }}
+                disabled={revisandoRespuestasInv}
+                title="Escanear el SFTP en busca de respuestas .ok/.bad de REE para ficheros de inventario">
+                <IconRefresh /> {revisandoRespuestasInv ? "Revisando..." : "Revisar respuestas REE"}
               </button>
             )}
             <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
@@ -666,6 +725,19 @@ export default function EnviosSection({ token }: Props) {
                   <line x1="12" y1="22.08" x2="12" y2="12"></line>
                 </svg>
                 Inventario
+                {countInventario && (
+                  <span style={{
+                    background: "rgba(55,138,221,0.18)",
+                    color: "#85B7EB",
+                    fontSize: 9,
+                    padding: "1px 6px",
+                    borderRadius: 8,
+                    fontWeight: 500,
+                    marginLeft: 2,
+                  }}>
+                    {countInventario.total}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -862,22 +934,14 @@ export default function EnviosSection({ token }: Props) {
               </>
             )}
 
-            {/* ── Pestaña INVENTARIO (placeholder) ────────────────────── */}
+            {/* ── Pestaña INVENTARIO ──────────────────────────────────── */}
             {pestañaHistorico === "inventario" && (
-              <div style={{
-                padding: "60px 20px",
-                textAlign: "center",
-                color: "var(--text-muted)",
-                background: "var(--field-bg-soft)",
-              }}>
-                <div style={{ fontSize: 28, marginBottom: 12, opacity: 0.5 }}>📦</div>
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
-                  Inventario · próximamente
-                </div>
-                <div style={{ fontSize: 11, lineHeight: 1.5, maxWidth: 380, margin: "0 auto" }}>
-                  Esta sección está en desarrollo. La definiremos en una próxima iteración.
-                </div>
-              </div>
+              <InventarioPanel
+                token={token}
+                empresas={empresas}
+                onCountChange={setCountInventario}
+                recargarNonce={recargarInventarioNonce}
+              />
             )}
           </div>
         )}
