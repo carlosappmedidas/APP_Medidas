@@ -122,6 +122,8 @@ type MensualBandaSalud = {
 type MensualResponse = {
   carga_anio: number;
   carga_mes: number;
+  mes_visible_anio: number;   // mes calendario actual del sistema (date.today() en backend)
+  mes_visible_mes: number;
   banda_salud: MensualBandaSalud;
   general: MensualGeneralBlock;
   ps: MensualPSBlock;
@@ -424,12 +426,12 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
       {/* ═══════ Cabecera con toggle y menú ⋮ ═══════ */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
         <div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
-            Resumen tablas
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>
+          <div style={{ fontSize: 16, fontWeight: 500 }}>
             {vista === "mensual" && mensual
-              ? `Carga ${mesCorto(mensual.carga_mes)} ${mensual.carga_anio}`
+              ? (() => {
+                  const hoy = new Date();
+                  return `Carga ${MESES_CORTOS[hoy.getMonth() + 1]} ${hoy.getFullYear()}`;
+                })()
               : vista === "historico" && historico
                 ? `Histórico · últimos ${historico.anios_visibles.length} años`
                 : "Cargando…"}

@@ -169,6 +169,13 @@ class MensualBandaSalud(BaseModel):
 class MensualResponse(BaseModel):
     carga_anio: int
     carga_mes: int
+    mes_visible_anio: int
+    """Mes calendario actual del sistema (date.today().year).
+    Solo se usa para el título del header del dashboard. La lógica interna
+    de cálculo de ventanas, banda de salud y toggle Actual/Anterior sigue
+    usando carga_anio/carga_mes."""
+    mes_visible_mes: int
+    """Mes calendario actual del sistema (date.today().month)."""
     banda_salud: MensualBandaSalud
     general: MensualGeneralBlock
     ps: MensualPSBlock

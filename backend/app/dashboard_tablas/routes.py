@@ -876,9 +876,17 @@ def get_dashboard_tablas_mensual(
         pendientes_grupos=pendientes_grupos,
     )
 
+    # Mes calendario actual del sistema — usado por el frontend para el título
+    # del header. No afecta a ningún cálculo: carga_anio/carga_mes siguen
+    # significando lo mismo y son los que usa toda la lógica interna y el
+    # toggle Actual/Anterior del bloque General.
+    hoy = date.today()
+
     return MensualResponse(
         carga_anio=carga_anio,
         carga_mes=carga_mes,
+        mes_visible_anio=hoy.year,
+        mes_visible_mes=hoy.month,
         banda_salud=banda_salud,
         general=general_block,
         ps=ps_block,
