@@ -386,6 +386,15 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Refrescar bajo demanda ──
+  // El usuario puede pulsar el botón "Actualizar datos" para volver a pedir
+  // los endpoints SIN perder el estado visual (toggle Actual/Anterior,
+  // empresas expandidas, scroll, etc). Se hace incrementando este nonce que
+  // está en las dependencias del useEffect del fetch + en la key de la
+  // campanita (que se remonta y vuelve a cargar sus alertas).
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const handleRefrescar = () => setRefreshNonce(n => n + 1);
+
   // Cargar datos al montar y al cambiar de vista.
   // En vista "mensual" además precargamos en paralelo el histórico para
   // que el despliegue por empresa del bloque PS sea instantáneo cuando
@@ -434,7 +443,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
     };
     load();
     return () => { cancelled = true; };
-  }, [token, vista]);
+  }, [token, vista, refreshNonce]);
 
   const tienePendientes = !!mensual?.banda_salud.pendientes_resumen;
 
@@ -479,7 +488,40 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
             </button>
           </div>
 
-          <CampanaAlertasPublicaciones token={token} onIrADescarga={handleAlertaClick} />
+          <CampanaAlertasPublicaciones
+            key={`campana-${refreshNonce}`}
+            token={token}
+            onIrADescarga={handleAlertaClick}
+          />
+
+          {/* Botón refrescar — mismo estilo que el de Gestión objeciones */}
+          <button
+            type="button"
+            onClick={handleRefrescar}
+            disabled={loading}
+            aria-label="Actualizar datos"
+            title="Actualizar datos"
+            style={{
+              width: 28,
+              height: 28,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0, 0, 0, 0.35)",
+              border: "0.5px solid var(--card-border)",
+              borderRadius: 6,
+              color: "var(--text-muted)",
+              cursor: loading ? "wait" : "pointer",
+              opacity: loading ? 0.5 : 1,
+              transition: "color 0.15s, border-color 0.15s",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </button>
 
           <button type="button" onClick={() => setMenuOpen(v => !v)}
             className="ui-btn ui-btn-ghost ui-btn-xs"
