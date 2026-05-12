@@ -631,7 +631,7 @@ export default function EnviosSection({ token }: Props) {
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {panelHistOpen && pestañaHistorico === "envios" && (
               <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                style={{ display: "flex", alignItems: "center", gap: 4 }}
+                style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}
                 onClick={e => { e.stopPropagation(); handleRevisarRespuestas(); }}
                 disabled={revisandoRespuestas}
                 title="Escanear el SFTP en busca de respuestas .ok/.bad de REE para envíos M">
@@ -640,7 +640,7 @@ export default function EnviosSection({ token }: Props) {
             )}
             {panelHistOpen && pestañaHistorico === "inventario" && (
               <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
-                style={{ display: "flex", alignItems: "center", gap: 4 }}
+                style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}
                 onClick={e => { e.stopPropagation(); handleRevisarRespuestasInventario(); }}
                 disabled={revisandoRespuestasInv}
                 title="Escanear el SFTP en busca de respuestas .ok/.bad de REE para ficheros de inventario">
