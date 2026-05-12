@@ -2,13 +2,16 @@
 # pyright: reportMissingImports=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportAttributeAccessIssue=false
 
 """
-Servicio de búsqueda y ejecución de descargas SFTP de publicaciones REE (BALD).
+Servicio de búsqueda y ejecución de descargas SFTP de publicaciones REE.
+
+Tipos soportados (los mismos que reconoce el parser):
+    BALD, ACUMCIL, ACUM_H2_GRD, ACUM_H2_RDD_P1, ACUM_H2_RDD_P2.
 
 API pública:
     buscar_ftp(...)          → lista filas con estado nuevo/importado/actualizable/obsoleta
     descargar_e_importar(...)→ descarga + importa items seleccionados
 
-NO duplica lógica de parsing M1/BALD: cada item se entrega a
+NO duplica lógica de parsing: cada item se entrega a
 `process_ingestion_file()` de app/ingestion/services.py, exactamente igual
 que la subida manual desde "Carga de datos".
 """
@@ -37,7 +40,16 @@ from app.measures.descarga.parser import (
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-_TIPOS_PUBLICACION = ("BALD",)
+# Tipos que el parser reconoce y que el ingestor sabe procesar. Mantener
+# alineado con el dispatcher de app/ingestion/services.py y con los regex
+# de app/measures/descarga/parser.py.
+_TIPOS_PUBLICACION = (
+    "BALD",
+    "ACUMCIL",
+    "ACUM_H2_GRD",
+    "ACUM_H2_RDD_P1",
+    "ACUM_H2_RDD_P2",
+)
 
 # Misma raíz que usa la subida manual (app/ingestion/router.py · UPLOAD_BASE_PATH).
 # Si en el futuro se mueve a settings, sincronizar ambos lados.
@@ -353,7 +365,11 @@ def _versiones_en_bd(
 
     Cruza por nombre exacto: el filename guardado por la subida manual y el
     nombre_sin_bz2 producido por la descarga SFTP son idénticos
-    (ej. 'BALD_0148_202509_20260423.0').
+    (ej. 'BALD_0148_202509_20260423.0', 'ACUM_H2_RDD_0276_P1_202603.0').
+
+    Mira TODOS los tipos soportados — el cruce real es por nombre exacto en BD
+    vs nombre del SFTP, así que aceptar más tipos en la consulta no introduce
+    falsos positivos: los nombres son disjuntos por construcción.
     """
     if not empresa_ids:
         return {}
@@ -364,7 +380,7 @@ def _versiones_en_bd(
     ).filter(
         IngestionFile.tenant_id == tenant_id,
         IngestionFile.empresa_id.in_(empresa_ids),
-        IngestionFile.tipo == "BALD",
+        IngestionFile.tipo.in_(_TIPOS_PUBLICACION),
         IngestionFile.filename.isnot(None),
         IngestionFile.status == IngestionFile.STATUS_OK,
     ).distinct().all()
@@ -629,16 +645,24 @@ def _logs_desde_ingestion(ingestion: Optional[IngestionFile]) -> List[str]:
     return out
 
 
-def _path_destino_local(*, tenant_id: int, empresa_id: int, anio: int, mes: int, nombre_sin_bz2: str) -> Path:
+def _path_destino_local(
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    tipo: str,
+    anio: int,
+    mes: int,
+    nombre_sin_bz2: str,
+) -> Path:
     """
     Misma estructura que la carga manual:
-      data/ingestion/tenant_X/empresa_Y/BALD/YYYYMM/<filename>
+      data/ingestion/tenant_X/empresa_Y/<TIPO>/YYYYMM/<filename>
     """
     return (
         _UPLOAD_BASE_PATH
         / f"tenant_{tenant_id}"
         / f"empresa_{empresa_id}"
-        / "BALD"
+        / tipo
         / f"{anio}{mes:02d}"
         / nombre_sin_bz2
     )
@@ -694,14 +718,20 @@ def _procesar_item(
     anio, mes = _periodo_yyyymm_a_anio_mes(parsed.aaaamm)
 
     # 1) Validar estado en BD (versión existente para esta clave_base).
+    #
+    # Para BALD pasamos también el filename: la función filtra exacto porque
+    # hay varios BALD distintos por (empresa, periodo) — se identifican por
+    # nombre completo (incluye fecha de publicación). Para los demás tipos
+    # (ACUMCIL/ACUM_H2_*) solo hay un fichero por (empresa, periodo), así
+    # que basta con tenant+empresa+tipo+anio+mes.
     existing = find_existing_ingestion_file(
         db,
         tenant_id=tenant_id,
         empresa_id=empresa_id,
-        tipo="BALD",
+        tipo=parsed.tipo,
         anio=anio,
         mes=mes,
-        filename=parsed.nombre_sin_bz2,
+        filename=parsed.nombre_sin_bz2 if parsed.tipo == "BALD" else None,
     )
 
     version_bd: Optional[int] = None
@@ -790,6 +820,7 @@ def _procesar_item(
     dest_path = _path_destino_local(
         tenant_id=tenant_id,
         empresa_id=empresa_id,
+        tipo=parsed.tipo,
         anio=anio,
         mes=mes,
         nombre_sin_bz2=parsed.nombre_sin_bz2,
@@ -815,7 +846,7 @@ def _procesar_item(
         old_storage_key = cast(str, getattr(existing, "storage_key", None) or "")
         ex.filename      = parsed.nombre_sin_bz2
         ex.storage_key   = storage_key
-        ex.tipo          = "BALD"
+        ex.tipo          = parsed.tipo
         ex.anio          = anio
         ex.mes           = mes
         ex.status        = IngestionFile.STATUS_PENDING
@@ -830,12 +861,12 @@ def _procesar_item(
         if old_storage_key and old_storage_key != storage_key:
             safe_unlink(old_storage_key)
         ingestion = existing
-        logs.append(_log_line(f"✅ Subido \"{parsed.nombre_sin_bz2}\" (id={ingestion.id}, periodo={anio}{str(mes).zfill(2)}, tipo=BALD) — reemplaza versión .{version_bd}."))
+        logs.append(_log_line(f"✅ Subido \"{parsed.nombre_sin_bz2}\" (id={ingestion.id}, periodo={anio}{str(mes).zfill(2)}, tipo={parsed.tipo}) — reemplaza versión .{version_bd}."))
     else:
         ingestion_data: Dict[str, Any] = {
             "tenant_id":     tenant_id,
             "empresa_id":    empresa_id,
-            "tipo":          "BALD",
+            "tipo":          parsed.tipo,
             "anio":          anio,
             "mes":           mes,
             "filename":      parsed.nombre_sin_bz2,
@@ -848,10 +879,10 @@ def _procesar_item(
         db.add(ingestion)
         db.commit()
         db.refresh(ingestion)
-        logs.append(_log_line(f"✅ Subido \"{parsed.nombre_sin_bz2}\" (id={ingestion.id}, periodo={anio}{str(mes).zfill(2)}, tipo=BALD)."))
+        logs.append(_log_line(f"✅ Subido \"{parsed.nombre_sin_bz2}\" (id={ingestion.id}, periodo={anio}{str(mes).zfill(2)}, tipo={parsed.tipo})."))
 
     # 7) Procesar (mismo dispatcher que la subida manual).
-    logs.append(_log_line(f"⚙ Procesando id={ingestion.id} ({parsed.nombre_sin_bz2}, tipo=BALD)..."))
+    logs.append(_log_line(f"⚙ Procesando id={ingestion.id} ({parsed.nombre_sin_bz2}, tipo={parsed.tipo})..."))
     try:
         process_ingestion_file(db=db, ingestion=ingestion, tenant_id=tenant_id)
     except Exception as e:

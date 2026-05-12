@@ -12,7 +12,7 @@ export interface BusquedaResult {
   ruta_sftp:          string;
   nombre:             string;
   clave_base:         string;
-  tipo:               string;     // "BALD" por ahora
+  tipo:               string;     // BALD | ACUMCIL | ACUM_H2_GRD | ACUM_H2_RDD_P1 | ACUM_H2_RDD_P2
   periodo:            string;     // YYYYMM
   version:            number;
   tamanio:            number;

@@ -208,7 +208,7 @@ export default function DescargaPanel({ token, filtrosDescarga }: DescargaPanelP
         <div>
           <div style={panelTitleStyle}>Descarga de publicaciones REE</div>
           <div style={panelDescStyle}>
-            Explora el SFTP y descarga ficheros BALD publicados por REE para importarlos a BD.
+            Explora el SFTP y descarga ficheros publicados por REE (BALD, ACUMCIL, ACUM_H2_RDD/GRD) para importarlos a BD.
           </div>
         </div>
         <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"

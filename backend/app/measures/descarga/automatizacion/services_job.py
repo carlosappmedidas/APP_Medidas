@@ -6,10 +6,13 @@ Job BUSCAR_PUBLICACIONES_REE del submódulo Automatización de Publicaciones.
 
 Función pública:
   - ejecutar_chequeo_publicaciones_tenant:
-      Mira si en HOY o los 2 días siguientes hay un hito de publicación REE
-      (M2 / M7 / M11 / ART15) según el calendario del tenant. Para cada hito
-      detectado, llama a `buscar_ftp` y crea alertas para los BALDs en estado
-      "nuevo" o "actualizable".
+      Mira si en la ventana del hito (hoy ± N días, configurable por hito)
+      hay algún hito de publicación REE (M1 / M2 / M7 / M11 / ART15) según
+      el calendario del tenant. Para cada hito detectado, llama a `buscar_ftp`
+      y crea alertas con los ficheros pendientes (nuevo / actualizable) del
+      tipo asociado a ese hito:
+        - M1                       → ACUMCIL, ACUM_H2_GRD, ACUM_H2_RDD_P1/P2
+        - M2 / M7 / M11 / ART15    → BALD
 
 Importante:
   - El job NUNCA descarga ni importa ficheros. Solo crea alertas.
@@ -19,7 +22,6 @@ Comportamiento del flag `forzar`:
   - Cron → forzar=False (respeta config.activa).
   - "Revisar ahora" desde UI → forzar=True (salta el check).
 """
-
 from __future__ import annotations
 
 import logging
@@ -43,41 +45,76 @@ logger = logging.getLogger(__name__)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Constantes — los 4 hitos REE que generan publicaciones BALD
+# Constantes — los 5 hitos REE (M1 + M2/M7/M11/ART15)
 # ═════════════════════════════════════════════════════════════════════════════
 
 # Mapeo de eventos REE a tipo de alerta. El `evento_contains` debe coincidir
 # exactamente con los nombres reales del calendario REE — son los mismos que
 # usa /calendario-ree/dashboard-hitos y se han verificado en producción.
-_HITOS_PUBLICACION: List[Dict[str, str]] = [
+#
+# Campos por hito:
+#   tipo_alerta     → string único para identificar el tipo de alerta en BD.
+#   label           → texto mostrado en logs.
+#   categoria       → filtro adicional sobre ReeCalendarEvent.categoria (None = no filtra).
+#   evento_contains → substring que debe contener ReeCalendarEvent.evento.
+#   tipos_fichero   → tipos del SFTP que pertenecen a este hito (filtra los
+#                     resultados de buscar_ftp). Vacío = no filtra por tipo.
+#   dias_antes      → cuántos días ANTES del hito empieza la ventana de detección.
+#   dias_despues    → cuántos días DESPUÉS del hito sigue activa la ventana.
+#
+# Notas sobre las ventanas:
+#   - M2/M7/M11/ART15 (BALD): mantienen el comportamiento original
+#     (hoy → hoy+2 = solo futuro). REE publica BALD con margen suficiente.
+#   - M1 (ACUM*): ventana centrada en el hito (hoy-2 → hoy+2) porque los
+#     ACUM se publican el mismo día del hito y conviene seguir detectándolos
+#     uno o dos días después si el job se ejecuta a primera hora de la mañana.
+_HITOS_PUBLICACION: List[Dict] = [
+    {
+        "tipo_alerta":     "publicacion_m1",
+        "label":           "M1",
+        "categoria":       "M+1",
+        "evento_contains": "cierre m+1",
+        "tipos_fichero":   ["ACUMCIL", "ACUM_H2_GRD", "ACUM_H2_RDD_P1", "ACUM_H2_RDD_P2"],
+        "dias_antes":      2,
+        "dias_despues":    2,
+    },
     {
         "tipo_alerta":     "publicacion_m2",
         "label":           "M2",
         "categoria":       "M+2",
         "evento_contains": "cierre m+2",
+        "tipos_fichero":   ["BALD"],
+        "dias_antes":      0,
+        "dias_despues":    2,
     },
     {
         "tipo_alerta":     "publicacion_m7",
         "label":           "M7",
-        "categoria":       None,  # type: ignore[dict-item]
+        "categoria":       None,
         "evento_contains": "cierre provisional",
+        "tipos_fichero":   ["BALD"],
+        "dias_antes":      0,
+        "dias_despues":    2,
     },
     {
         "tipo_alerta":     "publicacion_m11",
         "label":           "M11",
-        "categoria":       None,  # type: ignore[dict-item]
+        "categoria":       None,
         "evento_contains": "cierre definitivo",
+        "tipos_fichero":   ["BALD"],
+        "dias_antes":      0,
+        "dias_despues":    2,
     },
     {
         "tipo_alerta":     "publicacion_art15",
         "label":           "ART15",
         "categoria":       "Art. 15",
         "evento_contains": "publicación del operador del sistema",
+        "tipos_fichero":   ["BALD"],
+        "dias_antes":      0,
+        "dias_despues":    2,
     },
 ]
-
-# Ventana de detección: hoy + N días siguientes. Cubre retrasos de REE.
-_DIAS_VENTANA = 3  # hoy, hoy+1, hoy+2
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -115,38 +152,52 @@ def _hitos_publicacion_en_ventana(
     db: Session,
     *,
     tenant_id: int,
-    dias_ventana: int = _DIAS_VENTANA,
-) -> List[Tuple[ReeCalendarEvent, Dict[str, str]]]:
+) -> List[Tuple[ReeCalendarEvent, Dict]]:
     """
     Busca eventos del calendario REE que sean hitos de publicación
-    (M2/M7/M11/ART15) y caigan en la ventana [hoy, hoy+dias_ventana-1].
+    (M1 / M2 / M7 / M11 / ART15) y caigan dentro de la ventana definida por
+    el propio hito (`dias_antes` / `dias_despues`).
+
+    Cada hito define su propia ventana porque:
+      - BALD (M2/M7/M11/ART15): solo futuro (hoy → hoy+2) — REE publica con margen.
+      - M1   (ACUM*):           pasado y futuro (hoy-2 → hoy+2) — REE puede
+                                publicar el mismo día del hito y conviene seguir
+                                detectándolo 1-2 días después.
+
+    Para limitar la consulta SQL hacemos un primer filtro amplio con la
+    ventana MÁXIMA de cualquier hito, y luego validamos hito a hito.
 
     Devuelve lista de (evento, hito_meta) para no perder la asociación
     de qué tipo de alerta corresponde.
     """
     hoy = date.today()
-    fecha_desde = hoy
-    fecha_hasta = hoy + timedelta(days=dias_ventana - 1)
+
+    # Ventana SQL amplia: el máximo `dias_antes` y `dias_despues` de cualquier hito.
+    max_dias_antes   = max(int(h.get("dias_antes",   0)) for h in _HITOS_PUBLICACION) if _HITOS_PUBLICACION else 0
+    max_dias_despues = max(int(h.get("dias_despues", 0)) for h in _HITOS_PUBLICACION) if _HITOS_PUBLICACION else 0
+    fecha_desde_sql  = hoy - timedelta(days=max_dias_antes)
+    fecha_hasta_sql  = hoy + timedelta(days=max_dias_despues)
 
     eventos = (
         db.query(ReeCalendarEvent)
         .filter(
             ReeCalendarEvent.tenant_id == tenant_id,
-            ReeCalendarEvent.fecha     >= fecha_desde,
-            ReeCalendarEvent.fecha     <= fecha_hasta,
+            ReeCalendarEvent.fecha     >= fecha_desde_sql,
+            ReeCalendarEvent.fecha     <= fecha_hasta_sql,
         )
         .order_by(ReeCalendarEvent.fecha.asc(), ReeCalendarEvent.id.asc())
         .all()
     )
 
-    matches: List[Tuple[ReeCalendarEvent, Dict[str, str]]] = []
+    matches: List[Tuple[ReeCalendarEvent, Dict]] = []
     for ev in eventos:
         ev_evento_lower    = (cast(str, getattr(ev, "evento", "")) or "").lower()
         ev_categoria_lower = (cast(str, getattr(ev, "categoria", "")) or "").lower()
+        ev_fecha           = cast(date, getattr(ev, "fecha", None))
 
         for hito in _HITOS_PUBLICACION:
             evento_contains  = hito["evento_contains"].lower()
-            categoria_filtro = hito["categoria"]
+            categoria_filtro = hito.get("categoria")
 
             if evento_contains not in ev_evento_lower:
                 continue
@@ -154,6 +205,18 @@ def _hitos_publicacion_en_ventana(
             if categoria_filtro is not None:
                 if str(categoria_filtro).lower() not in ev_categoria_lower:
                     continue
+
+            # Ventana específica de este hito: hito ya tiene una fecha concreta
+            # en el calendario (ev_fecha). El hito está "en ventana" si
+            # hoy está dentro de [ev_fecha - dias_antes, ev_fecha + dias_despues].
+            if ev_fecha is None:
+                continue
+            dias_antes   = int(hito.get("dias_antes",   0))
+            dias_despues = int(hito.get("dias_despues", 0))
+            ventana_desde = ev_fecha - timedelta(days=dias_antes)
+            ventana_hasta = ev_fecha + timedelta(days=dias_despues)
+            if not (ventana_desde <= hoy <= ventana_hasta):
+                continue
 
             matches.append((ev, hito))
             break  # un evento corresponde a 1 solo tipo de hito
@@ -213,7 +276,7 @@ def ejecutar_chequeo_publicaciones_tenant(
     hitos = _hitos_publicacion_en_ventana(db, tenant_id=tenant_id)
 
     if not hitos:
-        msg = f"No hay hitos de publicación REE en los próximos {_DIAS_VENTANA} días."
+        msg = "No hay hitos de publicación REE en la ventana de detección."
         marcar_ultimo_run(
             db, tenant_id=tenant_id, tipo=TIPO_BUSCAR_PUBLICACIONES_REE,
             ok=True, mensaje=msg,
@@ -281,13 +344,17 @@ def ejecutar_chequeo_publicaciones_tenant(
             continue
 
         anio_periodo, mes_periodo, periodo_yyyymm = parsed
-        tipo_alerta = hito_meta["tipo_alerta"]
-        label_hito  = hito_meta["label"]
+        tipo_alerta   = hito_meta["tipo_alerta"]
+        label_hito    = hito_meta["label"]
+        tipos_fichero = hito_meta.get("tipos_fichero") or []
 
-        # Filtrar pendientes que coincidan con este periodo del hito.
+        # Filtrar pendientes que coincidan con este periodo del hito Y con
+        # los tipos de fichero asociados (BALD para M2/M7/M11/ART15; ACUM*
+        # para M1). Si `tipos_fichero` está vacío, no filtra por tipo.
         pendientes_hito = [
             r for r in pendientes
             if str(r.get("periodo") or "") == periodo_yyyymm
+            and (not tipos_fichero or str(r.get("tipo") or "") in tipos_fichero)
         ]
 
         hitos_procesados += 1

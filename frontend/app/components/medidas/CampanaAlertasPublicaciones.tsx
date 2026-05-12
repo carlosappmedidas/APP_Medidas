@@ -39,7 +39,8 @@ interface Props {
 
 // ── Metadatos por tipo de alerta ──────────────────────────────────────────────
 
-const TIPO_META: Record<string, { label: string; variant: "info" | "success" | "warning" | "accent" }> = {
+const TIPO_META: Record<string, { label: string; variant: "m1" | "info" | "success" | "warning" | "accent" }> = {
+  publicacion_m1:    { label: "M1",    variant: "m1" },
   publicacion_m2:    { label: "M2",    variant: "info" },
   publicacion_m7:    { label: "M7",    variant: "success" },
   publicacion_m11:   { label: "M11",   variant: "warning" },
