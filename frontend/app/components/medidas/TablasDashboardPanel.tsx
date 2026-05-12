@@ -394,7 +394,20 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
       setLoading(true);
       setError(null);
       try {
-        const path = vista === "mensual" ? "/dashboard/tablas/mensual" : "/dashboard/tablas/historico";
+        let path: string;
+        if (vista === "mensual") {
+          // Para "mensual" forzamos siempre carga = mes_natural - 1.
+          // De esa forma el "actual" del toggle representa los hitos REE
+          // que se publican durante este mes calendario (el M1 visible en
+          // las tarjetas coincide con la etiqueta del botón).
+          const hoy = new Date();
+          let a = hoy.getFullYear();
+          let m = hoy.getMonth() + 1 - 1;   // mes natural - 1
+          if (m < 1) { m = 12; a -= 1; }
+          path = `/dashboard/tablas/mensual?carga_anio=${a}&carga_mes=${m}`;
+        } else {
+          path = "/dashboard/tablas/historico";
+        }
         const res = await fetch(`${API_BASE_URL}${path}`, { headers: getAuthHeaders(token) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -559,7 +572,8 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
   const [loadingAnterior, setLoadingAnterior] = useState(false);
   const [errorAnterior, setErrorAnterior] = useState<string | null>(null);
 
-  // Calcula el (anio, mes) del periodo anterior (1 mes atrás).
+  // Calcula el (anio, mes) del periodo anterior — 1 mes hacia atrás respecto
+  // al periodo "actual" que ya viene desplazado del padre.
   const periodoAnterior = useMemo(() => {
     let a = cargaActualAnio;
     let m = cargaActualMes - 1;
@@ -710,13 +724,13 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
             <button type="button" onClick={() => setVistaPeriodoGeneral("actual")}
               className={vistaPeriodoGeneral === "actual" ? "ui-btn ui-btn-xs" : "ui-btn ui-btn-ghost ui-btn-xs"}
               style={{ padding: "3px 12px", fontSize: 10, borderRadius: 3 }}
-              title={`Periodo actual (${mesCorto(cargaActualMes)} ${cargaActualAnio})`}>
+              title={`Carga del mes actual (M1 ${mesCorto(cargaActualMes)} ${cargaActualAnio})`}>
               {mesCorto(cargaActualMes)} {String(cargaActualAnio).slice(2)}
             </button>
             <button type="button" onClick={() => setVistaPeriodoGeneral("anterior")}
               className={vistaPeriodoGeneral === "anterior" ? "ui-btn ui-btn-xs" : "ui-btn ui-btn-ghost ui-btn-xs"}
               style={{ padding: "3px 12px", fontSize: 10, borderRadius: 3 }}
-              title={`Periodo anterior (${mesCorto(periodoAnterior.mes)} ${periodoAnterior.anio})`}>
+              title={`Carga del mes anterior (M1 ${mesCorto(periodoAnterior.mes)} ${periodoAnterior.anio})`}>
               {mesCorto(periodoAnterior.mes)} {String(periodoAnterior.anio).slice(2)}
             </button>
           </div>
