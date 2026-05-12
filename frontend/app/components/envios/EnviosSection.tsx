@@ -135,6 +135,12 @@ export default function EnviosSection({ token }: Props) {
   const [panelEnvioOpen, setPanelEnvioOpen] = useState(false);
   const [panelHistOpen, setPanelHistOpen]   = useState(false);
 
+  // Pestaña activa dentro de la tarjeta Histórico de envíos.
+  // - "envios"     → vista actual (filtros + tabla + paginación)
+  // - "inventario" → vista nueva, por ahora placeholder
+  type PestañaHistorico = "envios" | "inventario";
+  const [pestañaHistorico, setPestañaHistorico] = useState<PestañaHistorico>("envios");
+
   const [configs, setConfigs] = useState<FtpConfig[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
   const [errorConfigs, setErrorConfigs] = useState<string | null>(null);
@@ -563,7 +569,7 @@ export default function EnviosSection({ token }: Props) {
                 Envíos F1, F1QH, AGRECL, INMECL, MAGCL, MCIL345 y MCIL345QH con estado de respuesta REE. Selecciona la ventana M (M1, M2 o M7).
               </div>
             </div>
-            {countEnvios && panelHistOpen && (
+            {countEnvios && panelHistOpen && pestañaHistorico === "envios" && (
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 <span className="ui-badge ui-badge--neutral">{countEnvios.total} total</span>
                 {countEnvios.pendiente > 0 && <span className="ui-badge ui-badge--neutral">{countEnvios.pendiente} pendiente</span>}
@@ -573,7 +579,7 @@ export default function EnviosSection({ token }: Props) {
             )}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {panelHistOpen && (
+            {panelHistOpen && pestañaHistorico === "envios" && (
               <button type="button" className="ui-btn ui-btn-outline ui-btn-xs"
                 style={{ display: "flex", alignItems: "center", gap: 4 }}
                 onClick={e => { e.stopPropagation(); handleRevisarRespuestas(); }}
@@ -588,11 +594,87 @@ export default function EnviosSection({ token }: Props) {
             </button>
           </div>
         </div>
-        {panelHistOpen && (
+{panelHistOpen && (
           <div style={{ borderTop: "1px solid var(--card-border)" }}>
-            {/* Filtros (multi-select con checkboxes) */}
-            <div style={{ display: "flex", gap: 8, padding: "10px 14px", flexWrap: "wrap", alignItems: "flex-end", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)" }}>
-              {renderMultiSelect(
+
+            {/* ── Pestañas: Envíos / Inventario ─────────────────────────── */}
+            <div style={{
+              display: "flex",
+              gap: 0,
+              borderBottom: "1px solid var(--card-border)",
+              padding: "0 14px",
+              background: "var(--field-bg-soft)",
+            }}>
+              <button
+                type="button"
+                onClick={() => setPestañaHistorico("envios")}
+                style={{
+                  padding: "9px 18px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: pestañaHistorico === "envios" ? "#85B7EB" : "var(--text-muted)",
+                  borderBottom: pestañaHistorico === "envios" ? "2px solid #378ADD" : "2px solid transparent",
+                  marginBottom: "-1px",
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "color 0.15s ease, border-color 0.15s ease",
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Envíos
+                {countEnvios && (
+                  <span style={{
+                    background: "rgba(55,138,221,0.18)",
+                    color: "#85B7EB",
+                    fontSize: 9,
+                    padding: "1px 6px",
+                    borderRadius: 8,
+                    fontWeight: 500,
+                    marginLeft: 2,
+                  }}>
+                    {countEnvios.total}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPestañaHistorico("inventario")}
+                style={{
+                  padding: "9px 18px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: pestañaHistorico === "inventario" ? "#85B7EB" : "var(--text-muted)",
+                  borderBottom: pestañaHistorico === "inventario" ? "2px solid #378ADD" : "2px solid transparent",
+                  marginBottom: "-1px",
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "color 0.15s ease, border-color 0.15s ease",
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+                Inventario
+              </button>
+            </div>
+
+            {/* ── Contenido según pestaña activa ──────────────────────── */}
+            {pestañaHistorico === "envios" && (
+              <>
+                {/* Filtros (multi-select con checkboxes) */}
+                <div style={{ display: "flex", gap: 8, padding: "10px 14px", flexWrap: "wrap", alignItems: "flex-end", background: "var(--field-bg-soft)", borderBottom: "1px solid var(--card-border)" }}>
+                  {renderMultiSelect(
                 "ventanaM",
                 "Ventana M",
                 filtroM,
@@ -777,6 +859,26 @@ export default function EnviosSection({ token }: Props) {
               setPage={setPageEnvios}
               compact
             />
+              </>
+            )}
+
+            {/* ── Pestaña INVENTARIO (placeholder) ────────────────────── */}
+            {pestañaHistorico === "inventario" && (
+              <div style={{
+                padding: "60px 20px",
+                textAlign: "center",
+                color: "var(--text-muted)",
+                background: "var(--field-bg-soft)",
+              }}>
+                <div style={{ fontSize: 28, marginBottom: 12, opacity: 0.5 }}>📦</div>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
+                  Inventario · próximamente
+                </div>
+                <div style={{ fontSize: 11, lineHeight: 1.5, maxWidth: 380, margin: "0 auto" }}>
+                  Esta sección está en desarrollo. La definiremos en una próxima iteración.
+                </div>
+              </div>
+            )}
           </div>
         )}
       </UiCard>
