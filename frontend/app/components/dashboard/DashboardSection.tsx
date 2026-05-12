@@ -95,11 +95,33 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
   const anioValue = anio ? Number(anio) : null;
   const mesValue = anio && mes ? Number(mes) : null;
 
+  // ── Defaults SOLO para las 2 tarjetas (Energía facturada y Pérdidas) ──
+  // Cuando el usuario no eligió manualmente año/mes ("Último disponible"),
+  // forzamos mes_natural - 1 (= mes anterior al calendario actual). Así
+  // evitamos que datos sueltos de "este mes" (facturas de prueba, cargas
+  // parciales) muevan las tarjetas a un mes incompleto.
+  // Si elige manualmente algo, se respeta su selección.
+  // El resto del dashboard (gráficas, calendario, alertas) sigue usando
+  // anioValue/mesValue como hasta ahora.
+  const { summaryAnio, summaryMes } = useMemo(() => {
+    if (anioValue !== null) {
+      return { summaryAnio: anioValue, summaryMes: mesValue };
+    }
+    const hoy = new Date();
+    let a = hoy.getFullYear();
+    let m = hoy.getMonth() + 1 - 1;   // mes natural - 1
+    if (m < 1) { m = 12; a -= 1; }
+    return { summaryAnio: a, summaryMes: m };
+  }, [anioValue, mesValue]);
+
   const { data: filtersData, loading: filtersLoading, error: filtersError } =
     useDashboardFilters({ token, empresaId });
 
+  // OJO: este hook usa summaryAnio/summaryMes (mes calendario - 1 por defecto).
+  // Los otros 3 hooks de gráficas siguen usando anioValue/mesValue para no
+  // romper su comportamiento actual.
   const { data, loading, error } = useDashboardSummary({
-    token, empresaId, anio: anioValue, mes: mesValue,
+    token, empresaId, anio: summaryAnio, mes: summaryMes,
   });
 
   const { data: chartData, loading: chartLoading, error: chartError } =
@@ -269,13 +291,32 @@ export default function DashboardSection({ token, onNavigateToAlertas }: Props) 
     return `${NOMBRES_MES[m] ?? m} ${a}`;
   }, [data, aggregationMode]);
 
+// ¿Hay datos en periodos posteriores al que estamos mostrando?
+  // El backend ya nos dice qué periodo común está mostrando en `data.common_period`.
+  // Como nosotros forzamos mes_natural - 1, si en BD hay datos en mes_natural
+  // o posterior, el filtro /dashboard/filters los devolverá en `filtersData.anios`
+  // y podremos avisar al usuario para que no piense que faltan.
+  const hayDatosPosteriores = useMemo(() => {
+    if (!data?.common_period || !filtersData?.anios?.length) return false;
+    const periodoActual = data.common_period.anio * 100 + data.common_period.mes;
+    const hayAnioMayor = filtersData.anios.some((a) => a > data.common_period!.anio);
+    if (hayAnioMayor) return true;
+    // Mismo año: ver si hay un mes mayor con datos comunes
+    if (!filtersData.meses?.length) return false;
+    return filtersData.meses.some((m) => data.common_period!.anio * 100 + m > periodoActual);
+  }, [data, filtersData]);
+
   const resumenSubtitle = useMemo(() => {
     if (!isLogged) return "Resumen inicial del dashboard.";
     if (aggregationMode === "ytd") {
       return "Resumen acumulado del año hasta el último mes común disponible entre Medidas General y PS.";
     }
-    return "Resumen inicial del último mes común disponible entre Medidas General y PS.";
-  }, [isLogged, aggregationMode]);
+    const base = "Resumen inicial del mes anterior al actual (último mes con datos consolidados de Medidas General y PS).";
+    if (hayDatosPosteriores) {
+      return `${base} (Hay datos cargados en periodos posteriores).`;
+    }
+    return base;
+  }, [isLogged, aggregationMode, hayDatosPosteriores]);
 
   const periodoInfoLabel = useMemo(() => {
     if (aggregationMode === "ytd") return `Acumulado hasta: ${periodoComunLabel}`;
