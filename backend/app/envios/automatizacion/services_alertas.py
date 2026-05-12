@@ -629,3 +629,159 @@ def recalcular_alertas_envios_tenant(
         "auto_resueltas": ar1,
         "detalle": detalle_por_tipo,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Alertas de respuesta REE para INVENTARIO (AUTOCONSUMO/CUPSCAU/CUPS45/CUPSDAT)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Reutilizan el modelo EnvioAlerta y la misma lógica que respuesta_ree de
+# envíos M, pero con tipo distinto ("respuesta_ree_inventario") para
+# distinguirlos. Como el campo `m_clas` es NOT NULL String(5), reusamos
+# ese campo para guardar la frecuencia ("mensual" / "diario") — cabe en
+# 5 chars y nos da info útil al consultar la alerta.
+
+TIPO_RESPUESTA_REE_INVENTARIO = "respuesta_ree_inventario"
+
+
+def crear_alerta_respuesta_ree_bad_inventario(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    frecuencia: str,         # 'mensual' / 'diario' — se guarda en campo m_clas
+    periodo_envio: str,      # YYYY-MM del mes de subida
+    nombre_fichero: str,
+    bad_n: int,
+) -> bool:
+    """
+    Llamada desde `services_respuestas_ree_inventario` cuando llega un
+    .bad nuevo para un fichero de inventario.
+
+    Misma lógica que `crear_alerta_respuesta_ree_bad` para envíos M:
+      - Si NO hay alerta activa → crear nueva
+      - Si YA hay alerta ACTIVA → añadir el fichero al detalle (sin duplicar)
+      - Si la alerta está RESUELTA o DESCARTADA → crear NUEVA con periodo sufijado
+
+    Devuelve True si se creó una alerta nueva, False si solo se actualizó.
+    """
+    existing = db.query(EnvioAlerta).filter(
+        EnvioAlerta.tenant_id == tenant_id,
+        EnvioAlerta.empresa_id == empresa_id,
+        EnvioAlerta.tipo == TIPO_RESPUESTA_REE_INVENTARIO,
+        EnvioAlerta.m_clas == frecuencia,
+        EnvioAlerta.periodo == periodo_envio,
+    ).first()
+
+    nuevo_item = {
+        "fichero": nombre_fichero,
+        "bad_n": bad_n,
+        "detectado_at": _madrid_now().replace(tzinfo=None).isoformat(),
+    }
+
+    if existing is None:
+        nueva = EnvioAlerta()
+        nueva.tenant_id = tenant_id  # type: ignore[assignment]
+        nueva.empresa_id = empresa_id  # type: ignore[assignment]
+        nueva.tipo = TIPO_RESPUESTA_REE_INVENTARIO  # type: ignore[assignment]
+        nueva.m_clas = frecuencia  # type: ignore[assignment]
+        nueva.periodo = periodo_envio  # type: ignore[assignment]
+        nueva.plazo_fecha = None  # type: ignore[assignment]
+        nueva.num_pendientes = 1  # type: ignore[assignment]
+        nueva.detalle_json = json.dumps([nuevo_item], ensure_ascii=False)  # type: ignore[assignment]
+        nueva.severidad = SEVERIDAD_WARNING  # type: ignore[assignment]
+        nueva.estado = ESTADO_ACTIVA  # type: ignore[assignment]
+        db.add(nueva)
+        db.flush()
+        return True
+
+    if existing.estado == ESTADO_ACTIVA:
+        items_existentes: list[dict[str, Any]] = []
+        raw = getattr(existing, "detalle_json", None)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    items_existentes = parsed
+            except (json.JSONDecodeError, TypeError):
+                items_existentes = []
+        if not any(it.get("fichero") == nombre_fichero for it in items_existentes):
+            items_existentes.append(nuevo_item)
+            existing.num_pendientes = len(items_existentes)  # type: ignore[assignment]
+            existing.detalle_json = json.dumps(items_existentes, ensure_ascii=False)  # type: ignore[assignment]
+            db.flush()
+        return False
+
+    # Estado resuelta o descartada → crear NUEVA con periodo único
+    sufijo = _madrid_now().strftime("-%Y%m%d%H%M")
+    periodo_unico = f"{periodo_envio}{sufijo}"
+
+    nueva = EnvioAlerta()
+    nueva.tenant_id = tenant_id  # type: ignore[assignment]
+    nueva.empresa_id = empresa_id  # type: ignore[assignment]
+    nueva.tipo = TIPO_RESPUESTA_REE_INVENTARIO  # type: ignore[assignment]
+    nueva.m_clas = frecuencia  # type: ignore[assignment]
+    nueva.periodo = periodo_unico  # type: ignore[assignment]
+    nueva.plazo_fecha = None  # type: ignore[assignment]
+    nueva.num_pendientes = 1  # type: ignore[assignment]
+    nueva.detalle_json = json.dumps([nuevo_item], ensure_ascii=False)  # type: ignore[assignment]
+    nueva.severidad = SEVERIDAD_WARNING  # type: ignore[assignment]
+    nueva.estado = ESTADO_ACTIVA  # type: ignore[assignment]
+    db.add(nueva)
+    db.flush()
+    return True
+
+
+def auto_resolver_alertas_respuesta_ree_inventario_por_ok(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    frecuencia: str,         # 'mensual' / 'diario'
+    periodo_envio: str,
+    nombre_fichero_original: str,
+) -> int:
+    """
+    Llamada cuando llega un .ok que cierra un .bad anterior de inventario.
+
+    Busca alertas ACTIVAS de tipo respuesta_ree_inventario para esta
+    (empresa, frecuencia) cuyo detalle incluya este fichero, y lo elimina.
+    Si el detalle queda vacío, marca la alerta como resuelta.
+
+    Devuelve nº de alertas resueltas.
+    """
+    resueltas = 0
+    alertas = db.query(EnvioAlerta).filter(
+        EnvioAlerta.tenant_id == tenant_id,
+        EnvioAlerta.empresa_id == empresa_id,
+        EnvioAlerta.tipo == TIPO_RESPUESTA_REE_INVENTARIO,
+        EnvioAlerta.m_clas == frecuencia,
+        EnvioAlerta.estado == ESTADO_ACTIVA,
+        EnvioAlerta.periodo.like(f"{periodo_envio}%"),
+    ).all()
+
+    for alerta in alertas:
+        items: list[dict[str, Any]] = []
+        raw = getattr(alerta, "detalle_json", None)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    items = parsed
+            except (json.JSONDecodeError, TypeError):
+                items = []
+        items_filtrados = [it for it in items if it.get("fichero") != nombre_fichero_original]
+        if len(items_filtrados) == len(items):
+            continue
+        if not items_filtrados:
+            alerta.estado = ESTADO_RESUELTA  # type: ignore[assignment]
+            alerta.resuelta_at = _madrid_now().replace(tzinfo=None)  # type: ignore[assignment]
+            alerta.num_pendientes = 0  # type: ignore[assignment]
+            alerta.detalle_json = json.dumps([], ensure_ascii=False)  # type: ignore[assignment]
+            resueltas += 1
+        else:
+            alerta.num_pendientes = len(items_filtrados)  # type: ignore[assignment]
+            alerta.detalle_json = json.dumps(items_filtrados, ensure_ascii=False)  # type: ignore[assignment]
+        db.flush()
+
+    return resueltas

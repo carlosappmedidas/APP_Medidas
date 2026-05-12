@@ -73,3 +73,63 @@ class EnvioM(Base):
     # ── Timestamps ────────────────────────────────────────────────────────
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class EnvioInventario(Base):
+    """
+    Histórico de ficheros AUTOCONSUMO/CUPSCAU/CUPS45/CUPSDAT enviados al
+    SFTP REE desde APP Medidas, con seguimiento de respuestas (.ok / .bad).
+
+    Estos ficheros NO contienen medidas — contienen el estado actual del
+    parque de CUPS (comercializadora, potencias, tarifas, autoconsumos...).
+    Solo nos interesa el control de envío, no su contenido.
+
+    Patrón de nombres soportado:
+      - {TIPO}_{empresa}_{fechagen}.{ver}.bz2
+        ej: AUTOCONSUMO_0277_20260508.0.bz2
+            CUPSCAU_0277_20260508.0.bz2
+            CUPS45_0277_20260512.0.bz2
+            CUPSDAT_0277_20260512.0.bz2
+
+    Frecuencia:
+      - AUTOCONSUMO, CUPSCAU → mensuales (1 fichero al mes por empresa)
+      - CUPS45, CUPSDAT      → diarios   (1 fichero al día por empresa)
+
+    NO tiene `periodo_anio/mes` ni `m_clasificacion`: solo `fecha_generacion`
+    (la del nombre del fichero) se usa para agrupar/filtrar.
+    """
+
+    __tablename__ = "envios_inventario"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # ── Multi-tenant ──────────────────────────────────────────────────────
+    tenant_id  = Column(Integer, ForeignKey("tenants.id",  ondelete="CASCADE"), nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True)
+    codigo_ree_empresa = Column(String(10), nullable=False)
+
+    # ── Tipo y frecuencia ─────────────────────────────────────────────────
+    tipo       = Column(String(20), nullable=False, index=True)  # AUTOCONSUMO/CUPSCAU/CUPS45/CUPSDAT
+    frecuencia = Column(String(10), nullable=False, index=True)  # 'mensual' | 'diario'
+
+    # ── Fecha de generación + versión (extraídas del nombre) ──────────────
+    fecha_generacion = Column(Date, nullable=False, index=True)
+    version          = Column(Integer, nullable=False, default=0)
+
+    # ── Fichero ───────────────────────────────────────────────────────────
+    nombre_fichero = Column(String(500), nullable=False, index=True)
+
+    # ── Trazabilidad SFTP ─────────────────────────────────────────────────
+    ftp_log_id      = Column(Integer, ForeignKey("ftp_sync_log.id", ondelete="SET NULL"), nullable=True)
+    subido_sftp_at  = Column(DateTime, nullable=False, server_default=func.now())
+
+    # ── Estado REE ────────────────────────────────────────────────────────
+    estado_ree                = Column(String(10), nullable=True)   # None | 'ok' | 'bad'
+    estado_ree_n              = Column(Integer,   nullable=True)    # 2 = .bad2, 3 = .bad3
+    respuesta_recibida_at     = Column(DateTime,  nullable=True)
+    respuesta_nombre_fichero  = Column(String(500), nullable=True)
+    reintentos                = Column(Integer, nullable=False, default=0)
+
+    # ── Timestamps ────────────────────────────────────────────────────────
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

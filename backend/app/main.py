@@ -26,6 +26,7 @@ from app.medidas_graficos.routes_ps import router as medidas_graficos_ps_router
 from app.objeciones.routes import router as objeciones_router
 from app.objeciones.descarga.routes import router as objeciones_descarga_router
 from app.envios.routes import router as envios_router
+from app.envios.routes_inventario import router as envios_inventario_router
 from app.envios.automatizacion.routes_config import router as envios_automatizacion_router
 from app.envios.automatizacion.routes_alertas import router as envios_alertas_router
 from app.measures.descarga.routes import router as measures_descarga_router
@@ -51,6 +52,7 @@ from app.objeciones.models import ObjecionAGRECL, ObjecionINCL, ObjecionCUPS, Ob
 from app.objeciones.automatizacion.models import ObjecionesAutomatizacion, ObjecionesAlerta  # noqa: F401
 from app.measures.descarga.automatizacion.models import PublicacionesAutomatizacion, PublicacionesAlerta  # noqa: F401
 from app.envios.automatizacion.models import EnviosAutomatizacion, EnvioAlerta  # noqa: F401
+from app.envios.models import EnvioInventario  # noqa: F401
 from app.perdidas.models import Concentrador, PerdidaDiaria  # noqa: F401
 from app.topologia.models import CtInventario, CtTransformador, CupsTopologia  # noqa: F401
 
@@ -121,6 +123,7 @@ app.include_router(medidas_graficos_ps_router)
 app.include_router(objeciones_router)
 app.include_router(objeciones_descarga_router)
 app.include_router(envios_router)
+app.include_router(envios_inventario_router)
 app.include_router(envios_automatizacion_router)
 app.include_router(envios_alertas_router)
 app.include_router(objeciones_automatizacion_router)
