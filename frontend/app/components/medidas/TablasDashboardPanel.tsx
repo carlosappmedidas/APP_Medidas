@@ -546,7 +546,13 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
   // "actual"   = lo que viene en `data` (el carga_anio/mes que calculó el backend).
   // "anterior" = un mes hacia atrás. Pedimos los datos al backend y los mezclamos.
   type VistaPeriodo = "actual" | "anterior";
-  const [vistaPeriodoGeneral, setVistaPeriodoGeneral] = useState<VistaPeriodo>("actual");
+  // Default inteligente: si el periodo actual aún NO tiene ningún fichero
+  // recibido (típico al inicio de mes, antes de que REE publique los M1),
+  // arrancamos en "anterior" para mostrar datos útiles directamente.
+  // Si el actual ya tiene algo, mantenemos "actual" como antes.
+  const [vistaPeriodoGeneral, setVistaPeriodoGeneral] = useState<VistaPeriodo>(
+    () => (data.banda_salud.ficheros_recibidos > 0 ? "actual" : "anterior")
+  );
 
   // Datos del bloque GENERAL del periodo "anterior" (cargados bajo demanda).
   const [generalAnterior, setGeneralAnterior] = useState<MensualResponse | null>(null);
