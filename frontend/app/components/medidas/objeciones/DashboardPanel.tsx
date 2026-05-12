@@ -2,7 +2,7 @@
 // Extraído de ObjecionesSection.tsx (Fase 0 · Paso 0.5).
 
 import { useState } from "react";
-import type { DashData, DashEmpresa, DashTipoEnPeriodo, EmpresaOption } from "./shared/types";
+import type { DashData, DashEmpresa, DashEmpresaEnTipo, DashTipoEnPeriodo, EmpresaOption } from "./shared/types";
 import UiCard from "../../ui/UiCard";
 // Nota: DashPeriodo ya no se importa aquí porque se accede vía dash.por_periodo
 // y TypeScript infiere los tipos desde DashData.
@@ -134,7 +134,7 @@ export default function DashboardPanel({
   // Ahora vive en el padre (ObjecionesSection) porque afecta también a
   // GestionPanel e HistorialPanel. Aquí solo lo leemos/escribimos vía props.
 
-  // ── Datos del periodo actual ──────────────────────────────────────────
+  // ── Datos del periodo actual ──────────────────────────────────────────       z
   // Si tenemos `mesObjetadoVigente` (del calendario REE, formato "Ago 25"),
   // buscamos ese mes dentro de `por_periodo`. Si no se encuentra (= aún no
   // hay objeciones de ese mes en BD), construimos un periodo "vacío" con
@@ -202,6 +202,21 @@ export default function DashboardPanel({
       const next = new Set(prev);
       if (next.has(pkey)) next.delete(pkey);
       else next.add(pkey);
+      return next;
+    });
+  };
+
+  // Estado de tipos desplegados dentro de cada periodo. Clave compuesta
+  // "{pkey}|{tipo}" porque el mismo tipo puede aparecer en varios periodos
+  // y queremos que cada uno se abra/cierre de forma independiente.
+  const [expandedTipos, setExpandedTipos] = useState<Set<string>>(new Set());
+
+  const toggleTipo = (pkey: string, tipo: string) => {
+    const key = `${pkey}|${tipo}`;
+    setExpandedTipos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -645,17 +660,38 @@ export default function DashboardPanel({
                             const chipLabel = TIPO_LABEL_CORTO[tipoRow.tipo] ?? tipoRow.tipo;
                             const widthPct = Math.round(tipoRow.obj_total / maxPeriodo * 100);
                             const esINCL = tipoRow.tipo === "OBJEINCL";
+                            // Tercer nivel: empresas dentro de este (periodo, tipo)
+                            const empresasDetalle: DashEmpresaEnTipo[] = tipoRow.por_empresa ?? [];
+                            const tipoKey = `${t.periodo}|${tipoRow.tipo}`;
+                            const tipoExpanded = expandedTipos.has(tipoKey);
+                            const tipoTieneDetalle = empresasDetalle.length > 0;
 
                             return (
-                              <div key={tipoRow.tipo} style={{
+                              <div key={tipoRow.tipo}>
+                              <div
+                                onClick={() => tipoTieneDetalle && toggleTipo(t.periodo, tipoRow.tipo)}
+                                style={{
                                 display: "grid",
                                 gridTemplateColumns: GRID_TEMPLATE,
                                 gap: 10,
                                 alignItems: "center",
                                 padding: "4px 0",
-                              }}>
-                                {/* Hueco del chevron */}
-                                <div></div>
+                                cursor: tipoTieneDetalle ? "pointer" : "default",
+                                transition: "background 0.15s",
+                              }}
+                                onMouseEnter={(e) => { if (tipoTieneDetalle) e.currentTarget.style.background = "rgba(55,138,221,0.06)"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                              >
+                                {/* Chevron del tipo (mismo estilo que el del periodo, más pequeño) */}
+                                <div style={{
+                                  fontSize: 9,
+                                  color: tipoTieneDetalle ? (tipoExpanded ? "#378ADD" : "var(--text-muted)") : "transparent",
+                                  textAlign: "center",
+                                  transform: tipoExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                                  transition: "transform 0.2s",
+                                  userSelect: "none",
+                                  opacity: tipoTieneDetalle ? 0.7 : 0,
+                                }}>▶</div>
 
                                 {/* Chip del tipo */}
                                 <div>
@@ -744,6 +780,121 @@ export default function DashboardPanel({
                                   )}
                                 </div>
                               </div>
+
+                              {/* ── 3er nivel: empresas dentro de este (periodo, tipo) ── */}
+                              {tipoExpanded && tipoTieneDetalle && (
+                                <div style={{
+                                  background: "rgba(55,138,221,0.025)",
+                                  borderTop: "0.5px dashed rgba(55,138,221,0.10)",
+                                  padding: "2px 0 4px 0",
+                                }}>
+                                  {empresasDetalle.map((empRow) => {
+                                    const empWidthPct = Math.round(empRow.obj_total / maxPeriodo * 100);
+                                    const esINCLEmp = tipoRow.tipo === "OBJEINCL";
+                                    return (
+                                      <div key={empRow.empresa_id} style={{
+                                        display: "grid",
+                                        gridTemplateColumns: GRID_TEMPLATE,
+                                        gap: 10,
+                                        alignItems: "center",
+                                        padding: "3px 0",
+                                        paddingLeft: 16,
+                                      }}>
+                                        {/* Hueco chevron */}
+                                        <div></div>
+
+                                        {/* Nombre empresa + código REE */}
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ fontSize: 10, color: "var(--text)", fontWeight: 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {empRow.empresa_nombre}
+                                          </div>
+                                          <div style={{ fontSize: 8, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                            {empRow.empresa_codigo_ree ?? "—"}
+                                          </div>
+                                        </div>
+
+                                        {/* Barra de la empresa (más fina, opacidad mayor) */}
+                                        <div>
+                                          <div style={{ height: 3, background: "var(--card-border)", borderRadius: 2, overflow: "hidden" }}>
+                                            <div style={{
+                                              height: "100%",
+                                              width: `${empWidthPct}%`,
+                                              background: chipStyle.color as string,
+                                              borderRadius: 2, transition: "width 0.4s",
+                                              opacity: 0.5,
+                                            }} />
+                                          </div>
+                                          <div style={{ fontSize: 8, color: "var(--text-muted)", marginTop: 1 }}>
+                                            <InfoTooltip text={tooltipObjReob(empRow.obj_total, empRow.reob_total, esINCLEmp)}>
+                                              <span style={{ cursor: "help", borderBottom: empRow.reob_total > 0 ? "1px dotted var(--text-muted)" : "none" }}>
+                                                {empRow.obj_total} obj{empRow.reob_total > 0 && <> · {empRow.reob_total} REOB</>}
+                                              </span>
+                                            </InfoTooltip>
+                                          </div>
+                                        </div>
+
+                                        {/* Pendientes empresa */}
+                                        <div style={{
+                                          fontSize: 9, textAlign: "center", fontWeight: 500,
+                                          color: empRow.obj_pendientes > 0 ? "#BA7517" : "var(--text-muted)",
+                                          fontVariantNumeric: "tabular-nums",
+                                        }}>
+                                          {empRow.obj_pendientes}
+                                        </div>
+
+                                        {/* Respuestas REE empresa */}
+                                        <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                                          {esINCLEmp ? (
+                                            <span
+                                              title="REE no envía respuestas (.ok/.bad) para los REOB de tipo INCL"
+                                              style={{
+                                                fontSize: 8, padding: "1px 5px", borderRadius: 8,
+                                                background: "rgba(107,114,128,0.10)",
+                                                color: "var(--text-muted)",
+                                                fontWeight: 500,
+                                                cursor: "help",
+                                              }}
+                                            >N/A</span>
+                                          ) : (
+                                            <>
+                                              {empRow.ree_ok > 0 && (
+                                                <span style={{
+                                                  fontSize: 8, padding: "1px 5px", borderRadius: 8,
+                                                  background: "rgba(29,158,117,0.15)",
+                                                  color: "#0F6E56",
+                                                  fontWeight: 500,
+                                                }}>🟢 {empRow.ree_ok}</span>
+                                              )}
+                                              {empRow.ree_bad > 0 && (
+                                                <span style={{
+                                                  fontSize: 8, padding: "1px 5px", borderRadius: 8,
+                                                  background: "rgba(226,75,74,0.15)",
+                                                  color: "#A32D2D",
+                                                  fontWeight: 500,
+                                                }}>🔴 {empRow.ree_bad}</span>
+                                              )}
+                                              {empRow.ree_sin_resp > 0 && (
+                                                <span style={{
+                                                  fontSize: 8, padding: "1px 5px", borderRadius: 8,
+                                                  background: "rgba(156,163,175,0.15)",
+                                                  color: "var(--text)",
+                                                  fontWeight: 500,
+                                                }}>⚪ {empRow.ree_sin_resp}</span>
+                                              )}
+                                              {empRow.ree_ok === 0 && empRow.ree_bad === 0 && empRow.ree_sin_resp === 0 && (
+                                                <span style={{ fontSize: 8, color: "var(--text-muted)", fontStyle: "italic" }}>
+                                                  —
+                                                </span>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              </div>
                             );
                           })}
                         </div>
@@ -755,11 +906,11 @@ export default function DashboardPanel({
             </div>
 
             <div style={{ background: "var(--field-bg-soft)", borderRadius: 8, padding: "12px 14px" }}>
-              {/* Cabecera "POR EMPRESA · Jul 2025 / Histórico" — depende del modo activo.
+              {/* Cabecera "OBJECIONES POR EMPRESA · Jul 2025 / Histórico" — depende del modo activo.
                   En modo "actual" muestra el label del último periodo (del backend).
                   En modo "histórico" muestra "histórico" como sufijo. */}
               <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-                Por empresa{sufijoCabecera && <span style={{ color: "#378ADD" }}> · {sufijoCabecera}</span>}
+                Objeciones por empresa{sufijoCabecera && <span style={{ color: "#378ADD" }}> · {sufijoCabecera}</span>}
               </div>
               {(dash?.por_empresa ?? []).length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sin datos</div>

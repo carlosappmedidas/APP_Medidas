@@ -65,6 +65,28 @@ class DashTipo(BaseModel):
     enviadas_sftp: int = 0
 
 
+class DashEmpresaEnTipo(BaseModel):
+    """Desglose por empresa dentro de un tipo+periodo concreto.
+    Tercer nivel de despliegue en la tarjeta POR PERIODO del dashboard.
+
+    Permite ver, por ejemplo, qué empresas tienen AGRECL en Ago 2025 con sus
+    contadores OK/BAD/N/A de REE individualizados.
+
+    Los contadores REE están en UNIDAD DE REOBS, igual que en DashTipoEnPeriodo,
+    porque se obtienen agregando filas de objeciones_reob_generados.
+    """
+    empresa_id: int
+    empresa_nombre: str
+    empresa_codigo_ree: Optional[str] = None
+    obj_total: int             # nº objeciones del tipo en este periodo para esta empresa
+    obj_pendientes: int        # objeciones sin responder
+    reob_total: int = 0        # nº REOBs enviados para este tipo+periodo+empresa
+    ree_ok: int = 0
+    ree_bad: int = 0
+    ree_sin_resp: int = 0
+    ree_na: int = 0            # siempre 0 excepto para OBJEINCL
+
+
 class DashTipoEnPeriodo(BaseModel):
     """Desglose por tipo dentro de un periodo (AOBAGRECL, OBJEINCL, AOBCUPS, AOBCIL).
     Usado por el dashboard para mostrar el detalle al desplegar un mes."""
@@ -77,6 +99,8 @@ class DashTipoEnPeriodo(BaseModel):
     ree_bad: int = 0
     ree_sin_resp: int = 0
     ree_na: int = 0            # siempre 0 excepto para OBJEINCL (REE no responde INCL)
+    # Desglose por empresa dentro de este tipo+periodo (tercer nivel acordeón).
+    por_empresa: List[DashEmpresaEnTipo] = []
 
 
 class DashPeriodo(BaseModel):
@@ -285,8 +309,10 @@ def get_dashboard(
         reob_q = reob_q.filter(ReobGenerado.empresa_id == empresa_id)
     reob_rows = reob_q.all()
 
-    # reob_stats[(pkey, tipo_reob)] = {"reob_total": N, "obj_ok": N, "obj_bad": N, "obj_sin_resp": N}
+    # reob_stats[(pkey, tipo_reob)]            = stats agregados por (periodo, tipo)
+    # reob_stats_emp[(pkey, tipo_reob, emp_id)] = stats agregados por (periodo, tipo, empresa)
     reob_stats: dict = {}
+    reob_stats_emp: dict = {}
     for r in reob_rows:
         aaaamm_raw = getattr(r, "aaaamm", None)
         if not aaaamm_raw:
@@ -297,20 +323,28 @@ def get_dashboard(
         tipo_reob = (getattr(r, "tipo", None) or "").strip().lower()
         if not tipo_reob:
             continue
+        eid = int(getattr(r, "empresa_id"))
         key = (pkey, tipo_reob)
+        key_emp = (pkey, tipo_reob, eid)
         if key not in reob_stats:
             reob_stats[key] = {"reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0}
+        if key_emp not in reob_stats_emp:
+            reob_stats_emp[key_emp] = {"reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0}
 
         estado = getattr(r, "estado_ree", None)
         reob_stats[key]["reob_total"] += 1
+        reob_stats_emp[key_emp]["reob_total"] += 1
         # Contadores REE en UNIDAD DE REOBS (no objeciones).
         # Cada REOB cuenta como 1, independientemente de cuántas objeciones agrupe.
         if estado == "ok":
             reob_stats[key]["obj_ok"] += 1
+            reob_stats_emp[key_emp]["obj_ok"] += 1
         elif estado == "bad":
             reob_stats[key]["obj_bad"] += 1
+            reob_stats_emp[key_emp]["obj_bad"] += 1
         else:
             reob_stats[key]["obj_sin_resp"] += 1
+            reob_stats_emp[key_emp]["obj_sin_resp"] += 1
 
     for tipo_label, model, tipo_reob in MODELOS:
         q = db.query(model).filter(model.tenant_id == tenant_id)
@@ -323,6 +357,9 @@ def get_dashboard(
         # Contadores por periodo+tipo (usado para construir por_tipo dentro de cada periodo)
         # tipo_por_periodo[pkey] = {"obj_total": N, "obj_pendientes": N}
         tipo_por_periodo: dict = {}
+        # Contadores por periodo+tipo+empresa (tercer nivel del acordeón).
+        # tipo_empresa_por_periodo[(pkey, empresa_id)] = {"obj_total": N, "obj_pendientes": N}
+        tipo_empresa_por_periodo: dict = {}
 
         for r in rows:
             ac = getattr(r, "aceptacion") or ""
@@ -380,6 +417,18 @@ def get_dashboard(
                 tipo_por_periodo[pkey]["obj_total"] += 1
                 if ac not in ("S", "N"):
                     tipo_por_periodo[pkey]["obj_pendientes"] += 1
+
+                # Sub-agregador por periodo+tipo+empresa (tercer nivel del acordeón).
+                # Lo construimos al vuelo desde la propia fila — más fiable que
+                # cruzar luego con reob_stats_emp, porque garantiza que aparezcan
+                # también las empresas con objeciones pendientes (sin REOB).
+                emp_id_row = int(getattr(r, "empresa_id"))
+                te_key = (pkey, emp_id_row)
+                if te_key not in tipo_empresa_por_periodo:
+                    tipo_empresa_por_periodo[te_key] = {"obj_total": 0, "obj_pendientes": 0}
+                tipo_empresa_por_periodo[te_key]["obj_total"] += 1
+                if ac not in ("S", "N"):
+                    tipo_empresa_por_periodo[te_key]["obj_pendientes"] += 1
 
             # ─── Agregación POR EMPRESA ──────────────────────────────────
             eid = int(getattr(r, "empresa_id"))
@@ -451,6 +500,50 @@ def get_dashboard(
                 "reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0,
             })
 
+            # Construir desglose por_empresa para este (periodo, tipo).
+            # Recorremos tipo_empresa_por_periodo filtrando por pkey y
+            # cruzamos con reob_stats_emp para los contadores REE.
+            por_empresa_tipo: list = []
+            for (te_pkey, emp_id), emp_agg in tipo_empresa_por_periodo.items():
+                if te_pkey != pkey:
+                    continue
+                emp_stats = reob_stats_emp.get((pkey, tipo_reob, emp_id), {
+                    "reob_total": 0, "obj_ok": 0, "obj_bad": 0, "obj_sin_resp": 0,
+                })
+                # Nombre y código REE de la empresa (cache implícita: pequeña tabla).
+                emp = db.query(Empresa).filter(Empresa.id == emp_id).first()
+                emp_nombre = getattr(emp, "nombre", "") if emp else f"Empresa {emp_id}"
+                emp_codigo = getattr(emp, "codigo_ree", None) if emp else None
+
+                if tipo_reob == "incl":
+                    por_empresa_tipo.append({
+                        "empresa_id": emp_id,
+                        "empresa_nombre": emp_nombre,
+                        "empresa_codigo_ree": emp_codigo,
+                        "obj_total": emp_agg["obj_total"],
+                        "obj_pendientes": emp_agg["obj_pendientes"],
+                        "reob_total": emp_stats["reob_total"],
+                        "ree_ok": 0,
+                        "ree_bad": 0,
+                        "ree_sin_resp": 0,
+                        "ree_na": emp_stats["reob_total"],
+                    })
+                else:
+                    por_empresa_tipo.append({
+                        "empresa_id": emp_id,
+                        "empresa_nombre": emp_nombre,
+                        "empresa_codigo_ree": emp_codigo,
+                        "obj_total": emp_agg["obj_total"],
+                        "obj_pendientes": emp_agg["obj_pendientes"],
+                        "reob_total": emp_stats["reob_total"],
+                        "ree_ok": emp_stats["obj_ok"],
+                        "ree_bad": emp_stats["obj_bad"],
+                        "ree_sin_resp": emp_stats["obj_sin_resp"],
+                        "ree_na": 0,
+                    })
+            # Ordenar por nombre de empresa para que el render sea estable
+            por_empresa_tipo.sort(key=lambda x: (x["empresa_nombre"] or "").lower())
+
             # Para INCL: los REOBs no reciben respuesta REE. ree_na cuenta REOBs.
             # Para el resto: se usan los contadores propagados desde los REOBs.
             if tipo_reob == "incl":
@@ -463,6 +556,7 @@ def get_dashboard(
                     "ree_bad": 0,
                     "ree_sin_resp": 0,
                     "ree_na": stats["reob_total"],  # nº de REOBs INCL (no reciben respuesta)
+                    "por_empresa": por_empresa_tipo,
                 }
                 # Propagar al total del periodo (en nº de REOBs)
                 p["ree_na"] += stats["reob_total"]
@@ -476,6 +570,7 @@ def get_dashboard(
                     "ree_bad": stats["obj_bad"],
                     "ree_sin_resp": stats["obj_sin_resp"],
                     "ree_na": 0,
+                    "por_empresa": por_empresa_tipo,
                 }
                 # Propagar al total del periodo
                 p["ree_ok"] += stats["obj_ok"]
@@ -508,8 +603,11 @@ def get_dashboard(
         key=lambda p: p["periodo"],
         reverse=True,
     )[:6]
-    # Convertir por_tipo de cada periodo a DashTipoEnPeriodo
+    # Convertir por_tipo de cada periodo a DashTipoEnPeriodo.
+    # Dentro de cada uno, también convertir por_empresa a DashEmpresaEnTipo.
     for p in por_periodo_ordenado:
+        for t in p["por_tipo"]:
+            t["por_empresa"] = [DashEmpresaEnTipo(**e) for e in t.get("por_empresa", [])]
         p["por_tipo"] = [DashTipoEnPeriodo(**t) for t in p["por_tipo"]]
     por_periodo = [DashPeriodo(**v) for v in por_periodo_ordenado]
 

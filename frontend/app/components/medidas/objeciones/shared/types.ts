@@ -39,6 +39,19 @@ export interface DashTipo {
   rechazadas: number;
 }
 
+export interface DashEmpresaEnTipo {
+  empresa_id: number;
+  empresa_nombre: string;
+  empresa_codigo_ree: string | null;
+  obj_total: number;           // nº objeciones de este tipo+periodo para esta empresa
+  obj_pendientes: number;
+  reob_total: number;
+  ree_ok: number;
+  ree_bad: number;
+  ree_sin_resp: number;
+  ree_na: number;              // siempre 0 excepto para OBJEINCL
+}
+
 export interface DashTipoEnPeriodo {
   /** "AOBAGRECL" | "OBJEINCL" | "AOBCUPS" | "AOBCIL" */
   tipo: string;
@@ -50,6 +63,10 @@ export interface DashTipoEnPeriodo {
   ree_bad: number;
   ree_sin_resp: number;
   ree_na: number;              // siempre 0 excepto para OBJEINCL
+  // Desglose por empresa dentro de este tipo+periodo (tercer nivel acordeón).
+  // Opcional para retrocompatibilidad — el backend siempre lo devuelve aunque
+  // sea vacío.
+  por_empresa?: DashEmpresaEnTipo[];
 }
 
 export interface DashPeriodo {
