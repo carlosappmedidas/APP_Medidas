@@ -187,21 +187,20 @@ def _upsert_alerta(
         db.flush()
         return True, nueva
 
-    # Ya existe: si está descartada, NO la tocamos (el usuario decidió ignorarla)
-    if existing.estado == "descartada":
+    # Ya existe: si está resuelta o descartada, NO la reactivamos
+    # (el usuario decidió que esa alerta queda gestionada).
+    # Tampoco actualizamos sus datos contextuales para que el rastro
+    # (num_pendientes, detalle) quede congelado al momento en que se resolvió.
+    # Si en el futuro el usuario quiere "re-activar" una alerta, lo hará
+    # manualmente desde la pantalla de gestión de alertas (Fase 2).
+    if existing.estado in ("descartada", "resuelta"):
         return False, existing
 
-    # Actualizar datos contextuales (siempre)
+    # Estaba activa → actualizar datos contextuales del momento actual
     existing.plazo_fecha = plazo_fecha  # type: ignore[assignment]
     existing.num_pendientes = num_pendientes  # type: ignore[assignment]
     existing.detalle_json = detalle_str  # type: ignore[assignment]
     existing.severidad = severidad  # type: ignore[assignment]
-
-    # Si estaba resuelta y la condición vuelve a darse → reactivamos
-    if existing.estado == "resuelta":
-        existing.estado = ESTADO_ACTIVA  # type: ignore[assignment]
-        existing.resuelta_at = None  # type: ignore[assignment]
-        existing.resuelta_by = None  # type: ignore[assignment]
 
     db.flush()
     return False, existing
