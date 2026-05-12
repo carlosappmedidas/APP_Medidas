@@ -386,7 +386,10 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cargar datos al montar y al cambiar de vista
+  // Cargar datos al montar y al cambiar de vista.
+  // En vista "mensual" además precargamos en paralelo el histórico para
+  // que el despliegue por empresa del bloque PS sea instantáneo cuando
+  // el usuario lo expanda (sin fetch lazy al pulsar).
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -394,26 +397,34 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
       setLoading(true);
       setError(null);
       try {
-        let path: string;
         if (vista === "mensual") {
-          // Para "mensual" forzamos siempre carga = mes_natural - 1.
-          // De esa forma el "actual" del toggle representa los hitos REE
-          // que se publican durante este mes calendario (el M1 visible en
-          // las tarjetas coincide con la etiqueta del botón).
           const hoy = new Date();
           let a = hoy.getFullYear();
           let m = hoy.getMonth() + 1 - 1;   // mes natural - 1
           if (m < 1) { m = 12; a -= 1; }
-          path = `/dashboard/tablas/mensual?carga_anio=${a}&carga_mes=${m}`;
+          const pathMensual = `/dashboard/tablas/mensual?carga_anio=${a}&carga_mes=${m}`;
+
+          const [resMensual, resHistorico] = await Promise.all([
+            fetch(`${API_BASE_URL}${pathMensual}`, { headers: getAuthHeaders(token) }),
+            // Histórico para el despliegue por empresa en PS. Si falla,
+            // no rompemos la vista mensual — el despliegue mostrará "sin datos".
+            fetch(`${API_BASE_URL}/dashboard/tablas/historico`, { headers: getAuthHeaders(token) }),
+          ]);
+          if (!resMensual.ok) throw new Error(`HTTP ${resMensual.status}`);
+          const dataMensual = await resMensual.json();
+          if (cancelled) return;
+          setMensual(dataMensual);
+          // Histórico es opcional — solo lo guardamos si vino OK.
+          if (resHistorico.ok) {
+            const dataHistorico = await resHistorico.json();
+            if (!cancelled) setHistorico(dataHistorico);
+          }
         } else {
-          path = "/dashboard/tablas/historico";
+          const res = await fetch(`${API_BASE_URL}/dashboard/tablas/historico`, { headers: getAuthHeaders(token) });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (!cancelled) setHistorico(data);
         }
-        const res = await fetch(`${API_BASE_URL}${path}`, { headers: getAuthHeaders(token) });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (cancelled) return;
-        if (vista === "mensual") setMensual(data);
-        else setHistorico(data);
       } catch (e: any) {
         if (cancelled) return;
         setError(e?.message ?? "Error cargando datos");
@@ -521,6 +532,7 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
       {vista === "mensual" && mensual && (
         <MensualView
           data={mensual}
+          historico={historico}
           token={token}
           filtrosDescarga={filtrosDescarga}
           cargaActualAnio={mensual.carga_anio}
@@ -538,8 +550,9 @@ export default function TablasDashboardPanel({ token, onGoToTableGeneral, onGoTo
 // VISTA MENSUAL
 // ═══════════════════════════════════════════════════════════════════════
 
-function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActualMes }: {
+function MensualView({ data, historico, token, filtrosDescarga, cargaActualAnio, cargaActualMes }: {
   data: MensualResponse;
+  historico: HistoricoResponse | null;
   token: string | null;
   filtrosDescarga: {
     empresaId: number;
@@ -806,6 +819,7 @@ function MensualView({ data, token, filtrosDescarga, cargaActualAnio, cargaActua
       {/* ═══════ Bloque PS ═══════ */}
       <BloquePS
         data={psEfectivo}
+        historico={historico}
         vistaReparto={vistaRepartoPS}
         onChangeVistaReparto={setVistaRepartoPS}
         detalleAbierto={detallePSAbierto}
@@ -1023,14 +1037,38 @@ const TARIFAS_ORDEN = ["20td", "30td", "30tdve", "61td"];
 const TIPOS_ORDEN = ["tipo_5", "tipo_4", "tipo_3", "tipo_2", "tipo_1"];
 
 function BloquePS({
-  data, vistaReparto, onChangeVistaReparto, detalleAbierto, onToggleDetalle,
+  data, historico, vistaReparto, onChangeVistaReparto, detalleAbierto, onToggleDetalle,
 }: {
   data: MensualPSBlock;
+  historico: HistoricoResponse | null;
   vistaReparto: "tarifa" | "tipo";
   onChangeVistaReparto: (v: "tarifa" | "tipo") => void;
   detalleAbierto: boolean;
   onToggleDetalle: () => void;
 }) {
+  // Empresas con el desglose mes-a-mes del año en curso abierto.
+  // Independientes: el usuario puede tener varias abiertas a la vez.
+  const [empresasExpandidasAnio, setEmpresasExpandidasAnio] = useState<Set<number>>(new Set());
+  const anioEnCurso = useMemo(() => new Date().getFullYear(), []);
+
+  // Helper: para una empresa, busca su detalle del año en curso dentro del
+  // histórico ya cargado. Devuelve null si no hay datos para esa empresa
+  // en el año en curso (caso típico: empresa nueva sin facturación todavía).
+  const getDetalleAnioActualEmpresa = (empresaId: number): HistoricoPSAnioDetalle | null => {
+    if (!historico) return null;
+    const empresaHist = historico.ps.por_empresa.find(e => e.empresa.id === empresaId);
+    if (!empresaHist) return null;
+    const detalle = empresaHist.detalle_anios.find(d => d.anio === anioEnCurso);
+    return detalle ?? null;
+  };
+
+  const toggleEmpresaAnio = (empresaId: number) => {
+    setEmpresasExpandidasAnio(prev => {
+      const next = new Set(prev);
+      if (next.has(empresaId)) next.delete(empresaId); else next.add(empresaId);
+      return next;
+    });
+  };
   const totalCardsCol = vistaReparto === "tarifa" ? TARIFAS_ORDEN.length : TIPOS_ORDEN.length;
   const codigos = vistaReparto === "tarifa" ? TARIFAS_ORDEN : TIPOS_ORDEN;
   const reparto = vistaReparto === "tarifa" ? data.reparto.por_tarifa : data.reparto.por_tipo;
@@ -1130,22 +1168,36 @@ function BloquePS({
       {detalleAbierto && (
         <div style={{ fontVariantNumeric: "tabular-nums" }}>
           <div style={{
-            display: "grid", gridTemplateColumns: `130px ${codigos.map(() => "1fr").join(" ")}`, gap: 6,
+            display: "grid", gridTemplateColumns: `16px 130px ${codigos.map(() => "1fr").join(" ")}`, gap: 6,
             padding: "6px 0", borderBottom: "1px solid var(--card-border)",
             fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em",
           }}>
+            <div></div>
             <div>Empresa</div>
             {codigos.map(c => <div key={c} style={{ textAlign: "center" }}>{labelOf(c)}</div>)}
           </div>
           {data.detalle_por_empresa.map((emp, i) => {
             const reparto_emp = vistaReparto === "tarifa" ? emp.por_tarifa : emp.por_tipo;
-            return (
-              <div key={emp.empresa.id} style={{
-                display: "grid", gridTemplateColumns: `130px ${codigos.map(() => "1fr").join(" ")}`, gap: 6,
-                padding: "8px 0",
-                borderBottom: i < data.detalle_por_empresa.length - 1 ? "1px solid var(--card-border)" : "none",
-                alignItems: "center",
-              }}>
+            const expandida = empresasExpandidasAnio.has(emp.empresa.id);
+            const detalleAnio = expandida ? getDetalleAnioActualEmpresa(emp.empresa.id) : null;
+
+            const filaPlana = (
+              <div style={{
+                display: "grid", gridTemplateColumns: `16px 130px ${codigos.map(() => "1fr").join(" ")}`, gap: 6,
+                padding: "8px 8px", alignItems: "center", cursor: "pointer",
+              }}
+              onClick={() => toggleEmpresaAnio(emp.empresa.id)}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{
+                    display: "inline-block", fontSize: 11,
+                    color: expandida ? "var(--btn-secondary-bg)" : "var(--text-muted)",
+                    fontWeight: 600,
+                    transform: expandida ? "rotate(90deg)" : "none",
+                    transition: "transform 0.15s ease",
+                  }}>
+                    ▸
+                  </span>
+                </div>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 500 }}>{emp.empresa.nombre}</div>
                   <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{emp.empresa.codigo_ree ?? "—"}</div>
@@ -1171,6 +1223,45 @@ function BloquePS({
                     </div>
                   );
                 })}
+              </div>
+            );
+
+            // Caso colapsado: solo la fila plana con borde inferior.
+            if (!expandida) {
+              return (
+                <div key={emp.empresa.id} style={{
+                  borderBottom: i < data.detalle_por_empresa.length - 1 ? "1px solid var(--card-border)" : "none",
+                }}>
+                  {filaPlana}
+                </div>
+              );
+            }
+
+            // Caso expandido: fila plana + despliegue del año en curso.
+            return (
+              <div key={emp.empresa.id} style={{
+                background: "rgba(55,138,221,0.04)",
+                border: "1px solid var(--card-border)",
+                borderRadius: 6, margin: "6px 0",
+              }}>
+                {filaPlana}
+                <div style={{ padding: "0 14px 14px 14px" }}>
+                  {detalleAnio ? (
+                    <DetalleAnioPS
+                      detalle={detalleAnio}
+                      vistaReparto={vistaReparto}
+                      onChangeVistaReparto={onChangeVistaReparto}
+                    />
+                  ) : (
+                    <div style={{
+                      background: "var(--field-bg-soft)", border: "1px dashed var(--card-border)",
+                      borderRadius: 6, padding: "14px 16px", marginTop: 8,
+                      fontSize: 11, color: "var(--text-muted)", textAlign: "center",
+                    }}>
+                      Sin datos para {anioEnCurso} en {emp.empresa.nombre}.
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
