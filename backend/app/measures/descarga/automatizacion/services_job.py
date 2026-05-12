@@ -109,7 +109,7 @@ _HITOS_PUBLICACION: List[Dict] = [
         "tipo_alerta":     "publicacion_art15",
         "label":           "ART15",
         "categoria":       "Art. 15",
-        "evento_contains": "publicación del operador del sistema",
+        "evento_contains": "publicacion nuevo cierre",
         "tipos_fichero":   ["BALD"],
         "dias_antes":      0,
         "dias_despues":    2,
