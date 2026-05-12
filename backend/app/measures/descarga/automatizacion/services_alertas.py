@@ -74,14 +74,19 @@ def upsert_alerta(
         )
         db.add(alerta)
     else:
+        # Si la alerta ya existe en estado "resuelta" o "descartada", NO la
+        # reactivamos ni actualizamos sus datos contextuales. El usuario
+        # decidió que esa alerta queda gestionada — el rastro queda congelado.
+        # Para reactivarla manualmente se hará desde la pantalla de gestión
+        # de alertas (Fase 2).
+        if str(alerta.estado) in ("resuelta", "descartada"):
+            return alerta
+
+        # Estaba activa → actualizar datos contextuales del momento actual
         alerta.fecha_hito     = fecha_hito           # type: ignore[assignment]
         alerta.num_pendientes = num_pendientes       # type: ignore[assignment]
         alerta.detalle_json   = detalle_serializado  # type: ignore[assignment]
         alerta.severidad      = severidad            # type: ignore[assignment]
-        if str(alerta.estado) in ("resuelta", "descartada"):
-            alerta.estado      = "activa"  # type: ignore[assignment]
-            alerta.resuelta_at = None      # type: ignore[assignment]
-            alerta.resuelta_by = None      # type: ignore[assignment]
 
     db.commit()
     db.refresh(alerta)
