@@ -703,6 +703,17 @@ def subir_ficheros(db: Session, *, config_id: int, tenant_id: int,
                     ftp_log_id=log_id,
                     m_para_agrecl=m_para_agrecl,
                 )
+                # Si encaja con AUTOCONSUMO/CUPSCAU/CUPS45/CUPSDAT → registrar
+                # también en envios_inventario. Mutuamente excluyente con el de
+                # arriba: los regex son distintos por prefijo, no puede encajar
+                # con ambos. Si no encaja, sale silencioso.
+                _registrar_envio_inventario(
+                    db,
+                    tenant_id=tenant_id,
+                    empresa_id=int(config.empresa_id),
+                    nombre_fichero=nombre,
+                    ftp_log_id=log_id,
+                )
                 subidos += 1
                 detalle.append(f"OK: {nombre} ({tamanio} bytes)")
             except Exception as e:
@@ -1164,5 +1175,59 @@ def _registrar_envio_m(
         db.commit()
     except Exception:
         # No queremos romper el upload si el registro en envios_m falla.
+        # El fichero ya está en el SFTP y registrado en FtpSyncLog.
+        db.rollback()
+
+
+# ── Registro automático en envios_inventario al subir AUTOCONSUMO/CUPSCAU/CUPS45/CUPSDAT ──
+
+def _registrar_envio_inventario(
+    db: Session,
+    *,
+    tenant_id: int,
+    empresa_id: int,
+    nombre_fichero: str,
+    ftp_log_id: Optional[int],
+) -> None:
+    """
+    Si el nombre del fichero encaja con AUTOCONSUMO/CUPSCAU/CUPS45/CUPSDAT →
+    crea registro en la tabla `envios_inventario`. Si no encaja, no hace
+    nada (silencioso).
+
+    No requiere ningún parámetro adicional como `m_para_agrecl`: estos
+    tipos solo llevan `fecha_generacion` (del nombre del fichero) y la
+    `frecuencia` se deriva del tipo (mensual/diario).
+
+    Si por cualquier motivo el insert falla, se loguea silenciosamente —
+    no debe romper el flujo de upload al SFTP que ya tuvo éxito.
+    """
+    try:
+        from app.envios.models import EnvioInventario
+        from app.envios.parser_inventario import parsear_nombre_inventario
+
+        parsed = parsear_nombre_inventario(nombre_fichero)
+        if parsed is None:
+            return  # No es AUTOCONSUMO/CUPSCAU/CUPS45/CUPSDAT → ignorar
+        if parsed.es_respuesta:
+            return  # Es un .ok / .bad → no se registran como envíos nuevos
+
+        envio = EnvioInventario(
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            codigo_ree_empresa=parsed.codigo_ree_empresa,
+            tipo=parsed.tipo,
+            frecuencia=parsed.frecuencia,
+            fecha_generacion=parsed.fecha_generacion,
+            version=parsed.version,
+            nombre_fichero=nombre_fichero,
+            ftp_log_id=ftp_log_id,
+            estado_ree=None,
+            estado_ree_n=None,
+            reintentos=0,
+        )
+        db.add(envio)
+        db.commit()
+    except Exception:
+        # No queremos romper el upload si el registro en envios_inventario falla.
         # El fichero ya está en el SFTP y registrado en FtpSyncLog.
         db.rollback()
