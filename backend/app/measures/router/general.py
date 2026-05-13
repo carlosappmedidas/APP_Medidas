@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, or_, and_, select
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ from app.measures.router.utils import (
     paginate,
     sanitize_medida,
 )
+from app.measures.schemas import MedidaGeneralComentariosPatch
 from app.tenants.models import User
 
 router = APIRouter(prefix="/general", tags=["medidas"])
@@ -583,3 +584,53 @@ def listar_medidas_generales_all_page(
         "total": pg["total"],
         "total_pages": pg["total_pages"],
     }
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PATCH de comentarios libres por ventana (M1/M2/M7/M11/ART15)
+# ═════════════════════════════════════════════════════════════════════════════
+
+@router.patch("/{medida_id}/comentarios")
+def actualizar_comentarios_medida_general(
+    medida_id: int,
+    payload: MedidaGeneralComentariosPatch = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Actualiza los comentarios libres (uno por ventana) de una fila concreta
+    de medidas_general. Solo se modifican los campos que vengan en el body;
+    los que vengan como `null` u omitidos quedan como estaban.
+
+    Para borrar un comentario, pasar la cadena vacía "".
+    """
+    tenant_id = int(cast(int, current_user.tenant_id))
+    allowed_empresa_ids = get_allowed_empresa_ids(db, current_user)
+
+    mg = (
+        db.query(MedidaGeneral)
+        .filter(
+            MedidaGeneral.id        == medida_id,
+            MedidaGeneral.tenant_id == tenant_id,
+        )
+        .first()
+    )
+
+    if mg is None or int(cast(int, mg.empresa_id)) not in allowed_empresa_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Medida general {medida_id} no encontrada.",
+        )
+
+    # Solo actualizar los campos que llegaron (no None) — model_dump(exclude_unset=True)
+    cambios = payload.model_dump(exclude_unset=True)
+    if not cambios:
+        # Nada que actualizar — devolvemos la fila tal cual.
+        return sanitize_medida(mg)
+
+    for campo, valor in cambios.items():
+        setattr(mg, campo, valor)
+
+    db.commit()
+    db.refresh(mg)
+
+    return sanitize_medida(mg)

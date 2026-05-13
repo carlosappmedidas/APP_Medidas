@@ -11,6 +11,7 @@ import { useMedidasTable } from "./hooks/useMedidasTable";
 import { useDeleteByIngestion } from "../ingestion/hooks/useDeleteByIngestion";
 import type { TableAppearance } from "../settings/hooks/useTableSettings";
 import { PctCell, formatNumberEs } from "./utils/pctBadge";
+import ComentariosPanel, { type ComentariosMedidaGeneral } from "./ComentariosPanel";
 
 // ── Colores de cabecera de grupo ──────────────────────────────────────────
 const GROUP_HEADER_STYLES: Record<string, { background: string; color: string; borderBottom: string }> = {
@@ -51,7 +52,7 @@ export type ColumnDefGeneral = {
 
 const STICKY_COLUMN_IDS = ["empresa_id", "empresa_codigo", "punto_id", "anio", "mes"];
 const STICKY_WIDTHS: Record<string, number> = {
-  empresa_id: 110, empresa_codigo: 110, punto_id: 64, anio: 52, mes: 44,
+  empresa_id: 110, empresa_codigo: 110, punto_id: 96, anio: 52, mes: 44,
 };
 
 // Fondo sólido para bandas alternas: rgba(30,58,95,0.18) sobre #1a2e45 (card-bg)
@@ -60,7 +61,11 @@ const STRIPE_BG = "rgb(27,48,74)";
 const ALL_COLUMNS_GENERAL: ColumnDefGeneral[] = [
   { id: "empresa_id",      label: "Empresa",        align: "left",  group: "Identificación", render: (m) => m.empresa_id },
   { id: "empresa_codigo",  label: "Código empresa", align: "left",  group: "Identificación", render: (m) => (m as any).empresa_codigo ?? "-" },
-  { id: "punto_id",        label: "Punto",          align: "left",  group: "Identificación", render: (m) => m.punto_id },
+  // 💬 Comentarios — mantenemos el ID "punto_id" para no romper el columnOrder guardado de los usuarios.
+  //   Antes esta columna mostraba el valor "punto_id" (que siempre es "GENERAL" → no aportaba info).
+  //   Ahora muestra un botón 💬 que abre el panel de comentarios. El render real se inyecta dinámicamente
+  //   en MedidasGeneralSection (porque necesita acceso al setter del panel y al estado de overrides).
+  { id: "punto_id",        label: "Comentarios",    align: "left",  group: "Identificación", render: () => null },
   { id: "anio",            label: "Año",            align: "left",  group: "Identificación", render: (m) => m.anio },
   { id: "mes",             label: "Mes",            align: "left",  group: "Identificación", render: (m) => m.mes.toString().padStart(2, "0") },
   { id: "energia_bruta_facturada",         label: "E bruta fact.",  align: "right", group: "General", render: (m) => formatNumberEs(m.energia_bruta_facturada) },
@@ -135,6 +140,66 @@ export default function MedidasGeneralSection({
   const defaultOrder = useMemo(() => ALL_COLUMNS_GENERAL.map((c) => c.id), []);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
 
+  // 💬 Estado del panel de comentarios
+  const [panelMedidaId, setPanelMedidaId] = useState<number | null>(null);
+  const [panelContext,  setPanelContext]  = useState<{
+    empresaNombre: string;
+    empresaCodigo: string;
+    anio: number;
+    mes: number;
+    initial: ComentariosMedidaGeneral;
+  } | null>(null);
+  // Cambios locales en memoria tras Guardar (para no tener que recargar la tabla entera)
+  const [comentariosOverrides, setComentariosOverrides] = useState<Record<number, ComentariosMedidaGeneral>>({});
+
+  const abrirPanel = (m: any) => {
+    const override = comentariosOverrides[m.id];
+    setPanelMedidaId(m.id);
+    setPanelContext({
+      empresaNombre: empresaNameMap.get(m.empresa_id) ?? String(m.empresa_id),
+      empresaCodigo: m.empresa_codigo ?? "-",
+      anio: m.anio,
+      mes: m.mes,
+      initial: override ?? {
+        comentario_m1:    m.comentario_m1    ?? null,
+        comentario_m2:    m.comentario_m2    ?? null,
+        comentario_m7:    m.comentario_m7    ?? null,
+        comentario_m11:   m.comentario_m11   ?? null,
+        comentario_art15: m.comentario_art15 ?? null,
+      },
+    });
+  };
+
+  const cerrarPanel = () => {
+    setPanelMedidaId(null);
+    setPanelContext(null);
+  };
+
+  const onComentariosGuardados = (nuevos: ComentariosMedidaGeneral) => {
+    if (panelMedidaId !== null) {
+      setComentariosOverrides(prev => ({ ...prev, [panelMedidaId]: nuevos }));
+    }
+  };
+
+  // Helper para saber cuántos comentarios no-vacíos tiene una fila
+  const contarComentarios = (m: any): number => {
+    const o = comentariosOverrides[m.id];
+    const c = o ?? {
+      comentario_m1:    m.comentario_m1,
+      comentario_m2:    m.comentario_m2,
+      comentario_m7:    m.comentario_m7,
+      comentario_m11:   m.comentario_m11,
+      comentario_art15: m.comentario_art15,
+    };
+    let n = 0;
+    if (c.comentario_m1    && c.comentario_m1.trim())    n++;
+    if (c.comentario_m2    && c.comentario_m2.trim())    n++;
+    if (c.comentario_m7    && c.comentario_m7.trim())    n++;
+    if (c.comentario_m11   && c.comentario_m11.trim())   n++;
+    if (c.comentario_art15 && c.comentario_art15.trim()) n++;
+    return n;
+  };
+
   const {
     isSistema, data, loading, error, hasLoadedOnce,
     filtroTenant, setFiltroTenant,
@@ -193,13 +258,51 @@ export default function MedidasGeneralSection({
   }, [opcionesEmpresa]);
 
   const baseColumns = useMemo(() => {
-    const cols = ALL_COLUMNS_GENERAL.map(col =>
-      col.id === "empresa_id"
-        ? { ...col, render: (m: any) => empresaNameMap.get(m.empresa_id) ?? m.empresa_id }
-        : col
-    );
+    const cols = ALL_COLUMNS_GENERAL.map(col => {
+      if (col.id === "empresa_id") {
+        return { ...col, render: (m: any) => empresaNameMap.get(m.empresa_id) ?? m.empresa_id };
+      }
+      if (col.id === "punto_id") {
+        return {
+          ...col,
+          render: (m: any) => {
+            const n = contarComentarios(m);
+            return (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); abrirPanel(m); }}
+                title={n > 0 ? `${n} comentario${n > 1 ? "s" : ""}` : "Añadir comentario"}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  padding: "2px 4px", borderRadius: 4,
+                  color: n > 0 ? "#60a5fa" : "rgba(226,232,240,0.35)",
+                  display: "inline-flex", alignItems: "center", gap: 3, lineHeight: 1,
+                  fontSize: 12,
+                }}
+              >
+                💬
+                {n > 0 && (
+                  <span style={{
+                    fontSize: 8, background: "#185fa5", color: "#fff",
+                    padding: "0 4px", borderRadius: 6, minWidth: 11, height: 11,
+                    lineHeight: "11px", textAlign: "center", fontWeight: 500,
+                  }}>
+                    {n}
+                  </span>
+                )}
+              </button>
+            );
+          },
+        };
+      }
+      return col;
+    });
     return isSistema ? [systemTenantColumn, ...cols] : cols;
-  }, [isSistema, systemTenantColumn, empresaNameMap]);
+  }, [isSistema, systemTenantColumn, empresaNameMap, comentariosOverrides]);
+  /* eslint-disable react-hooks/exhaustive-deps */
+  // abrirPanel/contarComentarios usan empresaNameMap y comentariosOverrides;
+  // ya están como dependencias arriba. No incluimos los callbacks porque son
+  // estables dentro del mismo render.
 
   const empresaOptions = useMemo(() => {
     const source = isSistema ? opcionesEmpresaFiltradas : opcionesEmpresa;
@@ -476,6 +579,22 @@ export default function MedidasGeneralSection({
         onClose={() => { if (deleteBusy) return; setDeletePreviewOpen(false); }}
         onConfirm={confirmDelete}
       />
+
+      {/* 💬 Panel lateral de comentarios */}
+      {panelMedidaId !== null && panelContext && (
+        <ComentariosPanel
+          open={true}
+          token={token}
+          medidaId={panelMedidaId}
+          empresaNombre={panelContext.empresaNombre}
+          empresaCodigo={panelContext.empresaCodigo}
+          anio={panelContext.anio}
+          mes={panelContext.mes}
+          initial={panelContext.initial}
+          onClose={cerrarPanel}
+          onSaved={onComentariosGuardados}
+        />
+      )}
     </section>
   );
 }

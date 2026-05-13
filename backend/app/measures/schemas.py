@@ -75,7 +75,6 @@ class MedidaGeneralRead(MedidaGeneralBase):
     perdidas_e_facturada_m11_kwh: float | None = None
     perdidas_e_facturada_m11_pct: float | None = None
 
-    # ART15
     energia_publicada_art15_kwh: float | None = None
     energia_autoconsumo_art15_kwh: float | None = None
     energia_pf_art15_kwh: float | None = None
@@ -84,6 +83,13 @@ class MedidaGeneralRead(MedidaGeneralBase):
     energia_neta_facturada_art15_kwh: float | None = None
     perdidas_e_facturada_art15_kwh: float | None = None
     perdidas_e_facturada_art15_pct: float | None = None
+
+    # Comentarios libres por ventana (no se envían a REE)
+    comentario_m1:    str | None = None
+    comentario_m2:    str | None = None
+    comentario_m7:    str | None = None
+    comentario_m11:   str | None = None
+    comentario_art15: str | None = None
 
     file_id: int
     created_at: datetime
@@ -196,3 +202,24 @@ class PaginatedResponse(BaseModel):
     page_size: int
     total: int
     total_pages: int
+
+
+# ==========================================================
+# ✅ Patch de comentarios de MedidaGeneral
+# Permite actualizar 1 o varios comentarios por ventana sin
+# tocar el resto de campos de la fila.
+# ==========================================================
+
+class MedidaGeneralComentariosPatch(BaseModel):
+    """
+    Payload del PATCH /general/{id}/comentarios.
+
+    Todos los campos son opcionales — solo se actualizan los que vengan.
+    Pasar string vacía "" borra el comentario; pasar `None` (omitir el
+    campo) lo deja como estaba.
+    """
+    comentario_m1:    str | None = None
+    comentario_m2:    str | None = None
+    comentario_m7:    str | None = None
+    comentario_m11:   str | None = None
+    comentario_art15: str | None = None

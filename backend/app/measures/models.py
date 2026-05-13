@@ -5,6 +5,7 @@ from sqlalchemy import (
     Integer,
     Float,
     String,
+    Text,
     DateTime,
     ForeignKey,
     Index,
@@ -126,6 +127,13 @@ class MedidaGeneral(TimestampMixin, Base):
     energia_neta_facturada_art15_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_art15_kwh = Column(Float, nullable=True)
     perdidas_e_facturada_art15_pct = Column(Float, nullable=True)
+
+    # 📝 COMENTARIOS DE USUARIO POR VENTANA (texto libre, no se exporta a REE)
+    comentario_m1    = Column(Text, nullable=True)
+    comentario_m2    = Column(Text, nullable=True)
+    comentario_m7    = Column(Text, nullable=True)
+    comentario_m11   = Column(Text, nullable=True)
+    comentario_art15 = Column(Text, nullable=True)
 
     # De qué fichero viene este agregado (último fichero que ha actualizado esta fila)
     file_id = Column(

@@ -51,7 +51,7 @@ const PAGE_TITLES: Record<MainTab, string> = {
 const ALL_COLUMNS_META: { id: string; label: string; group: string }[] = [
   { id: "empresa_id",      label: "Empresa ID",                   group: "Identificación" },
   { id: "empresa_codigo",  label: "Código empresa",               group: "Identificación" },
-  { id: "punto_id",        label: "Punto",                        group: "Identificación" },
+  { id: "punto_id",        label: "💬 Comentarios",               group: "Identificación" },
   { id: "anio",            label: "Año",                          group: "Identificación" },
   { id: "mes",             label: "Mes",                          group: "Identificación" },
   { id: "energia_bruta_facturada",          label: "E bruta facturada",          group: "General" },
