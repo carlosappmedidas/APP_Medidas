@@ -119,7 +119,7 @@ class EnvioAlerta(Base):
 
     # ── Clasificación ─────────────────────────────────────────────────────
     tipo    = Column(String(40), nullable=False, index=True)  # ver TIPO_*
-    m_clas  = Column(String(4),  nullable=False, index=True)  # M1 | M2 | M7
+    m_clas  = Column(String(10), nullable=False, index=True)  # M1 | M2 | M7 | diario | mensual (inventario)
     periodo = Column(String(10), nullable=False, index=True)  # YYYY-MM (mes_envio)
 
     # ── Contexto del hito que generó la alerta ────────────────────────────
