@@ -590,8 +590,7 @@ export default function EnviosSection({ token }: Props) {
                 configs={configs}
                 titulo="Explorador SFTP"
                 inicialAbierto
-                onUploadCompleted={(r) => {
-                  console.log("Subidos al SFTP:", r);
+                onUploadCompleted={() => {
                   // Si la tarjeta del histórico está abierta → recargar para ver los nuevos
                   if (panelHistOpen) cargarEnvios();
                 }}
