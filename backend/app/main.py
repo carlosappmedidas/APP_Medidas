@@ -83,10 +83,12 @@ PLANTILLAS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/plantillas", StaticFiles(directory=str(PLANTILLAS_DIR)), name="plantillas")
 
 # ---------- CORS ----------
+# Defaults SOLO para dev local sin .env. NUNCA poner IPs específicas aquí
+# (Tailscale, dominios públicos, etc.) — esas deben ir en CORS_ORIGINS del .env
+# de cada entorno (ver .env.example).
 _default_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://100.106.206.66:3000",
 ]
 origins = (
     [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
