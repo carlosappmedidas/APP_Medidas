@@ -36,6 +36,7 @@ from app.objeciones.automatizacion.routes_alertas import router as objeciones_al
 from app.tenants.routes import router as auth_router
 from app.perdidas.routes import router as perdidas_router
 from app.topologia.routes import router as topologia_router
+from app.stg.routes import router as stg_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
@@ -55,6 +56,10 @@ from app.envios.automatizacion.models import EnviosAutomatizacion, EnvioAlerta  
 from app.envios.models import EnvioInventario  # noqa: F401
 from app.perdidas.models import Concentrador, PerdidaDiaria  # noqa: F401
 from app.topologia.models import CtInventario, CtTransformador, CupsTopologia  # noqa: F401
+from app.stg.models import (  # noqa: F401
+    ConexionStgEmpresa, StgConcentrador, Cups,
+    SolicitudFichero, FicheroRecibido,
+)
 
 # Scheduler FTP
 from app.comunicaciones.scheduler import start_scheduler, stop_scheduler
@@ -135,3 +140,4 @@ app.include_router(perdidas_router)
 app.include_router(topologia_router)
 app.include_router(measures_descarga_router)
 app.include_router(measures_descarga_automatizacion_router)
+app.include_router(stg_router)
