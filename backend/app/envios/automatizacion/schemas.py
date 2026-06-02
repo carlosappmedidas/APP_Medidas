@@ -59,8 +59,9 @@ class EnvioAlertaRead(BaseModel):
         "plazo_vencido_bad",
         "plazo_vencido_pendiente",
         "respuesta_ree",
+        "respuesta_ree_inventario",
     ]
-    m_clas: Literal["M1", "M2", "M7"]
+    m_clas: Literal["M1", "M2", "M7", "diario", "mensual"]
     periodo: str
 
     plazo_fecha: Optional[datetime] = None
