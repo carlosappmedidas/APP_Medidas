@@ -63,7 +63,7 @@ export default function UiChip({
   onClick,
   title,
 }: UiChipProps) {
-  const variantStyle = VARIANT_STYLES[variant];
+  const variantStyle = VARIANT_STYLES[variant] ?? VARIANT_STYLES.muted;
   const sizeStyle = SIZE_STYLES[size];
 
   return (
