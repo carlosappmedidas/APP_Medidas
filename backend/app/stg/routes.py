@@ -209,3 +209,22 @@ def test_conexion(
     user: User = Depends(get_current_user),
 ):
     return services.probar_conexion(db, user, empresa_id)
+
+
+# ---------------------------------------------------------------------------
+# SFTP — endpoints solo lectura (Paquete 3)
+# ---------------------------------------------------------------------------
+@router.get("/sftp/listar", response_model=schemas.SftpListadoResponse)
+def listar_ficheros_sftp(
+    empresa_id: int = Query(...),
+    filtro: Optional[str] = Query(None, description="Substring opcional para filtrar nombres"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Lista los ficheros disponibles en la carpeta_recepcion del SFTP de la empresa.
+
+    Solo aplica si la conexión es de tipo 'sftp'. Para otros tipos devuelve
+    un listado vacío.
+    """
+    return services.listar_ficheros_sftp(db, user, empresa_id, filtro_patron=filtro)

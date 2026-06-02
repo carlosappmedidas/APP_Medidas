@@ -62,6 +62,15 @@ class ConexionStgEmpresa(TimestampMixin, Base):
     estado       = Column(String(20), nullable=False, default="desconocido")
     ultimo_error = Column(Text, nullable=True)
 
+    # Carpetas funcionales (similar al patrón de ftp_configs en comunicaciones)
+    # - carpeta_recepcion: ruta donde el STG nos deja los ficheros S0X.
+    #   Admite plantillas: {anio}, {mes}, {mes_actual} (YYYY-MM), {mes_anterior}.
+    # - carpeta_envio: ruta donde subimos peticiones. FIJA, sin plantillas.
+    # - usar_tls: si el SFTP usa TLS (FTPS) o SSH puro (SFTP). Por defecto True.
+    carpeta_recepcion = Column(String(500), nullable=True)
+    carpeta_envio     = Column(String(500), nullable=True)
+    usar_tls          = Column(Boolean, nullable=False, default=True)
+
     __table_args__ = (
         UniqueConstraint("empresa_id", name="uq_stg_conexion_empresa"),
     )

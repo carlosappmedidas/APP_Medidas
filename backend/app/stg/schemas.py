@@ -52,6 +52,9 @@ class ConexionStgEmpresaRead(BaseModel):
     usuario: Optional[str] = None
     ruta_base: Optional[str] = None
     config_extra: Optional[dict] = None
+    carpeta_recepcion: Optional[str] = None
+    carpeta_envio: Optional[str] = None
+    usar_tls: bool = True
     ultimo_ping: Optional[datetime] = None
     estado: EstadoConexion
     ultimo_error: Optional[str] = None
@@ -69,6 +72,9 @@ class ConexionStgEmpresaCreate(BaseModel):
     password: Optional[str] = None
     ruta_base: Optional[str] = None
     config_extra: Optional[dict] = None
+    carpeta_recepcion: Optional[str] = None
+    carpeta_envio: Optional[str] = None
+    usar_tls: Optional[bool] = None
     activo: bool = True
 
 
@@ -81,6 +87,9 @@ class ConexionStgEmpresaUpdate(BaseModel):
     password: Optional[str] = None
     ruta_base: Optional[str] = None
     config_extra: Optional[dict] = None
+    carpeta_recepcion: Optional[str] = None
+    carpeta_envio: Optional[str] = None
+    usar_tls: Optional[bool] = None
     activo: Optional[bool] = None
 
 
@@ -229,3 +238,20 @@ class FicheroRecibidoRead(BaseModel):
     parsed: bool
     parsed_at: Optional[datetime] = None
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# SFTP — listado de ficheros disponibles en el SFTP del cliente
+# (solo lectura, Paquete 3)
+# ---------------------------------------------------------------------------
+class SftpFicheroDisponible(BaseModel):
+    nombre: str
+    tamano_bytes: int
+    modificado: Optional[datetime] = None
+
+
+class SftpListadoResponse(BaseModel):
+    empresa_id: int
+    ruta_consultada: str
+    total: int
+    items: List[SftpFicheroDisponible]

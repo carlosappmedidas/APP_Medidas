@@ -70,6 +70,9 @@ def get_adapter_for_empresa(
             usuario=conf.usuario or "",
             password=_descifrar_password(conf.password_cifrado),
             ruta_base=conf.ruta_base or "/",
+            carpeta_recepcion=conf.carpeta_recepcion or "",
+            carpeta_envio=conf.carpeta_envio or "",
+            usar_tls=bool(conf.usar_tls) if conf.usar_tls is not None else True,
         )
     # api_rest y db_directa pendientes en futuros paquetes
     return MockStgAdapter(empresa_id=empresa_id)
@@ -392,7 +395,8 @@ def upsert_conexion_empresa(
     )
 
     campos_simples = ["tipo", "nombre", "host", "puerto", "usuario",
-                       "ruta_base", "config_extra", "activo"]
+                       "ruta_base", "config_extra", "activo",
+                       "carpeta_recepcion", "carpeta_envio", "usar_tls"]
 
     if existing is None:
         existing = ConexionStgEmpresa(
@@ -440,4 +444,50 @@ def probar_conexion(
         "ok": result.ok,
         "mensaje": result.mensaje,
         "tiempo_ms": result.tiempo_ms,
+    }
+
+
+# ---------------------------------------------------------------------------
+# SFTP — listado de ficheros (Paquete 3)
+# ---------------------------------------------------------------------------
+def listar_ficheros_sftp(
+    db: Session,
+    user: User,
+    empresa_id: int,
+    filtro_patron: Optional[str] = None,
+) -> dict:
+    """
+    Lista ficheros disponibles en la carpeta_recepcion del SFTP de la empresa.
+
+    Solo aplica si la conexión configurada es de tipo "sftp". Para otros tipos
+    devuelve un dict vacío con mensaje aclaratorio.
+    """
+    assert_empresa_access(db, user, empresa_id)
+
+    conf = (
+        db.query(ConexionStgEmpresa)
+        .filter(ConexionStgEmpresa.empresa_id == empresa_id)
+        .first()
+    )
+    if conf is None:
+        return {
+            "empresa_id": empresa_id,
+            "ruta_consultada": "",
+            "total": 0,
+            "items": [],
+        }
+    if conf.tipo != "sftp":
+        return {
+            "empresa_id": empresa_id,
+            "ruta_consultada": "",
+            "total": 0,
+            "items": [],
+        }
+
+    adapter = get_adapter_for_empresa(db, empresa_id)
+    # adapter es un SftpStgAdapter porque conf.tipo == "sftp"
+    resultado = adapter.listar_ficheros(filtro_patron=filtro_patron)
+    return {
+        "empresa_id": empresa_id,
+        **resultado,
     }
