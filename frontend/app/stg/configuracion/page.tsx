@@ -46,7 +46,7 @@ export default function StgConfiguracionPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Form state - conexión
-  const [tipo, setTipo] = useState<"gisce" | "sftp" | "api_rest" | "db_directa">("sftp");
+  const [tipo, setTipo] = useState<"gisce" | "sftp" | "ftp" | "api_rest" | "db_directa">("ftp");
   const [nombre, setNombre] = useState("");
   const [host, setHost] = useState("");
   const [puerto, setPuerto] = useState<number | "">("");
@@ -117,8 +117,8 @@ export default function StgConfiguracionPage() {
         activo,
         usar_tls: usarTls,
       };
-      // Solo enviamos carpetas si son SFTP (no llenamos basura para otros tipos)
-      if (tipo === "sftp") {
+      // Las carpetas aplican tanto a SFTP como FTP (mismo modelo de campos)
+      if (tipo === "sftp" || tipo === "ftp") {
         payload.carpeta_recepcion = carpetaRecepcion || null;
         payload.carpeta_envio = carpetaEnvio || null;
       }
@@ -196,7 +196,7 @@ export default function StgConfiguracionPage() {
     return <div style={{ color: "rgba(241,239,232,0.5)" }}>Cargando…</div>;
   }
 
-  const esSftp = tipo === "sftp";
+  const esRemoto = tipo === "sftp" || tipo === "ftp";
 
   return (
     <div style={{ maxWidth: 720 }}>
@@ -223,6 +223,7 @@ export default function StgConfiguracionPage() {
             onChange={(e) => setTipo(e.target.value as any)}
             style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "8px 12px", color: "var(--ds-text-primary, #F1EFE8)", fontSize: 13, outline: "none" }}
           >
+            <option value="ftp">FTP — funcional (Paquete 4)</option>
             <option value="sftp">SFTP — funcional (Paquete 3)</option>
             <option value="gisce">GISCE (XML-RPC) — pendiente Paquete 4</option>
             <option value="api_rest">API REST genérica — pendiente</option>
@@ -231,15 +232,15 @@ export default function StgConfiguracionPage() {
         </Field>
 
         <Field label="Nombre / etiqueta">
-          <Input value={nombre} onChange={setNombre} placeholder="SFTP Lersa" />
+          <Input value={nombre} onChange={setNombre} placeholder={tipo === "ftp" ? "FTP concentradores" : "SFTP Lersa"} />
         </Field>
 
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
           <Field label="Host">
-            <Input value={host} onChange={setHost} placeholder="sftp.cliente.com" />
+            <Input value={host} onChange={setHost} placeholder={tipo === "ftp" ? "213.98.131.59" : "sftp.cliente.com"} />
           </Field>
           <Field label="Puerto">
-            <Input value={String(puerto)} onChange={(v) => setPuerto(v === "" ? "" : Number(v))} placeholder="22" />
+            <Input value={String(puerto)} onChange={(v) => setPuerto(v === "" ? "" : Number(v))} placeholder={tipo === "ftp" ? "21" : "22"} />
           </Field>
         </div>
 
@@ -261,10 +262,10 @@ export default function StgConfiguracionPage() {
           <Input value={rutaBase} onChange={setRutaBase} placeholder="/stg/cliente_x" />
         </Field>
 
-        {esSftp && (
+        {esRemoto && (
           <>
             <div style={{ marginTop: 8, marginBottom: 8, padding: 12, background: "rgba(55,138,221,0.06)", border: "0.5px solid rgba(55,138,221,0.2)", borderRadius: 6, fontSize: 11, color: "rgba(241,239,232,0.7)" }}>
-              <strong style={{ color: "#AFA9EC" }}>Carpetas funcionales SFTP.</strong>
+              <strong style={{ color: "#AFA9EC" }}>Carpetas funcionales {tipo === "ftp" ? "FTP" : "SFTP"}.</strong>
               {" "}Las rutas son relativas al directorio remoto raíz de arriba.
               {" "}En "Carpeta de recepción" puedes usar plantillas:
               {" "}<code>{"{anio}"}</code>, <code>{"{mes}"}</code>, <code>{"{mes_actual}"}</code> (= YYYY-MM),
@@ -327,10 +328,10 @@ export default function StgConfiguracionPage() {
         </div>
       </form>
 
-      {/* -- Listado de ficheros SFTP (solo Paquete 3 / tipo SFTP) -- */}
-      {esSftp && conexion && conexion.tipo === "sftp" && (
+      {/* -- Listado de ficheros remotos (Paquete 3 SFTP / Paquete 4 FTP) -- */}
+      {esRemoto && conexion && (conexion.tipo === "sftp" || conexion.tipo === "ftp") && (
         <div style={{ marginTop: 24, background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: 20 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 500, margin: "0 0 4px" }}>Explorar SFTP</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 500, margin: "0 0 4px" }}>Explorar {conexion.tipo === "ftp" ? "FTP" : "SFTP"}</h2>
           <p style={{ fontSize: 12, color: "rgba(241,239,232,0.5)", margin: "0 0 16px" }}>
             Lista los ficheros disponibles en la carpeta de recepción (resolviendo plantillas en runtime). Solo lectura.
           </p>

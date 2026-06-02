@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 # Tipos comunes
 # ---------------------------------------------------------------------------
-TipoConexion = Literal["gisce", "sftp", "api_rest", "db_directa"]
+TipoConexion = Literal["gisce", "sftp", "ftp", "api_rest", "db_directa"]
 EstadoConexion = Literal["desconocido", "ok", "error", "no_probado"]
 EstadoComunicacion = Literal["online", "offline", "alerta", "desconocido"]
 TipoFichero = Literal["S02", "S04", "S05", "S09"]

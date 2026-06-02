@@ -22,6 +22,7 @@ from app.stg.adapters.base import StgAdapter
 from app.stg.adapters.mock_adapter import MockStgAdapter
 from app.stg.adapters.gisce_adapter import GisceAdapter
 from app.stg.adapters.sftp_adapter import SftpStgAdapter
+from app.stg.adapters.ftp_adapter import FtpStgAdapter
 from app.stg.models import (
     ConexionStgEmpresa,
     StgConcentrador,
@@ -73,6 +74,17 @@ def get_adapter_for_empresa(
             carpeta_recepcion=conf.carpeta_recepcion or "",
             carpeta_envio=conf.carpeta_envio or "",
             usar_tls=bool(conf.usar_tls) if conf.usar_tls is not None else True,
+        )
+    if conf.tipo == "ftp":
+        return FtpStgAdapter(
+            host=conf.host or "",
+            puerto=conf.puerto or 21,
+            usuario=conf.usuario or "",
+            password=_descifrar_password(conf.password_cifrado),
+            ruta_base=conf.ruta_base or "/",
+            carpeta_recepcion=conf.carpeta_recepcion or "",
+            carpeta_envio=conf.carpeta_envio or "",
+            usar_tls=bool(conf.usar_tls) if conf.usar_tls is not None else False,
         )
     # api_rest y db_directa pendientes en futuros paquetes
     return MockStgAdapter(empresa_id=empresa_id)
@@ -448,7 +460,7 @@ def probar_conexion(
 
 
 # ---------------------------------------------------------------------------
-# SFTP — listado de ficheros (Paquete 3)
+# Listado de ficheros remotos (Paquete 3 SFTP + Paquete 4 FTP)
 # ---------------------------------------------------------------------------
 def listar_ficheros_sftp(
     db: Session,
@@ -457,10 +469,13 @@ def listar_ficheros_sftp(
     filtro_patron: Optional[str] = None,
 ) -> dict:
     """
-    Lista ficheros disponibles en la carpeta_recepcion del SFTP de la empresa.
+    Lista ficheros disponibles en la carpeta_recepcion remota de la empresa.
 
-    Solo aplica si la conexión configurada es de tipo "sftp". Para otros tipos
-    devuelve un dict vacío con mensaje aclaratorio.
+    Aplica para conexiones de tipo "sftp" (Paquete 3) o "ftp" (Paquete 4).
+    Para otros tipos devuelve un dict vacío.
+
+    Nota: la URL del endpoint sigue siendo /stg/sftp/listar por compatibilidad
+    con el Paquete 3, pero internamente sirve a ambos protocolos.
     """
     assert_empresa_access(db, user, empresa_id)
 
@@ -476,7 +491,7 @@ def listar_ficheros_sftp(
             "total": 0,
             "items": [],
         }
-    if conf.tipo != "sftp":
+    if conf.tipo not in ("sftp", "ftp"):
         return {
             "empresa_id": empresa_id,
             "ruta_consultada": "",
@@ -485,7 +500,7 @@ def listar_ficheros_sftp(
         }
 
     adapter = get_adapter_for_empresa(db, empresa_id)
-    # adapter es un SftpStgAdapter porque conf.tipo == "sftp"
+    # adapter es SftpStgAdapter o FtpStgAdapter según conf.tipo
     resultado = adapter.listar_ficheros(filtro_patron=filtro_patron)
     return {
         "empresa_id": empresa_id,
