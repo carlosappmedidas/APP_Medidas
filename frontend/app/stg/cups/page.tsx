@@ -1,7 +1,8 @@
 // app/stg/cups/page.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "../../apiConfig";
 import { useStgEmpresaId } from "../components/StgEmpresaSelector";
 
@@ -86,8 +87,9 @@ function formatDate(iso: string | null): string {
 // ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
-export default function StgEquiposMedidaPage() {
+function StgEquiposMedidaPageInner() {
   const empresaId = useStgEmpresaId();
+  const searchParams = useSearchParams();
 
   // Datos de la tabla
   const [data, setData] = useState<ContadoresListResponse | null>(null);
@@ -101,7 +103,10 @@ export default function StgEquiposMedidaPage() {
   const [page, setPage] = useState(1);
 
   // Filtros server-side
-  const [filtroConcentrador, setFiltroConcentrador] = useState<string>("");  // id como string
+  // El filtro de concentrador se inicializa desde URL si viene como ?concentrador_id=X
+  // (lo usa la página /stg/concentradores al pulsar "Ir a contadores de este CT").
+  const initialConcentrador = searchParams.get("concentrador_id") || "";
+  const [filtroConcentrador, setFiltroConcentrador] = useState<string>(initialConcentrador);
   const [filtroEstado, setFiltroEstado] = useState<string>("");
   const [filtroFabricante, setFiltroFabricante] = useState<string>("");
 
@@ -549,3 +554,16 @@ const tdStyle: React.CSSProperties = {
   padding: "8px 12px",
   color: "var(--ds-text-primary, #F1EFE8)",
 };
+
+// ---------------------------------------------------------------------------
+// Default export envuelto en Suspense
+// (requerido por Next 16: useSearchParams debe estar dentro de un boundary)
+// ---------------------------------------------------------------------------
+export default function StgEquiposMedidaPage() {
+  return (
+    <Suspense fallback={null}>
+      <StgEquiposMedidaPageInner />
+    </Suspense>
+  );
+}
+

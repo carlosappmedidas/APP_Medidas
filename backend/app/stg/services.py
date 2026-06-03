@@ -299,6 +299,15 @@ def listar_concentradores(
         .all()
     )
 
+    # Paquete 8c: si fabricante está NULL, derivar del prefijo de codigo_ct.
+    # Esto se hace solo en memoria — no se persiste (cada request lo deriva).
+    PREFIJOS_FABRICANTE = {"CIR", "LGZ", "SAG", "ZIV", "ITE"}
+    for c in items:
+        if c.fabricante is None and c.codigo_ct:
+            prefijo = c.codigo_ct[:3].upper()
+            if prefijo in PREFIJOS_FABRICANTE:
+                c.fabricante = prefijo
+
     return {
         "total": total,
         "page": page,

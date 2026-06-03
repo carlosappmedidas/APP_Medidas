@@ -114,6 +114,11 @@ class StgConcentrador(TimestampMixin, Base):
     firmware        = Column(String(50), nullable=True)
     protocolo_pmi   = Column(String(30), nullable=True)
 
+    # Paquete 8c — campos administrativos (no vienen en STG, se cargan por Excel/GISCE)
+    cups            = Column(String(22), nullable=True)
+    id_ct           = Column(String(50), nullable=True)
+    nombre_ct       = Column(String(255), nullable=True)
+
     numero_cups_asociados = Column(Integer, nullable=True)
 
     ultimo_contacto     = Column(DateTime, nullable=True)

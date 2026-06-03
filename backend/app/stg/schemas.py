@@ -125,6 +125,10 @@ class ConcentradorRead(BaseModel):
     modelo: Optional[str] = None
     firmware: Optional[str] = None
     protocolo_pmi: Optional[str] = None
+    # Paquete 8c
+    cups: Optional[str] = None
+    id_ct: Optional[str] = None
+    nombre_ct: Optional[str] = None
     numero_cups_asociados: Optional[int] = None
     ultimo_contacto: Optional[datetime] = None
     estado_comunicacion: EstadoComunicacion
