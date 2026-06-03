@@ -58,6 +58,8 @@ export default function StgConcentradoresPage() {
   const empresaId = useStgEmpresaId();
   const router = useRouter();
 
+  // Paquete 8d — filtro global client-side (busca en todas las columnas)
+  const [searchGlobal, setSearchGlobal] = useState<string>("");
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,14 +93,47 @@ export default function StgConcentradoresPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 500, margin: "0 0 16px" }}>
+      <h1 style={{ fontSize: 22, fontWeight: 500, margin: "0 0 12px" }}>
         Concentradores (DCU)
       </h1>
+
+      {/* Paquete 8d — filtro global */}
+      <div style={{ marginBottom: 12 }}>
+        <input
+          type="text"
+          placeholder="Buscar en cualquier columna (codigo, nombre, dirección, fabricante, estado…)"
+          value={searchGlobal}
+          onChange={(e) => setSearchGlobal(e.target.value)}
+          style={{
+            width: "100%",
+            maxWidth: 520,
+            background: "rgba(255,255,255,0.04)",
+            border: "0.5px solid rgba(255,255,255,0.1)",
+            borderRadius: 6,
+            padding: "7px 12px",
+            color: "var(--ds-text-primary, #F1EFE8)",
+            fontSize: 12,
+            outline: "none",
+          }}
+        />
+      </div>
 
       {loading && <div style={{ color: "rgba(241,239,232,0.5)" }}>Cargando…</div>}
       {error && <div style={{ color: "#E24B4A" }}>Error: {error}</div>}
 
-      {data && (
+      {data && (() => {
+        // Paquete 8d — filtro global por todas las columnas (case-insensitive)
+        const q = searchGlobal.trim().toLowerCase();
+        const filteredItems = !q ? data.items : data.items.filter((c) => {
+          const fabricante = c.fabricante || fabricanteDesdeCodigoCt(c.codigo_ct);
+          const haystack = [
+            c.codigo_ct, c.nombre, c.direccion, c.municipio, c.provincia,
+            c.id_ct, c.nombre_ct, fabricante, c.modelo, c.firmware,
+            c.protocolo_pmi, c.cups, c.estado_comunicacion,
+          ].filter(Boolean).join(" ").toLowerCase();
+          return haystack.includes(q);
+        });
+        return (
         <div
           style={{
             background: "rgba(255,255,255,0.03)",
@@ -129,7 +164,7 @@ export default function StgConcentradoresPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((c) => {
+                {filteredItems.map((c) => {
                   const fabricante = c.fabricante || fabricanteDesdeCodigoCt(c.codigo_ct);
                   return (
                     <tr key={c.id} style={{ borderBottom: "0.5px solid rgba(255,255,255,0.05)" }}>
@@ -174,10 +209,12 @@ export default function StgConcentradoresPage() {
               borderTop: "0.5px solid rgba(255,255,255,0.08)",
             }}
           >
-            {data.items.length} de {data.total} concentradores
+            {filteredItems.length} de {data.total} concentradores
+            {q && <span style={{ marginLeft: 6, color: "rgba(241,239,232,0.4)" }}>(filtrados de {data.items.length})</span>}
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
