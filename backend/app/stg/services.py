@@ -34,6 +34,7 @@ from app.stg.models import (
     SolicitudFichero,
     Contador,
     Medida,
+    StgImportConfig,
 )
 from app.tenants.models import User
 
@@ -1678,3 +1679,75 @@ def listar_eventos_humanizados(
         "items": items,
         "resumen_top": resumen_top,
     }
+
+
+# ---------------------------------------------------------------------------
+# Import Config — Paquete 8e-2a
+# ---------------------------------------------------------------------------
+ORIGENES_VALIDOS = {"excel", "gisce_os", "sips_cnmc"}
+
+
+def listar_import_configs(db: Session, user: User, empresa_id: int) -> dict:
+    """Lista configs de import para una empresa (max 3, una por origen)."""
+    assert_empresa_access(db, user, empresa_id)
+    rows = (
+        db.query(StgImportConfig)
+        .filter(StgImportConfig.empresa_id == empresa_id)
+        .order_by(StgImportConfig.origen.asc())
+        .all()
+    )
+    return {"total": len(rows), "items": rows}
+
+
+def upsert_import_config(db: Session, user: User, payload) -> "StgImportConfig":
+    """Upsert por (empresa_id, origen). Solo actualiza los campos que llegan no-None."""
+    if payload.origen not in ORIGENES_VALIDOS:
+        raise ValueError(f"origen inválido: {payload.origen!r}. Valores: {sorted(ORIGENES_VALIDOS)}")
+    assert_empresa_access(db, user, payload.empresa_id)
+
+    config = (
+        db.query(StgImportConfig)
+        .filter(
+            StgImportConfig.empresa_id == payload.empresa_id,
+            StgImportConfig.origen == payload.origen,
+        )
+        .one_or_none()
+    )
+
+    if config is None:
+        # Resolvemos tenant_id desde la empresa
+        from app.empresas.models import Empresa
+        empresa = db.query(Empresa).filter(Empresa.id == payload.empresa_id).first()
+        if empresa is None:
+            raise ValueError(f"empresa {payload.empresa_id} no existe")
+        config = StgImportConfig(
+            tenant_id=empresa.tenant_id,
+            empresa_id=payload.empresa_id,
+            origen=payload.origen,
+            mapeo_columnas=payload.mapeo_columnas,
+            configuracion=payload.configuracion,
+            activo=payload.activo if payload.activo is not None else True,
+        )
+        db.add(config)
+    else:
+        if payload.mapeo_columnas is not None:
+            config.mapeo_columnas = payload.mapeo_columnas
+        if payload.configuracion is not None:
+            config.configuracion = payload.configuracion
+        if payload.activo is not None:
+            config.activo = payload.activo
+
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+def delete_import_config(db: Session, user: User, config_id: int) -> None:
+    """Soft delete: marca activo=False."""
+    config = db.query(StgImportConfig).filter(StgImportConfig.id == config_id).first()
+    if config is None:
+        return
+    assert_empresa_access(db, user, config.empresa_id)
+    config.activo = False
+    db.commit()
+

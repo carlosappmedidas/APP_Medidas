@@ -374,3 +374,41 @@ def listar_eventos_humanizados(
         limite=limite,
         offset=offset,
     )
+
+
+# ---------------------------------------------------------------------------
+# Import Config — Paquete 8e-2a
+# ---------------------------------------------------------------------------
+@router.get("/import-config", response_model=schemas.ImportConfigList)
+def listar_import_configs(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Lista las configs de import para una empresa (max 3 por empresa: excel/gisce_os/sips_cnmc)."""
+    return services.listar_import_configs(db, user, empresa_id)
+
+
+@router.post("/import-config", response_model=schemas.ImportConfigRead)
+def upsert_import_config(
+    payload: schemas.ImportConfigUpsert,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Crea o actualiza la config de un origen para una empresa. UNIQUE por (empresa_id, origen)."""
+    try:
+        return services.upsert_import_config(db, user, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/import-config/{config_id}", status_code=204)
+def delete_import_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Soft delete (marca activo=False)."""
+    services.delete_import_config(db, user, config_id)
+    return None
+

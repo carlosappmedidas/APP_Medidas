@@ -4,7 +4,7 @@
 Schemas Pydantic v2 del módulo STG.
 """
 from datetime import date, datetime
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -404,4 +404,36 @@ class EventosListResponse(BaseModel):
     items: List[EventoItem]
     # Top tipos (group + code) por número de ocurrencias en el filtro actual
     resumen_top: List[EventoResumenItem]
+
+
+# ---------------------------------------------------------------------------
+# Import Config — Paquete 8e-2a
+# ---------------------------------------------------------------------------
+class ImportConfigRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    empresa_id: int
+    origen: str
+    mapeo_columnas: Optional[Dict[str, str]] = None
+    configuracion: Optional[Dict[str, Any]] = None
+    activo: bool
+    last_sync: Optional[datetime] = None
+    last_sync_status: Optional[str] = None
+    last_sync_resumen: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ImportConfigUpsert(BaseModel):
+    """Upsert: crea o actualiza por (empresa_id, origen)."""
+    empresa_id: int
+    origen: str  # "excel" | "gisce_os" | "sips_cnmc"
+    mapeo_columnas: Optional[Dict[str, str]] = None
+    configuracion: Optional[Dict[str, Any]] = None
+    activo: Optional[bool] = True
+
+
+class ImportConfigList(BaseModel):
+    total: int
+    items: List[ImportConfigRead]
 

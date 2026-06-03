@@ -351,3 +351,34 @@ class Medida(Base):
 
     datos      = Column(JSONB, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# StgImportConfig — Paquete 8e-2a
+# ---------------------------------------------------------------------------
+class StgImportConfig(TimestampMixin, Base):
+    """
+    Configuración de origen de imports administrativos.
+
+    Una fila por (empresa_id, origen) donde origen ∈ {excel, gisce_os, sips_cnmc}.
+    - mapeo_columnas: dict que mapea "columna_excel" → "campo_concentrador"
+    - configuracion:  credenciales / opciones específicas del origen
+    """
+    __tablename__ = "stg_import_config"
+
+    id          = Column(Integer, primary_key=True)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id  = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    origen          = Column(String(20), nullable=False)   # "excel" | "gisce_os" | "sips_cnmc"
+    mapeo_columnas  = Column(JSON, nullable=True)
+    configuracion   = Column(JSON, nullable=True)
+    activo          = Column(Boolean, nullable=False, default=True)
+    last_sync       = Column(DateTime, nullable=True)
+    last_sync_status = Column(String(30), nullable=True)
+    last_sync_resumen = Column(JSON, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "origen", name="uq_stg_import_config_empresa_origen"),
+    )
+
