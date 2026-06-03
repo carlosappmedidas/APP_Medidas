@@ -889,6 +889,58 @@ def _upsert_contador(
     return ct
 
 
+def _upsert_contador_basico(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    meter_id: str,
+    concentrador_id: Optional[int],
+    fabricante: Optional[str],
+) -> Contador:
+    """
+    UPSERT 'ligero' en stg_contador (Paquete 7).
+
+    Solo identifica al contador (meter_id, fabricante, concentrador_id).
+    NO actualiza estado_comunicacion / activo / ultimo_contacto: esos
+    campos solo los rellena S24 (que sí trae ComStatus + Active).
+
+    Para los tipos que solo traen medidas energéticas (S02 curvas,
+    S05 cierres, S06 parámetros, S09 eventos, G02 calidad comunicación),
+    usamos esta variante para evitar pisar la info de salud.
+
+    Si el contador no existe, se crea con estado="desconocido", activo=True.
+    Si existe, solo se enlaza al concentrador si no lo tenía y se rellena
+    el fabricante si no estaba.
+    """
+    ct = (
+        db.query(Contador)
+        .filter(
+            Contador.empresa_id == empresa_id,
+            Contador.meter_id == meter_id,
+        )
+        .first()
+    )
+    if ct is None:
+        ct = Contador(
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            concentrador_id=concentrador_id,
+            meter_id=meter_id,
+            fabricante=fabricante,
+            ultimo_contacto=None,
+            estado_comunicacion="desconocido",
+            activo=True,
+        )
+        db.add(ct)
+        db.flush()
+    else:
+        if concentrador_id and ct.concentrador_id != concentrador_id:
+            ct.concentrador_id = concentrador_id
+        if fabricante and not ct.fabricante:
+            ct.fabricante = fabricante
+    return ct
+
+
 def _parsear_iso(raw_ts) -> Optional[datetime]:
     """Convierte un string 'YYYY-MM-DD HH:MM:SS' (o datetime) a datetime."""
     if raw_ts is None:
@@ -1000,6 +1052,155 @@ def _parsear_s24(
     }
 
 
+def _parsear_via_meter_values(
+    db: Session,
+    fichero: FicheroRecibido,
+    tipo: str,
+) -> dict:
+    """
+    Parser genérico para tipos que primestg expone vía `meter.values`
+    (S02 curvas, S05 cierres, S06 parámetros, S09 eventos, G02 calidad
+    de comunicación, etc.).
+
+    Estructura común del XML:
+      <Report IdRpt="SXX">
+        <Cnc Id="...">
+          <Cnt Id="..." [Magn|ErrCat|ErrCode|...]>
+            <SXX Fh="..." [atributos específicos]/>
+            ...
+          </Cnt>
+        </Cnc>
+      </Report>
+
+    Estructura común del dict que devuelve primestg para cada value:
+      - Siempre: 'name' (meter_id), 'cnc_name', 'timestamp', 'season'
+      - Específico del tipo:
+          S02: ai, ae, r1, r2, r3, r4, bc, magn        (kWh por hora)
+          S05: ai, ae, r1-r4, contract, period, date_begin, date_end, type
+          S06: firmware_version, mac, manufacturer, model_type, voltages...
+          S09: event_code, event_group
+          G02: atime, aconc, atimeperc, nchanges, ahourly
+
+    El dict completo se guarda en `stg_medida.datos` (JSONB) sin transformar.
+    Esto da máxima flexibilidad: en el futuro se pueden crear vistas
+    materializadas con `datos->>'ai'`, etc.
+
+    Los UPSERTs en stg_contador son "básicos" (no tocan estado_comunicacion):
+    el estado solo lo establece S24, que sí trae ComStatus + Active.
+    """
+    from primestg.report import Report  # type: ignore
+
+    medidas_insertadas = 0
+    concentradores_set = set()
+    contadores_set = set()
+
+    with open(fichero.path, "rb") as f:
+        report = Report(f)
+
+    for cnc in report.concentrators:
+        # cnc_name puede venir como atributo del objeto Cnc, o dentro del value.
+        cnc_name = getattr(cnc, "name", None)
+        cnc_obj = None
+        if cnc_name:
+            cnc_obj = _upsert_concentrador(
+                db, fichero.tenant_id, fichero.empresa_id, cnc_name,
+            )
+            concentradores_set.add(cnc_name)
+
+        meters = getattr(cnc, "meters", None) or []
+        if not meters:
+            continue
+
+        for meter in meters:
+            # meter.values puede dar [] si el contador tiene ErrCat/ErrCode.
+            try:
+                values = meter.values
+            except Exception:
+                values = []
+
+            if not values:
+                continue
+
+            for value in values:
+                meter_name = value.get("name")
+                if not meter_name:
+                    continue
+
+                # cnc_name puede venir también dentro del value (fallback)
+                cnc_name_value = value.get("cnc_name") or cnc_name
+                if cnc_name_value and cnc_obj is None:
+                    cnc_obj = _upsert_concentrador(
+                        db, fichero.tenant_id, fichero.empresa_id, cnc_name_value,
+                    )
+                    concentradores_set.add(cnc_name_value)
+
+                fabricante = _extraer_fabricante(meter_name)
+                contador_obj = _upsert_contador_basico(
+                    db,
+                    tenant_id=fichero.tenant_id,
+                    empresa_id=fichero.empresa_id,
+                    meter_id=meter_name,
+                    concentrador_id=cnc_obj.id if cnc_obj else None,
+                    fabricante=fabricante,
+                )
+                contadores_set.add(meter_name)
+
+                # Timestamp del dato: la mayoría de tipos usa 'timestamp',
+                # S05 usa 'date_begin' (inicio del cierre).
+                ts = _parsear_iso(value.get("timestamp") or value.get("date_begin"))
+
+                # Sanitizar datos para JSONB (convertir tipos no JSON-serializables)
+                datos_serializables = _sanitizar_para_json(value)
+
+                medida = Medida(
+                    tenant_id=fichero.tenant_id,
+                    empresa_id=fichero.empresa_id,
+                    fichero_id=fichero.id,
+                    concentrador_id=cnc_obj.id if cnc_obj else None,
+                    contador_id=contador_obj.id,
+                    tipo_fichero=tipo,
+                    timestamp_dato=ts,
+                    concentrador_externo_id=cnc_name_value,
+                    meter_id=meter_name,
+                    datos=datos_serializables,
+                )
+                db.add(medida)
+                medidas_insertadas += 1
+
+    return {
+        "medidas_insertadas": medidas_insertadas,
+        "concentradores_upsert": len(concentradores_set),
+        "contadores_upsert": len(contadores_set),
+    }
+
+
+def _sanitizar_para_json(value: dict) -> dict:
+    """
+    Limpia un dict de primestg para que sea JSON-serializable.
+
+    primestg a veces devuelve valores con caracteres no UTF-8 (vimos en S06
+    cosas como 'ÿÿÿÿÿÿÿÿÿÿ' que vienen de bytes 0xFF en el XML), y JSONB
+    de PostgreSQL no acepta el codepoint U+0000 ni bytes inválidos.
+
+    Estrategia:
+      - dicts: recursivo
+      - listas: recursivo
+      - str: reemplazar caracteres problemáticos
+      - resto (int, float, bool, None): tal cual
+    """
+    if isinstance(value, dict):
+        return {k: _sanitizar_para_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitizar_para_json(v) for v in value]
+    if isinstance(value, str):
+        # PostgreSQL JSONB no soporta \u0000 ni codepoints inválidos
+        return value.replace("\x00", "").encode("utf-8", "replace").decode("utf-8", "replace")
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace").replace("\x00", "")
+    # int, float, bool, None se quedan como están
+    return value
+
+
 def parsear_fichero(
     db: Session,
     user: User,
@@ -1026,11 +1227,18 @@ def parsear_fichero(
     estado_previo = "ya_parseado_reprocesado" if fichero.parsed else "parseado"
 
     # Tipos despachables
-    TIPOS_PRIMESTG_S24 = {"S24"}
-    # En el futuro: TIPOS_PRIMESTG_S02 = {"S02"} etc.
-    TIPOS_SKIP_CONOCIDOS = {"G97"}    # propietario, parser propio pendiente
+    TIPOS_PRIMESTG_CNC_VALUES   = {"S24"}    # primestg expone via cnc.values
+    TIPOS_PRIMESTG_METER_VALUES = {           # primestg expone via meter.values
+        "S02",   # curvas horarias (kWh por hora) — facturación
+        "S05",   # cierres diarios por periodo tarifario
+        "S06",   # parámetros técnicos del contador
+        "S09",   # eventos del contador
+        "G02",   # calidad de comunicación diaria
+    }
+    TIPOS_SOPORTADOS    = TIPOS_PRIMESTG_CNC_VALUES | TIPOS_PRIMESTG_METER_VALUES
+    TIPOS_SKIP_CONOCIDOS = {"G97"}    # propietario Circutor, parser propio pendiente
 
-    if tipo not in TIPOS_PRIMESTG_S24 and tipo not in TIPOS_SKIP_CONOCIDOS:
+    if tipo not in TIPOS_SOPORTADOS and tipo not in TIPOS_SKIP_CONOCIDOS:
         # Tipo no soportado en absoluto
         fichero.parsed = False
         fichero.parse_error = f"tipo no soportado: '{tipo}'"
@@ -1066,8 +1274,10 @@ def parsear_fichero(
         db.flush()
 
     try:
-        if tipo in TIPOS_PRIMESTG_S24:
+        if tipo in TIPOS_PRIMESTG_CNC_VALUES:
             resultado = _parsear_s24(db, fichero)
+        elif tipo in TIPOS_PRIMESTG_METER_VALUES:
+            resultado = _parsear_via_meter_values(db, fichero, tipo)
         else:
             # Defensivo, no debería llegar
             raise RuntimeError(f"dispatcher inválido para tipo '{tipo}'")
