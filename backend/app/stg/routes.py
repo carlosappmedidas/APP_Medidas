@@ -303,17 +303,24 @@ def parsear_pendientes(
 @router.get("/contadores-detectados", response_model=schemas.ContadoresListResponse)
 def listar_contadores_detectados(
     empresa_id: int = Query(...),
+    offset: int = Query(0, ge=0, description="Offset de paginación"),
+    limit: int = Query(50, ge=1, le=500, description="Tamaño de página (max 500)"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """
-    Lista los contadores detectados en S24 para una empresa.
+    Lista los contadores detectados en S24 para una empresa (paginado).
 
     A diferencia de /stg/cups (que lee de stg_cups con código CUPS oficial),
     este endpoint lee de stg_contador y devuelve los contadores físicos
     identificados por su meter_id (CIR..., LGZ..., SAG..., ZIV..., ITE...).
+
+    Devuelve también stats globales (sin paginar) para mostrar el resumen
+    en el UI sin necesidad de cargar todas las filas.
     """
-    return services.listar_contadores_detectados(db, user, empresa_id)
+    return services.listar_contadores_detectados(
+        db, user, empresa_id, offset=offset, limit=limit,
+    )
 
 
 @router.get("/eventos", response_model=schemas.EventosListResponse)

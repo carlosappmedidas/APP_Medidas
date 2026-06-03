@@ -309,9 +309,23 @@ class ContadorRead(BaseModel):
     updated_at: datetime
 
 
+class ContadoresStats(BaseModel):
+    """Agregados globales de contadores (calculados en backend, no paginados)."""
+    total: int
+    ok: int = 0
+    warning: int = 0
+    error: int = 0
+    desconocido: int = 0
+    activos: int = 0
+    fabricantes: List[str] = []
+
+
 class ContadoresListResponse(BaseModel):
     total: int
+    offset: int = 0
+    limit: int = 50
     items: List[ContadorRead]
+    stats: ContadoresStats
 
 
 # ---------------------------------------------------------------------------

@@ -12,11 +12,11 @@ interface MenuItem {
 }
 
 const ITEMS: MenuItem[] = [
-  { href: "/stg/dashboard",     label: "Dashboard",      icon: "📊" },
-  { href: "/stg/cups",          label: "CUPS",           icon: "🔌" },
-  { href: "/stg/concentradores", label: "Concentradores", icon: "📡" },
-  { href: "/stg/solicitudes",   label: "Solicitudes",    icon: "📥" },
-  { href: "/stg/configuracion", label: "Configuración",  icon: "⚙️" },
+  { href: "/stg/dashboard",     label: "Dashboard",        icon: "📊" },
+  { href: "/stg/cups",          label: "Equipos de medida", icon: "🔌" },
+  { href: "/stg/concentradores", label: "Concentradores",   icon: "📡" },
+  { href: "/stg/solicitudes",   label: "Solicitudes",      icon: "📥" },
+  { href: "/stg/configuracion", label: "Configuración",    icon: "⚙️" },
 ];
 
 /**

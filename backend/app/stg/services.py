@@ -1400,16 +1400,77 @@ def listar_contadores_detectados(
     db: Session,
     user: User,
     empresa_id: int,
+    offset: int = 0,
+    limit: int = 50,
 ) -> dict:
     """
-    Lista los contadores detectados en BD para una empresa, con info del concentrador.
+    Lista los contadores detectados en BD para una empresa, con paginación.
+
+    Devuelve:
+      - total: nº total de contadores (sin paginar)
+      - offset / limit: parámetros usados
+      - items: los contadores de la página actual
+      - stats: agregados globales (sobre TODOS los contadores de la empresa,
+               no sólo la página). Útil para mostrar el "top resumen" en el UI.
+
+    A diferencia de /stg/cups (que lee de stg_cups con código CUPS oficial),
+    este endpoint lee de stg_contador y devuelve los contadores físicos
+    identificados por su meter_id (CIR..., LGZ..., SAG..., ZIV..., ITE...).
     """
     assert_empresa_access(db, user, empresa_id)
 
-    contadores = (
-        db.query(Contador)
+    # Límites defensivos
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+
+    base_query = db.query(Contador).filter(Contador.empresa_id == empresa_id)
+
+    # Total sin paginar
+    total = base_query.count()
+
+    # Stats globales (no paginadas) — agregamos en BD para no traer 2493 filas
+    estado_counts_raw = (
+        db.query(Contador.estado_comunicacion, func.count(Contador.id))
         .filter(Contador.empresa_id == empresa_id)
-        .order_by(Contador.meter_id.asc())
+        .group_by(Contador.estado_comunicacion)
+        .all()
+    )
+    estado_counts = {estado: cnt for estado, cnt in estado_counts_raw}
+
+    activos = (
+        db.query(func.count(Contador.id))
+        .filter(Contador.empresa_id == empresa_id, Contador.activo.is_(True))
+        .scalar()
+        or 0
+    )
+
+    fabricantes_raw = (
+        db.query(Contador.fabricante)
+        .filter(
+            Contador.empresa_id == empresa_id,
+            Contador.fabricante.isnot(None),
+        )
+        .distinct()
+        .order_by(Contador.fabricante.asc())
+        .all()
+    )
+    fabricantes = [f[0] for f in fabricantes_raw]
+
+    stats = {
+        "total": total,
+        "ok": estado_counts.get("ok", 0),
+        "warning": estado_counts.get("warning", 0),
+        "error": estado_counts.get("error", 0),
+        "desconocido": estado_counts.get("desconocido", 0),
+        "activos": activos,
+        "fabricantes": fabricantes,
+    }
+
+    # Página actual: ordenamos por meter_id para que la paginación sea estable.
+    contadores = (
+        base_query.order_by(Contador.meter_id.asc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -1431,8 +1492,11 @@ def listar_contadores_detectados(
         })
 
     return {
-        "total": len(items),
+        "total": total,
+        "offset": offset,
+        "limit": limit,
         "items": items,
+        "stats": stats,
     }
 
 
