@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from sqlalchemy import func, select
+from io import BytesIO
+
+from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.core.permissions import (
@@ -1751,3 +1754,219 @@ def delete_import_config(db: Session, user: User, config_id: int) -> None:
     config.activo = False
     db.commit()
 
+
+# ---------------------------------------------------------------------------
+# Excel Importer — Paquete 8e-2b
+# ---------------------------------------------------------------------------
+
+MAX_EXCEL_BYTES = 5 * 1024 * 1024  # 5 MB
+
+_CAMPOS_BD_PERMITIDOS = {
+    "codigo_ct", "nombre", "direccion", "municipio",
+    "provincia", "id_ct", "nombre_ct", "cups",
+}
+
+
+def _leer_excel_headers_y_filas(file_bytes: bytes):
+    """Devuelve (headers: list[str], rows: list[dict]).
+    Asume cabeceras en fila 1, datos a partir de fila 2.
+    Solo procesa la primera hoja.
+    """
+    if len(file_bytes) > MAX_EXCEL_BYTES:
+        raise ValueError(
+            f"Excel demasiado grande ({len(file_bytes)} bytes). Máximo {MAX_EXCEL_BYTES}"
+        )
+
+    try:
+        wb = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
+    except Exception as e:
+        raise ValueError(f"Fichero no es un Excel válido: {e}")
+
+    ws = wb.active
+    if ws is None:
+        raise ValueError("Excel sin hojas")
+
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        header_row = next(rows_iter)
+    except StopIteration:
+        wb.close()
+        return [], []
+
+    headers = []
+    for cell in header_row:
+        headers.append("" if cell is None else str(cell).strip())
+    while headers and headers[-1] == "":
+        headers.pop()
+
+    if not headers:
+        wb.close()
+        return [], []
+
+    rows = []
+    for row in rows_iter:
+        # saltar filas totalmente vacías
+        if all(
+            c is None or (isinstance(c, str) and c.strip() == "")
+            for c in row[: len(headers)]
+        ):
+            continue
+        d = {}
+        for i, h in enumerate(headers):
+            if not h:
+                continue
+            d[h] = row[i] if i < len(row) else None
+        rows.append(d)
+
+    wb.close()
+    return headers, rows
+
+
+def preview_excel(db: Session, user: User, empresa_id: int, file_bytes: bytes) -> dict:
+    """Lee cabeceras + 5 filas de muestra. NO persiste nada."""
+    assert_empresa_access(db, user, empresa_id)
+
+    headers, rows = _leer_excel_headers_y_filas(file_bytes)
+    if not headers:
+        raise ValueError("Excel vacío o sin cabeceras en la fila 1")
+
+    return {
+        "headers": headers,
+        "rows_count": len(rows),
+        "sample_rows": rows[:5],
+        "campos_bd_permitidos": sorted(_CAMPOS_BD_PERMITIDOS),
+    }
+
+
+def execute_excel_import(
+    db: Session,
+    user: User,
+    empresa_id: int,
+    file_bytes: bytes,
+) -> dict:
+    """Procesa un Excel con el mapping guardado en stg_import_config (origen=excel).
+
+    Reglas:
+    - Busca cada fila por codigo_ct en stg_concentrador (empresa_id).
+    - Si encuentra: actualiza solo los campos mapeados con valor NO vacío.
+    - Si no encuentra: ignora la fila (no creamos concentradores desde Excel).
+    - codigo_ct vacío en una fila: cuenta como error.
+    """
+    assert_empresa_access(db, user, empresa_id)
+
+    # 1. Cargar config + mapping
+    config = (
+        db.query(StgImportConfig)
+        .filter(
+            StgImportConfig.empresa_id == empresa_id,
+            StgImportConfig.origen == "excel",
+            StgImportConfig.activo.is_(True),
+        )
+        .first()
+    )
+    if config is None or not config.mapeo_columnas:
+        raise ValueError(
+            "No hay mapping de columnas configurado para Excel en esta empresa. "
+            "Configura el mapping primero (POST /stg/import-config)."
+        )
+
+    mapping = {
+        col_excel: campo_bd
+        for col_excel, campo_bd in dict(config.mapeo_columnas).items()
+        if campo_bd in _CAMPOS_BD_PERMITIDOS
+    }
+
+    # Lookup inverso: ¿qué cabecera del Excel mapea a codigo_ct?
+    cabecera_codigo_ct = None
+    for col_excel, campo_bd in mapping.items():
+        if campo_bd == "codigo_ct":
+            cabecera_codigo_ct = col_excel
+            break
+    if cabecera_codigo_ct is None:
+        raise ValueError(
+            "El mapping no incluye codigo_ct. Es obligatorio mapear alguna columna a codigo_ct."
+        )
+
+    # 2. Leer Excel
+    headers, rows = _leer_excel_headers_y_filas(file_bytes)
+    if not headers:
+        raise ValueError("Excel vacío o sin cabeceras")
+
+    if cabecera_codigo_ct not in headers:
+        raise ValueError(
+            f"El Excel no tiene la columna '{cabecera_codigo_ct}' configurada para codigo_ct. "
+            f"Reconfigura el mapping o ajusta el Excel."
+        )
+
+    # 3. Pre-cargar todos los concentradores en 1 query
+    codigos_excel = set()
+    for row in rows:
+        v = row.get(cabecera_codigo_ct)
+        if v is not None and str(v).strip():
+            codigos_excel.add(str(v).strip())
+
+    ccs = (
+        db.query(StgConcentrador)
+        .filter(
+            StgConcentrador.empresa_id == empresa_id,
+            StgConcentrador.codigo_ct.in_(codigos_excel),
+        )
+        .all()
+    )
+    ccs_dict = {cc.codigo_ct: cc for cc in ccs}
+
+    # 4. Iterar y actualizar
+    procesadas = 0
+    actualizadas = 0
+    no_encontradas = 0
+    errores = []
+
+    for idx, row in enumerate(rows, start=2):  # fila 2 = primera de datos
+        procesadas += 1
+
+        codigo_raw = row.get(cabecera_codigo_ct)
+        if codigo_raw is None or str(codigo_raw).strip() == "":
+            errores.append({"fila": idx, "motivo": "codigo_ct vacío"})
+            continue
+        codigo_val = str(codigo_raw).strip()
+
+        cc = ccs_dict.get(codigo_val)
+        if cc is None:
+            no_encontradas += 1
+            continue
+
+        cambios = False
+        for col_excel, campo_bd in mapping.items():
+            if campo_bd == "codigo_ct":
+                continue  # no machacamos la clave
+            val = row.get(col_excel)
+            if val is None:
+                continue
+            val_str = str(val).strip()
+            if val_str == "":
+                continue
+            if getattr(cc, campo_bd, None) != val_str:
+                setattr(cc, campo_bd, val_str)
+                cambios = True
+        if cambios:
+            actualizadas += 1
+
+    # 5. Guardar resumen y commit
+    resumen = {
+        "procesadas": procesadas,
+        "actualizadas": actualizadas,
+        "no_encontradas": no_encontradas,
+        "errores_count": len(errores),
+    }
+    config.last_sync = datetime.utcnow()
+    config.last_sync_status = "ok" if not errores else "ok_con_warnings"
+    config.last_sync_resumen = resumen
+
+    db.commit()
+
+    return {
+        "procesadas": procesadas,
+        "actualizadas": actualizadas,
+        "no_encontradas": no_encontradas,
+        "errores": errores,
+    }

@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -412,3 +412,44 @@ def delete_import_config(
     services.delete_import_config(db, user, config_id)
     return None
 
+
+# ---------------------------------------------------------------------------
+# Excel Importer endpoints — Paquete 8e-2b
+# ---------------------------------------------------------------------------
+
+@router.post("/excel/preview", response_model=schemas.ExcelPreviewResponse)
+def preview_excel_endpoint(
+    empresa_id: int = Query(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Lee cabeceras + 5 filas de muestra de un Excel. NO persiste nada."""
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="El fichero debe ser .xlsx o .xls")
+    contents = file.file.read()
+    try:
+        return services.preview_excel(db, user, empresa_id, contents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/excel/execute", response_model=schemas.ExcelImportResult)
+def execute_excel_endpoint(
+    empresa_id: int = Query(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Procesa un Excel usando el mapping guardado en stg_import_config (origen=excel).
+
+    Busca cada fila por codigo_ct → actualiza sólo los campos mapeados con valor.
+    Si codigo_ct no existe en BD → fila ignorada.
+    """
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="El fichero debe ser .xlsx o .xls")
+    contents = file.file.read()
+    try:
+        return services.execute_excel_import(db, user, empresa_id, contents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

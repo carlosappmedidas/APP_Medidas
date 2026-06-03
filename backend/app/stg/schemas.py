@@ -437,3 +437,44 @@ class ImportConfigList(BaseModel):
     total: int
     items: List[ImportConfigRead]
 
+
+# ---------------------------------------------------------------------------
+# Excel Importer — Paquete 8e-2b
+# ---------------------------------------------------------------------------
+
+# Campos de stg_concentrador mapeables desde Excel administrativo.
+# codigo_ct es OBLIGATORIO (clave para localizar el concentrador).
+# Los técnicos (modelo, firmware, protocolo_pmi) y derivados (fabricante)
+# NO se mapean desde Excel: vienen del propio concentrador via STG.
+MAPPING_CAMPOS_PERMITIDOS: List[str] = [
+    "codigo_ct",
+    "nombre",
+    "direccion",
+    "municipio",
+    "provincia",
+    "id_ct",
+    "nombre_ct",
+    "cups",
+]
+
+
+class ExcelPreviewResponse(BaseModel):
+    headers: List[str] = Field(..., description="Cabeceras detectadas en la fila 1")
+    rows_count: int = Field(..., description="Número de filas con datos")
+    sample_rows: List[Dict[str, Any]] = Field(..., description="Primeras 5 filas como dict")
+    campos_bd_permitidos: List[str] = Field(
+        default_factory=lambda: list(MAPPING_CAMPOS_PERMITIDOS),
+        description="Campos de BD a los que se puede mapear",
+    )
+
+
+class ExcelImportError(BaseModel):
+    fila: int
+    motivo: str
+
+
+class ExcelImportResult(BaseModel):
+    procesadas: int
+    actualizadas: int
+    no_encontradas: int
+    errores: List[ExcelImportError] = Field(default_factory=list)
