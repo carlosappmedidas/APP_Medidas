@@ -1417,3 +1417,131 @@ def listar_contadores_detectados(
         "total": len(items),
         "items": items,
     }
+
+
+def listar_eventos_humanizados(
+    db: Session,
+    user: User,
+    empresa_id: int,
+    meter_id: Optional[str] = None,
+    fecha_desde: Optional[datetime] = None,
+    fecha_hasta: Optional[datetime] = None,
+    limite: int = 100,
+    offset: int = 0,
+) -> dict:
+    """
+    Devuelve eventos S09 enriquecidos con descripciones humanas en español.
+
+    Cada evento (Medida con tipo_fichero='S09') guarda en `datos` JSONB:
+      { 'event_group': int, 'event_code': int, ... }
+
+    Usamos `event_descriptions.describir_evento_meter` para traducir
+    esos códigos a texto humano usando los diccionarios oficiales de
+    primestg. La traducción se hace al renderizar (NO se persiste en BD).
+
+    Soporta:
+      - Filtro por meter_id (contador concreto)
+      - Filtro por rango de fechas
+      - Paginación (limite + offset, capped a 1000)
+
+    Devuelve además un `resumen_top` con los 10 tipos de evento más
+    frecuentes en el filtro aplicado (sin paginar).
+    """
+    from app.stg.event_descriptions import describir_evento_meter
+
+    assert_empresa_access(db, user, empresa_id)
+
+    # Limites defensivos
+    limite = max(1, min(int(limite), 1000))
+    offset = max(0, int(offset))
+
+    # Base query: solo S09 de esta empresa
+    base = db.query(Medida).filter(
+        Medida.empresa_id == empresa_id,
+        Medida.tipo_fichero == "S09",
+    )
+    if meter_id:
+        base = base.filter(Medida.meter_id == meter_id)
+    if fecha_desde:
+        base = base.filter(Medida.timestamp_dato >= fecha_desde)
+    if fecha_hasta:
+        base = base.filter(Medida.timestamp_dato <= fecha_hasta)
+
+    # Total sin paginación (para que el frontend pueda mostrar conteo)
+    total = base.count()
+
+    # Items paginados
+    rows = (
+        base.order_by(Medida.timestamp_dato.desc().nullslast(), Medida.id.desc())
+        .offset(offset)
+        .limit(limite)
+        .all()
+    )
+
+    items = []
+    for m in rows:
+        datos = m.datos or {}
+        info = describir_evento_meter(
+            datos.get("event_group"),
+            datos.get("event_code"),
+        )
+        items.append({
+            "id": m.id,
+            "meter_id": m.meter_id,
+            "concentrador_externo_id": m.concentrador_externo_id,
+            "timestamp_dato": m.timestamp_dato,
+            "grupo": info["grupo"],
+            "codigo": info["codigo"],
+            "descripcion_grupo": info["descripcion_grupo"],
+            "descripcion_evento": info["descripcion_evento"],
+            "season": datos.get("season"),
+        })
+
+    # Resumen: top 10 tipos (grupo+codigo) más frecuentes en el filtro
+    # (no en la página, sino en TODO el conjunto filtrado).
+    from sqlalchemy import func as sa_func, cast, Integer
+
+    resumen_q = (
+        db.query(
+            cast(Medida.datos["event_group"].astext, Integer).label("g"),
+            cast(Medida.datos["event_code"].astext, Integer).label("c"),
+            sa_func.count(Medida.id).label("n"),
+        )
+        .filter(
+            Medida.empresa_id == empresa_id,
+            Medida.tipo_fichero == "S09",
+        )
+    )
+    if meter_id:
+        resumen_q = resumen_q.filter(Medida.meter_id == meter_id)
+    if fecha_desde:
+        resumen_q = resumen_q.filter(Medida.timestamp_dato >= fecha_desde)
+    if fecha_hasta:
+        resumen_q = resumen_q.filter(Medida.timestamp_dato <= fecha_hasta)
+
+    resumen_q = (
+        resumen_q
+        .group_by("g", "c")
+        .order_by(sa_func.count(Medida.id).desc())
+        .limit(10)
+    )
+
+    resumen_top = []
+    for g, c, n in resumen_q.all():
+        info = describir_evento_meter(g, c)
+        resumen_top.append({
+            "grupo": info["grupo"],
+            "codigo": info["codigo"],
+            "descripcion_grupo": info["descripcion_grupo"],
+            "descripcion_evento": info["descripcion_evento"],
+            "ocurrencias": n,
+        })
+
+    return {
+        "empresa_id": empresa_id,
+        "total": total,
+        "offset": offset,
+        "limite": limite,
+        "items": items,
+        "resumen_top": resumen_top,
+    }

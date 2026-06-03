@@ -8,6 +8,7 @@ permisos multi-empresa del usuario.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -313,3 +314,41 @@ def listar_contadores_detectados(
     identificados por su meter_id (CIR..., LGZ..., SAG..., ZIV..., ITE...).
     """
     return services.listar_contadores_detectados(db, user, empresa_id)
+
+
+@router.get("/eventos", response_model=schemas.EventosListResponse)
+def listar_eventos_humanizados(
+    empresa_id: int = Query(..., description="ID de la empresa"),
+    meter_id: Optional[str] = Query(None, description="Filtrar por contador (meter_id exacto)"),
+    fecha_desde: Optional[datetime] = Query(None, description="Filtrar eventos desde esta fecha (inclusive)"),
+    fecha_hasta: Optional[datetime] = Query(None, description="Filtrar eventos hasta esta fecha (inclusive)"),
+    limite: int = Query(100, ge=1, le=1000, description="Tamaño de página (max 1000)"),
+    offset: int = Query(0, ge=0, description="Offset de paginación"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Devuelve eventos S09 enriquecidos con descripciones humanas en español.
+
+    Cada evento incluye:
+      - grupo + codigo (datos crudos del XML)
+      - descripcion_grupo (ej: "Grupo 6 - Alta ocurrencia")
+      - descripcion_evento (ej: "Inicio establecimiento de comunicaciones puerto serie")
+
+    También devuelve un `resumen_top` con los 10 tipos de evento más
+    frecuentes en el filtro aplicado (útil para dashboards).
+
+    Las descripciones provienen de los diccionarios oficiales de primestg
+    (`event_groups`, `meter_events`) y se aplican al renderizar — NO se
+    persisten en BD.
+    """
+    return services.listar_eventos_humanizados(
+        db=db,
+        user=user,
+        empresa_id=empresa_id,
+        meter_id=meter_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        limite=limite,
+        offset=offset,
+    )

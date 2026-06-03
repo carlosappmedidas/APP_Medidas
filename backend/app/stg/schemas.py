@@ -349,3 +349,41 @@ class ParseoPendientesResponse(BaseModel):
     skipped: int
     errores: int
     detalle: List[ParseoResultadoItem]
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Paquete 8: eventos humanizados (S09)
+# ──────────────────────────────────────────────────────────────────────────
+
+class EventoItem(BaseModel):
+    """Un evento S09 con descripción humana en español."""
+    id: int
+    meter_id: str
+    concentrador_externo_id: Optional[str] = None
+    timestamp_dato: Optional[datetime] = None
+    grupo: Optional[int] = None
+    codigo: Optional[int] = None
+    descripcion_grupo: str
+    descripcion_evento: str
+    season: Optional[str] = None
+
+
+class EventoResumenItem(BaseModel):
+    """Conteo agrupado de un (grupo, codigo) → cuántas veces ocurrió."""
+    grupo: int
+    codigo: int
+    descripcion_grupo: str
+    descripcion_evento: str
+    ocurrencias: int
+
+
+class EventosListResponse(BaseModel):
+    """Lista paginada de eventos + resumen agregado por tipo."""
+    empresa_id: int
+    total: int
+    offset: int
+    limite: int
+    items: List[EventoItem]
+    # Top tipos (group + code) por número de ocurrencias en el filtro actual
+    resumen_top: List[EventoResumenItem]
+
