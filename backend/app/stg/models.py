@@ -248,6 +248,12 @@ class FicheroRecibido(TimestampMixin, Base):
     periodo_dato_desde = Column(Date, nullable=True)
     periodo_dato_hasta = Column(Date, nullable=True)
 
+    # Metadata extraída del nombre del fichero al descargarlo (Paquete 5)
+    id_contador      = Column(String(50), nullable=True, index=True)
+    tipo_mensaje     = Column(String(20), nullable=True)
+    timestamp_nombre = Column(DateTime, nullable=True, index=True)
+    ruta_remota      = Column(String(500), nullable=True)
+
     parsed     = Column(Boolean, nullable=False, default=False)
     parsed_at  = Column(DateTime, nullable=True)
 

@@ -1,9 +1,10 @@
 // app/stg/configuracion/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { API_BASE_URL } from "../../apiConfig";
 import { useStgEmpresaId } from "../components/StgEmpresaSelector";
+import TablePaginationFooter from "../../components/ui/TablePaginationFooter";
 
 interface Conexion {
   id: number;
@@ -36,6 +37,25 @@ interface SftpListado {
   items: SftpFichero[];
 }
 
+interface DescargaResultadoItem {
+  nombre: string;
+  estado: "descargado" | "saltado_duplicado" | "error";
+  tamano_bytes: number | null;
+  path_local: string | null;
+  error: string | null;
+}
+
+interface DescargaResumen {
+  empresa_id: number;
+  ruta_remota: string;
+  total_remotos: number;
+  limite_usado: number;
+  descargados: number;
+  saltados_duplicados: number;
+  errores: number;
+  detalle: DescargaResultadoItem[];
+}
+
 export default function StgConfiguracionPage() {
   const empresaId = useStgEmpresaId();
   const [conexion, setConexion] = useState<Conexion | null>(null);
@@ -65,6 +85,16 @@ export default function StgConfiguracionPage() {
   const [listadoSftp, setListadoSftp] = useState<SftpListado | null>(null);
   const [listadoError, setListadoError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState("");
+
+  // Paginación de la tabla de listado
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+
+  // Descarga (Paquete 5)
+  const [downloading, setDownloading] = useState(false);
+  const [limiteDescarga, setLimiteDescarga] = useState(5);
+  const [resumenDescarga, setResumenDescarga] = useState<DescargaResumen | null>(null);
+  const [descargaError, setDescargaError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -187,6 +217,52 @@ export default function StgConfiguracionPage() {
       setListing(false);
     }
   };
+
+  const handleDescargar = async () => {
+    if (!empresaId) return;
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setDownloading(true);
+    setDescargaError(null);
+    setResumenDescarga(null);
+    try {
+      const params = new URLSearchParams({
+        empresa_id: String(empresaId),
+        limite: String(limiteDescarga),
+      });
+      const r = await fetch(`${API_BASE_URL}/stg/descargar?${params.toString()}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+      }
+      const data: DescargaResumen = await r.json();
+      setResumenDescarga(data);
+    } catch (e) {
+      setDescargaError(String(e));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Items paginados de la tabla de listado
+  const paginatedItems = useMemo(() => {
+    if (!listadoSftp) return [];
+    return listadoSftp.items.slice(page * pageSize, (page + 1) * pageSize);
+  }, [listadoSftp, page, pageSize]);
+
+  const totalPages = useMemo(() => {
+    if (!listadoSftp || listadoSftp.items.length === 0) return 1;
+    return Math.ceil(listadoSftp.items.length / pageSize);
+  }, [listadoSftp, pageSize]);
+
+  // Reset page cuando llega un nuevo listado
+  useEffect(() => {
+    setPage(0);
+  }, [listadoSftp]);
 
   if (!empresaId) {
     return <div style={{ color: "rgba(241,239,232,0.5)" }}>Selecciona una empresa.</div>;
@@ -371,26 +447,99 @@ export default function StgConfiguracionPage() {
                   No hay ficheros en esa carpeta (ni que coincidan con el filtro).
                 </div>
               ) : (
-                <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 6, overflow: "hidden" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
-                        <th style={thStyle}>Nombre</th>
-                        <th style={thStyle}>Tamaño</th>
-                        <th style={thStyle}>Modificado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {listadoSftp.items.map((f, i) => (
-                        <tr key={i} style={{ borderBottom: "0.5px solid rgba(255,255,255,0.05)" }}>
-                          <td style={tdStyle}><span style={{ fontFamily: "monospace" }}>{f.nombre}</span></td>
-                          <td style={tdStyle}>{formatBytes(f.tamano_bytes)}</td>
-                          <td style={tdStyle}>{f.modificado ? new Date(f.modificado).toLocaleString("es-ES") : "—"}</td>
+                <>
+                  <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 6, overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
+                          <th style={thStyle}>Nombre</th>
+                          <th style={thStyle}>Tamaño</th>
+                          <th style={thStyle}>Modificado</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {paginatedItems.map((f, i) => (
+                          <tr key={page * pageSize + i} style={{ borderBottom: "0.5px solid rgba(255,255,255,0.05)" }}>
+                            <td style={tdStyle}><span style={{ fontFamily: "monospace" }}>{f.nombre}</span></td>
+                            <td style={tdStyle}>{formatBytes(f.tamano_bytes)}</td>
+                            <td style={tdStyle}>{f.modificado ? new Date(f.modificado).toLocaleString("es-ES") : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <TablePaginationFooter
+                      loading={listing}
+                      hasLoadedOnce={listadoSftp !== null}
+                      totalFilas={listadoSftp.items.length}
+                      startIndex={page * pageSize}
+                      endIndex={Math.min((page + 1) * pageSize, listadoSftp.items.length)}
+                      pageSize={pageSize}
+                      setPageSize={(v) => { setPageSize(v); setPage(0); }}
+                      currentPage={page}
+                      totalPages={totalPages}
+                      setPage={setPage}
+                      compact
+                    />
+                  </div>
+
+                  {/* Sección de descarga (Paquete 5) */}
+                  <div style={{ marginTop: 16, padding: 14, background: "rgba(83,74,183,0.06)", border: "0.5px solid rgba(83,74,183,0.2)", borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, color: "rgba(241,239,232,0.7)", marginBottom: 10 }}>
+                      <strong style={{ color: "#AFA9EC" }}>Descargar nuevos a disco local.</strong>
+                      {" "}Filtra ficheros ya descargados (por nombre). Para probar, empieza con un número bajo.
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <label style={{ fontSize: 12, color: "rgba(241,239,232,0.6)" }}>Máximo a descargar:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={limiteDescarga}
+                        onChange={(e) => setLimiteDescarga(Math.max(1, Number(e.target.value) || 5))}
+                        style={{ width: 80, background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "6px 10px", color: "var(--ds-text-primary, #F1EFE8)", fontSize: 13, outline: "none" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleDescargar}
+                        disabled={downloading}
+                        style={{ background: "rgba(83,74,183,0.22)", color: "#AFA9EC", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: downloading ? "wait" : "pointer", opacity: downloading ? 0.6 : 1 }}
+                      >
+                        {downloading ? "Descargando…" : `Descargar ${limiteDescarga} nuevos`}
+                      </button>
+                    </div>
+
+                    {descargaError && (
+                      <div style={{ marginTop: 10, background: "rgba(226,75,74,0.1)", border: "0.5px solid rgba(226,75,74,0.4)", color: "#E24B4A", padding: 10, borderRadius: 6, fontSize: 12 }}>
+                        {descargaError}
+                      </div>
+                    )}
+
+                    {resumenDescarga && (
+                      <div style={{ marginTop: 12, padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 6, fontSize: 12 }}>
+                        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+                          <span><strong style={{ color: "#1D9E75" }}>{resumenDescarga.descargados}</strong> descargados</span>
+                          <span><strong style={{ color: "#EF9F27" }}>{resumenDescarga.saltados_duplicados}</strong> saltados (duplicados)</span>
+                          <span><strong style={{ color: resumenDescarga.errores > 0 ? "#E24B4A" : "rgba(241,239,232,0.6)" }}>{resumenDescarga.errores}</strong> errores</span>
+                          <span style={{ color: "rgba(241,239,232,0.5)" }}>· Total remoto: {resumenDescarga.total_remotos}</span>
+                        </div>
+                        {resumenDescarga.detalle.length > 0 && (
+                          <details>
+                            <summary style={{ cursor: "pointer", color: "rgba(241,239,232,0.6)", fontSize: 11 }}>Ver detalle ({resumenDescarga.detalle.length})</summary>
+                            <div style={{ maxHeight: 200, overflowY: "auto", marginTop: 8, background: "rgba(0,0,0,0.2)", padding: 8, borderRadius: 4, fontFamily: "monospace", fontSize: 11 }}>
+                              {resumenDescarga.detalle.map((d, i) => (
+                                <div key={i} style={{ paddingBottom: 4, color: d.estado === "error" ? "#E24B4A" : d.estado === "descargado" ? "#1D9E75" : "rgba(241,239,232,0.5)" }}>
+                                  {d.estado === "descargado" ? "✅" : d.estado === "error" ? "❌" : "↷"} {d.nombre}
+                                  {d.tamano_bytes != null && ` (${formatBytes(d.tamano_bytes)})`}
+                                  {d.error && <div style={{ color: "#E24B4A", paddingLeft: 16 }}>{d.error}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </>
           )}

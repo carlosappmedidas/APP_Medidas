@@ -192,6 +192,56 @@ class FtpStgAdapter(StgAdapter):
             self._close(ftp)
 
     # ------------------------------------------------------------------
+    # descargar_fichero (Paquete 5)
+    # ------------------------------------------------------------------
+    def descargar_fichero(self, remote_name: str, local_path: str) -> int:
+        """
+        Descarga un fichero de la carpeta_recepcion al path local indicado.
+        Devuelve el número de bytes descargados.
+
+        El directorio padre del local_path debe existir.
+        """
+        import os
+
+        ruta_relativa = resolver_plantillas_carpeta(self.carpeta_recepcion) \
+            if False else None
+        # Importar el helper local (de ftp_adapter)
+        from app.stg.adapters.sftp_adapter import (
+            resolver_plantillas_carpeta as _resolver,
+            _join_rutas,
+        )
+        ruta_relativa = _resolver(self.carpeta_recepcion)
+        ruta_remota_dir = _join_rutas(self.ruta_base, ruta_relativa)
+
+        ftp = self._connect()
+        try:
+            try:
+                ftp.cwd(ruta_remota_dir)
+            except Exception as e:
+                raise RuntimeError(
+                    f"No se puede acceder a la carpeta {ruta_remota_dir}: {e}"
+                ) from e
+
+            # Asegurar que el directorio padre del local_path existe
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+            try:
+                with open(local_path, "wb") as f:
+                    ftp.retrbinary(f"RETR {remote_name}", f.write)
+            except Exception as e:
+                # Si la descarga falló a medias, borrar el fichero corrupto
+                if os.path.exists(local_path):
+                    try:
+                        os.remove(local_path)
+                    except Exception:
+                        pass
+                raise RuntimeError(f"Error descargando {remote_name}: {e}") from e
+
+            return os.path.getsize(local_path)
+        finally:
+            self._close(ftp)
+
+    # ------------------------------------------------------------------
     # pendientes
     # ------------------------------------------------------------------
     def listar_cups(self) -> list[CupsExterno]:

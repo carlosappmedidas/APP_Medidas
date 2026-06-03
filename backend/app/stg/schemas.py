@@ -15,7 +15,11 @@ from pydantic import BaseModel, ConfigDict, Field
 TipoConexion = Literal["gisce", "sftp", "ftp", "api_rest", "db_directa"]
 EstadoConexion = Literal["desconocido", "ok", "error", "no_probado"]
 EstadoComunicacion = Literal["online", "offline", "alerta", "desconocido"]
-TipoFichero = Literal["S02", "S04", "S05", "S09"]
+# TipoFichero es str libre (no Literal) porque cada STG/fabricante tiene sus
+# propios tipos: S02/S04/S05/S09 (estándar sector), G97/S52/S56 (Circutor),
+# y más. La constante de abajo documenta los valores conocidos.
+TipoFichero = str
+TIPOS_FICHERO_CONOCIDOS = ["S02", "S04", "S05", "S09", "G97", "S52", "S56", "OTRO"]
 EstadoSolicitud = Literal["pendiente", "enviada", "en_proceso", "recibida", "error"]
 Prioridad = Literal["normal", "alta", "urgente"]
 
@@ -235,9 +239,36 @@ class FicheroRecibidoRead(BaseModel):
     tamano_bytes: Optional[int] = None
     periodo_dato_desde: Optional[date] = None
     periodo_dato_hasta: Optional[date] = None
+    # Metadata extraída del nombre al descargar (Paquete 5)
+    id_contador: Optional[str] = None
+    tipo_mensaje: Optional[str] = None
+    timestamp_nombre: Optional[datetime] = None
+    ruta_remota: Optional[str] = None
     parsed: bool
     parsed_at: Optional[datetime] = None
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Descarga de ficheros (Paquete 5)
+# ---------------------------------------------------------------------------
+class DescargaResultadoItem(BaseModel):
+    nombre: str
+    estado: Literal["descargado", "saltado_duplicado", "error"]
+    tamano_bytes: Optional[int] = None
+    path_local: Optional[str] = None
+    error: Optional[str] = None
+
+
+class DescargaResponse(BaseModel):
+    empresa_id: int
+    ruta_remota: str
+    total_remotos: int
+    limite_usado: int
+    descargados: int
+    saltados_duplicados: int
+    errores: int
+    detalle: List[DescargaResultadoItem]
 
 
 # ---------------------------------------------------------------------------

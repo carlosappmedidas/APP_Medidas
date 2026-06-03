@@ -103,3 +103,19 @@ class StgAdapter(ABC):
         Encola en el STG una solicitud de fichero S0X.
         Devuelve la referencia externa con la que poder consultar el estado.
         """
+
+    # ------------------------------------------------------------------
+    # Operaciones opcionales (Paquete 5+)
+    # No abstractas — cada adapter las implementa si las soporta.
+    # ------------------------------------------------------------------
+    def descargar_fichero(self, remote_name: str, local_path: str) -> int:
+        """
+        Descarga un fichero de la carpeta_recepcion del STG remoto al
+        path local indicado. Devuelve el número de bytes descargados.
+
+        Cada adapter que soporte descarga (SFTP, FTP) lo implementa.
+        Los que no (mock, api_rest sin descarga) heredan el NotImplementedError.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} no implementa descargar_fichero()"
+        )

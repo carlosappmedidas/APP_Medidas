@@ -228,3 +228,30 @@ def listar_ficheros_sftp(
     un listado vacío.
     """
     return services.listar_ficheros_sftp(db, user, empresa_id, filtro_patron=filtro)
+
+
+# ---------------------------------------------------------------------------
+# Descarga real de ficheros (Paquete 5)
+# ---------------------------------------------------------------------------
+@router.post("/descargar", response_model=schemas.DescargaResponse)
+def descargar_ficheros(
+    empresa_id: int = Query(...),
+    limite: int = Query(5, ge=1, le=1000, description="Máximo a descargar por petición"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Descarga ficheros NUEVOS (que no estén ya en BD) desde el STG remoto
+    a `backend/storage/stg/empresa_<id>/<año-mes>/` (o lo que indique
+    la env var STG_STORAGE_PATH).
+
+    Filtra duplicados por (empresa_id, nombre_original).
+    Extrae metadata del nombre (id_contador, tipo_mensaje, timestamp).
+
+    Aplica a conexiones de tipo 'sftp' o 'ftp'.
+    """
+    try:
+        return services.descargar_ficheros_nuevos(db, user, empresa_id, limite=limite)
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))

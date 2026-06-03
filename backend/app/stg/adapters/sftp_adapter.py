@@ -227,6 +227,41 @@ class SftpStgAdapter(StgAdapter):
         finally:
             self._close(transport)
 
+    # ------------------------------------------------------------------
+    # descargar_fichero (Paquete 5)
+    # ------------------------------------------------------------------
+    def descargar_fichero(self, remote_name: str, local_path: str) -> int:
+        """
+        Descarga un fichero del SFTP al path local indicado.
+        Devuelve el número de bytes descargados.
+        """
+        import os
+
+        ruta_relativa = resolver_plantillas_carpeta(self.carpeta_recepcion)
+        ruta_remota_dir = _join_rutas(self.ruta_base, ruta_relativa)
+        ruta_remota_completa = (
+            ruta_remota_dir.rstrip("/") + "/" + remote_name
+        )
+
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+        transport, sftp = self._connect()
+        try:
+            try:
+                sftp.get(ruta_remota_completa, local_path)
+            except Exception as e:
+                if os.path.exists(local_path):
+                    try:
+                        os.remove(local_path)
+                    except Exception:
+                        pass
+                raise RuntimeError(
+                    f"Error descargando {ruta_remota_completa}: {e}"
+                ) from e
+            return os.path.getsize(local_path)
+        finally:
+            self._close(transport)
+
     # ---- métodos pendientes ----
     def listar_cups(self) -> list[CupsExterno]:
         """No aplica para SFTP (se descubrirán al parsear ficheros, Paquete 6)."""

@@ -8,8 +8,11 @@ Todos los métodos respetan multi-tenant + multi-empresa usando el módulo
 """
 from __future__ import annotations
 
+import os
+import re
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Tuple
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -505,4 +508,237 @@ def listar_ficheros_sftp(
     return {
         "empresa_id": empresa_id,
         **resultado,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Descarga de ficheros (Paquete 5)
+# ---------------------------------------------------------------------------
+
+# Regex para parsear nombres conocidos.
+#
+# CIRR del fabricante Circutor:
+#   CIRR208251006614_0_G97_0_20260306120530
+#   CIRR<ID_CONTADOR>_<COD>_<TIPO_MENSAJE>_<NUM>_<YYYYMMDDHHMMSS>
+_CIRR_RE = re.compile(
+    r"^CIRR(?P<id_contador>\d+)_[^_]+_(?P<tipo>[A-Z0-9]+)_\d+_"
+    r"(?P<ts>\d{14})(\..*)?$"
+)
+
+# S0X estándar del sector eléctrico español. Hay muchas variantes pero la mayoría
+# empiezan por el código tipo ("S02_", "S04_", "S05_", "S09_") y contienen
+# fechas YYYYMMDD intercaladas.
+_S0X_PREFIX_RE = re.compile(r"^(?P<tipo>S\d{2})[_.]")
+_FECHA_8_RE = re.compile(r"(?<!\d)(?P<fecha>20\d{6})(?!\d)")
+
+
+def _extraer_metadata_nombre(nombre: str) -> dict:
+    """
+    Extrae metadata del nombre del fichero.
+
+    Devuelve dict con claves (todas opcionales/None):
+      tipo_fichero, tipo_mensaje, id_contador, timestamp_nombre
+    """
+    nombre_corto = nombre.split("/")[-1]
+
+    # Intento 1: formato CIRR
+    m = _CIRR_RE.match(nombre_corto)
+    if m:
+        ts_raw = m.group("ts")
+        try:
+            ts = datetime.strptime(ts_raw, "%Y%m%d%H%M%S")
+        except Exception:
+            ts = None
+        return {
+            "tipo_fichero": m.group("tipo"),       # G97, S52, S56...
+            "tipo_mensaje": m.group("tipo"),
+            "id_contador":  m.group("id_contador"),
+            "timestamp_nombre": ts,
+        }
+
+    # Intento 2: S0X estándar (S02_..., S04_..., S05_..., S09_...)
+    m_prefix = _S0X_PREFIX_RE.match(nombre_corto)
+    if m_prefix:
+        tipo = m_prefix.group("tipo")
+        # Buscar la primera fecha YYYYMMDD del nombre
+        m_fecha = _FECHA_8_RE.search(nombre_corto)
+        ts = None
+        if m_fecha:
+            try:
+                ts = datetime.strptime(m_fecha.group("fecha"), "%Y%m%d")
+            except Exception:
+                ts = None
+        return {
+            "tipo_fichero": tipo,
+            "tipo_mensaje": tipo,
+            "id_contador":  None,
+            "timestamp_nombre": ts,
+        }
+
+    # Sin patrón reconocido
+    return {
+        "tipo_fichero": "OTRO",
+        "tipo_mensaje": None,
+        "id_contador":  None,
+        "timestamp_nombre": None,
+    }
+
+
+def _get_storage_path() -> Path:
+    """
+    Directorio raíz donde guardamos los ficheros descargados.
+    Configurable vía env var STG_STORAGE_PATH; default: backend/storage/stg/
+    """
+    custom = os.environ.get("STG_STORAGE_PATH")
+    if custom:
+        return Path(custom)
+    # Fallback: relativo al working directory del backend
+    return Path("storage") / "stg"
+
+
+def _path_local_para_fichero(empresa_id: int, nombre: str, ts: Optional[datetime]) -> Path:
+    """
+    Calcula el path local destino:
+        <STG_STORAGE_PATH>/empresa_<id>/<YYYY-MM>/<nombre>
+
+    Si no hay timestamp, va a una subcarpeta "sin_fecha".
+    """
+    base = _get_storage_path() / f"empresa_{empresa_id}"
+    if ts:
+        subcarpeta = ts.strftime("%Y-%m")
+    else:
+        subcarpeta = "sin_fecha"
+    return base / subcarpeta / nombre
+
+
+def descargar_ficheros_nuevos(
+    db: Session,
+    user,
+    empresa_id: int,
+    limite: int = 5,
+) -> dict:
+    """
+    Descarga ficheros NUEVOS (que no estén ya en BD) del STG remoto.
+
+    Flujo:
+      1. Listar ficheros en carpeta_recepcion vía adapter.listar_ficheros()
+      2. Filtrar los que ya están en BD (por empresa_id + nombre_original)
+      3. Coger los primeros `limite`
+      4. Para cada uno:
+         - Descargar a disco
+         - Extraer metadata del nombre
+         - Crear FicheroRecibido en BD
+      5. Devolver resumen
+
+    Solo aplica si la conexión es de tipo "sftp" o "ftp".
+    """
+    # Importar aquí para evitar circular
+    from app.tenants.models import User
+
+    assert_empresa_access(db, user, empresa_id)
+
+    conf = (
+        db.query(ConexionStgEmpresa)
+        .filter(ConexionStgEmpresa.empresa_id == empresa_id)
+        .first()
+    )
+    if conf is None:
+        raise ValueError("La empresa no tiene conexión STG configurada.")
+    if conf.tipo not in ("sftp", "ftp"):
+        raise ValueError(
+            f"La descarga solo soporta tipos 'sftp' y 'ftp', no '{conf.tipo}'."
+        )
+
+    adapter = get_adapter_for_empresa(db, empresa_id)
+
+    # 1) Listar
+    listado = adapter.listar_ficheros()
+    items = listado.get("items", [])
+    ruta_remota = listado.get("ruta_consultada", "")
+
+    # 2) Filtrar los ya descargados (por nombre_original + empresa_id)
+    nombres_ya_descargados = set()
+    if items:
+        nombres_existentes = (
+            db.query(FicheroRecibido.nombre_original)
+            .filter(
+                FicheroRecibido.empresa_id == empresa_id,
+                FicheroRecibido.nombre_original.in_(
+                    [it["nombre"] for it in items]
+                ),
+            )
+            .all()
+        )
+        nombres_ya_descargados = {r[0] for r in nombres_existentes}
+
+    # 3) Particionar y aplicar límite
+    pendientes = [it for it in items if it["nombre"] not in nombres_ya_descargados]
+    a_descargar = pendientes[:limite]
+
+    descargados = 0
+    saltados_duplicados = len(items) - len(pendientes)
+    errores = 0
+    detalle: list[dict] = []
+
+    # 4) Descargar uno a uno
+    for item in a_descargar:
+        nombre = item["nombre"]
+        try:
+            metadata = _extraer_metadata_nombre(nombre)
+            ts = metadata["timestamp_nombre"]
+            path_local = _path_local_para_fichero(empresa_id, nombre, ts)
+
+            bytes_descargados = adapter.descargar_fichero(nombre, str(path_local))
+
+            # Crear FicheroRecibido
+            fichero = FicheroRecibido(
+                tenant_id=conf.tenant_id,
+                empresa_id=empresa_id,
+                solicitud_id=None,
+                cups_id=None,
+                tipo_fichero=metadata["tipo_fichero"] or "OTRO",
+                path=str(path_local),
+                nombre_original=nombre,
+                tamano_bytes=bytes_descargados,
+                periodo_dato_desde=None,
+                periodo_dato_hasta=None,
+                id_contador=metadata["id_contador"],
+                tipo_mensaje=metadata["tipo_mensaje"],
+                timestamp_nombre=ts,
+                ruta_remota=ruta_remota,
+                parsed=False,
+                parsed_at=None,
+            )
+            db.add(fichero)
+            db.commit()
+
+            descargados += 1
+            detalle.append({
+                "nombre": nombre,
+                "estado": "descargado",
+                "tamano_bytes": bytes_descargados,
+                "path_local": str(path_local),
+                "error": None,
+            })
+        except Exception as e:
+            errores += 1
+            db.rollback()
+            detalle.append({
+                "nombre": nombre,
+                "estado": "error",
+                "tamano_bytes": None,
+                "path_local": None,
+                "error": f"{type(e).__name__}: {e}",
+            })
+
+    # 5) Resumen
+    return {
+        "empresa_id": empresa_id,
+        "ruta_remota": ruta_remota,
+        "total_remotos": len(items),
+        "limite_usado": limite,
+        "descargados": descargados,
+        "saltados_duplicados": saltados_duplicados,
+        "errores": errores,
+        "detalle": detalle,
     }
