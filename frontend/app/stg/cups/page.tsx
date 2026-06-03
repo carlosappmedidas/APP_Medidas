@@ -1,7 +1,7 @@
 // app/stg/cups/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "../../apiConfig";
 import { useStgEmpresaId } from "../components/StgEmpresaSelector";
 
@@ -41,10 +41,20 @@ interface ContadoresListResponse {
   stats: ContadoresStats;
 }
 
+interface ConcentradorItem {
+  id: number;
+  codigo_ct: string | null;
+}
+
+interface ConcentradoresListResponse {
+  items: ConcentradorItem[];
+}
+
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
 const PAGE_SIZE = 50;
+const SEARCH_DEBOUNCE_MS = 300;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,27 +89,85 @@ function formatDate(iso: string | null): string {
 export default function StgEquiposMedidaPage() {
   const empresaId = useStgEmpresaId();
 
+  // Datos de la tabla
   const [data, setData] = useState<ContadoresListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Paginación (page 1-indexed para humanos; offset se calcula)
+  // Concentradores para el combo
+  const [concentradores, setConcentradores] = useState<ConcentradorItem[]>([]);
+
+  // Paginación
   const [page, setPage] = useState(1);
 
-  const cargar = (targetPage: number) => {
+  // Filtros server-side
+  const [filtroConcentrador, setFiltroConcentrador] = useState<string>("");  // id como string
+  const [filtroEstado, setFiltroEstado] = useState<string>("");
+  const [filtroFabricante, setFiltroFabricante] = useState<string>("");
+
+  // Search con debounce: el input se mantiene en searchInput, pero
+  // searchDebounced es el que dispara la llamada al backend.
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [searchDebounced, setSearchDebounced] = useState<string>("");
+
+  const debounceRef = useRef<number | null>(null);
+
+  // Marca para invalidar requests "en vuelo" cuando llega una nueva
+  const requestIdRef = useRef(0);
+
+  // ----- Cargar concentradores (una vez por empresa) -----
+  useEffect(() => {
     if (!empresaId) return;
     const token = localStorage.getItem("auth_token");
     if (!token) return;
 
+    fetch(`${API_BASE_URL}/stg/concentradores?empresa_id=${empresaId}&page_size=200`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: ConcentradoresListResponse) => setConcentradores(d.items || []))
+      .catch(() => setConcentradores([]));  // si falla, combo queda vacío
+  }, [empresaId]);
+
+  // ----- Debounce del search -----
+  useEffect(() => {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      setSearchDebounced(searchInput);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [searchInput]);
+
+  // ----- Reset a página 1 cuando cambian filtros -----
+  useEffect(() => {
+    setPage(1);
+  }, [empresaId, filtroConcentrador, filtroEstado, filtroFabricante, searchDebounced]);
+
+  // ----- Cargar contadores con filtros + paginación -----
+  useEffect(() => {
+    if (!empresaId) return;
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    const myRequestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
 
-    const offset = (targetPage - 1) * PAGE_SIZE;
+    const offset = (page - 1) * PAGE_SIZE;
     const params = new URLSearchParams({
       empresa_id: String(empresaId),
       offset: String(offset),
       limit: String(PAGE_SIZE),
     });
+    if (filtroConcentrador) params.set("concentrador_id", filtroConcentrador);
+    if (filtroEstado) params.set("estado", filtroEstado);
+    if (filtroFabricante) params.set("fabricante", filtroFabricante);
+    if (searchDebounced.trim()) params.set("search", searchDebounced.trim());
 
     fetch(`${API_BASE_URL}/stg/contadores-detectados?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -108,22 +176,20 @@ export default function StgEquiposMedidaPage() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then(setData)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
-  };
-
-  // Cargar al montar y al cambiar de empresa/página
-  useEffect(() => {
-    setPage(1);
-    cargar(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId]);
-
-  useEffect(() => {
-    cargar(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+      .then((d: ContadoresListResponse) => {
+        // Ignorar respuesta si ya hay una request más nueva en vuelo
+        if (myRequestId !== requestIdRef.current) return;
+        setData(d);
+      })
+      .catch((e) => {
+        if (myRequestId !== requestIdRef.current) return;
+        setError(String(e));
+      })
+      .finally(() => {
+        if (myRequestId !== requestIdRef.current) return;
+        setLoading(false);
+      });
+  }, [empresaId, page, filtroConcentrador, filtroEstado, filtroFabricante, searchDebounced]);
 
   if (!empresaId) {
     return <div style={{ color: "rgba(241,239,232,0.5)" }}>Selecciona una empresa.</div>;
@@ -131,6 +197,19 @@ export default function StgEquiposMedidaPage() {
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
   const stats = data?.stats;
+
+  // ¿Hay filtros activos? (para mostrar botón limpiar y/o badge)
+  const hayFiltros = Boolean(
+    filtroConcentrador || filtroEstado || filtroFabricante || searchInput.trim(),
+  );
+
+  const limpiarFiltros = () => {
+    setFiltroConcentrador("");
+    setFiltroEstado("");
+    setFiltroFabricante("");
+    setSearchInput("");
+    setSearchDebounced("");
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -141,27 +220,9 @@ export default function StgEquiposMedidaPage() {
         <span style={{ fontSize: 11, color: "rgba(241,239,232,0.4)" }}>
           (Contadores físicos detectados en los informes S24)
         </span>
-        <button
-          type="button"
-          onClick={() => cargar(page)}
-          disabled={loading}
-          style={{
-            marginLeft: "auto",
-            background: "rgba(83,74,183,0.2)",
-            color: "#AFA9EC",
-            border: "none",
-            borderRadius: 6,
-            padding: "4px 10px",
-            fontSize: 11,
-            cursor: loading ? "wait" : "pointer",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? "Cargando…" : "Refrescar"}
-        </button>
       </div>
 
-      {/* Stats globales (no paginadas) */}
+      {/* Stats globales (siempre del total empresa, no filtran) */}
       {stats && (
         <div
           style={{
@@ -190,7 +251,76 @@ export default function StgEquiposMedidaPage() {
         </div>
       )}
 
-      {/* Errores y estados de carga */}
+      {/* Filtros */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          type="text"
+          placeholder="Buscar por meter_id o CT…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          style={{
+            flex: "1 1 220px",
+            minWidth: 200,
+            background: "rgba(255,255,255,0.04)",
+            border: "0.5px solid rgba(255,255,255,0.1)",
+            borderRadius: 6,
+            padding: "6px 10px",
+            color: "var(--ds-text-primary, #F1EFE8)",
+            fontSize: 12,
+            outline: "none",
+          }}
+        />
+
+        <select
+          value={filtroConcentrador}
+          onChange={(e) => setFiltroConcentrador(e.target.value)}
+          style={selectStyle}
+        >
+          <option value="">Todos los CT ({concentradores.length})</option>
+          {concentradores.map((c) => (
+            <option key={c.id} value={String(c.id)}>
+              {c.codigo_ct || `CT #${c.id}`}
+            </option>
+          ))}
+        </select>
+
+        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} style={selectStyle}>
+          <option value="">Todos los estados</option>
+          <option value="ok">ok</option>
+          <option value="warning">warning</option>
+          <option value="error">error</option>
+          <option value="desconocido">desconocido</option>
+        </select>
+
+        <select value={filtroFabricante} onChange={(e) => setFiltroFabricante(e.target.value)} style={selectStyle}>
+          <option value="">Todos los fabricantes</option>
+          {stats?.fabricantes.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+
+        {hayFiltros && (
+          <button
+            type="button"
+            onClick={limpiarFiltros}
+            style={{
+              background: "rgba(226,75,74,0.15)",
+              border: "0.5px solid rgba(226,75,74,0.3)",
+              borderRadius: 6,
+              padding: "6px 12px",
+              color: "#E24B4A",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
+      {/* Errores */}
       {error && (
         <div
           style={{
@@ -206,8 +336,8 @@ export default function StgEquiposMedidaPage() {
         </div>
       )}
 
-      {/* Sin datos */}
-      {!loading && !error && data && data.total === 0 && (
+      {/* Sin datos absoluto */}
+      {!loading && !error && data && data.total === 0 && !hayFiltros && (
         <div
           style={{
             padding: 14,
@@ -223,6 +353,36 @@ export default function StgEquiposMedidaPage() {
             /stg/configuracion
           </code>{" "}
           para que aparezcan aquí.
+        </div>
+      )}
+
+      {/* Sin resultados POR EL FILTRO */}
+      {!loading && !error && data && data.total === 0 && hayFiltros && (
+        <div
+          style={{
+            padding: 14,
+            color: "rgba(241,239,232,0.5)",
+            fontSize: 12,
+            textAlign: "center",
+            background: "rgba(255,255,255,0.02)",
+            borderRadius: 6,
+          }}
+        >
+          Ningún equipo coincide con los filtros actuales.{" "}
+          <button
+            type="button"
+            onClick={limpiarFiltros}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#AFA9EC",
+              cursor: "pointer",
+              textDecoration: "underline",
+              fontSize: 12,
+            }}
+          >
+            Limpiar
+          </button>
         </div>
       )}
 
@@ -260,7 +420,6 @@ export default function StgEquiposMedidaPage() {
             </table>
           </div>
 
-          {/* Paginación */}
           <Pagination
             page={page}
             totalPages={totalPages}
@@ -269,6 +428,8 @@ export default function StgEquiposMedidaPage() {
             pageSize={PAGE_SIZE}
             onChange={setPage}
             disabled={loading}
+            hayFiltros={hayFiltros}
+            totalEmpresa={stats?.total ?? 0}
           />
         </>
       )}
@@ -287,6 +448,8 @@ function Pagination({
   pageSize,
   onChange,
   disabled,
+  hayFiltros,
+  totalEmpresa,
 }: {
   page: number;
   totalPages: number;
@@ -295,6 +458,8 @@ function Pagination({
   pageSize: number;
   onChange: (p: number) => void;
   disabled: boolean;
+  hayFiltros: boolean;
+  totalEmpresa: number;
 }) {
   const desde = total === 0 ? 0 : offset + 1;
   const hasta = Math.min(offset + pageSize, total);
@@ -334,26 +499,21 @@ function Pagination({
         </strong> de <strong style={{ color: "var(--ds-text-primary, #F1EFE8)" }}>
           {total.toLocaleString("es-ES")}
         </strong>
+        {hayFiltros && totalEmpresa > total && (
+          <span style={{ color: "rgba(241,239,232,0.4)" }}>
+            {" "}(filtrados de {totalEmpresa.toLocaleString("es-ES")})
+          </span>
+        )}
       </span>
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => canPrev && onChange(page - 1)}
-          disabled={!canPrev}
-          style={canPrev ? btnStyle : btnDisabledStyle}
-        >
+        <button type="button" onClick={() => canPrev && onChange(page - 1)} disabled={!canPrev} style={canPrev ? btnStyle : btnDisabledStyle}>
           ← Anterior
         </button>
         <span style={{ minWidth: 90, textAlign: "center" }}>
           Página <strong style={{ color: "var(--ds-text-primary, #F1EFE8)" }}>{page}</strong> de {totalPages}
         </span>
-        <button
-          type="button"
-          onClick={() => canNext && onChange(page + 1)}
-          disabled={!canNext}
-          style={canNext ? btnStyle : btnDisabledStyle}
-        >
+        <button type="button" onClick={() => canNext && onChange(page + 1)} disabled={!canNext} style={canNext ? btnStyle : btnDisabledStyle}>
           Siguiente →
         </button>
       </div>
@@ -362,8 +522,19 @@ function Pagination({
 }
 
 // ---------------------------------------------------------------------------
-// Estilos de tabla
+// Estilos
 // ---------------------------------------------------------------------------
+const selectStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  border: "0.5px solid rgba(255,255,255,0.1)",
+  borderRadius: 6,
+  padding: "6px 10px",
+  color: "var(--ds-text-primary, #F1EFE8)",
+  fontSize: 12,
+  outline: "none",
+  cursor: "pointer",
+};
+
 const thStyle: React.CSSProperties = {
   textAlign: "left",
   padding: "8px 12px",

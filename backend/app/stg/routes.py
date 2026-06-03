@@ -305,21 +305,36 @@ def listar_contadores_detectados(
     empresa_id: int = Query(...),
     offset: int = Query(0, ge=0, description="Offset de paginación"),
     limit: int = Query(50, ge=1, le=500, description="Tamaño de página (max 500)"),
+    concentrador_id: Optional[int] = Query(None, description="Filtrar por concentrador (FK)"),
+    estado: Optional[str] = Query(None, description="Filtrar por estado: ok/warning/error/desconocido"),
+    fabricante: Optional[str] = Query(None, description="Filtrar por fabricante: CIR/LGZ/SAG/ZIV..."),
+    search: Optional[str] = Query(None, description="Texto libre — busca en meter_id o codigo_ct"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """
-    Lista los contadores detectados en S24 para una empresa (paginado).
+    Lista los contadores detectados en S24 para una empresa (paginado + filtrado).
 
     A diferencia de /stg/cups (que lee de stg_cups con código CUPS oficial),
     este endpoint lee de stg_contador y devuelve los contadores físicos
     identificados por su meter_id (CIR..., LGZ..., SAG..., ZIV..., ITE...).
 
-    Devuelve también stats globales (sin paginar) para mostrar el resumen
-    en el UI sin necesidad de cargar todas las filas.
+    Filtros (todos opcionales):
+      - concentrador_id: FK al concentrador (limitar a un CT concreto)
+      - estado:          ok / warning / error / desconocido
+      - fabricante:      CIR, LGZ, SAG, ZIV…
+      - search:          busca en meter_id O codigo_ct (case-insensitive)
+
+    Los stats globales NO se ven afectados por los filtros — siempre reflejan
+    el total de la empresa para mantener el contexto del panorama.
     """
     return services.listar_contadores_detectados(
-        db, user, empresa_id, offset=offset, limit=limit,
+        db, user, empresa_id,
+        offset=offset, limit=limit,
+        concentrador_id=concentrador_id,
+        estado=estado,
+        fabricante=fabricante,
+        search=search,
     )
 
 

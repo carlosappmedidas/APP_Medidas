@@ -1402,16 +1402,28 @@ def listar_contadores_detectados(
     empresa_id: int,
     offset: int = 0,
     limit: int = 50,
+    concentrador_id: Optional[int] = None,
+    estado: Optional[str] = None,
+    fabricante: Optional[str] = None,
+    search: Optional[str] = None,
 ) -> dict:
     """
-    Lista los contadores detectados en BD para una empresa, con paginación.
+    Lista los contadores detectados en BD para una empresa, con paginación
+    y filtros (Paquete 8b-3).
+
+    Filtros:
+      - concentrador_id: filtra por FK al concentrador
+      - estado:          filtra por estado_comunicacion (ok/warning/error/desconocido)
+      - fabricante:      filtra por fabricante (CIR/LGZ/SAG/ZIV)
+      - search:          texto libre, busca en meter_id O en codigo_ct del cnc
 
     Devuelve:
-      - total: nº total de contadores (sin paginar)
+      - total: nº total de contadores DEL FILTRO actual (afectado por filtros)
       - offset / limit: parámetros usados
-      - items: los contadores de la página actual
-      - stats: agregados globales (sobre TODOS los contadores de la empresa,
-               no sólo la página). Útil para mostrar el "top resumen" en el UI.
+      - items: los contadores de la página actual (afectados por filtros)
+      - stats: agregados GLOBALES sobre TODA la empresa (NO afectados por
+               filtros). Útil para mantener el contexto del panorama
+               aunque el usuario esté inspeccionando un subset.
 
     A diferencia de /stg/cups (que lee de stg_cups con código CUPS oficial),
     este endpoint lee de stg_contador y devuelve los contadores físicos
@@ -1423,19 +1435,22 @@ def listar_contadores_detectados(
     limit = max(1, min(int(limit), 500))
     offset = max(0, int(offset))
 
-    base_query = db.query(Contador).filter(Contador.empresa_id == empresa_id)
-
-    # Total sin paginar
-    total = base_query.count()
-
-    # Stats globales (no paginadas) — agregamos en BD para no traer 2493 filas
+    # Stats globales (no filtradas) — antes de aplicar cualquier filtro.
+    # Agregamos directamente en BD para no traer 2493 filas.
     estado_counts_raw = (
         db.query(Contador.estado_comunicacion, func.count(Contador.id))
         .filter(Contador.empresa_id == empresa_id)
         .group_by(Contador.estado_comunicacion)
         .all()
     )
-    estado_counts = {estado: cnt for estado, cnt in estado_counts_raw}
+    estado_counts = {e: c for e, c in estado_counts_raw}
+
+    total_empresa = (
+        db.query(func.count(Contador.id))
+        .filter(Contador.empresa_id == empresa_id)
+        .scalar()
+        or 0
+    )
 
     activos = (
         db.query(func.count(Contador.id))
@@ -1454,19 +1469,47 @@ def listar_contadores_detectados(
         .order_by(Contador.fabricante.asc())
         .all()
     )
-    fabricantes = [f[0] for f in fabricantes_raw]
+    fabricantes_list = [f[0] for f in fabricantes_raw]
 
     stats = {
-        "total": total,
+        "total": total_empresa,
         "ok": estado_counts.get("ok", 0),
         "warning": estado_counts.get("warning", 0),
         "error": estado_counts.get("error", 0),
         "desconocido": estado_counts.get("desconocido", 0),
         "activos": activos,
-        "fabricantes": fabricantes,
+        "fabricantes": fabricantes_list,
     }
 
-    # Página actual: ordenamos por meter_id para que la paginación sea estable.
+    # Query base + filtros (sí afectan a items y total)
+    base_query = db.query(Contador).filter(Contador.empresa_id == empresa_id)
+
+    if concentrador_id is not None:
+        base_query = base_query.filter(Contador.concentrador_id == concentrador_id)
+
+    if estado:
+        base_query = base_query.filter(Contador.estado_comunicacion == estado)
+
+    if fabricante:
+        base_query = base_query.filter(Contador.fabricante == fabricante)
+
+    if search:
+        # search: busca en meter_id o en concentrador.codigo_ct (case-insensitive)
+        from sqlalchemy import or_
+        search_clean = f"%{search.strip()}%"
+        base_query = base_query.outerjoin(
+            StgConcentrador, Contador.concentrador_id == StgConcentrador.id,
+        ).filter(
+            or_(
+                Contador.meter_id.ilike(search_clean),
+                StgConcentrador.codigo_ct.ilike(search_clean),
+            )
+        )
+
+    # Total filtrado (afectado por los filtros, para paginación)
+    total = base_query.count()
+
+    # Página actual: ordenamos por meter_id para que la paginación sea estable
     contadores = (
         base_query.order_by(Contador.meter_id.asc())
         .offset(offset)
