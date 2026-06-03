@@ -13,10 +13,13 @@ Hay 5 tablas:
 Todas llevan tenant_id + empresa_id para multi-tenant/multi-empresa,
 igual que el resto de tablas de la app.
 """
+from datetime import datetime
+
 from sqlalchemy import (
-    Boolean, Column, Date, DateTime, Float, ForeignKey,
+    BigInteger, Boolean, Column, Date, DateTime, Float, ForeignKey,
     Integer, JSON, String, Text, UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.models_base import Base, TimestampMixin
@@ -256,6 +259,90 @@ class FicheroRecibido(TimestampMixin, Base):
 
     parsed     = Column(Boolean, nullable=False, default=False)
     parsed_at  = Column(DateTime, nullable=True)
+    # Mensaje de error si falló el parseo (Paquete 6). NULL si OK o aún no intentado.
+    parse_error = Column(Text, nullable=True)
 
     solicitud  = relationship("SolicitudFichero", lazy="joined")
     cups       = relationship("Cups", lazy="joined")
+
+
+# ---------------------------------------------------------------------------
+# 6) Contador  -- contador físico detectado en S24 (Paquete 6)
+# ---------------------------------------------------------------------------
+class Contador(TimestampMixin, Base):
+    """
+    Contador físico observado en informes S24.
+
+    El meter_id es el identificador del contador tal como aparece en el XML
+    (p.ej. "CIR0141406756", "LGZ0012240491", "ZIV0037156307").
+    No es lo mismo que un CUPS oficial (que se enlaza opcionalmente via cups_id).
+
+    fabricante se deriva del prefijo del meter_id:
+        CIR -> Circutor
+        LGZ -> Landis+Gyr
+        SAG -> Sagemcom
+        ZIV -> ZIV
+        ITE -> ITE / Itron
+
+    estado_comunicacion:
+        "ok"           -> ComStatus == 2
+        "warning"      -> ComStatus == 1
+        "error"        -> ComStatus == 0
+        "desconocido"  -> aún no observado
+    """
+    __tablename__ = "stg_contador"
+
+    id          = Column(Integer, primary_key=True)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id  = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    concentrador_id = Column(Integer, ForeignKey("stg_concentrador.id"), nullable=True, index=True)
+    cups_id         = Column(Integer, ForeignKey("stg_cups.id"), nullable=True, index=True)
+
+    meter_id    = Column(String(50), nullable=False, index=True)
+    fabricante  = Column(String(10), nullable=True)
+
+    ultimo_contacto     = Column(DateTime, nullable=True)
+    estado_comunicacion = Column(String(20), nullable=False, default="desconocido")
+    activo              = Column(Boolean, nullable=False, default=True)
+
+    concentrador = relationship("StgConcentrador", lazy="joined")
+    cups         = relationship("Cups", lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "meter_id", name="uq_stg_contador_empresa_meter"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 7) Medida  -- evento o medida individual parseada de un fichero (Paquete 6)
+# ---------------------------------------------------------------------------
+class Medida(Base):
+    """
+    Medida individual extraída de un fichero parseado.
+
+    Para S24:
+      - una fila por cada <Meter> dentro de cada <S24> de un fichero
+      - timestamp_dato es el timestamp del informe (Fh del S24)
+      - datos = {'status': 2, 'active': true, 'meter_timestamp': '...', 'season': 'W'}
+
+    Diseño deliberadamente genérico (JSONB en `datos`) para soportar
+    cualquier tipo de informe sin migración por cada tipo nuevo.
+    """
+    __tablename__ = "stg_medida"
+
+    id          = Column(BigInteger, primary_key=True)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id  = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+    fichero_id  = Column(Integer, ForeignKey("stg_fichero_recibido.id"), nullable=False, index=True)
+
+    concentrador_id = Column(Integer, ForeignKey("stg_concentrador.id"), nullable=True, index=True)
+    contador_id     = Column(Integer, ForeignKey("stg_contador.id"), nullable=True, index=True)
+
+    tipo_fichero       = Column(String(10), nullable=False, index=True)
+    timestamp_dato     = Column(DateTime, nullable=True, index=True)
+    concentrador_externo_id = Column(String(50), nullable=True)
+    meter_id           = Column(String(50), nullable=True, index=True)
+
+    datos      = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

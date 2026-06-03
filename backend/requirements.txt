@@ -34,3 +34,4 @@ uvloop==0.22.1; platform_system != "Windows"
 httptools==0.7.1; platform_system != "Windows"
 
 APScheduler==3.10.4
+primestg==1.61.1

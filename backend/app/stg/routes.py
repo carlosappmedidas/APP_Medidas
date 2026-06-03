@@ -255,3 +255,61 @@ def descargar_ficheros(
     except ValueError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Parseo de ficheros (Paquete 6)
+# ---------------------------------------------------------------------------
+@router.post("/parsear/{fichero_id}", response_model=schemas.ParseoResponse)
+def parsear_fichero(
+    fichero_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Parsea un fichero descargado y guarda las medidas en BD.
+
+    - Soporta S24 (vía gisce/primestg).
+    - G97 marcado como pendiente (parser propio en futuro paquete).
+    - Idempotente: si el fichero ya estaba parsed, se borran las medidas previas
+      y se re-parsea.
+    """
+    try:
+        return services.parsear_fichero(db, user, fichero_id)
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/parsear-pendientes", response_model=schemas.ParseoPendientesResponse)
+def parsear_pendientes(
+    empresa_id: int = Query(...),
+    limite: int = Query(10, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Parsea en bulk hasta `limite` ficheros pendientes (parsed=False) de la empresa.
+    Devuelve resumen y detalle por fichero.
+    """
+    try:
+        return services.parsear_pendientes(db, user, empresa_id, limite=limite)
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/contadores-detectados", response_model=schemas.ContadoresListResponse)
+def listar_contadores_detectados(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Lista los contadores detectados en S24 para una empresa.
+
+    A diferencia de /stg/cups (que lee de stg_cups con código CUPS oficial),
+    este endpoint lee de stg_contador y devuelve los contadores físicos
+    identificados por su meter_id (CIR..., LGZ..., SAG..., ZIV..., ITE...).
+    """
+    return services.listar_contadores_detectados(db, user, empresa_id)

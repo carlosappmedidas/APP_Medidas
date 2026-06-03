@@ -32,6 +32,8 @@ from app.stg.models import (
     Cups,
     FicheroRecibido,
     SolicitudFichero,
+    Contador,
+    Medida,
 )
 from app.tenants.models import User
 
@@ -517,11 +519,14 @@ def listar_ficheros_sftp(
 
 # Regex para parsear nombres conocidos.
 #
-# CIRR del fabricante Circutor:
-#   CIRR208251006614_0_G97_0_20260306120530
-#   CIRR<ID_CONTADOR>_<COD>_<TIPO_MENSAJE>_<NUM>_<YYYYMMDDHHMMSS>
+# Formato del fabricante Circutor (con sufijo de tipo de mensaje):
+#   CIR4621531018_0_S24_0_20251209220004      (CIR + ID + sin R extra)
+#   CIRR208251006614_0_G97_0_20260306120530   (CIRR + ID + con R extra, otra variante)
+#   CIR<ID_CONTADOR>(R?)_<COD>_<TIPO_MENSAJE>_<NUM>_<YYYYMMDDHHMMSS>
+#
+# La R después de "CIR" es opcional (algunos formatos tienen CIRR, otros CIR).
 _CIRR_RE = re.compile(
-    r"^CIRR(?P<id_contador>\d+)_[^_]+_(?P<tipo>[A-Z0-9]+)_\d+_"
+    r"^CIRR?(?P<id_contador>\d+)_[^_]+_(?P<tipo>[A-Z0-9]+)_\d+_"
     r"(?P<ts>\d{14})(\..*)?$"
 )
 
@@ -741,4 +746,464 @@ def descargar_ficheros_nuevos(
         "saltados_duplicados": saltados_duplicados,
         "errores": errores,
         "detalle": detalle,
+    }
+
+
+# ===========================================================================
+# Parseo de ficheros descargados (Paquete 6)
+# ===========================================================================
+
+# Mapeo de ComStatus → estado_comunicacion legible
+_STATUS_MAP = {
+    2: "ok",
+    1: "warning",
+    0: "error",
+}
+
+
+def _mapear_status(status_int) -> str:
+    """Mapea el ComStatus numérico de S24 a string legible."""
+    try:
+        return _STATUS_MAP.get(int(status_int), "desconocido")
+    except (ValueError, TypeError):
+        return "desconocido"
+
+
+# Tabla de fabricantes conocidos por prefijo del meter_id (primeros 3 chars)
+_FABRICANTES = {
+    "CIR": "Circutor",
+    "LGZ": "Landis+Gyr",
+    "SAG": "Sagemcom",
+    "ZIV": "ZIV",
+    "ITE": "ITE/Itron",
+    "ITR": "Itron",
+}
+
+
+def _extraer_fabricante(meter_id: str) -> Optional[str]:
+    """
+    Devuelve el código de fabricante (3 letras) si el meter_id tiene un
+    prefijo conocido, o las 3 primeras letras como fallback.
+    """
+    if not meter_id or len(meter_id) < 3:
+        return None
+    prefix = meter_id[:3].upper()
+    # Devolvemos siempre el prefijo (la tabla _FABRICANTES es solo documental)
+    return prefix
+
+
+def _upsert_concentrador(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    codigo_ct: str,
+    ultimo_contacto: Optional[datetime] = None,
+) -> StgConcentrador:
+    """
+    UPSERT en stg_concentrador por (empresa_id, codigo_ct).
+
+    Si existe, actualiza `ultimo_contacto` y `estado_comunicacion`="online".
+    Si no, lo crea con valores por defecto.
+    """
+    cnc = (
+        db.query(StgConcentrador)
+        .filter(
+            StgConcentrador.empresa_id == empresa_id,
+            StgConcentrador.codigo_ct == codigo_ct,
+        )
+        .first()
+    )
+    if cnc is None:
+        cnc = StgConcentrador(
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            codigo_ct=codigo_ct,
+            ultimo_contacto=ultimo_contacto,
+            estado_comunicacion="online",
+            activo=True,
+        )
+        db.add(cnc)
+        db.flush()    # para obtener cnc.id sin commit todavía
+    else:
+        # Solo actualizamos si la fecha nueva es más reciente (evita regresiones
+        # cuando reprocesamos un fichero antiguo después de uno nuevo).
+        if ultimo_contacto and (
+            cnc.ultimo_contacto is None or ultimo_contacto > cnc.ultimo_contacto
+        ):
+            cnc.ultimo_contacto = ultimo_contacto
+            cnc.estado_comunicacion = "online"
+    return cnc
+
+
+def _upsert_contador(
+    db: Session,
+    tenant_id: int,
+    empresa_id: int,
+    meter_id: str,
+    concentrador_id: Optional[int],
+    fabricante: Optional[str],
+    ultimo_contacto: Optional[datetime],
+    estado_comunicacion: str,
+    activo: bool,
+) -> Contador:
+    """
+    UPSERT en stg_contador por (empresa_id, meter_id).
+
+    Actualiza estado_comunicacion y ultimo_contacto solo si el timestamp nuevo
+    es más reciente que el almacenado.
+    """
+    ct = (
+        db.query(Contador)
+        .filter(
+            Contador.empresa_id == empresa_id,
+            Contador.meter_id == meter_id,
+        )
+        .first()
+    )
+    if ct is None:
+        ct = Contador(
+            tenant_id=tenant_id,
+            empresa_id=empresa_id,
+            concentrador_id=concentrador_id,
+            meter_id=meter_id,
+            fabricante=fabricante,
+            ultimo_contacto=ultimo_contacto,
+            estado_comunicacion=estado_comunicacion,
+            activo=activo,
+        )
+        db.add(ct)
+        db.flush()
+    else:
+        # Actualizar concentrador_id si nos llega uno y no lo tenemos
+        if concentrador_id and ct.concentrador_id != concentrador_id:
+            ct.concentrador_id = concentrador_id
+        if fabricante and not ct.fabricante:
+            ct.fabricante = fabricante
+        # Solo actualizar estado si el timestamp es más reciente
+        if ultimo_contacto and (
+            ct.ultimo_contacto is None or ultimo_contacto > ct.ultimo_contacto
+        ):
+            ct.ultimo_contacto = ultimo_contacto
+            ct.estado_comunicacion = estado_comunicacion
+            ct.activo = activo
+    return ct
+
+
+def _parsear_iso(raw_ts) -> Optional[datetime]:
+    """Convierte un string 'YYYY-MM-DD HH:MM:SS' (o datetime) a datetime."""
+    if raw_ts is None:
+        return None
+    if isinstance(raw_ts, datetime):
+        return raw_ts
+    if isinstance(raw_ts, str):
+        try:
+            return datetime.strptime(raw_ts, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+    return None
+
+
+def _parsear_s24(
+    db: Session,
+    fichero: FicheroRecibido,
+) -> dict:
+    """
+    Parsea un fichero S24 con primestg.
+
+    Estructura del XML S24:
+      <Report IdRpt="S24" ...>
+        <Cnc Id="...">
+          <S24 Fh="...">
+            <Meter MeterId="..." ComStatus="..." Date="..." Active="Y|N"/>
+            ...
+          </S24>
+        </Cnc>
+      </Report>
+
+    Para cada Meter:
+      - UPSERT en stg_concentrador
+      - UPSERT en stg_contador
+      - INSERT en stg_medida con datos en JSONB
+    """
+    # Lazy import para no romper si primestg no está instalado
+    from primestg.report import Report  # type: ignore
+
+    medidas_insertadas = 0
+    concentradores_set = set()    # cnc_names que hemos hecho upsert
+    contadores_set = set()         # meter_ids únicos que hemos hecho upsert
+
+    with open(fichero.path, "rb") as f:
+        report = Report(f)
+
+    for cnc in report.concentrators:
+        for value in cnc.values:
+            cnc_name = value.get("cnc_name")
+            cnc_ts = _parsear_iso(value.get("timestamp"))
+
+            # UPSERT concentrador
+            concentrador_obj = _upsert_concentrador(
+                db, fichero.tenant_id, fichero.empresa_id, cnc_name, cnc_ts,
+            )
+            concentradores_set.add(cnc_name)
+
+            for meter in value.get("meters", []):
+                meter_id = meter.get("name")
+                if not meter_id:
+                    continue
+                meter_ts = _parsear_iso(meter.get("timestamp"))
+                status = meter.get("status")
+                active = bool(meter.get("active"))
+                estado_com = _mapear_status(status)
+                fabricante = _extraer_fabricante(meter_id)
+
+                # UPSERT contador
+                contador_obj = _upsert_contador(
+                    db,
+                    tenant_id=fichero.tenant_id,
+                    empresa_id=fichero.empresa_id,
+                    meter_id=meter_id,
+                    concentrador_id=concentrador_obj.id,
+                    fabricante=fabricante,
+                    ultimo_contacto=meter_ts,
+                    estado_comunicacion=estado_com,
+                    activo=active,
+                )
+                contadores_set.add(meter_id)
+
+                # INSERT medida
+                medida = Medida(
+                    tenant_id=fichero.tenant_id,
+                    empresa_id=fichero.empresa_id,
+                    fichero_id=fichero.id,
+                    concentrador_id=concentrador_obj.id,
+                    contador_id=contador_obj.id,
+                    tipo_fichero="S24",
+                    timestamp_dato=cnc_ts,
+                    concentrador_externo_id=cnc_name,
+                    meter_id=meter_id,
+                    datos={
+                        "cnc_timestamp": value.get("timestamp"),
+                        "cnc_season": value.get("season"),
+                        "meter_timestamp": meter.get("timestamp"),
+                        "meter_season": meter.get("season"),
+                        "status": meter.get("status"),
+                        "active": meter.get("active"),
+                    },
+                )
+                db.add(medida)
+                medidas_insertadas += 1
+
+    return {
+        "medidas_insertadas": medidas_insertadas,
+        "concentradores_upsert": len(concentradores_set),
+        "contadores_upsert": len(contadores_set),
+    }
+
+
+def parsear_fichero(
+    db: Session,
+    user: User,
+    fichero_id: int,
+) -> dict:
+    """
+    Parsea un fichero descargado y guarda las medidas en BD.
+
+    Idempotente: si el fichero ya estaba parsed=True, primero borra sus medidas
+    previas y luego re-parsea. Esto permite re-procesar tras un fix sin duplicar.
+
+    Tipos soportados: S24 (vía primestg). Otros tipos S0X conocidos por primestg
+    se pueden añadir en el dispatcher de abajo de forma análoga.
+    G97 y otros propietarios: skipped por ahora (parser propio en futuro paquete).
+    """
+    fichero = db.query(FicheroRecibido).filter(FicheroRecibido.id == fichero_id).first()
+    if fichero is None:
+        raise ValueError(f"Fichero {fichero_id} no encontrado.")
+    assert_empresa_access(db, user, fichero.empresa_id)
+
+    # Determinar el tipo. Preferimos tipo_mensaje (extraído del nombre) sobre tipo_fichero.
+    tipo = (fichero.tipo_mensaje or fichero.tipo_fichero or "").upper()
+
+    estado_previo = "ya_parseado_reprocesado" if fichero.parsed else "parseado"
+
+    # Tipos despachables
+    TIPOS_PRIMESTG_S24 = {"S24"}
+    # En el futuro: TIPOS_PRIMESTG_S02 = {"S02"} etc.
+    TIPOS_SKIP_CONOCIDOS = {"G97"}    # propietario, parser propio pendiente
+
+    if tipo not in TIPOS_PRIMESTG_S24 and tipo not in TIPOS_SKIP_CONOCIDOS:
+        # Tipo no soportado en absoluto
+        fichero.parsed = False
+        fichero.parse_error = f"tipo no soportado: '{tipo}'"
+        db.commit()
+        return {
+            "fichero_id": fichero.id,
+            "estado": "skipped_tipo_no_soportado",
+            "tipo_fichero": tipo,
+            "medidas_insertadas": 0,
+            "concentradores_upsert": 0,
+            "contadores_upsert": 0,
+            "error": f"tipo no soportado: '{tipo}'",
+        }
+
+    if tipo in TIPOS_SKIP_CONOCIDOS:
+        # Conocido pero sin parser todavía
+        fichero.parsed = False
+        fichero.parse_error = f"tipo {tipo} pendiente de parser propio"
+        db.commit()
+        return {
+            "fichero_id": fichero.id,
+            "estado": "skipped_tipo_no_soportado",
+            "tipo_fichero": tipo,
+            "medidas_insertadas": 0,
+            "concentradores_upsert": 0,
+            "contadores_upsert": 0,
+            "error": f"tipo {tipo} pendiente",
+        }
+
+    # Si ya estaba parsed, borrar medidas previas (idempotencia)
+    if fichero.parsed:
+        db.query(Medida).filter(Medida.fichero_id == fichero.id).delete()
+        db.flush()
+
+    try:
+        if tipo in TIPOS_PRIMESTG_S24:
+            resultado = _parsear_s24(db, fichero)
+        else:
+            # Defensivo, no debería llegar
+            raise RuntimeError(f"dispatcher inválido para tipo '{tipo}'")
+
+        fichero.parsed = True
+        fichero.parsed_at = datetime.utcnow()
+        fichero.parse_error = None
+        db.commit()
+
+        return {
+            "fichero_id": fichero.id,
+            "estado": estado_previo,
+            "tipo_fichero": tipo,
+            **resultado,
+            "error": None,
+        }
+    except Exception as e:
+        db.rollback()
+        # Marcar el fichero con el error
+        fichero.parsed = False
+        fichero.parse_error = f"{type(e).__name__}: {e}"
+        db.commit()
+        return {
+            "fichero_id": fichero.id,
+            "estado": "error",
+            "tipo_fichero": tipo,
+            "medidas_insertadas": 0,
+            "concentradores_upsert": 0,
+            "contadores_upsert": 0,
+            "error": f"{type(e).__name__}: {e}",
+        }
+
+
+def parsear_pendientes(
+    db: Session,
+    user: User,
+    empresa_id: int,
+    limite: int = 10,
+) -> dict:
+    """
+    Parsea en bulk hasta `limite` ficheros pendientes (parsed=False) de una empresa.
+    """
+    assert_empresa_access(db, user, empresa_id)
+
+    pendientes_antes = (
+        db.query(FicheroRecibido)
+        .filter(
+            FicheroRecibido.empresa_id == empresa_id,
+            FicheroRecibido.parsed == False,    # noqa: E712
+        )
+        .count()
+    )
+
+    pendientes = (
+        db.query(FicheroRecibido)
+        .filter(
+            FicheroRecibido.empresa_id == empresa_id,
+            FicheroRecibido.parsed == False,    # noqa: E712
+        )
+        .order_by(FicheroRecibido.id.asc())
+        .limit(limite)
+        .all()
+    )
+
+    parseados = 0
+    skipped = 0
+    errores = 0
+    detalle = []
+
+    for f in pendientes:
+        nombre = f.nombre_original
+        res = parsear_fichero(db, user, f.id)
+        detalle.append({
+            "fichero_id": f.id,
+            "nombre": nombre,
+            "tipo_fichero": res.get("tipo_fichero"),
+            "estado": res.get("estado"),
+            "medidas_insertadas": res.get("medidas_insertadas", 0),
+            "concentradores_upsert": res.get("concentradores_upsert", 0),
+            "contadores_upsert": res.get("contadores_upsert", 0),
+            "error": res.get("error"),
+        })
+        if res.get("estado") == "parseado" or res.get("estado") == "ya_parseado_reprocesado":
+            parseados += 1
+        elif res.get("estado") == "skipped_tipo_no_soportado":
+            skipped += 1
+        else:
+            errores += 1
+
+    return {
+        "empresa_id": empresa_id,
+        "pendientes_antes": pendientes_antes,
+        "procesados": len(pendientes),
+        "limite_usado": limite,
+        "parseados": parseados,
+        "skipped": skipped,
+        "errores": errores,
+        "detalle": detalle,
+    }
+
+
+def listar_contadores_detectados(
+    db: Session,
+    user: User,
+    empresa_id: int,
+) -> dict:
+    """
+    Lista los contadores detectados en BD para una empresa, con info del concentrador.
+    """
+    assert_empresa_access(db, user, empresa_id)
+
+    contadores = (
+        db.query(Contador)
+        .filter(Contador.empresa_id == empresa_id)
+        .order_by(Contador.meter_id.asc())
+        .all()
+    )
+
+    items = []
+    for ct in contadores:
+        items.append({
+            "id": ct.id,
+            "empresa_id": ct.empresa_id,
+            "concentrador_id": ct.concentrador_id,
+            "cups_id": ct.cups_id,
+            "meter_id": ct.meter_id,
+            "fabricante": ct.fabricante,
+            "ultimo_contacto": ct.ultimo_contacto,
+            "estado_comunicacion": ct.estado_comunicacion,
+            "activo": ct.activo,
+            "concentrador_codigo_ct": ct.concentrador.codigo_ct if ct.concentrador else None,
+            "created_at": ct.created_at,
+            "updated_at": ct.updated_at,
+        })
+
+    return {
+        "total": len(items),
+        "items": items,
     }

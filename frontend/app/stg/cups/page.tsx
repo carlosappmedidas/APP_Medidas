@@ -1,10 +1,13 @@
 // app/stg/cups/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "../../apiConfig";
 import { useStgEmpresaId } from "../components/StgEmpresaSelector";
 
+// ---------------------------------------------------------------------------
+// Tipos
+// ---------------------------------------------------------------------------
 interface CupsItem {
   id: number;
   cups: string;
@@ -23,28 +26,90 @@ interface CupsListResponse {
   items: CupsItem[];
 }
 
+interface ContadorItem {
+  id: number;
+  empresa_id: number;
+  concentrador_id: number | null;
+  cups_id: number | null;
+  meter_id: string;
+  fabricante: string | null;
+  ultimo_contacto: string | null;
+  estado_comunicacion: string;
+  activo: boolean;
+  concentrador_codigo_ct: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ContadoresListResponse {
+  total: number;
+  items: ContadorItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function estadoBadge(estado: string): React.ReactNode {
+  const colores: Record<string, { bg: string; color: string }> = {
+    ok:           { bg: "rgba(29,158,117,0.18)", color: "#1D9E75" },
+    online:       { bg: "rgba(29,158,117,0.18)", color: "#1D9E75" },
+    warning:      { bg: "rgba(239,159,39,0.18)", color: "#EF9F27" },
+    alerta:       { bg: "rgba(239,159,39,0.18)", color: "#EF9F27" },
+    error:        { bg: "rgba(226,75,74,0.18)", color: "#E24B4A" },
+    offline:      { bg: "rgba(226,75,74,0.18)", color: "#E24B4A" },
+    desconocido:  { bg: "rgba(255,255,255,0.06)", color: "rgba(241,239,232,0.5)" },
+  };
+  const c = colores[estado] || colores.desconocido;
+  return (
+    <span style={{ background: c.bg, color: c.color, padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 500 }}>
+      {estado}
+    </span>
+  );
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("es-ES");
+  } catch {
+    return iso;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Componente principal
+// ---------------------------------------------------------------------------
 export default function StgCupsPage() {
   const empresaId = useStgEmpresaId();
-  const [data, setData] = useState<CupsListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [estado, setEstado] = useState<string>("");
 
+  // CUPS oficiales (existente)
+  const [cupsData, setCupsData] = useState<CupsListResponse | null>(null);
+  const [loadingCups, setLoadingCups] = useState(true);
+  const [errorCups, setErrorCups] = useState<string | null>(null);
+
+  // Contadores detectados (Paquete 6)
+  const [contadoresData, setContadoresData] = useState<ContadoresListResponse | null>(null);
+  const [loadingContadores, setLoadingContadores] = useState(true);
+  const [errorContadores, setErrorContadores] = useState<string | null>(null);
+
+  // Filtros para contadores
+  const [filtroContador, setFiltroContador] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState<string>("");
+
+  // Cargar CUPS oficiales
   useEffect(() => {
     if (!empresaId) return;
     const token = localStorage.getItem("auth_token");
     if (!token) return;
 
-    setLoading(true);
-    setError(null);
+    setLoadingCups(true);
+    setErrorCups(null);
+
     const params = new URLSearchParams({
       empresa_id: String(empresaId),
       page: "1",
       page_size: "50",
     });
-    if (estado) params.append("estado", estado);
-    if (search) params.append("search", search);
 
     fetch(`${API_BASE_URL}/stg/cups?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -53,173 +118,250 @@ export default function StgCupsPage() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then(setData)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
-  }, [empresaId, estado, search]);
+      .then(setCupsData)
+      .catch((e) => setErrorCups(String(e)))
+      .finally(() => setLoadingCups(false));
+  }, [empresaId]);
+
+  // Cargar contadores detectados
+  const cargarContadores = () => {
+    if (!empresaId) return;
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setLoadingContadores(true);
+    setErrorContadores(null);
+    fetch(`${API_BASE_URL}/stg/contadores-detectados?empresa_id=${empresaId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(setContadoresData)
+      .catch((e) => setErrorContadores(String(e)))
+      .finally(() => setLoadingContadores(false));
+  };
+
+  useEffect(() => {
+    cargarContadores();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId]);
+
+  // Aplicar filtros a contadores
+  const contadoresFiltrados = useMemo(() => {
+    if (!contadoresData) return [];
+    const q = filtroContador.toLowerCase().trim();
+    return contadoresData.items.filter((c) => {
+      if (q && !c.meter_id.toLowerCase().includes(q) && !(c.concentrador_codigo_ct || "").toLowerCase().includes(q)) {
+        return false;
+      }
+      if (filtroEstado && c.estado_comunicacion !== filtroEstado) {
+        return false;
+      }
+      return true;
+    });
+  }, [contadoresData, filtroContador, filtroEstado]);
+
+  // Stats agregados
+  const stats = useMemo(() => {
+    if (!contadoresData) return null;
+    const items = contadoresData.items;
+    return {
+      total: items.length,
+      ok: items.filter((c) => c.estado_comunicacion === "ok").length,
+      warning: items.filter((c) => c.estado_comunicacion === "warning").length,
+      error: items.filter((c) => c.estado_comunicacion === "error").length,
+      activos: items.filter((c) => c.activo).length,
+      fabricantes: Array.from(new Set(items.map((c) => c.fabricante).filter(Boolean))).sort(),
+    };
+  }, [contadoresData]);
 
   if (!empresaId) {
-    return (
-      <div style={{ color: "rgba(241,239,232,0.5)" }}>
-        Selecciona una empresa en el desplegable.
-      </div>
-    );
+    return <div style={{ color: "rgba(241,239,232,0.5)" }}>Selecciona una empresa.</div>;
   }
 
   return (
-    <div>
-      <h1 style={{ fontSize: 22, fontWeight: 500, margin: "0 0 16px" }}>
-        CUPS telegestionados
-      </h1>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* ------------------ Sección 1: CUPS oficiales ------------------ */}
+      <section>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--ds-text-primary, #F1EFE8)", margin: 0 }}>
+            CUPS oficiales
+          </h2>
+          <span style={{ fontSize: 11, color: "rgba(241,239,232,0.4)" }}>
+            (Códigos universales de punto de suministro registrados manualmente o via integración)
+          </span>
+        </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar CUPS, contador o dirección…"
-          style={{
-            flex: 1,
-            minWidth: 200,
-            background: "rgba(255,255,255,0.04)",
-            border: "0.5px solid rgba(255,255,255,0.1)",
-            borderRadius: 6,
-            padding: "8px 12px",
-            color: "var(--ds-text-primary, #F1EFE8)",
-            fontSize: 13,
-            outline: "none",
-          }}
-        />
-        <FilterChip label="Todos" active={!estado} onClick={() => setEstado("")} />
-        <FilterChip label="Online" active={estado === "online"} onClick={() => setEstado("online")} />
-        <FilterChip label="Offline" active={estado === "offline"} onClick={() => setEstado("offline")} />
-      </div>
-
-      {loading && <div style={{ color: "rgba(241,239,232,0.5)" }}>Cargando…</div>}
-      {error && <div style={{ color: "#E24B4A" }}>Error: {error}</div>}
-
-      {data && (
-        <div
-          style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "0.5px solid rgba(255,255,255,0.08)",
-            borderRadius: 8,
-            overflow: "hidden",
-          }}
-        >
-          {data.items.length === 0 ? (
-            <div style={{ padding: 24, color: "rgba(241,239,232,0.5)", textAlign: "center", fontSize: 13 }}>
-              No hay CUPS registrados todavía. Cuando configures la conexión STG, aparecerán aquí.
-            </div>
-          ) : (
+        {loadingCups && <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13 }}>Cargando…</div>}
+        {errorCups && (
+          <div style={{ background: "rgba(226,75,74,0.1)", border: "0.5px solid rgba(226,75,74,0.4)", color: "#E24B4A", padding: 10, borderRadius: 6, fontSize: 12 }}>
+            {errorCups}
+          </div>
+        )}
+        {!loadingCups && !errorCups && cupsData && cupsData.total === 0 && (
+          <div style={{ padding: 14, color: "rgba(241,239,232,0.5)", fontSize: 12, textAlign: "center", background: "rgba(255,255,255,0.02)", borderRadius: 6 }}>
+            No hay CUPS oficiales registrados todavía. Esta sección se rellenará cuando se integre con la fuente de CUPS (ERP, distribuidora, manual).
+          </div>
+        )}
+        {!loadingCups && !errorCups && cupsData && cupsData.total > 0 && (
+          <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 6, overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
-                  <Th>CUPS</Th>
-                  <Th>Contador</Th>
-                  <Th>CT</Th>
-                  <Th>Tarifa</Th>
-                  <Th>Último contacto</Th>
-                  <Th>Estado</Th>
+                  <th style={thStyle}>CUPS</th>
+                  <th style={thStyle}>Nº contador</th>
+                  <th style={thStyle}>Fabricante</th>
+                  <th style={thStyle}>Tarifa</th>
+                  <th style={thStyle}>CT</th>
+                  <th style={thStyle}>Estado</th>
+                  <th style={thStyle}>Último contacto</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((c) => (
+                {cupsData.items.map((c) => (
                   <tr key={c.id} style={{ borderBottom: "0.5px solid rgba(255,255,255,0.05)" }}>
-                    <Td><span style={{ fontFamily: "monospace" }}>{c.cups}</span></Td>
-                    <Td>{c.numero_contador || "—"}</Td>
-                    <Td>{c.concentrador_codigo_ct || "—"}</Td>
-                    <Td>{c.tarifa || "—"}</Td>
-                    <Td>{c.ultimo_contacto ? new Date(c.ultimo_contacto).toLocaleString("es-ES") : "—"}</Td>
-                    <Td><EstadoPill estado={c.estado_comunicacion} /></Td>
+                    <td style={tdStyle}><span style={{ fontFamily: "monospace" }}>{c.cups}</span></td>
+                    <td style={tdStyle}>{c.numero_contador || "—"}</td>
+                    <td style={tdStyle}>{c.fabricante_contador || "—"}</td>
+                    <td style={tdStyle}>{c.tarifa || "—"}</td>
+                    <td style={tdStyle}>{c.concentrador_codigo_ct || "—"}</td>
+                    <td style={tdStyle}>{estadoBadge(c.estado_comunicacion)}</td>
+                    <td style={tdStyle}>{formatDate(c.ultimo_contacto)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-          <div
-            style={{
-              padding: "10px 14px",
-              fontSize: 11,
-              color: "rgba(241,239,232,0.5)",
-              borderTop: "0.5px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            {data.items.length} de {data.total} CUPS
           </div>
+        )}
+      </section>
+
+      {/* ------------------ Sección 2: Contadores detectados ------------------ */}
+      <section>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--ds-text-primary, #F1EFE8)", margin: 0 }}>
+            Contadores detectados
+          </h2>
+          <span style={{ fontSize: 11, color: "rgba(241,239,232,0.4)" }}>
+            (Contadores físicos identificados en los informes S24 — sin código CUPS oficial todavía)
+          </span>
+          <button
+            type="button"
+            onClick={cargarContadores}
+            disabled={loadingContadores}
+            style={{ marginLeft: "auto", background: "rgba(83,74,183,0.2)", color: "#AFA9EC", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: loadingContadores ? "wait" : "pointer", opacity: loadingContadores ? 0.6 : 1 }}
+          >
+            {loadingContadores ? "Cargando…" : "Refrescar"}
+          </button>
         </div>
-      )}
+
+        {/* Stats */}
+        {stats && (
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10, padding: 10, background: "rgba(255,255,255,0.02)", borderRadius: 6, fontSize: 12 }}>
+            <span><strong style={{ color: "var(--ds-text-primary, #F1EFE8)" }}>{stats.total}</strong> total</span>
+            <span style={{ color: "rgba(241,239,232,0.4)" }}>·</span>
+            <span><strong style={{ color: "#1D9E75" }}>{stats.ok}</strong> ok</span>
+            <span><strong style={{ color: "#EF9F27" }}>{stats.warning}</strong> warning</span>
+            <span><strong style={{ color: "#E24B4A" }}>{stats.error}</strong> error</span>
+            <span style={{ color: "rgba(241,239,232,0.4)" }}>·</span>
+            <span><strong style={{ color: "var(--ds-text-primary, #F1EFE8)" }}>{stats.activos}</strong> activos</span>
+            {stats.fabricantes.length > 0 && (
+              <>
+                <span style={{ color: "rgba(241,239,232,0.4)" }}>·</span>
+                <span style={{ color: "rgba(241,239,232,0.6)" }}>Fabricantes: {stats.fabricantes.join(", ")}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Filtros */}
+        {contadoresData && contadoresData.total > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <input
+              type="text"
+              placeholder="Filtrar por meter_id o CT…"
+              value={filtroContador}
+              onChange={(e) => setFiltroContador(e.target.value)}
+              style={{ flex: "1 1 240px", minWidth: 200, background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "6px 10px", color: "var(--ds-text-primary, #F1EFE8)", fontSize: 12, outline: "none" }}
+            />
+            <select
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+              style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "6px 10px", color: "var(--ds-text-primary, #F1EFE8)", fontSize: 12, outline: "none" }}
+            >
+              <option value="">Cualquier estado</option>
+              <option value="ok">ok</option>
+              <option value="warning">warning</option>
+              <option value="error">error</option>
+              <option value="desconocido">desconocido</option>
+            </select>
+          </div>
+        )}
+
+        {loadingContadores && <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13 }}>Cargando…</div>}
+        {errorContadores && (
+          <div style={{ background: "rgba(226,75,74,0.1)", border: "0.5px solid rgba(226,75,74,0.4)", color: "#E24B4A", padding: 10, borderRadius: 6, fontSize: 12 }}>
+            {errorContadores}
+          </div>
+        )}
+        {!loadingContadores && !errorContadores && contadoresData && contadoresData.total === 0 && (
+          <div style={{ padding: 14, color: "rgba(241,239,232,0.5)", fontSize: 12, textAlign: "center", background: "rgba(255,255,255,0.02)", borderRadius: 6 }}>
+            No hay contadores detectados todavía. Descarga y parsea ficheros S24 desde <code style={{ background: "rgba(255,255,255,0.05)", padding: "1px 6px", borderRadius: 4 }}>/stg/configuracion</code> para que aparezcan aquí.
+          </div>
+        )}
+        {!loadingContadores && !errorContadores && contadoresData && contadoresData.total > 0 && (
+          <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 6, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
+                  <th style={thStyle}>Meter ID</th>
+                  <th style={thStyle}>Fabricante</th>
+                  <th style={thStyle}>Concentrador (CT)</th>
+                  <th style={thStyle}>Estado</th>
+                  <th style={thStyle}>Activo</th>
+                  <th style={thStyle}>Último contacto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contadoresFiltrados.map((c) => (
+                  <tr key={c.id} style={{ borderBottom: "0.5px solid rgba(255,255,255,0.05)" }}>
+                    <td style={tdStyle}><span style={{ fontFamily: "monospace" }}>{c.meter_id}</span></td>
+                    <td style={tdStyle}>{c.fabricante || "—"}</td>
+                    <td style={tdStyle}>{c.concentrador_codigo_ct ? <span style={{ fontFamily: "monospace" }}>{c.concentrador_codigo_ct}</span> : "—"}</td>
+                    <td style={tdStyle}>{estadoBadge(c.estado_comunicacion)}</td>
+                    <td style={tdStyle}>{c.activo ? "✅" : "❌"}</td>
+                    <td style={tdStyle}>{formatDate(c.ultimo_contacto)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {contadoresFiltrados.length === 0 && (filtroContador || filtroEstado) && (
+              <div style={{ padding: 14, color: "rgba(241,239,232,0.5)", fontSize: 12, textAlign: "center" }}>
+                Ningún contador coincide con el filtro.
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
 
-function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: active ? "rgba(83,74,183,0.22)" : "rgba(255,255,255,0.04)",
-        color: active ? "#AFA9EC" : "rgba(241,239,232,0.7)",
-        border: "0.5px solid rgba(255,255,255,0.1)",
-        borderRadius: 6,
-        padding: "6px 14px",
-        fontSize: 12,
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
+// ---------------------------------------------------------------------------
+// Estilos table
+// ---------------------------------------------------------------------------
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "8px 12px",
+  fontSize: 11,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  color: "rgba(241,239,232,0.5)",
+  fontWeight: 500,
+};
 
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th
-      style={{
-        textAlign: "left",
-        padding: "10px 14px",
-        fontWeight: 500,
-        fontSize: 11,
-        color: "rgba(241,239,232,0.5)",
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-      }}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td style={{ padding: "10px 14px", color: "var(--ds-text-primary, #F1EFE8)" }}>
-      {children}
-    </td>
-  );
-}
-
-function EstadoPill({ estado }: { estado: string }) {
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    online:      { bg: "rgba(29,158,117,0.2)",  color: "#1D9E75", label: "online" },
-    offline:     { bg: "rgba(226,75,74,0.2)",   color: "#E24B4A", label: "offline" },
-    alerta:      { bg: "rgba(239,159,39,0.2)",  color: "#EF9F27", label: "alerta" },
-    desconocido: { bg: "rgba(255,255,255,0.08)", color: "rgba(241,239,232,0.6)", label: "desconocido" },
-  };
-  const s = map[estado] || map.desconocido;
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        background: s.bg,
-        color: s.color,
-        fontSize: 10,
-        padding: "2px 8px",
-        borderRadius: 6,
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-      }}
-    >
-      {s.label}
-    </span>
-  );
-}
+const tdStyle: React.CSSProperties = {
+  padding: "8px 12px",
+  color: "var(--ds-text-primary, #F1EFE8)",
+};

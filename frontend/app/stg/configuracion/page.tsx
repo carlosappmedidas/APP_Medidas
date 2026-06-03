@@ -56,6 +56,28 @@ interface DescargaResumen {
   detalle: DescargaResultadoItem[];
 }
 
+interface ParseoResultadoItem {
+  fichero_id: number;
+  nombre: string | null;
+  tipo_fichero: string | null;
+  estado: "parseado" | "ya_parseado_reprocesado" | "skipped_tipo_no_soportado" | "error";
+  medidas_insertadas: number;
+  concentradores_upsert: number;
+  contadores_upsert: number;
+  error: string | null;
+}
+
+interface ParseoPendientesResumen {
+  empresa_id: number;
+  pendientes_antes: number;
+  procesados: number;
+  limite_usado: number;
+  parseados: number;
+  skipped: number;
+  errores: number;
+  detalle: ParseoResultadoItem[];
+}
+
 export default function StgConfiguracionPage() {
   const empresaId = useStgEmpresaId();
   const [conexion, setConexion] = useState<Conexion | null>(null);
@@ -95,6 +117,12 @@ export default function StgConfiguracionPage() {
   const [limiteDescarga, setLimiteDescarga] = useState(5);
   const [resumenDescarga, setResumenDescarga] = useState<DescargaResumen | null>(null);
   const [descargaError, setDescargaError] = useState<string | null>(null);
+
+  // Parseo (Paquete 6)
+  const [parsing, setParsing] = useState(false);
+  const [limiteParseo, setLimiteParseo] = useState(10);
+  const [resumenParseo, setResumenParseo] = useState<ParseoPendientesResumen | null>(null);
+  const [parseoError, setParseoError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -245,6 +273,36 @@ export default function StgConfiguracionPage() {
       setDescargaError(String(e));
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleParsear = async () => {
+    if (!empresaId) return;
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setParsing(true);
+    setParseoError(null);
+    setResumenParseo(null);
+    try {
+      const params = new URLSearchParams({
+        empresa_id: String(empresaId),
+        limite: String(limiteParseo),
+      });
+      const r = await fetch(`${API_BASE_URL}/stg/parsear-pendientes?${params.toString()}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+      }
+      const data: ParseoPendientesResumen = await r.json();
+      setResumenParseo(data);
+    } catch (e) {
+      setParseoError(String(e));
+    } finally {
+      setParsing(false);
     }
   };
 
@@ -533,6 +591,76 @@ export default function StgConfiguracionPage() {
                                   {d.error && <div style={{ color: "#E24B4A", paddingLeft: 16 }}>{d.error}</div>}
                                 </div>
                               ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sección de parseo (Paquete 6) */}
+                  <div style={{ marginTop: 16, padding: 14, background: "rgba(29,158,117,0.06)", border: "0.5px solid rgba(29,158,117,0.2)", borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, color: "rgba(241,239,232,0.7)", marginBottom: 10 }}>
+                      <strong style={{ color: "#1D9E75" }}>Parsear pendientes.</strong>
+                      {" "}Lee los ficheros descargados y guarda las medidas en BD. Soporta S24 (vía primestg). G97 se marca como pendiente. Idempotente.
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <label style={{ fontSize: 12, color: "rgba(241,239,232,0.6)" }}>Máximo a parsear:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={limiteParseo}
+                        onChange={(e) => setLimiteParseo(Math.max(1, Number(e.target.value) || 10))}
+                        style={{ width: 80, background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "6px 10px", color: "var(--ds-text-primary, #F1EFE8)", fontSize: 13, outline: "none" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleParsear}
+                        disabled={parsing}
+                        style={{ background: "rgba(29,158,117,0.22)", color: "#1D9E75", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: parsing ? "wait" : "pointer", opacity: parsing ? 0.6 : 1 }}
+                      >
+                        {parsing ? "Parseando…" : `Parsear ${limiteParseo} pendientes`}
+                      </button>
+                    </div>
+
+                    {parseoError && (
+                      <div style={{ marginTop: 10, background: "rgba(226,75,74,0.1)", border: "0.5px solid rgba(226,75,74,0.4)", color: "#E24B4A", padding: 10, borderRadius: 6, fontSize: 12 }}>
+                        {parseoError}
+                      </div>
+                    )}
+
+                    {resumenParseo && (
+                      <div style={{ marginTop: 12, padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 6, fontSize: 12 }}>
+                        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+                          <span><strong style={{ color: "#1D9E75" }}>{resumenParseo.parseados}</strong> parseados</span>
+                          <span><strong style={{ color: "#EF9F27" }}>{resumenParseo.skipped}</strong> skipped (tipo no soportado)</span>
+                          <span><strong style={{ color: resumenParseo.errores > 0 ? "#E24B4A" : "rgba(241,239,232,0.6)" }}>{resumenParseo.errores}</strong> errores</span>
+                          <span style={{ color: "rgba(241,239,232,0.5)" }}>· Pendientes antes: {resumenParseo.pendientes_antes}</span>
+                        </div>
+                        {resumenParseo.detalle.length > 0 && (
+                          <details>
+                            <summary style={{ cursor: "pointer", color: "rgba(241,239,232,0.6)", fontSize: 11 }}>Ver detalle ({resumenParseo.detalle.length})</summary>
+                            <div style={{ maxHeight: 240, overflowY: "auto", marginTop: 8, background: "rgba(0,0,0,0.2)", padding: 8, borderRadius: 4, fontFamily: "monospace", fontSize: 11 }}>
+                              {resumenParseo.detalle.map((d, i) => {
+                                const color = d.estado === "error" ? "#E24B4A"
+                                  : d.estado === "skipped_tipo_no_soportado" ? "#EF9F27"
+                                  : "#1D9E75";
+                                const icon = d.estado === "error" ? "❌"
+                                  : d.estado === "skipped_tipo_no_soportado" ? "↷"
+                                  : "✅";
+                                return (
+                                  <div key={i} style={{ paddingBottom: 4, color }}>
+                                    {icon} <span style={{ fontWeight: 600 }}>[{d.tipo_fichero || "?"}]</span> {d.nombre || `#${d.fichero_id}`}
+                                    {d.estado === "parseado" || d.estado === "ya_parseado_reprocesado" ? (
+                                      <span style={{ color: "rgba(241,239,232,0.5)" }}>
+                                        {" — "}{d.medidas_insertadas} medidas, {d.contadores_upsert} contadores, {d.concentradores_upsert} concentradores
+                                      </span>
+                                    ) : null}
+                                    {d.error && <div style={{ color: "#E24B4A", paddingLeft: 16 }}>{d.error}</div>}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </details>
                         )}

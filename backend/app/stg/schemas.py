@@ -286,3 +286,66 @@ class SftpListadoResponse(BaseModel):
     ruta_consultada: str
     total: int
     items: List[SftpFicheroDisponible]
+
+
+# ---------------------------------------------------------------------------
+# Contadores detectados (Paquete 6)
+# ---------------------------------------------------------------------------
+class ContadorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    empresa_id: int
+    concentrador_id: Optional[int] = None
+    cups_id: Optional[int] = None
+    meter_id: str
+    fabricante: Optional[str] = None
+    ultimo_contacto: Optional[datetime] = None
+    estado_comunicacion: str
+    activo: bool
+    # Campos planos del concentrador para la UI (si está enlazado)
+    concentrador_codigo_ct: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContadoresListResponse(BaseModel):
+    total: int
+    items: List[ContadorRead]
+
+
+# ---------------------------------------------------------------------------
+# Parseo de ficheros (Paquete 6)
+# ---------------------------------------------------------------------------
+class ParseoResultadoItem(BaseModel):
+    fichero_id: int
+    nombre: Optional[str] = None
+    tipo_fichero: Optional[str] = None
+    estado: Literal["parseado", "skipped_tipo_no_soportado", "error", "ya_parseado_reprocesado"]
+    medidas_insertadas: int = 0
+    concentradores_upsert: int = 0
+    contadores_upsert: int = 0
+    error: Optional[str] = None
+
+
+class ParseoResponse(BaseModel):
+    """Resultado de parsear un solo fichero."""
+    fichero_id: int
+    estado: Literal["parseado", "skipped_tipo_no_soportado", "error", "ya_parseado_reprocesado"]
+    tipo_fichero: Optional[str] = None
+    medidas_insertadas: int = 0
+    concentradores_upsert: int = 0
+    contadores_upsert: int = 0
+    error: Optional[str] = None
+
+
+class ParseoPendientesResponse(BaseModel):
+    """Resultado de parsear pendientes en bulk."""
+    empresa_id: int
+    pendientes_antes: int
+    procesados: int
+    limite_usado: int
+    parseados: int
+    skipped: int
+    errores: int
+    detalle: List[ParseoResultadoItem]
