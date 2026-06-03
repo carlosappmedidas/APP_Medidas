@@ -81,6 +81,7 @@ interface ParseoPendientesResumen {
 export default function StgConfiguracionPage() {
   const empresaId = useStgEmpresaId();
   const [conexion, setConexion] = useState<Conexion | null>(null);
+  const [importOrigen, setImportOrigen] = useState<"excel" | "gisce_os" | "sips_cnmc" | "">("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -673,6 +674,47 @@ export default function StgConfiguracionPage() {
           )}
         </div>
       )}
+
+      {/* Configuración de imports */}
+      <div style={{ marginTop: 32, padding: 20, background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 8 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 500, margin: "0 0 4px", color: "var(--ds-text-primary, #F1EFE8)" }}>
+          Configuración de imports
+        </h2>
+        <p style={{ fontSize: 12, color: "rgba(241,239,232,0.5)", margin: "0 0 16px" }}>
+          Carga datos administrativos (CUPS, ID/Nombre del CT, dirección) para enriquecer las columnas vacías en Concentradores y Equipos de medida.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+          {[
+            { value: "excel",     label: "Manual (Excel)",  desc: "Subida puntual de un archivo .xlsx con las columnas mapeadas." },
+            { value: "gisce_os",  label: "GISCE-OS",        desc: "Lectura de la BD interna del cliente (info de CTs)." },
+            { value: "sips_cnmc", label: "SIPS-CNMC",       desc: "Sync con el servicio público de la CNMC (info de CUPS)." },
+          ].map((opt) => (
+            <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: 10, borderRadius: 6, background: importOrigen === opt.value ? "rgba(175,169,236,0.08)" : "transparent", border: importOrigen === opt.value ? "0.5px solid rgba(175,169,236,0.3)" : "0.5px solid transparent" }}>
+              <input
+                type="radio"
+                name="import_origen"
+                value={opt.value}
+                checked={importOrigen === opt.value}
+                onChange={(e) => setImportOrigen(e.target.value as "excel" | "gisce_os" | "sips_cnmc")}
+                style={{ marginTop: 3 }}
+              />
+              <div>
+                <div style={{ fontSize: 13, color: "var(--ds-text-primary, #F1EFE8)", fontWeight: 500 }}>{opt.label}</div>
+                <div style={{ fontSize: 11, color: "rgba(241,239,232,0.5)", marginTop: 2 }}>{opt.desc}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {importOrigen && (
+          <div style={{ padding: 14, background: "rgba(255,255,255,0.02)", borderRadius: 6, border: "0.5px dashed rgba(255,255,255,0.12)" }}>
+            <div style={{ fontSize: 12, color: "rgba(241,239,232,0.5)" }}>
+              <strong style={{ color: "rgba(241,239,232,0.7)" }}>Próximamente</strong> · Disponible en paquete 8e-2.
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
