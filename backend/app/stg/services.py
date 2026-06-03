@@ -115,20 +115,37 @@ def get_dashboard_summary(
     """KPIs principales para el dashboard del STG."""
     assert_empresa_access(db, user, empresa_id)
 
-    cups_total = db.query(func.count(Cups.id)).filter(
-        Cups.empresa_id == empresa_id, Cups.activo.is_(True)
+    # Paquete 8a-fix2: el dashboard cuenta CONTADORES DETECTADOS
+    # (stg_contador, creada en Paquete 6 con UPSERTs desde S24) en vez
+    # de los CUPS administrativos (stg_cups, Paquete 1, que sigue vacía
+    # hasta que se cargue manualmente la lista oficial del cliente).
+    #
+    # NO filtramos por Contador.activo: ese flag refleja el "Active=Y/N"
+    # del S24, que indica si el concentrador considera al contador activo
+    # en su tabla actual (algunos dados de baja pero aún físicamente
+    # instalados). Para una vista de salud honesta, queremos mostrar
+    # TODOS los detectados, incluyendo los offline/dados de baja, para
+    # que aparezcan en `cups_offline` y el usuario pueda investigarlos.
+    #
+    # Mapeo de estados (semántica Cups → Contador):
+    #   "online"      → "ok"      (ComStatus=2 en S24)
+    #   "offline"     → "error"   (ComStatus=0 en S24)
+    #   "alerta"      → "warning" (ComStatus=1 en S24, no se muestra)
+    #
+    # Las claves de respuesta siguen siendo cups_* por compatibilidad
+    # con el frontend actual; semánticamente representan "contadores".
+    cups_total = db.query(func.count(Contador.id)).filter(
+        Contador.empresa_id == empresa_id,
     ).scalar() or 0
 
-    cups_online = db.query(func.count(Cups.id)).filter(
-        Cups.empresa_id == empresa_id,
-        Cups.activo.is_(True),
-        Cups.estado_comunicacion == "online",
+    cups_online = db.query(func.count(Contador.id)).filter(
+        Contador.empresa_id == empresa_id,
+        Contador.estado_comunicacion == "ok",
     ).scalar() or 0
 
-    cups_offline = db.query(func.count(Cups.id)).filter(
-        Cups.empresa_id == empresa_id,
-        Cups.activo.is_(True),
-        Cups.estado_comunicacion == "offline",
+    cups_offline = db.query(func.count(Contador.id)).filter(
+        Contador.empresa_id == empresa_id,
+        Contador.estado_comunicacion == "error",
     ).scalar() or 0
 
     porcentaje_online = round(

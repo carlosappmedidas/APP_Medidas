@@ -106,27 +106,29 @@ export default function StgDashboardPage() {
         />
       </div>
 
-      <div
-        style={{
-          padding: 16,
-          background: "rgba(255,255,255,0.03)",
-          border: "0.5px solid rgba(255,255,255,0.08)",
-          borderRadius: 8,
-          color: "rgba(241,239,232,0.7)",
-          fontSize: 13,
-          lineHeight: 1.6,
-        }}
-      >
-        <p style={{ margin: "0 0 8px" }}>
-          <strong>Módulo STG · Paquete 1</strong>
-        </p>
-        <p style={{ margin: 0 }}>
-          Las tablas STG están vacías. Para tener datos visibles, configura la conexión con tu STG
-          (GISCE, SFTP, API) o crea solicitudes manuales desde el menú de la izquierda.
-          En los próximos paquetes se enchufan los adapters reales para que el parque y los
-          ficheros aparezcan automáticamente.
-        </p>
-      </div>
+      {/* Banner informativo: solo cuando no hay datos todavía */}
+      {summary.cups_total === 0 && (
+        <div
+          style={{
+            padding: 16,
+            background: "rgba(255,255,255,0.03)",
+            border: "0.5px solid rgba(255,255,255,0.08)",
+            borderRadius: 8,
+            color: "rgba(241,239,232,0.7)",
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          <p style={{ margin: "0 0 8px" }}>
+            <strong>Sin datos todavía</strong>
+          </p>
+          <p style={{ margin: 0 }}>
+            Aún no hay contadores detectados para esta empresa.
+            Configura la conexión STG y descarga los primeros ficheros S24
+            desde Configuración (menú izquierdo).
+          </p>
+        </div>
+      )}
     </div>
   );
 }
