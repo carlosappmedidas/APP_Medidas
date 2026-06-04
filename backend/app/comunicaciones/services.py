@@ -11,31 +11,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 
 from app.comunicaciones.models import FtpConfig, FtpSyncLog, FtpSyncRule
 from app.empresas.models import Empresa
 
 
-# ── Cifrado ───────────────────────────────────────────────────────────────────
-
-def _get_fernet() -> Fernet:
-    from app.core.config import get_settings
-    key = get_settings().FTP_SECRET_KEY
-    if not key:
-        raise RuntimeError("FTP_SECRET_KEY no definida en .env.")
-    return Fernet(key.encode())
-
-
-def cifrar_password(password: str) -> str:
-    return _get_fernet().encrypt(password.encode()).decode()
-
-
-def descifrar_password(password_cifrada: str) -> str:
-    return _get_fernet().decrypt(password_cifrada.encode()).decode()
-
-
+# ── Cifrado (centralizado en app.core.crypto desde Paquete 2) ─────────────
+from app.core.crypto import cifrar_password, descifrar_password  # noqa: F401
 # ── FTP_TLS con reutilización de sesión SSL ───────────────────────────────────
 
 class _FTPSReuse(ftplib.FTP_TLS):

@@ -81,3 +81,8 @@ frontend/out/
 backend/13
 # Ficheros descargados de los FTP de STG por empresa
 backend/storage/
+
+# Spike GISCE (uso puntual, no commitear)
+backend/scripts/spike_gisce_*
+backend/scripts/gisce_dump.json
+*.bak

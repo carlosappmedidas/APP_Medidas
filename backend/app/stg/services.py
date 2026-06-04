@@ -24,6 +24,7 @@ from app.core.permissions import (
     assert_empresa_access,
     get_allowed_empresa_ids,
 )
+from app.core.crypto import cifrar_password, descifrar_password
 from app.stg.adapters.base import StgAdapter
 from app.stg.adapters.mock_adapter import MockStgAdapter
 from app.stg.adapters.gisce_adapter import GisceAdapter
@@ -70,7 +71,7 @@ def get_adapter_for_empresa(
             host=conf.host or "",
             puerto=conf.puerto or 8069,
             usuario=conf.usuario or "",
-            password=_descifrar_password(conf.password_cifrado),
+            password=descifrar_password(conf.password_cifrado) if conf.password_cifrado else "",
             database=(conf.config_extra or {}).get("database", ""),
         )
     if conf.tipo == "sftp":
@@ -78,7 +79,7 @@ def get_adapter_for_empresa(
             host=conf.host or "",
             puerto=conf.puerto or 22,
             usuario=conf.usuario or "",
-            password=_descifrar_password(conf.password_cifrado),
+            password=descifrar_password(conf.password_cifrado) if conf.password_cifrado else "",
             ruta_base=conf.ruta_base or "/",
             carpeta_recepcion=conf.carpeta_recepcion or "",
             carpeta_envio=conf.carpeta_envio or "",
@@ -89,7 +90,7 @@ def get_adapter_for_empresa(
             host=conf.host or "",
             puerto=conf.puerto or 21,
             usuario=conf.usuario or "",
-            password=_descifrar_password(conf.password_cifrado),
+            password=descifrar_password(conf.password_cifrado) if conf.password_cifrado else "",
             ruta_base=conf.ruta_base or "/",
             carpeta_recepcion=conf.carpeta_recepcion or "",
             carpeta_envio=conf.carpeta_envio or "",
@@ -97,15 +98,6 @@ def get_adapter_for_empresa(
         )
     # api_rest y db_directa pendientes en futuros paquetes
     return MockStgAdapter(empresa_id=empresa_id)
-
-
-def _descifrar_password(password_cifrado: Optional[str]) -> str:
-    """
-    Placeholder: en producción usaríamos Fernet con clave en .env.
-    Por ahora devuelve tal cual lo que llega (sin cifrar) para no bloquear
-    el desarrollo. Se reemplazará por cifrado real en Paquete 2 o 3.
-    """
-    return password_cifrado or ""
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +451,7 @@ def upsert_conexion_empresa(
             setattr(existing, k, payload[k])
 
     if payload.get("password"):
-        existing.password_cifrado = payload["password"]  # TODO cifrar en Paquete 2
+        existing.password_cifrado = cifrar_password(payload["password"])
 
     db.commit()
     db.refresh(existing)
