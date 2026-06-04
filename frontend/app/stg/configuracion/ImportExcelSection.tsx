@@ -109,6 +109,7 @@ export default function ImportExcelSection({ empresaId }: Props) {
   const [previewing, setPreviewing] = useState(false);
   const [savingMapping, setSavingMapping] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [importResult, setImportResult] = useState<ExcelImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -154,6 +155,34 @@ export default function ImportExcelSection({ empresaId }: Props) {
     setPreview(null);
     setImportResult(null);
     setError(null);
+  }
+
+  async function handleDownloadTemplate() {
+    setError(null);
+    setDownloadingTemplate(true);
+    try {
+      const r = await fetch(
+        `${API_BASE_URL}/stg/concentradores/excel-template?empresa_id=${empresaId}`,
+        { headers: authHeader }
+      );
+      if (!r.ok) {
+        const eb = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(eb.detail || `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `concentradores_mapping_empresa_${empresaId}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message || String(e));
+    } finally {
+      setDownloadingTemplate(false);
+    }
   }
 
   async function handlePreview() {
@@ -301,6 +330,24 @@ export default function ImportExcelSection({ empresaId }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Descarga de plantilla de mapeo (Paquete 8f-import-export) */}
+      <div style={{ ...card, background: "rgba(140,200,255,0.06)", border: "0.5px solid rgba(140,200,255,0.25)" }}>
+        <div style={{ fontSize: 12, color: "rgba(241,239,232,0.7)", marginBottom: 10, lineHeight: 1.5 }}>
+          <strong style={{ color: "rgba(241,239,232,0.9)" }}>📥 Plantilla de mapeo CIR → ID_CT</strong>
+          <div style={{ marginTop: 6 }}>
+            Descarga un Excel con los concentradores actuales (columna <code style={{ padding: "1px 4px", background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>codigo_ct</code> rellena con los <code style={{ padding: "1px 4px", background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>CIR…</code>) y la columna <code style={{ padding: "1px 4px", background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>id_ct</code> vacía. Rellena cada fila con el código administrativo del CT (p.ej. <code style={{ padding: "1px 4px", background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>102.CTR.E300000004</code>) y vuelve a subirlo en el bloque de abajo.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleDownloadTemplate}
+          disabled={downloadingTemplate}
+          style={downloadingTemplate ? buttonDisabled : button}
+        >
+          {downloadingTemplate ? "Descargando..." : "⬇ Descargar plantilla de mapeo"}
+        </button>
+      </div>
+
       {savedMapping && (
         <div style={{ ...card, background: "rgba(175,169,236,0.06)", border: "0.5px solid rgba(175,169,236,0.25)" }}>
           <div style={{ fontSize: 12, color: "rgba(241,239,232,0.7)" }}>
