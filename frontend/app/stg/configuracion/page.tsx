@@ -5,6 +5,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { API_BASE_URL } from "../../apiConfig";
 import { useStgEmpresaId } from "../components/StgEmpresaSelector";
 import TablePaginationFooter from "../../components/ui/TablePaginationFooter";
+import ImportExcelSection from "./ImportExcelSection";
 
 interface Conexion {
   id: number;
@@ -707,10 +708,13 @@ export default function StgConfiguracionPage() {
           ))}
         </div>
 
-        {importOrigen && (
+        {importOrigen === "excel" && empresaId && (
+          <ImportExcelSection empresaId={empresaId} />
+        )}
+        {importOrigen && importOrigen !== "excel" && (
           <div style={{ padding: 14, background: "rgba(255,255,255,0.02)", borderRadius: 6, border: "0.5px dashed rgba(255,255,255,0.12)" }}>
             <div style={{ fontSize: 12, color: "rgba(241,239,232,0.5)" }}>
-              <strong style={{ color: "rgba(241,239,232,0.7)" }}>Próximamente</strong> · Disponible en paquete 8e-2.
+              <strong style={{ color: "rgba(241,239,232,0.7)" }}>Próximamente</strong> · GISCE-OS y SIPS-CNMC en próximos paquetes.
             </div>
           </div>
         )}

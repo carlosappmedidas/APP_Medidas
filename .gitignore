@@ -79,3 +79,5 @@ frontend/out/
 # ================================
 
 backend/13
+# Ficheros descargados de los FTP de STG por empresa
+backend/storage/
