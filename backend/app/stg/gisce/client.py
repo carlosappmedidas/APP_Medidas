@@ -1,5 +1,5 @@
 # app/stg/gisce/client.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportArgumentType=false
 """
 Cliente XML-RPC para GISCE-ERP (basado en OpenERP 5/6 legacy).
 

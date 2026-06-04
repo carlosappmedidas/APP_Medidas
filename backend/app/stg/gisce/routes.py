@@ -13,7 +13,7 @@ from app.core.db import get_db
 from app.tenants.models import User
 
 from . import services
-from .schemas import GisceConfigIn, GisceConfigOut, GisceTestResult
+from .schemas import GisceConfigIn, GisceConfigOut, GisceTestResult, GiscePreviewResult
 
 
 router = APIRouter(prefix="/stg/gisce", tags=["stg-gisce"])
@@ -67,3 +67,14 @@ def post_test(
     """Prueba la conexion XML-RPC. Actualiza estado/ultimo_error en BD."""
     _check_empresa_acceso(user, empresa_id)
     return services.probar_conexion(db, empresa_id)
+
+
+@router.post("/preview", response_model=GiscePreviewResult)
+def post_preview(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Dry-run: trae datos remotos GISCE y los compara con locales SIN tocar BD."""
+    _check_empresa_acceso(user, empresa_id)
+    return services.preview_import(db, empresa_id)

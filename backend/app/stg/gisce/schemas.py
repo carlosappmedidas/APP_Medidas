@@ -46,3 +46,39 @@ class GisceTestResult(BaseModel):
     estado: str  # "ok" | "error"
     mensaje: str
     detalle: Optional[str] = None
+
+
+class GiscePreviewItem(BaseModel):
+    """Item individual del preview (un CT o un CUPS)."""
+    codigo: str
+    accion: str  # "nuevo" | "modificar" | "sin_cambios" | "huerfano_local"
+    detalle: Optional[str] = None
+
+
+class GiscePreviewResult(BaseModel):
+    """Resultado del dry-run de import desde GISCE."""
+    ok: bool
+    error: Optional[str] = None
+
+    # Totales remotos en GISCE
+    cts_remoto_total: int = 0
+    cups_remoto_total: int = 0
+    # Totales locales actuales (filtrados por empresa)
+    cts_local_total: int = 0
+    cups_local_total: int = 0
+
+    # Diff CTs
+    cts_nuevos: int = 0
+    cts_modificar: int = 0
+    cts_sin_cambios: int = 0
+    cts_huerfanos_local: int = 0
+
+    # Diff CUPS
+    cups_nuevos: int = 0
+    cups_modificar: int = 0
+    cups_sin_cambios: int = 0
+    cups_huerfanos_local: int = 0
+
+    # Muestras (max 10 cada una: primero nuevos, luego modificar)
+    cts_muestra: list[GiscePreviewItem] = []
+    cups_muestra: list[GiscePreviewItem] = []
