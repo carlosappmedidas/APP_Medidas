@@ -1927,7 +1927,22 @@ def execute_excel_import(
 
         cc = ccs_dict.get(codigo_val)
         if cc is None:
-            no_encontradas += 1
+            # UPSERT: crear nuevo concentrador con campos mapeados
+            nuevo = StgConcentrador(
+                tenant_id=user.tenant_id,
+                empresa_id=empresa_id,
+                codigo_ct=codigo_val,
+                tipo_dispositivo=TIPO_CONCENTRADOR_PLC,
+                activo=True,
+            )
+            for col_excel, campo_bd in mapping.items():
+                if campo_bd == "codigo_ct":
+                    continue
+                val = row.get(col_excel)
+                if val is not None and str(val).strip():
+                    setattr(nuevo, campo_bd, str(val).strip())
+            db.add(nuevo)
+            insertadas += 1
             continue
 
         cambios = False
