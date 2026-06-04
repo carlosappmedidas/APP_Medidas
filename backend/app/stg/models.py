@@ -15,7 +15,7 @@ igual que el resto de tablas de la app.
 """
 from datetime import datetime
 
-from sqlalchemy import (, ForeignKey, Integer
+from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, Float, ForeignKey,
     Integer, JSON, String, Text, UniqueConstraint,
 )
