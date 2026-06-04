@@ -388,3 +388,54 @@ class StgImportConfig(TimestampMixin, Base):
         UniqueConstraint("empresa_id", "origen", name="uq_stg_import_config_empresa_origen"),
     )
 
+
+
+# ---------------------------------------------------------------------------
+# 9) StgGisceConfig  --  configuracion del importador GISCE-ERP (Paquete 8f)
+# ---------------------------------------------------------------------------
+class StgGisceConfig(TimestampMixin, Base):
+    """
+    Configuracion del importador GISCE-ERP por empresa.
+
+    A diferencia de stg_conexion_empresa (que define donde descargar
+    ficheros S0X del STG via FTP/SFTP), esta tabla define donde
+    conectarse al ERP GISCE via XML-RPC para importar datos
+    administrativos (CTs, CUPS oficiales, titulares).
+
+    Una empresa puede tener simultaneamente una stg_conexion_empresa
+    (STG) y una stg_gisce_config (ERP administrativo), porque GISCE-ERP
+    es un sistema paralelo y opcional al STG.
+
+    Campos:
+        host             -> IP o dominio del servidor GISCE-ERP
+        puerto           -> puerto XML-RPC (default 8069, estandar Odoo/OpenERP)
+        database         -> nombre de la BD ERPweb del cliente
+        usuario          -> usuario XML-RPC con permisos de lectura
+        password_cifrado -> password cifrado con Fernet (app/core/crypto.py)
+        estado:
+            "no_probado" -> configurado pero sin test de conexion
+            "ok"         -> ultimo test correcto
+            "error"      -> ultimo test fallo (ver ultimo_error)
+    """
+    __tablename__ = "stg_gisce_config"
+
+    id          = Column(Integer, primary_key=True)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id  = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    nombre      = Column(String(100), nullable=True)
+
+    host             = Column(String(200), nullable=False)
+    puerto           = Column(Integer, nullable=False, default=8069)
+    database         = Column(String(100), nullable=False)
+    usuario          = Column(String(100), nullable=False)
+    password_cifrado = Column(Text, nullable=False)  # Fernet via app/core/crypto.py
+
+    activo           = Column(Boolean, nullable=False, default=True)
+    ultimo_import    = Column(DateTime, nullable=True)
+    estado           = Column(String(20), nullable=False, default="no_probado")
+    ultimo_error     = Column(Text, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("empresa_id", name="uq_stg_gisce_config_empresa"),
+    )
