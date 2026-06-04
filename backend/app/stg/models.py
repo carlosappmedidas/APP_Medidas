@@ -178,6 +178,9 @@ class Cups(TimestampMixin, Base):
     estado_comunicacion = Column(String(20), nullable=False, default="desconocido")
     activo              = Column(Boolean, nullable=False, default=True)
 
+    # -- Datos administrativos importados de GISCE (Paquete 8f) --
+    titular = Column(String(255), nullable=True)
+
     concentrador = relationship("StgConcentrador", lazy="joined")
 
     __table_args__ = (
