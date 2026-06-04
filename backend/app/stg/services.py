@@ -39,6 +39,7 @@ from app.stg.models import (
     Contador,
     Medida,
     StgImportConfig,
+    TIPO_CONCENTRADOR_PLC,
 )
 from app.tenants.models import User
 
@@ -1756,6 +1757,7 @@ MAX_EXCEL_BYTES = 5 * 1024 * 1024  # 5 MB
 _CAMPOS_BD_PERMITIDOS = {
     "codigo_ct", "nombre", "direccion", "municipio",
     "provincia", "id_ct", "nombre_ct", "cups",
+    "tipo_dispositivo",
 }
 
 
@@ -1910,6 +1912,7 @@ def execute_excel_import(
     # 4. Iterar y actualizar
     procesadas = 0
     actualizadas = 0
+    insertadas = 0
     no_encontradas = 0
     errores = []
 
@@ -1947,6 +1950,7 @@ def execute_excel_import(
     resumen = {
         "procesadas": procesadas,
         "actualizadas": actualizadas,
+        "insertadas": insertadas,
         "no_encontradas": no_encontradas,
         "errores_count": len(errores),
     }
@@ -1959,6 +1963,7 @@ def execute_excel_import(
     return {
         "procesadas": procesadas,
         "actualizadas": actualizadas,
+        "insertadas": insertadas,
         "no_encontradas": no_encontradas,
         "errores": errores,
     }
