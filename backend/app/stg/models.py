@@ -121,6 +121,9 @@ class StgConcentrador(TimestampMixin, Base):
 
     # Paquete 8f — ID externo del concentrador en GISCE-ERP (campo `et` del XML-RPC)
     id_externo_gisce = Column(Integer, nullable=True, index=True)
+    # Capa de dispositivo: 'concentrador_plc' (Circutor PLC del CT) o 'medidor_cabecera'
+    # (CIR de cabecera que aparece en los nombres de fichero S0X).
+    tipo_dispositivo = Column(String(30), nullable=True, index=True)
 
     numero_cups_asociados = Column(Integer, nullable=True)
 
@@ -439,3 +442,14 @@ class StgGisceConfig(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("empresa_id", name="uq_stg_gisce_config_empresa"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Constantes para tipo_dispositivo en stg_concentrador (Paquete 8f-tipo-dispositivo)
+# ---------------------------------------------------------------------------
+TIPO_CONCENTRADOR_PLC = "concentrador_plc"
+TIPO_MEDIDOR_CABECERA = "medidor_cabecera"
+TIPOS_DISPOSITIVO_VALIDOS: set[str] = {
+    TIPO_CONCENTRADOR_PLC,
+    TIPO_MEDIDOR_CABECERA,
+}
