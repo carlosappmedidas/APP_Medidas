@@ -52,6 +52,7 @@ function autoDetectMapping(headers: string[]): Record<string, string> {
     const norm = h.toLowerCase().replace(/[^a-z0-9]/g, "");
     let best = IGNORAR;
     if (norm === "codigoct" || norm === "codct" || norm.startsWith("codigoct")) best = "codigo_ct";
+    else if (norm === "codigodeconcentrador" || norm === "codigoconcentrador" || norm === "codconcentrador") best = "codigo_ct";
     else if (norm === "idct") best = "id_ct";
     else if (norm.startsWith("nombrect") || norm === "nombredelct") best = "nombre_ct";
     else if (norm === "nombre" || norm === "nombrecompleto") best = "nombre";

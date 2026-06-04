@@ -163,7 +163,7 @@ def get_concentradores_excel_template(
     assert ws is not None  # openpyxl siempre crea una hoja activa por defecto
     ws.title = "Concentradores"
 
-    headers = ["codigo_ct", "id_ct", "nombre_ct", "nombre"]
+    headers = ["codigo de concentrador", "id_ct", "nombre_ct", "nombre"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
