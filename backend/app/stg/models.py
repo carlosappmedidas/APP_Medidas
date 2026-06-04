@@ -15,7 +15,7 @@ igual que el resto de tablas de la app.
 """
 from datetime import datetime
 
-from sqlalchemy import (
+from sqlalchemy import (, ForeignKey, Integer
     BigInteger, Boolean, Column, Date, DateTime, Float, ForeignKey,
     Integer, JSON, String, Text, UniqueConstraint,
 )
@@ -124,6 +124,7 @@ class StgConcentrador(TimestampMixin, Base):
     # Capa de dispositivo: 'concentrador_plc' (Circutor PLC del CT) o 'medidor_cabecera'
     # (CIR de cabecera que aparece en los nombres de fichero S0X).
     tipo_dispositivo = Column(String(30), nullable=True, index=True)
+    legacy_cabecera_id = Column(Integer, ForeignKey('stg_concentrador.id', ondelete='SET NULL'), nullable=True, index=True)
 
     numero_cups_asociados = Column(Integer, nullable=True)
 
