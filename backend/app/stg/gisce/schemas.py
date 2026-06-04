@@ -1,0 +1,48 @@
+# app/stg/gisce/schemas.py
+# pyright: reportMissingImports=false
+"""Schemas Pydantic del modulo GISCE."""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class GisceConfigIn(BaseModel):
+    """Payload para crear/actualizar la config GISCE."""
+    nombre: Optional[str] = Field(None, max_length=100)
+    host: str = Field(..., min_length=1, max_length=200)
+    puerto: int = Field(8069, ge=1, le=65535)
+    database: str = Field(..., min_length=1, max_length=100)
+    usuario: str = Field(..., min_length=1, max_length=100)
+    password: str = Field(..., min_length=1)  # texto plano, se cifra al guardar
+    activo: bool = True
+
+
+class GisceConfigOut(BaseModel):
+    """Respuesta (NUNCA incluye el password)."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    empresa_id: int
+    nombre: Optional[str] = None
+    host: str
+    puerto: int
+    database: str
+    usuario: str
+    activo: bool
+    ultimo_import: Optional[datetime] = None
+    estado: str
+    ultimo_error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GisceTestResult(BaseModel):
+    """Resultado de POST /stg/gisce/test."""
+    ok: bool
+    uid: Optional[int] = None
+    estado: str  # "ok" | "error"
+    mensaje: str
+    detalle: Optional[str] = None

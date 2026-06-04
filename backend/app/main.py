@@ -37,6 +37,7 @@ from app.tenants.routes import router as auth_router
 from app.perdidas.routes import router as perdidas_router
 from app.topologia.routes import router as topologia_router
 from app.stg.routes import router as stg_router
+from app.stg.gisce.routes import router as gisce_router
 
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
@@ -141,3 +142,4 @@ app.include_router(topologia_router)
 app.include_router(measures_descarga_router)
 app.include_router(measures_descarga_automatizacion_router)
 app.include_router(stg_router)
+app.include_router(gisce_router)
