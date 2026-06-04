@@ -163,7 +163,7 @@ def get_concentradores_excel_template(
     assert ws is not None  # openpyxl siempre crea una hoja activa por defecto
     ws.title = "Concentradores"
 
-    headers = ["codigo de concentrador", "id_ct", "nombre_ct", "nombre"]
+    headers = ["codigo de concentrador", "id_ct", "nombre_ct", "nombre", "tipo_dispositivo"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -175,12 +175,14 @@ def get_concentradores_excel_template(
             c.id_ct or "",
             c.nombre_ct or "",
             c.nombre or "",
+            c.tipo_dispositivo or "",
         ])
 
     ws.column_dimensions["A"].width = 22
     ws.column_dimensions["B"].width = 32
     ws.column_dimensions["C"].width = 40
     ws.column_dimensions["D"].width = 30
+    ws.column_dimensions["E"].width = 20
 
     buf = BytesIO()
     wb.save(buf)

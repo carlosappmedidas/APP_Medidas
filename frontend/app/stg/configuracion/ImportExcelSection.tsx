@@ -43,6 +43,7 @@ const CAMPOS_BD_OPCIONES: Array<{ value: string; label: string }> = [
   { value: "id_ct", label: "id_ct" },
   { value: "nombre_ct", label: "nombre_ct" },
   { value: "cups", label: "cups" },
+  { value: "tipo_dispositivo", label: "tipo_dispositivo" },
 ];
 
 // Auto-detección por nombre de cabecera (normalizado lowercase + sin símbolos)
@@ -59,6 +60,7 @@ function autoDetectMapping(headers: string[]): Record<string, string> {
     else if (norm.startsWith("direc")) best = "direccion";
     else if (norm.startsWith("munic")) best = "municipio";
     else if (norm.startsWith("prov")) best = "provincia";
+    else if (norm === "tipo" || norm === "tipodispositivo" || norm === "devicetype") best = "tipo_dispositivo";
     else if (norm === "cups") best = "cups";
     result[h] = best;
   }
