@@ -18,6 +18,15 @@ from .client import (
 )
 from .schemas import GisceConfigIn, GisceTestResult
 
+def _limpiar_host(host: str) -> str:
+    """Quita esquema (http://, https://) y trailing slash del host."""
+    h = (host or "").strip()
+    if h.startswith("https://"):
+        h = h[len("https://"):]
+    elif h.startswith("http://"):
+        h = h[len("http://"):]
+    return h.rstrip("/")
+
 
 def leer_config(db: Session, empresa_id: int) -> Optional[StgGisceConfig]:
     return (
@@ -41,7 +50,7 @@ def guardar_config(
             tenant_id=tenant_id,
             empresa_id=empresa_id,
             nombre=payload.nombre,
-            host=payload.host,
+            host=_limpiar_host(payload.host),
             puerto=payload.puerto,
             database=payload.database,
             usuario=payload.usuario,
@@ -52,7 +61,7 @@ def guardar_config(
         db.add(cfg)
     else:
         cfg.nombre = payload.nombre
-        cfg.host = payload.host
+        cfg.host = _limpiar_host(payload.host)
         cfg.puerto = payload.puerto
         cfg.database = payload.database
         cfg.usuario = payload.usuario
@@ -70,7 +79,7 @@ def guardar_config(
 def _build_client_from_config(cfg: StgGisceConfig) -> GisceClient:
     pwd_claro = descifrar_password(cfg.password_cifrado)
     return GisceClient(
-        url=f"http://{cfg.host}:{cfg.puerto}",
+        url=f"http://{_limpiar_host(cfg.host)}:{cfg.puerto}",
         database=cfg.database,
         usuario=cfg.usuario,
         password=pwd_claro,
