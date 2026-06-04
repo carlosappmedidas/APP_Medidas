@@ -6,6 +6,7 @@ import { API_BASE_URL } from "../../apiConfig";
 import { useStgEmpresaId } from "../components/StgEmpresaSelector";
 import TablePaginationFooter from "../../components/ui/TablePaginationFooter";
 import ImportExcelSection from "./ImportExcelSection";
+import ImportGisceErpSection from "./ImportGisceErpSection";
 
 interface Conexion {
   id: number;
@@ -710,6 +711,11 @@ export default function StgConfiguracionPage() {
 
         {importOrigen === "excel" && empresaId && (
           <ImportExcelSection empresaId={empresaId} />
+        )}
+        {empresaId && (
+          <div style={{ marginTop: 18 }}>
+            <ImportGisceErpSection empresaId={empresaId} />
+          </div>
         )}
         {importOrigen && importOrigen !== "excel" && (
           <div style={{ padding: 14, background: "rgba(255,255,255,0.02)", borderRadius: 6, border: "0.5px dashed rgba(255,255,255,0.12)" }}>
