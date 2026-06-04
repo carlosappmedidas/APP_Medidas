@@ -1,5 +1,5 @@
 # app/stg/routes.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportArgumentType=false
 """
 Endpoints REST del módulo STG.
 
@@ -9,20 +9,22 @@ permisos multi-empresa del usuario.
 from __future__ import annotations
 
 from datetime import datetime
+from io import BytesIO
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.stg import schemas, services
 from app.stg.models import (
-    ConexionStgEmpresa,
     StgConcentrador,
     Cups,
-    FicheroRecibido,
-    SolicitudFichero,
 )
 from app.tenants.models import User
 
@@ -453,3 +455,75 @@ def execute_excel_endpoint(
         return services.execute_excel_import(db, user, empresa_id, contents)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Excel template export (mapping CIR -> ID_CT) — Paquete 8f-import-export
+# ---------------------------------------------------------------------------
+@router.get("/concentradores/excel-template")
+def get_concentradores_excel_template(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Descarga un Excel con los concentradores actuales de la empresa.
+
+    Columnas:
+      - codigo_ct  (relleno: el CIR... del concentrador fisico Circutor)
+      - id_ct      (VACIO, el cliente lo rellena con el codigo administrativo
+                    de la distribuidora, p.ej. '102.CTR.E300000004')
+      - nombre_ct  (opcional)
+      - nombre     (opcional)
+
+    El cliente rellena 'id_ct' y vuelve a subir el Excel por la pantalla de
+    import del 8e-2b. El importer hace UPDATE por (empresa_id, codigo_ct)
+    y rellena los huecos.
+
+    Despues, el preview/import GISCE matchea por id_ct == giscedata.cts.name
+    y trae nombre/direccion/etc del ERP.
+    """
+    from app.core.permissions import assert_empresa_access
+    assert_empresa_access(db, user, empresa_id)
+
+    concentradores = (
+        db.query(StgConcentrador)
+        .filter(StgConcentrador.empresa_id == empresa_id)
+        .order_by(StgConcentrador.codigo_ct)
+        .all()
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None  # openpyxl siempre crea una hoja activa por defecto
+    ws.title = "Concentradores"
+
+
+    headers = ["codigo_ct", "id_ct", "nombre_ct", "nombre"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="DDDDDD")
+
+    for c in concentradores:
+        ws.append([
+            c.codigo_ct,
+            c.id_ct or "",
+            c.nombre_ct or "",
+            c.nombre or "",
+        ])
+
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 40
+    ws.column_dimensions["D"].width = 30
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"concentradores_mapping_empresa_{empresa_id}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
