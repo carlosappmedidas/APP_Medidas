@@ -119,6 +119,9 @@ class StgConcentrador(TimestampMixin, Base):
     id_ct           = Column(String(50), nullable=True)
     nombre_ct       = Column(String(255), nullable=True)
 
+    # Paquete 8f — ID externo del concentrador en GISCE-ERP (campo `et` del XML-RPC)
+    id_externo_gisce = Column(Integer, nullable=True, index=True)
+
     numero_cups_asociados = Column(Integer, nullable=True)
 
     ultimo_contacto     = Column(DateTime, nullable=True)
