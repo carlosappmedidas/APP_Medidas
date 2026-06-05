@@ -82,3 +82,33 @@ class GiscePreviewResult(BaseModel):
     # Muestras (max 10 cada una: primero nuevos, luego modificar)
     cts_muestra: list[GiscePreviewItem] = []
     cups_muestra: list[GiscePreviewItem] = []
+
+
+class GisceExecuteResult(BaseModel):
+    """Resultado del import real (no dry-run) desde GISCE.
+
+    Alcance Paquete 8f-4 inicial: solo aplica cambios en CTs
+    (UPDATE de stg_concentrador.id_externo_gisce). Los CUPS no se
+    tocan; entraran cuando exista la pestana 'Equipos de Medida'.
+    """
+    ok: bool
+    error: Optional[str] = None
+
+    # Totales
+    cts_remoto_total: int = 0
+    cts_local_total: int = 0
+
+    # Aplicados
+    cts_actualizados: int = 0     # CTs que recibieron id_externo_gisce
+    cts_sin_cambios: int = 0      # CTs ya enlazados (idempotencia)
+
+    # No aplicados (informativos)
+    cts_skipped_nuevos: int = 0   # CTs en GISCE no presentes en BD (no se crean)
+    cts_skipped_huerfanos: int = 0  # PLCs en BD no presentes en GISCE
+
+    # Muestra hasta 10 de los actualizados
+    cts_actualizados_muestra: list[GiscePreviewItem] = []
+    cts_skipped_nuevos_muestra: list[GiscePreviewItem] = []
+
+    # Timestamp del import
+    fecha_import: Optional[datetime] = None

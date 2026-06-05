@@ -13,7 +13,13 @@ from app.core.db import get_db
 from app.tenants.models import User
 
 from . import services
-from .schemas import GisceConfigIn, GisceConfigOut, GisceTestResult, GiscePreviewResult
+from .schemas import (
+    GisceConfigIn,
+    GisceConfigOut,
+    GisceTestResult,
+    GiscePreviewResult,
+    GisceExecuteResult,
+)
 
 
 router = APIRouter(prefix="/stg/gisce", tags=["stg-gisce"])
@@ -78,3 +84,18 @@ def post_preview(
     """Dry-run: trae datos remotos GISCE y los compara con locales SIN tocar BD."""
     _check_empresa_acceso(user, empresa_id)
     return services.preview_import(db, empresa_id)
+
+
+@router.post("/execute", response_model=GisceExecuteResult)
+def post_execute(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Import real desde GISCE: aplica UPDATE id_externo_gisce en CTs.
+
+    Alcance Paquete 8f-4 inicial: solo CTs. CUPS se aplicaran cuando
+    exista la pestana 'Equipos de Medida'.
+    """
+    _check_empresa_acceso(user, empresa_id)
+    return services.execute_import(db, empresa_id)

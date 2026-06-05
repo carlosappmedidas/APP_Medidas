@@ -19,6 +19,7 @@ from .client import (
 
 from .schemas import (
     GisceConfigIn,
+    GisceExecuteResult,
     GiscePreviewItem,
     GiscePreviewResult,
     GisceTestResult,
@@ -202,7 +203,10 @@ def preview_import(db: Session, empresa_id: int) -> "GiscePreviewResult":
     cts_local_by_id_externo = {
         c.id_externo_gisce: c for c in cts_local if c.id_externo_gisce is not None
     }
-    cts_local_by_codigo = {c.codigo_ct: c for c in cts_local}
+    # Matching CTs: GISCE.giscedata.cts.name (ej "102.CTR.E300000049")
+    # se compara con stg_concentrador.id_ct (mismo formato), NO con codigo_ct
+    # (que contiene el ID Circutor "CIR4622546XXX" del PLC fisico).
+    cts_local_by_id_ct = {c.id_ct: c for c in cts_local if c.id_ct is not None}
     cups_local_by_name = {c.cups: c for c in cups_local}
 
     cts_remoto_ids = {ct["id"] for ct in cts_remoto}
@@ -217,7 +221,7 @@ def preview_import(db: Session, empresa_id: int) -> "GiscePreviewResult":
     modificar_ct: list[GiscePreviewItem] = []
     for ct in cts_remoto:
         codigo = ct["name"]
-        local = cts_local_by_id_externo.get(ct["id"]) or cts_local_by_codigo.get(codigo)
+        local = cts_local_by_id_externo.get(ct["id"]) or cts_local_by_id_ct.get(codigo)
         if local is None:
             cts_nuevos += 1
             if len(nuevos_ct) < 10:
@@ -246,7 +250,7 @@ def preview_import(db: Session, empresa_id: int) -> "GiscePreviewResult":
 
     cts_huerfanos_local = sum(
         1 for c in cts_local
-        if c.codigo_ct not in cts_remoto_codigos
+        if (c.id_ct is None or c.id_ct not in cts_remoto_codigos)
         and (c.id_externo_gisce is None or c.id_externo_gisce not in cts_remoto_ids)
     )
 
@@ -306,4 +310,142 @@ def preview_import(db: Session, empresa_id: int) -> "GiscePreviewResult":
         cups_huerfanos_local=cups_huerfanos_local,
         cts_muestra=(nuevos_ct + modificar_ct)[:10],
         cups_muestra=(nuevos_cups + modificar_cups)[:10],
+    )
+
+
+def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
+    """Aplica el import real desde GISCE: UPDATE id_externo_gisce en CTs.
+
+    Alcance Paquete 8f-4 inicial:
+      - SOLO CTs: UPDATE stg_concentrador.id_externo_gisce con el id GISCE
+        para los CTs que matcheen por id_ct == giscedata.cts.name.
+      - NO crea CTs nuevos (los 3 con formato XX/PFR sin PLC fisico).
+      - NO toca CUPS (pendiente de pestana 'Equipos de Medida').
+
+    Matching identico al preview:
+      1. id_externo_gisce ya poblado -> match directo
+      2. id_ct == giscedata.cts.name -> fallback
+
+    Idempotente: re-ejecutar es seguro, los ya enlazados van a
+    cts_sin_cambios.
+
+    Transaccion unica: si algo falla, rollback total.
+    """
+    from datetime import datetime
+    from app.stg.models import StgConcentrador
+    from .schemas import GiscePreviewItem
+
+    cfg = leer_config(db, empresa_id)
+    if cfg is None:
+        return GisceExecuteResult(
+            ok=False,
+            error="No hay configuracion GISCE guardada para esta empresa.",
+        )
+
+    cli = _build_client_from_config(cfg)
+
+    # 1. Traer CTs remotos
+    try:
+        cts_remoto = cli.search_read(
+            "giscedata.cts",
+            fields=["id", "name", "active"],
+        )
+    except GisceAuthError as exc:
+        return GisceExecuteResult(ok=False, error=f"Credenciales rechazadas: {exc}")
+    except GisceConnectionError as exc:
+        return GisceExecuteResult(ok=False, error=f"No se pudo contactar con GISCE: {exc}")
+    except GisceError as exc:
+        return GisceExecuteResult(ok=False, error=f"Error GISCE: {exc}")
+
+    # 2. Cargar CTs locales
+    cts_local = (
+        db.query(StgConcentrador)
+        .filter(StgConcentrador.empresa_id == empresa_id)
+        .all()
+    )
+
+    # 3. Indices para lookup (mismo criterio que preview)
+    cts_local_by_id_externo = {
+        c.id_externo_gisce: c for c in cts_local if c.id_externo_gisce is not None
+    }
+    cts_local_by_id_ct = {c.id_ct: c for c in cts_local if c.id_ct is not None}
+
+    cts_remoto_ids = {ct["id"] for ct in cts_remoto}
+    cts_remoto_codigos = {ct["name"] for ct in cts_remoto}
+
+    # 4. Recorrer GISCE y aplicar UPDATEs
+    cts_actualizados = 0
+    cts_sin_cambios = 0
+    cts_skipped_nuevos = 0
+    actualizados_muestra: list[GiscePreviewItem] = []
+    skipped_nuevos_muestra: list[GiscePreviewItem] = []
+
+    try:
+        for ct in cts_remoto:
+            codigo = ct["name"]
+            local = cts_local_by_id_externo.get(ct["id"]) or cts_local_by_id_ct.get(codigo)
+
+            if local is None:
+                # CT nuevo en GISCE, no esta en BD -> skip (no creamos)
+                cts_skipped_nuevos += 1
+                if len(skipped_nuevos_muestra) < 10:
+                    skipped_nuevos_muestra.append(GiscePreviewItem(
+                        codigo=codigo, accion="skipped_nuevo",
+                        detalle=f"GISCE id={ct['id']}, no presente en stg_concentrador",
+                    ))
+                continue
+
+            if local.id_externo_gisce == ct["id"]:
+                # Ya enlazado -> sin cambios (idempotencia)
+                cts_sin_cambios += 1
+                continue
+
+            # Hay cambio: poblar id_externo_gisce
+            valor_anterior = local.id_externo_gisce
+            local.id_externo_gisce = ct["id"]
+            cts_actualizados += 1
+            if len(actualizados_muestra) < 10:
+                detalle = (
+                    f"id_externo_gisce NULL->{ct['id']}"
+                    if valor_anterior is None
+                    else f"id_externo_gisce {valor_anterior}->{ct['id']}"
+                )
+                actualizados_muestra.append(GiscePreviewItem(
+                    codigo=codigo, accion="actualizado",
+                    detalle=detalle,
+                ))
+
+        # 5. Contar huerfanos locales (informativo, no se modifican)
+        cts_skipped_huerfanos = sum(
+            1 for c in cts_local
+            if (c.id_ct is None or c.id_ct not in cts_remoto_codigos)
+            and (c.id_externo_gisce is None or c.id_externo_gisce not in cts_remoto_ids)
+        )
+
+        # 6. Actualizar metadata de la config
+        ahora = datetime.utcnow()
+        cfg.ultimo_import = ahora
+        cfg.estado = "ok"
+        cfg.ultimo_error = None
+
+        db.commit()
+
+    except Exception as exc:
+        db.rollback()
+        return GisceExecuteResult(
+            ok=False,
+            error=f"Error aplicando cambios: {exc}",
+        )
+
+    return GisceExecuteResult(
+        ok=True,
+        cts_remoto_total=len(cts_remoto),
+        cts_local_total=len(cts_local),
+        cts_actualizados=cts_actualizados,
+        cts_sin_cambios=cts_sin_cambios,
+        cts_skipped_nuevos=cts_skipped_nuevos,
+        cts_skipped_huerfanos=cts_skipped_huerfanos,
+        cts_actualizados_muestra=actualizados_muestra,
+        cts_skipped_nuevos_muestra=skipped_nuevos_muestra,
+        fecha_import=ahora,
     )
