@@ -1,5 +1,5 @@
 # app/stg/gisce/services.py
-# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false
+# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
 """CRUD config GISCE + test de conexion + preview dry-run."""
 from __future__ import annotations
 
@@ -168,7 +168,7 @@ def preview_import(db: Session, empresa_id: int) -> "GiscePreviewResult":
     try:
         cts_remoto = cli.search_read(
             "giscedata.cts",
-            fields=["id", "name", "active"],
+            fields=["id", "name", "active", "adreca"],
         )
         cups_remoto = cli.search_read(
             "giscedata.cups.ps",
@@ -238,6 +238,13 @@ def preview_import(db: Session, empresa_id: int) -> "GiscePreviewResult":
                 cambios.append(f"id_externo_gisce {local.id_externo_gisce}->{ct['id']}")
         if bool(local.activo) != bool(ct["active"]):
             cambios.append(f"activo {local.activo}->{ct['active']}")
+        # NUEVO: comparar direccion
+        adreca_gisce = _norm(ct.get("adreca"))
+        if _norm(local.direccion) != adreca_gisce:
+            if local.direccion is None:
+                cambios.append(f"direccion NULL->{adreca_gisce}")
+            else:
+                cambios.append("direccion cambia")
         if cambios:
             cts_modificar += 1
             if len(modificar_ct) < 10:
@@ -332,7 +339,7 @@ def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
     Transaccion unica: si algo falla, rollback total.
     """
     from datetime import datetime
-    from app.stg.models import StgConcentrador
+    from app.stg.models import Contador, Cups, StgConcentrador
     from .schemas import GiscePreviewItem
 
     cfg = leer_config(db, empresa_id)
@@ -344,11 +351,22 @@ def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
 
     cli = _build_client_from_config(cfg)
 
-    # 1. Traer CTs remotos
+    # 1. Traer datos remotos (CTs + CUPS + Comptadors, una sola conexion)
     try:
         cts_remoto = cli.search_read(
             "giscedata.cts",
-            fields=["id", "name", "active"],
+            fields=["id", "name", "active", "adreca"],
+        )
+        cups_remoto = cli.search_read(
+            "giscedata.cups.ps",
+            fields=["id", "name", "et", "titular", "active",
+                    "direccio", "dp", "data_baixa",
+                    "polissa_comptador", "meter_technology"],
+        )
+        # Paquete 8g-C: traer contadores fisicos para enlazar a CUPS
+        comptadors_remoto = cli.search_read(
+            "giscedata.lectures.comptador",
+            fields=["id", "meter", "meter_tg_name", "cups_id", "active"],
         )
     except GisceAuthError as exc:
         return GisceExecuteResult(ok=False, error=f"Credenciales rechazadas: {exc}")
@@ -395,24 +413,45 @@ def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
                     ))
                 continue
 
-            if local.id_externo_gisce == ct["id"]:
-                # Ya enlazado -> sin cambios (idempotencia)
+            # Helper local: normalizar False/'' a None (OpenERP 5/6)
+            def _norm(v):
+                if v is False or v == "":
+                    return None
+                return v
+
+            adreca_gisce = _norm(ct.get("adreca"))
+            id_externo_difiere = local.id_externo_gisce != ct["id"]
+            direccion_difiere = _norm(local.direccion) != adreca_gisce
+
+            if not id_externo_difiere and not direccion_difiere:
+                # Todo igual -> sin cambios (idempotencia)
                 cts_sin_cambios += 1
                 continue
 
-            # Hay cambio: poblar id_externo_gisce
-            valor_anterior = local.id_externo_gisce
-            local.id_externo_gisce = ct["id"]
-            cts_actualizados += 1
-            if len(actualizados_muestra) < 10:
-                detalle = (
+            # Hay cambios: aplicar los que difieran
+            cambios_aplicados = []
+            if id_externo_difiere:
+                valor_anterior = local.id_externo_gisce
+                local.id_externo_gisce = ct["id"]
+                cambios_aplicados.append(
                     f"id_externo_gisce NULL->{ct['id']}"
                     if valor_anterior is None
                     else f"id_externo_gisce {valor_anterior}->{ct['id']}"
                 )
+            if direccion_difiere:
+                direccion_anterior = local.direccion
+                local.direccion = adreca_gisce
+                cambios_aplicados.append(
+                    f"direccion NULL->'{adreca_gisce}'"
+                    if direccion_anterior is None
+                    else "direccion actualizada"
+                )
+
+            cts_actualizados += 1
+            if len(actualizados_muestra) < 10:
                 actualizados_muestra.append(GiscePreviewItem(
                     codigo=codigo, accion="actualizado",
-                    detalle=detalle,
+                    detalle="; ".join(cambios_aplicados),
                 ))
 
         # 5. Contar huerfanos locales (informativo, no se modifican)
@@ -422,7 +461,215 @@ def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
             and (c.id_externo_gisce is None or c.id_externo_gisce not in cts_remoto_ids)
         )
 
-        # 6. Actualizar metadata de la config
+        # 6. Paquete 8g-B2 — UPSERT de CUPS desde GISCE
+        # 6.1. Cargar CUPS locales e indexarlos
+        cups_local_list = (
+            db.query(Cups)
+            .filter(Cups.empresa_id == empresa_id)
+            .all()
+        )
+        cups_local_by_id_externo = {
+            c.id_externo_gisce: c
+            for c in cups_local_list
+            if c.id_externo_gisce is not None
+        }
+        cups_local_by_name = {c.cups: c for c in cups_local_list}
+
+        cups_remoto_ids = {cu["id"] for cu in cups_remoto}
+        cups_remoto_names = {cu["name"] for cu in cups_remoto}
+
+        # 6.2. Indice de CTs locales por id_ct (para resolver et -> concentrador_id)
+        # Solo CTs con id_ct poblado (los que matchean con GISCE).
+        ct_by_id_ct = {c.id_ct: c for c in cts_local if c.id_ct is not None}
+
+        # 6.3. Helper para normalizar OpenERP False/'' a None
+        def _norm_cu(v):
+            if v is False or v == "":
+                return None
+            return v
+
+        # 6.4. Recorrer CUPS GISCE
+        cups_creados = 0
+        cups_actualizados = 0
+        cups_sin_cambios = 0
+        cups_skipped_sin_ct = 0
+        cups_creados_muestra: list[GiscePreviewItem] = []
+        cups_actualizados_muestra: list[GiscePreviewItem] = []
+
+        for cu in cups_remoto:
+            cu_name = cu["name"]
+            cu_id = cu["id"]
+            cu_et = _norm_cu(cu.get("et"))
+
+            # Resolver concentrador local via et -> id_ct
+            concentrador_local = ct_by_id_ct.get(cu_et) if cu_et else None
+
+            # Si no hay match con CT local, skip (no creamos CUPS huerfanos)
+            if concentrador_local is None:
+                cups_skipped_sin_ct += 1
+                continue
+
+            # Datos GISCE normalizados
+            direccio_gisce = _norm_cu(cu.get("direccio"))
+            titular_gisce = _norm_cu(cu.get("titular"))
+            cp_gisce = _norm_cu(cu.get("dp"))
+            polissa_comptador = _norm_cu(cu.get("polissa_comptador"))
+            activo_gisce = bool(cu.get("active"))
+
+            # Buscar local: por id_externo (preferente) o por cups (fallback)
+            local = (
+                cups_local_by_id_externo.get(cu_id)
+                or cups_local_by_name.get(cu_name)
+            )
+
+            if local is None:
+                # INSERT nuevo
+                nuevo = Cups(
+                    tenant_id=cfg.tenant_id,
+                    empresa_id=empresa_id,
+                    cups=cu_name,
+                    id_externo_gisce=cu_id,
+                    concentrador_id=concentrador_local.id,
+                    direccion=direccio_gisce,
+                    cp=cp_gisce,
+                    titular=titular_gisce,
+                    numero_contador=polissa_comptador,
+                    activo=activo_gisce,
+                )
+                db.add(nuevo)
+                cups_creados += 1
+                if len(cups_creados_muestra) < 10:
+                    cups_creados_muestra.append(GiscePreviewItem(
+                        codigo=cu_name, accion="creado",
+                        detalle=f"GISCE id={cu_id}, et={cu_et}, titular={(titular_gisce or 'N/A')[:30]}",
+                    ))
+                continue
+
+            # UPDATE: comparar y aplicar diffs
+            cambios = []
+            if local.id_externo_gisce != cu_id:
+                local.id_externo_gisce = cu_id
+                cambios.append("id_externo_gisce")
+            if local.concentrador_id != concentrador_local.id:
+                local.concentrador_id = concentrador_local.id
+                cambios.append("concentrador_id")
+            if _norm_cu(local.direccion) != direccio_gisce:
+                local.direccion = direccio_gisce
+                cambios.append("direccion")
+            if _norm_cu(local.cp) != cp_gisce:
+                local.cp = cp_gisce
+                cambios.append("cp")
+            if _norm_cu(local.titular) != titular_gisce:
+                local.titular = titular_gisce
+                cambios.append("titular")
+            if _norm_cu(local.numero_contador) != polissa_comptador:
+                local.numero_contador = polissa_comptador
+                cambios.append("numero_contador")
+            if local.activo != activo_gisce:
+                local.activo = activo_gisce
+                cambios.append("activo")
+
+            if cambios:
+                cups_actualizados += 1
+                if len(cups_actualizados_muestra) < 10:
+                    cups_actualizados_muestra.append(GiscePreviewItem(
+                        codigo=cu_name, accion="actualizado",
+                        detalle="; ".join(cambios),
+                    ))
+            else:
+                cups_sin_cambios += 1
+
+        # 6.5. Contar huerfanos locales (CUPS local no presentes en GISCE)
+        cups_huerfanos = sum(
+            1 for c in cups_local_list
+            if (c.id_externo_gisce is None or c.id_externo_gisce not in cups_remoto_ids)
+            and c.cups not in cups_remoto_names
+        )
+
+        # 7. Paquete 8g-C — Enlazar stg_contador.cups_id con stg_cups.id
+        # 7.1. Flush para asignar IDs a los CUPS recien creados en la sec. 6
+        #      (necesario antes de poder referenciarlos por id en contador.cups_id)
+        db.flush()
+
+        # 7.2. Re-cargar CUPS locales (incluye los recien creados con id ya asignado)
+        cups_local_list = (
+            db.query(Cups)
+            .filter(Cups.empresa_id == empresa_id)
+            .all()
+        )
+        cups_local_by_id_externo = {
+            c.id_externo_gisce: c
+            for c in cups_local_list
+            if c.id_externo_gisce is not None
+        }
+
+        # 7.3. Cargar contadores locales e indexar por meter_id
+        contadores_local_list = (
+            db.query(Contador)
+            .filter(Contador.empresa_id == empresa_id)
+            .all()
+        )
+        contadores_local_by_meter = {
+            c.meter_id: c for c in contadores_local_list if c.meter_id
+        }
+
+        # 7.4. Recorrer comptadors GISCE
+        contadores_enlazados = 0
+        contadores_actualizados = 0
+        contadores_sin_cambios = 0
+        contadores_sin_match_meter = 0
+        contadores_sin_cups_local = 0
+        contadores_enlazados_muestra: list[GiscePreviewItem] = []
+
+        for comp in comptadors_remoto:
+            meter_gisce = _norm_cu(comp.get("meter"))
+            if not meter_gisce:
+                continue
+
+            # Match contador local por meter_id
+            local_contador = contadores_local_by_meter.get(meter_gisce)
+            if local_contador is None:
+                contadores_sin_match_meter += 1
+                continue
+
+            # Resolver CUPS local via comptador.cups_id (es [id, "label"] o False)
+            cups_gisce_pair = comp.get("cups_id")
+            if not cups_gisce_pair or not isinstance(cups_gisce_pair, (list, tuple)):
+                contadores_sin_cups_local += 1
+                continue
+
+            cups_gisce_id = cups_gisce_pair[0]
+            local_cups = cups_local_by_id_externo.get(cups_gisce_id)
+            if local_cups is None:
+                contadores_sin_cups_local += 1
+                continue
+
+            # Comparar y aplicar UPDATE si difiere
+            cups_id_actual = local_contador.cups_id
+            cups_id_nuevo = local_cups.id
+
+            if cups_id_actual == cups_id_nuevo:
+                contadores_sin_cambios += 1
+                continue
+
+            local_contador.cups_id = cups_id_nuevo
+            if cups_id_actual is None:
+                contadores_enlazados += 1
+            else:
+                contadores_actualizados += 1
+
+            if len(contadores_enlazados_muestra) < 10:
+                detalle_link = (
+                    f"cups_id NULL->{cups_id_nuevo} (cups={local_cups.cups})"
+                    if cups_id_actual is None
+                    else f"cups_id {cups_id_actual}->{cups_id_nuevo} (cups={local_cups.cups})"
+                )
+                contadores_enlazados_muestra.append(GiscePreviewItem(
+                    codigo=meter_gisce, accion="enlazado",
+                    detalle=detalle_link,
+                ))
+
+        # 8. Actualizar metadata de la config
         ahora = datetime.utcnow()
         cfg.ultimo_import = ahora
         cfg.estado = "ok"
@@ -447,5 +694,24 @@ def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
         cts_skipped_huerfanos=cts_skipped_huerfanos,
         cts_actualizados_muestra=actualizados_muestra,
         cts_skipped_nuevos_muestra=skipped_nuevos_muestra,
+        # -- Paquete 8g-B2: CUPS --
+        cups_remoto_total=len(cups_remoto),
+        cups_local_total=len(cups_local_list),
+        cups_creados=cups_creados,
+        cups_actualizados=cups_actualizados,
+        cups_sin_cambios=cups_sin_cambios,
+        cups_skipped_sin_ct=cups_skipped_sin_ct,
+        cups_huerfanos=cups_huerfanos,
+        cups_creados_muestra=cups_creados_muestra,
+        cups_actualizados_muestra=cups_actualizados_muestra,
+        # -- Paquete 8g-C: enlace contador <-> CUPS --
+        contadores_remoto_total=len(comptadors_remoto),
+        contadores_local_total=len(contadores_local_list),
+        contadores_enlazados=contadores_enlazados,
+        contadores_actualizados=contadores_actualizados,
+        contadores_sin_cambios=contadores_sin_cambios,
+        contadores_sin_match_meter=contadores_sin_match_meter,
+        contadores_sin_cups_local=contadores_sin_cups_local,
+        contadores_enlazados_muestra=contadores_enlazados_muestra,
         fecha_import=ahora,
     )

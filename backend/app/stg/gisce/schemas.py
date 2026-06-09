@@ -87,9 +87,9 @@ class GiscePreviewResult(BaseModel):
 class GisceExecuteResult(BaseModel):
     """Resultado del import real (no dry-run) desde GISCE.
 
-    Alcance Paquete 8f-4 inicial: solo aplica cambios en CTs
-    (UPDATE de stg_concentrador.id_externo_gisce). Los CUPS no se
-    tocan; entraran cuando exista la pestana 'Equipos de Medida'.
+    Alcance Paquete 8f-4 inicial: cambios en CTs
+    (UPDATE de stg_concentrador.id_externo_gisce + direccion).
+    Paquete 8g-B2: UPSERT en stg_cups con datos de giscedata.cups.ps.
     """
     ok: bool
     error: Optional[str] = None
@@ -98,7 +98,7 @@ class GisceExecuteResult(BaseModel):
     cts_remoto_total: int = 0
     cts_local_total: int = 0
 
-    # Aplicados
+    # Aplicados CTs
     cts_actualizados: int = 0     # CTs que recibieron id_externo_gisce
     cts_sin_cambios: int = 0      # CTs ya enlazados (idempotencia)
 
@@ -109,6 +109,27 @@ class GisceExecuteResult(BaseModel):
     # Muestra hasta 10 de los actualizados
     cts_actualizados_muestra: list[GiscePreviewItem] = []
     cts_skipped_nuevos_muestra: list[GiscePreviewItem] = []
+
+    # -- Paquete 8g-B2: counts CUPS --
+    cups_remoto_total: int = 0
+    cups_local_total: int = 0
+    cups_creados: int = 0
+    cups_actualizados: int = 0
+    cups_sin_cambios: int = 0
+    cups_skipped_sin_ct: int = 0    # CUPS GISCE cuyo et no matchea con un CT local
+    cups_huerfanos: int = 0         # CUPS local que ya no esta en GISCE
+    cups_creados_muestra: list[GiscePreviewItem] = []
+    cups_actualizados_muestra: list[GiscePreviewItem] = []
+
+    # -- Paquete 8g-C: counts enlace contador <-> CUPS --
+    contadores_remoto_total: int = 0
+    contadores_local_total: int = 0
+    contadores_enlazados: int = 0        # contadores que recibieron cups_id por primera vez
+    contadores_actualizados: int = 0     # contadores con cups_id que cambio
+    contadores_sin_cambios: int = 0      # ya tenian el cups_id correcto
+    contadores_sin_match_meter: int = 0  # contador GISCE cuyo meter no esta en stg_contador
+    contadores_sin_cups_local: int = 0   # contador GISCE cuyo cups GISCE no esta en stg_cups
+    contadores_enlazados_muestra: list[GiscePreviewItem] = []
 
     # Timestamp del import
     fecha_import: Optional[datetime] = None

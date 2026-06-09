@@ -188,6 +188,9 @@ class Cups(TimestampMixin, Base):
     # -- Datos administrativos importados de GISCE (Paquete 8f) --
     titular = Column(String(255), nullable=True)
 
+    # -- Paquete 8g-B1: enlace al CUPS en GISCE (giscedata.cups.ps.id) --
+    id_externo_gisce = Column(Integer, nullable=True, index=True)
+
     concentrador = relationship("StgConcentrador", lazy="joined")
 
     __table_args__ = (
