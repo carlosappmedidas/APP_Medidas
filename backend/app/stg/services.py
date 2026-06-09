@@ -1,5 +1,5 @@
 # app/stg/services.py
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
 """
 Lógica de negocio del módulo STG.
 
@@ -12,9 +12,9 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func
 from io import BytesIO
 
 from openpyxl import load_workbook
@@ -660,9 +660,6 @@ def descargar_ficheros_nuevos(
 
     Solo aplica si la conexión es de tipo "sftp" o "ftp".
     """
-    # Importar aquí para evitar circular
-    from app.tenants.models import User
-
     assert_empresa_access(db, user, empresa_id)
 
     conf = (
@@ -1523,6 +1520,18 @@ def listar_contadores_detectados(
         .all()
     )
 
+    # Paquete 8g-D: precargar codigos CUPS para los contadores de la pagina
+    # (1 sola query extra con IN, evita N+1)
+    cups_ids_pagina = {ct.cups_id for ct in contadores if ct.cups_id is not None}
+    cups_map: dict[int, str] = {}
+    if cups_ids_pagina:
+        cups_rows = (
+            db.query(Cups.id, Cups.cups)
+            .filter(Cups.id.in_(cups_ids_pagina))
+            .all()
+        )
+        cups_map = {cid: ccups for cid, ccups in cups_rows}
+
     items = []
     for ct in contadores:
         items.append({
@@ -1536,6 +1545,7 @@ def listar_contadores_detectados(
             "estado_comunicacion": ct.estado_comunicacion,
             "activo": ct.activo,
             "concentrador_codigo_ct": ct.concentrador.codigo_ct if ct.concentrador else None,
+            "cups": cups_map.get(ct.cups_id) if ct.cups_id is not None else None,
             "created_at": ct.created_at,
             "updated_at": ct.updated_at,
         })

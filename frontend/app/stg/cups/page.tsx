@@ -20,6 +20,7 @@ interface ContadorItem {
   estado_comunicacion: string;
   activo: boolean;
   concentrador_codigo_ct: string | null;
+  cups: string | null;  // Paq 8g-D: codigo CUPS desde stg_cups
   created_at: string;
   updated_at: string;
 }
@@ -399,6 +400,7 @@ function StgEquiposMedidaPageInner() {
               <thead>
                 <tr style={{ borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
                   <th style={thStyle}>Meter ID</th>
+                  <th style={thStyle}>CUPS</th>
                   <th style={thStyle}>Fabricante</th>
                   <th style={thStyle}>Concentrador (CT)</th>
                   <th style={thStyle}>Estado</th>
@@ -410,6 +412,11 @@ function StgEquiposMedidaPageInner() {
                 {data.items.map((c) => (
                   <tr key={c.id} style={{ borderBottom: "0.5px solid rgba(255,255,255,0.05)" }}>
                     <td style={tdStyle}><span style={{ fontFamily: "monospace" }}>{c.meter_id}</span></td>
+                    <td style={tdStyle}>
+                      {c.cups
+                        ? <span style={{ fontFamily: "monospace", fontSize: 11 }}>{c.cups}</span>
+                        : <span style={{ color: "rgba(241,239,232,0.3)" }}>—</span>}
+                    </td>
                     <td style={tdStyle}>{c.fabricante || "—"}</td>
                     <td style={tdStyle}>
                       {c.concentrador_codigo_ct

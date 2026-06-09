@@ -309,6 +309,8 @@ class ContadorRead(BaseModel):
     activo: bool
     # Campos planos del concentrador para la UI (si está enlazado)
     concentrador_codigo_ct: Optional[str] = None
+    # Paquete 8g-D: codigo CUPS asociado para la UI (si está enlazado)
+    cups: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
