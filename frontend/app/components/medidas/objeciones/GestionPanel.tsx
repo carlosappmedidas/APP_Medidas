@@ -53,7 +53,7 @@ interface GestionPanelProps {
 
 export default function GestionPanel({
   token, empresas, empresaFiltroId, setEmpresaFiltroId,
-  dash, onDashRefresh, onError,
+  onDashRefresh, onError,
   vistaPeriodo, mesObjetadoYYYYMM, mesObjetadoLabel,
 }: GestionPanelProps) {
   const [gestOpen, setGestOpen]           = useState(false);
@@ -317,21 +317,12 @@ export default function GestionPanel({
     }
   };
 
-  // ── Tabs con contadores del dashboard ────────────────────────────────────
-
-  const tabCounts: Record<ObjecionTipo, number> = { AOBAGRECL: 0, OBJEINCL: 0, AOBCUPS: 0, AOBCIL: 0 };
-  if (dash) {
-    for (const t of dash.por_tipo) {
-      const key = t.tipo as ObjecionTipo;
-      if (key in tabCounts) tabCounts[key] = t.total;
-    }
-  }
+  // ── Tabs ──────────────────────────────────────────────────────────────────
 
   const tabBar = (
     <div style={{ display: "flex", backgroundColor: "#1a2332", borderRadius: "6px 6px 0 0", paddingLeft: "8px", gap: "2px" }}>
       {TABS.map((t) => {
         const isActive = t.id === activeTab;
-        const count = tabCounts[t.id];
         return (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
             padding: "9px 16px", fontSize: "11px", fontWeight: 500,
@@ -342,15 +333,6 @@ export default function GestionPanel({
             display: "flex", alignItems: "center", gap: "6px",
           }}>
             {t.label}
-            {count > 0 && (
-              <span style={{
-                fontSize: "10px",
-                background: isActive ? "#60a5fa" : "rgba(255,255,255,0.15)",
-                color: "white", borderRadius: "10px", padding: "1px 6px", fontWeight: 600,
-              }}>
-                {count}
-              </span>
-            )}
           </button>
         );
       })}
