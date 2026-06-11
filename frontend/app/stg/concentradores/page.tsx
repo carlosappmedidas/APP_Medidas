@@ -91,21 +91,60 @@ export default function StgConcentradoresPage() {
     router.push(`/stg/cups?concentrador_id=${concentradorId}`);
   };
 
+  // Paq export 8g — descarga XLSX. soloFiltrados=true respeta searchGlobal,
+  // false ignora filtros y exporta TODA la empresa.
+  async function handleExportConcentradores(soloFiltrados: boolean) {
+    const token = localStorage.getItem("auth_token");
+    if (!token || !empresaId) return;
+
+    const params = new URLSearchParams({ empresa_id: String(empresaId) });
+    if (soloFiltrados) {
+      params.set("aplicar_filtros", "true");
+      if (searchGlobal.trim()) params.set("search", searchGlobal.trim());
+    } else {
+      params.set("aplicar_filtros", "false");
+    }
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/stg/concentradores/export?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) {
+        alert(`Error al exportar: HTTP ${res.status}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = res.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename="?([^"]+)"?/);
+      a.download = m ? m[1] : "concentradores.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Error al exportar: ${e}`);
+    }
+  }
+
   return (
     <div>
       <h1 style={{ fontSize: 22, fontWeight: 500, margin: "0 0 12px" }}>
         Concentradores (DCU)
       </h1>
 
-      {/* Paquete 8d — filtro global */}
-      <div style={{ marginBottom: 12 }}>
+      {/* Paquete 8d — filtro global + Paq 8g — botones de exportar */}
+      <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <input
           type="text"
           placeholder="Buscar en cualquier columna (codigo, nombre, dirección, fabricante, estado…)"
           value={searchGlobal}
           onChange={(e) => setSearchGlobal(e.target.value)}
           style={{
-            width: "100%",
+            flex: "1 1 320px",
             maxWidth: 520,
             background: "rgba(255,255,255,0.04)",
             border: "0.5px solid rgba(255,255,255,0.1)",
@@ -116,6 +155,44 @@ export default function StgConcentradoresPage() {
             outline: "none",
           }}
         />
+
+        {/* Botones de export — Paq 8g */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          {searchGlobal.trim() && (
+            <button
+              type="button"
+              onClick={() => handleExportConcentradores(true)}
+              style={{
+                background: "rgba(29,158,117,0.15)",
+                border: "0.5px solid rgba(29,158,117,0.4)",
+                borderRadius: 6,
+                padding: "6px 12px",
+                color: "#1D9E75",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+              title="Descarga sólo los concentradores que cumplen el filtro de búsqueda"
+            >
+              📥 Exportar filtrados
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => handleExportConcentradores(false)}
+            style={{
+              background: "rgba(175,169,236,0.15)",
+              border: "0.5px solid rgba(175,169,236,0.4)",
+              borderRadius: 6,
+              padding: "6px 12px",
+              color: "#AFA9EC",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+            title="Descarga todos los concentradores de la empresa, sin filtros"
+          >
+            📥 Exportar todos
+          </button>
+        </div>
       </div>
 
       {loading && <div style={{ color: "rgba(241,239,232,0.5)" }}>Cargando…</div>}

@@ -1,5 +1,5 @@
 # app/stg/routes.py
-# pyright: reportMissingImports=false, reportArgumentType=false
+# pyright: reportMissingImports=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportOptionalMemberAccess=false
 """
 Endpoints REST del módulo STG.
 
@@ -189,6 +189,136 @@ def get_concentradores_excel_template(
     buf.seek(0)
 
     filename = f"concentradores_mapping_empresa_{empresa_id}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Export Excel — Concentradores (listado completo, formato auditoría)
+# DEBE ir ANTES de "/concentradores/{concentrador_id}" para evitar colisión
+# ---------------------------------------------------------------------------
+@router.get("/concentradores/export")
+def export_concentradores(
+    empresa_id: int = Query(...),
+    estado: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="Texto libre — busca en codigo_ct/nombre/direccion/id_ct/nombre_ct"),
+    aplicar_filtros: bool = Query(
+        True,
+        description="Si False, ignora filtros y exporta TODOS los concentradores",
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Exporta la lista de concentradores a Excel.
+
+    Cabeceras = visibles en UI + extras útiles para auditoría.
+    """
+    from openpyxl.utils import get_column_letter
+    from app.empresas.models import Empresa
+    from app.core.permissions import assert_empresa_access
+    from sqlalchemy import or_
+
+    assert_empresa_access(db, user, empresa_id)
+
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    nombre_empresa = (
+        empresa.nombre.lower().replace(" ", "_").replace("/", "_")
+        if empresa and empresa.nombre
+        else f"empresa{empresa_id}"
+    )
+
+    q = db.query(StgConcentrador).filter(StgConcentrador.empresa_id == empresa_id)
+    if aplicar_filtros:
+        if estado:
+            q = q.filter(StgConcentrador.estado_comunicacion == estado)
+        if search:
+            s = f"%{search.strip()}%"
+            q = q.filter(
+                or_(
+                    StgConcentrador.codigo_ct.ilike(s),
+                    StgConcentrador.nombre.ilike(s),
+                    StgConcentrador.direccion.ilike(s),
+                    StgConcentrador.id_ct.ilike(s),
+                    StgConcentrador.nombre_ct.ilike(s),
+                )
+            )
+
+    concentradores = q.order_by(StgConcentrador.codigo_ct.asc()).all()
+
+    PREFIJOS_FABRICANTE = {"CIR", "LGZ", "SAG", "ZIV", "ITE"}
+    for c in concentradores:
+        if c.fabricante is None and c.codigo_ct:
+            prefijo = c.codigo_ct[:3].upper()
+            if prefijo in PREFIJOS_FABRICANTE:
+                c.fabricante = prefijo
+
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Concentradores"
+
+    headers = [
+        "Código CT", "Nombre", "Dirección", "Municipio",
+        "ID CT", "Nombre CT", "Fabricante", "Modelo", "Protocolo",
+        "CUPS", "Último contacto", "Estado",
+        "ID interno", "Empresa ID", "Número serie", "IP",
+        "Firmware", "Provincia", "CP", "Latitud", "Longitud",
+        "Tipo dispositivo", "ID externo GISCE", "Nº CUPS asociados",
+        "Activo", "Fecha creación", "Fecha actualización",
+    ]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="DDDDDD")
+
+    for c in concentradores:
+        ws.append([
+            c.codigo_ct,
+            c.nombre or "",
+            c.direccion or "",
+            c.municipio or "",
+            c.id_ct or "",
+            c.nombre_ct or "",
+            c.fabricante or "",
+            c.modelo or "",
+            c.protocolo_pmi or "",
+            c.cups or "",
+            c.ultimo_contacto.strftime("%d/%m/%Y %H:%M") if c.ultimo_contacto else "",
+            c.estado_comunicacion or "",
+            c.id,
+            c.empresa_id,
+            c.numero_serie or "",
+            c.ip or "",
+            c.firmware or "",
+            c.provincia or "",
+            c.codigo_postal or "",
+            c.latitud if c.latitud is not None else "",
+            c.longitud if c.longitud is not None else "",
+            c.tipo_dispositivo or "",
+            c.id_externo_gisce or "",
+            c.numero_cups_asociados if c.numero_cups_asociados is not None else "",
+            "Sí" if c.activo else "No",
+            c.created_at.strftime("%d/%m/%Y %H:%M") if c.created_at else "",
+            c.updated_at.strftime("%d/%m/%Y %H:%M") if c.updated_at else "",
+        ])
+
+    anchos = [
+        22, 24, 28, 16, 22, 24, 12, 14, 12, 24, 18, 12,
+        10, 10, 16, 14, 12, 14, 8, 10, 10, 18, 14, 12, 8, 18, 18,
+    ]
+    for i, w in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    fecha_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"concentradores_{nombre_empresa}_{fecha_str}.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -411,6 +541,123 @@ def listar_contadores_detectados(
         estado=estado,
         fabricante=fabricante,
         search=search,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Export Excel — Equipos de medida (contadores detectados)
+# ---------------------------------------------------------------------------
+@router.get("/contadores-detectados/export")
+def export_contadores_detectados(
+    empresa_id: int = Query(...),
+    concentrador_id: Optional[int] = Query(None),
+    estado: Optional[str] = Query(None),
+    fabricante: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    aplicar_filtros: bool = Query(
+        True,
+        description="Si False, ignora los filtros y exporta TODOS los contadores de la empresa",
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Exporta la lista de contadores detectados a Excel.
+
+    Cabeceras = las visibles en UI + extras útiles para auditoría.
+    Con aplicar_filtros=False ignora los filtros y exporta TODO.
+    """
+    from openpyxl.utils import get_column_letter
+    from app.empresas.models import Empresa
+    from app.stg.models import Contador
+    from app.core.permissions import assert_empresa_access
+
+    assert_empresa_access(db, user, empresa_id)
+
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    nombre_empresa = (
+        empresa.nombre.lower().replace(" ", "_").replace("/", "_")
+        if empresa and empresa.nombre
+        else f"empresa{empresa_id}"
+    )
+
+    q = db.query(Contador).filter(Contador.empresa_id == empresa_id)
+    if aplicar_filtros:
+        from sqlalchemy import or_
+        if concentrador_id is not None:
+            q = q.filter(Contador.concentrador_id == concentrador_id)
+        if estado:
+            q = q.filter(Contador.estado_comunicacion == estado)
+        if fabricante:
+            q = q.filter(Contador.fabricante == fabricante)
+        if search:
+            search_clean = f"%{search.strip()}%"
+            q = q.outerjoin(
+                StgConcentrador, Contador.concentrador_id == StgConcentrador.id
+            ).filter(
+                or_(
+                    Contador.meter_id.ilike(search_clean),
+                    StgConcentrador.codigo_ct.ilike(search_clean),
+                )
+            )
+
+    contadores = q.order_by(Contador.meter_id.asc()).all()
+
+    cups_ids = {ct.cups_id for ct in contadores if ct.cups_id is not None}
+    cups_map: dict[int, str] = {}
+    if cups_ids:
+        rows = db.query(Cups.id, Cups.cups).filter(Cups.id.in_(cups_ids)).all()
+        cups_map = {cid: ccups for cid, ccups in rows}
+
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Equipos de medida"
+
+    headers = [
+        "Meter ID", "CUPS", "Fabricante", "Concentrador (CT)",
+        "Estado", "Activo", "Último contacto",
+        "ID interno", "Empresa ID", "Concentrador ID", "CUPS ID",
+        "Fecha creación", "Fecha actualización",
+    ]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="DDDDDD")
+
+    for ct in contadores:
+        cups_value = cups_map.get(ct.cups_id) if ct.cups_id is not None else None
+        concentrador_codigo_ct = ct.concentrador.codigo_ct if ct.concentrador else None
+        ws.append([
+            ct.meter_id,
+            cups_value or "",
+            ct.fabricante or "",
+            concentrador_codigo_ct or "",
+            ct.estado_comunicacion or "",
+            "Sí" if ct.activo else "No",
+            ct.ultimo_contacto.strftime("%d/%m/%Y %H:%M") if ct.ultimo_contacto else "",
+            ct.id,
+            ct.empresa_id,
+            ct.concentrador_id or "",
+            ct.cups_id or "",
+            ct.created_at.strftime("%d/%m/%Y %H:%M") if ct.created_at else "",
+            ct.updated_at.strftime("%d/%m/%Y %H:%M") if ct.updated_at else "",
+        ])
+
+    anchos = [18, 24, 12, 22, 12, 8, 18, 10, 10, 14, 10, 18, 18]
+    for i, w in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    fecha_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"equipos_medida_{nombre_empresa}_{fecha_str}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

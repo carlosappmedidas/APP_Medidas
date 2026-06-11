@@ -217,6 +217,49 @@ function StgEquiposMedidaPageInner() {
     setSearchDebounced("");
   };
 
+  // Paq export 8g — descarga XLSX. soloFiltrados=true respeta filtros UI,
+  // false ignora filtros y exporta TODA la empresa.
+  async function handleExportEquipos(soloFiltrados: boolean) {
+    const token = localStorage.getItem("auth_token");
+    if (!token || !empresaId) return;
+
+    const params = new URLSearchParams({ empresa_id: String(empresaId) });
+    if (soloFiltrados) {
+      params.set("aplicar_filtros", "true");
+      if (filtroConcentrador) params.set("concentrador_id", filtroConcentrador);
+      if (filtroEstado) params.set("estado", filtroEstado);
+      if (filtroFabricante) params.set("fabricante", filtroFabricante);
+      if (searchDebounced.trim()) params.set("search", searchDebounced.trim());
+    } else {
+      params.set("aplicar_filtros", "false");
+    }
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/stg/contadores-detectados/export?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) {
+        alert(`Error al exportar: HTTP ${res.status}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      // Extraer nombre del fichero del header Content-Disposition
+      const cd = res.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename="?([^"]+)"?/);
+      a.download = m ? m[1] : "equipos_medida.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Error al exportar: ${e}`);
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
@@ -324,6 +367,28 @@ function StgEquiposMedidaPageInner() {
             Limpiar filtros
           </button>
         )}
+
+        {/* Botones de export a Excel — Paq 8g export */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          {hayFiltros && (
+            <button
+              type="button"
+              onClick={() => handleExportEquipos(true)}
+              style={btnExportFiltradosStyle}
+              title="Descarga sólo los equipos que cumplen los filtros actuales"
+            >
+              📥 Exportar filtrados
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => handleExportEquipos(false)}
+            style={btnExportTodosStyle}
+            title="Descarga todos los equipos de la empresa, sin filtros"
+          >
+            📥 Exportar todos
+          </button>
+        </div>
       </div>
 
       {/* Errores */}
@@ -560,6 +625,26 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: "8px 12px",
   color: "var(--ds-text-primary, #F1EFE8)",
+};
+
+const btnExportFiltradosStyle: React.CSSProperties = {
+  background: "rgba(29,158,117,0.15)",
+  border: "0.5px solid rgba(29,158,117,0.4)",
+  borderRadius: 6,
+  padding: "6px 12px",
+  color: "#1D9E75",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+const btnExportTodosStyle: React.CSSProperties = {
+  background: "rgba(175,169,236,0.15)",
+  border: "0.5px solid rgba(175,169,236,0.4)",
+  borderRadius: 6,
+  padding: "6px 12px",
+  color: "#AFA9EC",
+  fontSize: 12,
+  cursor: "pointer",
 };
 
 // ---------------------------------------------------------------------------
