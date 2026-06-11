@@ -93,6 +93,17 @@ VENTANA_COLS: dict[VentanaCode, tuple[str, str, str]] = {
     ),
 }
 
+# Columna de E. frontera DD por ventana. Forma parte del denominador del %
+# de pérdidas para que coincida con el valor guardado en BD
+# (perdidas_e_facturada_pct = pérd / (neta + frontera)).
+VENTANA_FRONTERA_COL: dict[VentanaCode, str] = {
+    "m1":    "energia_frontera_dd_kwh",
+    "m2":    "energia_frontera_dd_m2_kwh",
+    "m7":    "energia_frontera_dd_m7_kwh",
+    "m11":   "energia_frontera_dd_m11_kwh",
+    "art15": "energia_frontera_dd_art15_kwh",
+}
+
 # Offset de meses entre la ventana y el mes que cubre, contado desde el mes
 # de carga. M1 cubre el mes anterior (offset 1), M2 el de hace 2 meses, etc.
 # ART15 lo definimos como 14 meses (cierre definitivo: ~14-15m según calendario REE).
@@ -166,6 +177,18 @@ def _safe_pct(perd_kwh: float, energia_kwh: float) -> float | None:
     if pct < -500.0 or pct > 500.0:
         return None
     return round(pct, 2)
+
+
+def _pct_bd(perd_kwh: float, energia_kwh: float, frontera_kwh: float) -> float | None:
+    """% pérdidas idéntico al guardado en BD: pérd / (neta + frontera).
+
+    Réplica de perdidas_e_facturada_pct (measures/services/common.py) para que
+    el panel mensual coincida con la tabla General. None si denom <= 0.
+    """
+    denom = energia_kwh + frontera_kwh
+    if denom <= 0:
+        return None
+    return round((perd_kwh / denom) * 100.0, 2)
 
 
 def _shift_mes(anio: int, mes: int, delta_meses: int) -> tuple[int, int]:
@@ -449,17 +472,20 @@ def get_dashboard_tablas_mensual(
     # Agregar por (empresa, anio, mes) para todas las ventanas a la vez.
     # agg[(empresa, anio, mes)][ventana] = {"e": kwh, "p": perd_kwh}
     agg: dict[tuple[int, int, int], dict[VentanaCode, dict[str, float]]] = defaultdict(
-        lambda: {v: {"e": 0.0, "p": 0.0} for v in VENTANAS}
+        lambda: {v: {"e": 0.0, "p": 0.0, "f": 0.0} for v in VENTANAS}
     )
     for row in general_rows:
         key = (int(row.empresa_id), int(row.anio), int(row.mes))
         for ventana in VENTANAS:
             col_e, col_p, _ = VENTANA_COLS[ventana]
+            col_f = VENTANA_FRONTERA_COL[ventana]
             e = _f(getattr(row, col_e, None))
             p = _f(getattr(row, col_p, None))
+            fr = _f(getattr(row, col_f, None))
             if e > 0:
                 agg[key][ventana]["e"] += e
                 agg[key][ventana]["p"] += p
+                agg[key][ventana]["f"] += fr
 
     # Determinar la "carga" del mes actual: tomamos el último (anio, mes) con
     # datos en M1 — eso indica qué publicación estamos viendo.
@@ -540,6 +566,7 @@ def get_dashboard_tablas_mensual(
         # M1 no se filtra a sí mismo: en M1, esperadas = todas las empresas.
         total_e = 0.0
         total_p = 0.0
+        total_f = 0.0
         empresas_con_dato = 0
         empresas_esperadas = 0
         for emp_id in allowed:
@@ -555,6 +582,7 @@ def get_dashboard_tablas_mensual(
             if e > 0:
                 total_e += e
                 total_p += p
+                total_f += v[ventana]["f"]
                 empresas_con_dato += 1
         pipeline.append(
             MensualGeneralVentanaCard(
@@ -562,7 +590,7 @@ def get_dashboard_tablas_mensual(
                 anio=anio_v,
                 mes=mes_v,
                 energia_kwh=round(total_e, 2),
-                perdidas_pct=_safe_pct(total_p, total_e),
+                perdidas_pct=_pct_bd(total_p, total_e, total_f),
                 empresas_con_dato=empresas_con_dato,
                 empresas_total=empresas_esperadas,
             )
@@ -582,11 +610,12 @@ def get_dashboard_tablas_mensual(
             v = agg.get((emp_id, anio_v, mes_v))
             e = v[ventana]["e"] if v else 0.0
             p = v[ventana]["p"] if v else 0.0
+            fr = v[ventana]["f"] if v else 0.0
             if e > 0:
                 celdas[ventana] = MensualGeneralEmpresaVentanaCelda(
                     energia_kwh=round(e, 2),
                     perdidas_kwh=round(p, 2),
-                    perdidas_pct=_safe_pct(p, e),
+                    perdidas_pct=_pct_bd(p, e, fr),
                     pendiente=False,
                 )
             else:
@@ -616,10 +645,11 @@ def get_dashboard_tablas_mensual(
             for ventana in VENTANAS:
                 e = v[ventana]["e"] if v else 0.0
                 p = v[ventana]["p"] if v else 0.0
+                fr = v[ventana]["f"] if v else 0.0
                 if e > 0:
                     celdas_mes[ventana] = MensualGeneralEmpresaDespliegueCelda(
                         energia_kwh=round(e, 2),
-                        perdidas_pct=_safe_pct(p, e),
+                        perdidas_pct=_pct_bd(p, e, fr),
                         es_ultima_publicacion=(
                             ultimo_periodo_por_ventana[ventana] == (anio_m, mes_m)
                         ),
