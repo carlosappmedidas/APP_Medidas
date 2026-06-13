@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,6 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_active_superuser, get_current_user
+from app.core.datetime_utils import ahora_madrid
 from app.core.db import get_db
 from app.empresas.models import Empresa
 from app.ingestion.delete_services import (
@@ -221,7 +221,7 @@ async def upload_file(
         ex.rows_error = 0
         ex.error_message = None
         ex.processed_at = None
-        ex.updated_at = datetime.utcnow()
+        ex.updated_at = ahora_madrid()
         ex.warnings_json = None
         db.commit()
         db.refresh(existing)
@@ -305,7 +305,7 @@ def register_file(
         ex.rows_error = 0
         ex.error_message = None
         ex.processed_at = None
-        ex.updated_at = datetime.utcnow()
+        ex.updated_at = ahora_madrid()
         ex.warnings_json = None
         db.commit()
         db.refresh(existing)

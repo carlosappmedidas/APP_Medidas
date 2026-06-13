@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional, cast
 
@@ -13,6 +12,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.datetime_utils import ahora_madrid
 from app.ingestion.models import IngestionFile
 from app.measures.services import (
     procesar_acum_h2_gen_generacion as procesar_acum_h2_gen_generacion_core,
@@ -198,7 +198,7 @@ def _mark_ingestion_error(
     ing.status = IngestionFile.STATUS_ERROR
     ing.rows_error = int(ing.rows_error or 0) + 1
     ing.error_message = str(exc)
-    ing.processed_at = datetime.utcnow()
+    ing.processed_at = ahora_madrid()
     db.commit()
     db.refresh(ingestion)
     return ingestion
@@ -227,7 +227,7 @@ def _finalize_ingestion_processing(
             IngestionFile.STATUS_OK,
             IngestionFile.STATUS_ERROR,
         ) and ing.processed_at is None:
-            ing.processed_at = datetime.utcnow()
+            ing.processed_at = ahora_madrid()
             db.commit()
             db.refresh(ingestion)
         try:
