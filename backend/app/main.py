@@ -119,6 +119,8 @@ from app.stg.models import (  # noqa: F401
     ConexionStgEmpresa, StgConcentrador, Cups,
     SolicitudFichero, FicheroRecibido,
 )
+# Paquete 11 — WS-PRIME (modelo modular en submódulo wsprime/)
+from app.stg.wsprime.models import StgWsPrimeConfig  # noqa: F401
 
 # Scheduler FTP
 from app.comunicaciones.scheduler import start_scheduler, stop_scheduler

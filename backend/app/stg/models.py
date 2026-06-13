@@ -131,6 +131,15 @@ class StgConcentrador(TimestampMixin, Base):
     estado_comunicacion = Column(String(20), nullable=False, default="desconocido")
     activo              = Column(Boolean, nullable=False, default=True)
 
+    # Paquete 11 — configuración WS-PRIME (1-1 con stg_wsprime_config). Opcional.
+    wsprime_config = relationship(
+        "StgWsPrimeConfig",
+        back_populates="concentrador",
+        uselist=False,                  # relación 1-1
+        cascade="all, delete-orphan",
+        lazy="joined",
+    )
+
     __table_args__ = (
         UniqueConstraint("empresa_id", "codigo_ct", name="uq_stg_concentrador_empresa_ct"),
     )
