@@ -15,11 +15,11 @@ Patrón clonado de app/objeciones/automatizacion/services_config.py.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.datetime_utils import ahora_madrid
 from app.measures.descarga.automatizacion.models import (
     PublicacionesAutomatizacion,
     TIPO_BUSCAR_PUBLICACIONES_REE,
@@ -92,7 +92,7 @@ def marcar_ultimo_run(
 ) -> PublicacionesAutomatizacion:
     """Llamado por el job al terminar — actualiza ultimo_run_*."""
     cfg = get_or_create_config(db, tenant_id=tenant_id, tipo=tipo)
-    cfg.ultimo_run_at  = datetime.utcnow()  # type: ignore[assignment]
+    cfg.ultimo_run_at  = ahora_madrid()     # type: ignore[assignment]
     cfg.ultimo_run_ok  = 1 if ok else 0     # type: ignore[assignment]
     cfg.ultimo_run_msg = mensaje            # type: ignore[assignment]
     db.commit()

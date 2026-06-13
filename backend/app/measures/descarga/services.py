@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from sqlalchemy.orm import Session
 
 from app.comunicaciones.models import FtpConfig
+from app.core.datetime_utils import ahora_madrid
 from app.empresas.models import Empresa
 from app.ingestion.models import IngestionFile
 from app.ingestion.services import process_ingestion_file
@@ -567,8 +568,9 @@ def _periodo_yyyymm_a_anio_mes(yyyymm: str) -> Tuple[int, int]:
 # ── Helpers de log estilo CargaSection ────────────────────────────────────────
 
 def _ts_iso() -> str:
-    """Timestamp ISO con sufijo Z (formato idéntico a CargaSection del frontend)."""
-    return datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+    """Timestamp ISO en hora Madrid (sin sufijo Z porque ya no es UTC).
+    Formato: 2026-06-13T16:45:30.123 — coherente con el resto de timestamps Madrid."""
+    return ahora_madrid().isoformat(timespec="milliseconds")
 
 
 def _log_line(msg: str) -> str:
@@ -854,7 +856,7 @@ def _procesar_item(
         ex.rows_error    = 0
         ex.error_message = None
         ex.processed_at  = None
-        ex.updated_at    = datetime.utcnow()
+        ex.updated_at    = ahora_madrid()
         ex.warnings_json = None
         db.commit()
         db.refresh(existing)

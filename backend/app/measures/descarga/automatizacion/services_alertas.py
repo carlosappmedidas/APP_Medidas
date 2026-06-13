@@ -22,6 +22,7 @@ from typing import Any, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.datetime_utils import ahora_madrid
 from app.measures.descarga.automatizacion.models import PublicacionesAlerta
 
 
@@ -149,7 +150,7 @@ def _cambiar_estado(
         raise ValueError(f"Alerta {alert_id} no encontrada.")
 
     alerta.estado      = nuevo_estado        # type: ignore[assignment]
-    alerta.resuelta_at = datetime.utcnow()   # type: ignore[assignment]
+    alerta.resuelta_at = ahora_madrid()      # type: ignore[assignment]
     alerta.resuelta_by = user_id             # type: ignore[assignment]
 
     db.commit()
