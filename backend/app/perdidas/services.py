@@ -7,7 +7,7 @@ import io
 import os
 import re
 import xml.etree.ElementTree as ET
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.comunicaciones.models import FtpConfig
 from app.comunicaciones.services import _conectar_en_path
+from app.core.datetime_utils import ahora_madrid
 from app.empresas.models import Empresa
 from app.perdidas.models import Concentrador, PerdidaDiaria
 
@@ -110,8 +111,8 @@ def create_concentrador(
         directorio_ftp=directorio_ftp,
         ftp_config_id=ftp_config_id,
         activo=activo,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=ahora_madrid(),
+        updated_at=ahora_madrid(),
     )
     db.add(obj)
     db.commit()
@@ -148,7 +149,7 @@ def update_concentrador(
         obj.ftp_config_id = ftp_config_id  # type: ignore
     if activo is not None:
         obj.activo = activo  # type: ignore
-    obj.updated_at = datetime.utcnow()  # type: ignore
+    obj.updated_at = ahora_madrid()  # type: ignore
     db.commit()
     db.refresh(obj)
     return _concentrador_to_dict(obj, db)
@@ -473,7 +474,7 @@ def procesar_s02(
                     fecha=fecha_f,
                     nombre_fichero_s02=fichero_path.name,
                     num_contadores=datos["num_contadores"],
-                    created_at=datetime.utcnow(),
+                    created_at=ahora_madrid(),
                     **calculo,
                 )
                 db.add(perdida)
@@ -481,7 +482,7 @@ def procesar_s02(
 
                 if conc.fecha_ultimo_proceso is None or fecha_f > conc.fecha_ultimo_proceso:
                     conc.fecha_ultimo_proceso = fecha_f  # type: ignore
-                    conc.updated_at = datetime.utcnow()  # type: ignore
+                    conc.updated_at = ahora_madrid()  # type: ignore
                     db.commit()
 
                 procesados += 1

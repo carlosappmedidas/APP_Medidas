@@ -1,12 +1,12 @@
 # app/alerts/services.py
 # pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportArgumentType=false
 from __future__ import annotations
-from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 from sqlalchemy.orm import Session
 
 from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig
+from app.core.datetime_utils import ahora_madrid
 from app.alerts.schemas import AlertCommentRead, AlertResultRead, EmpresaAlertRuleConfigItem
 from app.empresas.models import Empresa
 from app.measures.models import MedidaGeneral
@@ -459,7 +459,7 @@ def change_alert_lifecycle(
     r.lifecycle_status = new_status
     if new_status == "resuelta":
         r.resolved_by = user_id
-        r.resolved_at = datetime.utcnow()
+        r.resolved_at = ahora_madrid()
 
     c = AlertComment()
     ca = _as_any(c)

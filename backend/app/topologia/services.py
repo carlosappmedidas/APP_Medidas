@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, String as SAString
 
+from app.core.datetime_utils import ahora_madrid
 from app.topologia.models import (
     CtCelda,
     CtCuadroBT,
@@ -30,7 +31,7 @@ from app.topologia.cini_decoder import decodificar_cini_i28
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return ahora_madrid()
 
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
