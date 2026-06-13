@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from app.core.datetime_utils import ahora_madrid
 from app.objeciones.models import ObjecionAGRECL, ObjecionCIL, ObjecionCUPS, ObjecionINCL, ReobGenerado
 
 
@@ -333,7 +334,7 @@ def update_agrecl_respuesta(
     obj.motivo_no_aceptacion = motivo_no_aceptacion  # type: ignore
     obj.comentario_respuesta = comentario_respuesta  # type: ignore
     obj.respuesta_publicada = respuesta_publicada  # type: ignore
-    obj.updated_at = datetime.utcnow()  # type: ignore
+    obj.updated_at = ahora_madrid()  # type: ignore
     db.commit()
     db.refresh(obj)
     return obj
@@ -400,7 +401,7 @@ def generate_reobagrecl_zip(db: Session, *, tenant_id: int, empresa_id: int, nom
     rows = list_agrecl(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     rows_con_respuesta = [r for r in rows if r.aceptacion in ("S", "N")]
 
-    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
+    fecha_hoy = ahora_madrid().strftime("%Y%m%d")
     por_cccc: Dict[str, List[ObjecionAGRECL]] = {}
     for r in rows_con_respuesta:
         cccc = _cccc_from_id_objecion(r.id_objecion)
@@ -500,7 +501,7 @@ def update_incl_respuesta(
     obj.motivo_no_aceptacion = motivo_no_aceptacion  # type: ignore
     obj.comentario_respuesta = comentario_respuesta  # type: ignore
     obj.respuesta_publicada = respuesta_publicada  # type: ignore
-    obj.updated_at = datetime.utcnow()  # type: ignore
+    obj.updated_at = ahora_madrid()  # type: ignore
     db.commit()
     db.refresh(obj)
     return obj
@@ -565,7 +566,7 @@ def generate_reobjeincl(db: Session, *, tenant_id: int, empresa_id: int, nombre_
             r.comentario_emisor or "", r.autoobjecion or "",
             r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
         ])
-    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
+    fecha_hoy = ahora_madrid().strftime("%Y%m%d")
     nombre_bz2 = f"REOBJEINCL_{dddd}_{cccc}_9999_{aaaamm}_{fecha_hoy}.0.bz2"
     return _csv_to_bz2(data), nombre_bz2
 
@@ -637,7 +638,7 @@ def update_cups_respuesta(
     obj.motivo_no_aceptacion = motivo_no_aceptacion  # type: ignore
     obj.comentario_respuesta = comentario_respuesta  # type: ignore
     obj.respuesta_publicada = respuesta_publicada  # type: ignore
-    obj.updated_at = datetime.utcnow()  # type: ignore
+    obj.updated_at = ahora_madrid()  # type: ignore
     db.commit()
     db.refresh(obj)
     return obj
@@ -693,7 +694,7 @@ def _cccc_from_id_cups(id_objecion: Optional[str]) -> str:
 def generate_reobcups(db: Session, *, tenant_id: int, empresa_id: int, nombre_fichero: str) -> Tuple[bytes, str]:
     """ZIP con un .bz2 por comercializadora, con fecha de generación hoy."""
     dddd, cccc, aaaamm, _ = _parse_nombre_cups(nombre_fichero)
-    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
+    fecha_hoy = ahora_madrid().strftime("%Y%m%d")
     rows = list_cups(db, tenant_id=tenant_id, empresa_id=empresa_id, nombre_fichero=nombre_fichero)
     rows = [r for r in rows if r.aceptacion in ("S", "N")]
 
@@ -788,7 +789,7 @@ def update_cil_respuesta(
     obj.motivo_no_aceptacion = motivo_no_aceptacion  # type: ignore
     obj.comentario_respuesta = comentario_respuesta  # type: ignore
     obj.respuesta_publicada = respuesta_publicada  # type: ignore
-    obj.updated_at = datetime.utcnow()  # type: ignore
+    obj.updated_at = ahora_madrid()  # type: ignore
     db.commit()
     db.refresh(obj)
     return obj
@@ -848,7 +849,7 @@ def generate_reobcil(db: Session, *, tenant_id: int, empresa_id: int, nombre_fic
         r.comentario_emisor or "", r.autoobjecion or "",
         r.aceptacion or "", r.motivo_no_aceptacion or "", r.comentario_respuesta or "",
     ] for r in rows]
-    fecha_hoy = datetime.utcnow().strftime("%Y%m%d")
+    fecha_hoy = ahora_madrid().strftime("%Y%m%d")
     nombre_bz2 = f"REOBCIL_{dddd}_{cccc}_9999_{aaaamm}_{fecha_hoy}.0.bz2"
     return _csv_to_bz2(data), nombre_bz2
 
@@ -877,7 +878,7 @@ def registrar_reob_enviado(
     config_id: int,
 ) -> None:
     """Registra un fichero REOB enviado por SFTP en la tabla objeciones_reob_generados."""
-    ahora = datetime.utcnow()
+    ahora = ahora_madrid()
     obj = ReobGenerado(
         tenant_id=tenant_id,
         empresa_id=empresa_id,
@@ -927,7 +928,7 @@ def toggle_enviado_sftp(
 
     # Si alguno tiene enviado_sftp_at, se considera enviado → limpiar
     ya_enviado = any(getattr(r, "enviado_sftp_at", None) for r in rows)
-    nuevo_valor = None if ya_enviado else datetime.utcnow()
+    nuevo_valor = None if ya_enviado else ahora_madrid()
 
     db.query(model).filter(
         model.tenant_id == tenant_id,
@@ -952,7 +953,7 @@ def enviar_al_sftp(
     import zipfile as _zipfile
 
     config = _get_config_by_id_activa(db, config_id=config_id, tenant_id=tenant_id)
-    ahora = datetime.utcnow()
+    ahora = ahora_madrid()
 
     if tipo == "agrecl":
         # agrecl genera un ZIP con un .bz2 por ID — subimos cada .bz2 por separado
