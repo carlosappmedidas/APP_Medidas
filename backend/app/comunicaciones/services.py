@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.comunicaciones.models import FtpConfig, FtpSyncLog, FtpSyncRule
+from app.core.datetime_utils import ahora_madrid
 from app.empresas.models import Empresa
 
 
@@ -285,7 +286,7 @@ def update_config(db: Session, *, config_id: int, tenant_id: int, nombre: Option
         obj.usar_tls = usar_tls  # type: ignore
     if activo is not None:
         obj.activo = activo  # type: ignore
-    obj.updated_at = datetime.utcnow()  # type: ignore
+    obj.updated_at = ahora_madrid()  # type: ignore
     db.commit()
     db.refresh(obj)
     return _config_to_dict(obj, db)
@@ -326,7 +327,7 @@ def list_rules(db: Session, *, tenant_id: int, config_id: Optional[int] = None) 
 def create_rule(db: Session, *, tenant_id: int, config_id: int, nombre: Optional[str],
                 directorio: str, patron_nombre: Optional[str], intervalo_horas: int,
                 activo: bool, descargar_desde: Optional[date] = None) -> dict:
-    proxima = datetime.utcnow() + timedelta(hours=intervalo_horas)
+    proxima = ahora_madrid() + timedelta(hours=intervalo_horas)
     obj = FtpSyncRule(tenant_id=tenant_id, config_id=config_id, nombre=nombre,
                       directorio=directorio, patron_nombre=patron_nombre or None,
                       intervalo_horas=intervalo_horas, activo=activo,
@@ -352,12 +353,12 @@ def update_rule(db: Session, *, rule_id: int, tenant_id: int, nombre: Optional[s
         obj.patron_nombre = patron_nombre or None  # type: ignore
     if intervalo_horas is not None:
         obj.intervalo_horas = intervalo_horas  # type: ignore
-        obj.proxima_ejecucion = datetime.utcnow() + timedelta(hours=intervalo_horas)  # type: ignore
+        obj.proxima_ejecucion = ahora_madrid() + timedelta(hours=intervalo_horas)  # type: ignore
     if activo is not None:
         obj.activo = activo  # type: ignore
     if descargar_desde is not None:
         obj.descargar_desde = descargar_desde  # type: ignore
-    obj.updated_at = datetime.utcnow()  # type: ignore
+    obj.updated_at = ahora_madrid()  # type: ignore
     db.commit()
     db.refresh(obj)
     return _rule_to_dict(obj, db)
@@ -468,7 +469,7 @@ def _parse_list_line(linea: str) -> Optional[dict]:
 
     if ":" in tercero:
         hora_local = _aplicar_tz(tercero)
-        ahora = datetime.now()
+        ahora = ahora_madrid()
         try:
             fecha_tentativa = datetime(ahora.year, int(mes_num), int(dia_num))
             anio_num = str(ahora.year if fecha_tentativa <= ahora else ahora.year - 1)
@@ -878,7 +879,7 @@ def ejecutar_regla(db: Session, *, rule_id: int) -> Tuple[int, int, List[str]]:
 
 
 def _actualizar_tiempos_regla(db: Session, rule: FtpSyncRule) -> None:
-    ahora = datetime.utcnow()
+    ahora = ahora_madrid()
     rule.ultima_ejecucion = ahora  # type: ignore
     rule.proxima_ejecucion = ahora + timedelta(hours=int(rule.intervalo_horas))  # type: ignore
     rule.updated_at = ahora  # type: ignore
@@ -993,7 +994,7 @@ def delete_logs(db: Session, *, tenant_id: int, origen: Optional[str] = None,
     if origen:
         q = q.filter(FtpSyncLog.origen == origen)
     if dias is not None:
-        desde = datetime.utcnow() - timedelta(days=dias)
+        desde = ahora_madrid() - timedelta(days=dias)
         q = q.filter(FtpSyncLog.created_at < desde)
     count = q.count()
     q.delete(synchronize_session=False)
@@ -1004,7 +1005,7 @@ def delete_logs(db: Session, *, tenant_id: int, origen: Optional[str] = None,
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 def get_dashboard(db: Session, *, tenant_id: int) -> dict:
-    hoy_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    hoy_inicio = ahora_madrid().replace(hour=0, minute=0, second=0, microsecond=0)
     configs = db.query(FtpConfig).filter(FtpConfig.tenant_id == tenant_id).all()
     rules   = db.query(FtpSyncRule).filter(FtpSyncRule.tenant_id == tenant_id).all()
 

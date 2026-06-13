@@ -15,6 +15,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.core.datetime_utils import ahora_madrid
+
 logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
@@ -29,7 +31,7 @@ def _ejecutar_reglas_pendientes() -> None:
 
         db = SessionLocal()
         try:
-            ahora = datetime.utcnow()
+            ahora = ahora_madrid()
             reglas = (
                 db.query(FtpSyncRule)
                 .filter(
@@ -41,7 +43,8 @@ def _ejecutar_reglas_pendientes() -> None:
             for regla in reglas:
                 try:
                     logger.info(f"[Scheduler] Ejecutando regla id={regla.id} — {regla.nombre or regla.directorio}")
-                    descargados, errores, detalle = services.ejecutar_regla(db, rule_id=int(regla.id))  # type: ignore[arg-type]                    logger.info(f"[Scheduler] Regla id={regla.id} completada — {descargados} descargados, {errores} errores")
+                    descargados, errores, detalle = services.ejecutar_regla(db, rule_id=int(regla.id))  # type: ignore[arg-type]
+                    logger.info(f"[Scheduler] Regla id={regla.id} completada — {descargados} descargados, {errores} errores")
                 except Exception as e:
                     logger.error(f"[Scheduler] Error en regla id={regla.id}: {e}")
         finally:
@@ -450,7 +453,7 @@ def _catchup_jobs_perdidos() -> None:
         from app.objeciones.automatizacion.services_job_resolucion import ejecutar_chequeo_fin_resolucion_tenant
 
         madrid = ZoneInfo("Europe/Madrid")
-        ahora_madrid = datetime.now(madrid)
+        ahora_madrid_aware = datetime.now(madrid)
 
         db = SessionLocal()
         try:
@@ -479,11 +482,11 @@ def _catchup_jobs_perdidos() -> None:
                     ejecutar_chequeo_publicaciones_tenant,
                 )
 
-                umbral_pub = datetime.utcnow() - timedelta(hours=20)
+                umbral_pub = ahora_madrid() - timedelta(hours=20)
 
-                if ahora_madrid.hour < 22:
+                if ahora_madrid_aware.hour < 22:
                     logger.info(
-                        f"[Scheduler catchup] buscar_publicaciones_ree: hora actual {ahora_madrid:%H:%M} < "
+                        f"[Scheduler catchup] buscar_publicaciones_ree: hora actual {ahora_madrid_aware:%H:%M} < "
                         f"22:00 Madrid — el cron correrá a su hora."
                     )
                 else:
@@ -538,11 +541,11 @@ def _catchup_jobs_perdidos() -> None:
                 )
                 from app.envios.services_respuestas_ree import buscar_respuestas_envios_tenant
 
-                umbral_env = datetime.utcnow() - timedelta(hours=20)
+                umbral_env = ahora_madrid() - timedelta(hours=20)
 
-                if ahora_madrid.hour < 7 or (ahora_madrid.hour == 7 and ahora_madrid.minute < 30):
+                if ahora_madrid_aware.hour < 7 or (ahora_madrid_aware.hour == 7 and ahora_madrid_aware.minute < 30):
                     logger.info(
-                        f"[Scheduler catchup] buscar_respuestas_envios: hora actual {ahora_madrid:%H:%M} < "
+                        f"[Scheduler catchup] buscar_respuestas_envios: hora actual {ahora_madrid_aware:%H:%M} < "
                         f"07:30 Madrid — el cron correrá a su hora."
                     )
                 else:
@@ -603,13 +606,13 @@ def _catchup_jobs_perdidos() -> None:
             except Exception as e:
                 logger.error(f"[Scheduler catchup] Error general en bloque envíos: {e}")
 
-            umbral = datetime.utcnow() - timedelta(hours=20)
+            umbral = ahora_madrid() - timedelta(hours=20)
 
             for tipo, hora_min, fn, etiqueta in jobs_catchup:
                 # Si aún no toca la hora programada de hoy, saltar este job.
-                if ahora_madrid.hour < hora_min:
+                if ahora_madrid_aware.hour < hora_min:
                     logger.info(
-                        f"[Scheduler catchup] {etiqueta}: hora actual {ahora_madrid:%H:%M} < "
+                        f"[Scheduler catchup] {etiqueta}: hora actual {ahora_madrid_aware:%H:%M} < "
                         f"{hora_min:02d}:00 Madrid — el cron correrá a su hora."
                     )
                     continue
