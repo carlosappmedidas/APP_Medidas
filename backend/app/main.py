@@ -1,6 +1,20 @@
 # app/main.py
 # pyright: reportMissingImports=false
 
+# ── Forzar TZ a nivel proceso ANTES de cualquier import que use datetime ──
+# Esto hace que:
+#   - time.localtime(), time.strftime() sin tz, logging timestamps, etc.
+#     trabajen siempre en Madrid en Linux/macOS (servidor de prod y dev Mac).
+#   - En Windows, time.tzset no existe (no rompe, simplemente no aplica;
+#     en ese caso lo controla el helper ahora_madrid() del datetime_utils).
+import os
+os.environ["TZ"] = "Europe/Madrid"
+try:
+    import time
+    time.tzset()  # type: ignore[attr-defined]  # No existe en Windows
+except (AttributeError, OSError):
+    pass
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 

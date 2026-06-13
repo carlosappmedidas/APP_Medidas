@@ -19,13 +19,9 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from typing import Any, cast
 
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:  # pragma: no cover
-    ZoneInfo = None  # type: ignore[assignment,misc]
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
-
 
 from app.calendario_laboral.services_db import cargar_festivos_set_activos
 from app.calendario_laboral.services_festivos import (
@@ -83,18 +79,19 @@ def _periodo_para_m(mes_envio_anio: int, mes_envio_mes: int, m_clas: str) -> tup
 
 
 def _madrid_now() -> datetime:
-    """Hora actual en Europe/Madrid."""
-    if ZoneInfo is not None:
-        return datetime.now(ZoneInfo("Europe/Madrid"))
-    return datetime.now()
+    """Hora actual en Europe/Madrid (aware).
+
+    Se mantiene aware (con tzinfo) porque se compara contra otros aware
+    en `_estado_plazo`. Para timestamps naive que se guardan en BD usar
+    `ahora_madrid()` del helper canónico.
+    """
+    return datetime.now(ZoneInfo("Europe/Madrid"))
 
 
 def _datetime_madrid(d: date, hora: time = time(8, 0)) -> datetime:
-    """Combina fecha + hora en zona Europe/Madrid."""
+    """Combina fecha + hora en zona Europe/Madrid (aware)."""
     naive = datetime.combine(d, hora)
-    if ZoneInfo is not None:
-        return naive.replace(tzinfo=ZoneInfo("Europe/Madrid"))
-    return naive
+    return naive.replace(tzinfo=ZoneInfo("Europe/Madrid"))
 
 
 # ── Cálculo de plazos REE ────────────────────────────────────────────────

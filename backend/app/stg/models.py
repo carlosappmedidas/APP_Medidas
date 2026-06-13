@@ -13,8 +13,6 @@ Hay 5 tablas:
 Todas llevan tenant_id + empresa_id para multi-tenant/multi-empresa,
 igual que el resto de tablas de la app.
 """
-from datetime import datetime
-
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, Float, ForeignKey,
     Integer, JSON, String, Text, UniqueConstraint,
@@ -22,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
+from app.core.datetime_utils import ahora_madrid
 from app.core.models_base import Base, TimestampMixin
 
 
@@ -363,7 +362,8 @@ class Medida(Base):
     meter_id           = Column(String(50), nullable=True, index=True)
 
     datos      = Column(JSONB, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=ahora_madrid)
+
 
 
 # ---------------------------------------------------------------------------

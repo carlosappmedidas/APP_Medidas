@@ -22,13 +22,11 @@ import json
 from datetime import date, datetime, time
 from typing import Any
 
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:  # pragma: no cover
-    ZoneInfo = None  # type: ignore[assignment,misc]
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.core.datetime_utils import ahora_madrid
 from app.calendario_laboral.services_db import cargar_festivos_set_activos
 from app.calendario_laboral.services_festivos import (
     nth_dia_habil_madrid,
@@ -72,16 +70,19 @@ def _periodo_str(anio: int, mes: int) -> str:
 
 
 def _madrid_now() -> datetime:
-    if ZoneInfo is not None:
-        return datetime.now(ZoneInfo("Europe/Madrid"))
-    return datetime.now()
+    """Hora actual en Europe/Madrid (aware).
+
+    Se mantiene aware porque se compara contra `plazo` (aware) en las
+    detecciones de plazos vencidos. Para guardar en BD se hace
+    `.replace(tzinfo=None)` en los puntos concretos.
+    """
+    return datetime.now(ZoneInfo("Europe/Madrid"))
 
 
 def _datetime_madrid(d: date, hora: time = time(8, 0)) -> datetime:
+    """Combina fecha + hora en zona Europe/Madrid (aware)."""
     naive = datetime.combine(d, hora)
-    if ZoneInfo is not None:
-        return naive.replace(tzinfo=ZoneInfo("Europe/Madrid"))
-    return naive
+    return naive.replace(tzinfo=ZoneInfo("Europe/Madrid"))
 
 
 def _calcular_plazo(
@@ -215,7 +216,7 @@ def _auto_resolver(
     if alerta.estado != ESTADO_ACTIVA:
         return False
     alerta.estado = ESTADO_RESUELTA  # type: ignore[assignment]
-    alerta.resuelta_at = _madrid_now().replace(tzinfo=None)  # type: ignore[assignment]
+    alerta.resuelta_at = ahora_madrid()  # type: ignore[assignment]
     db.flush()
     return True
 
@@ -455,7 +456,7 @@ def crear_alerta_respuesta_ree_bad(
     nuevo_item = {
         "fichero": nombre_fichero,
         "bad_n": bad_n,
-        "detectado_at": _madrid_now().replace(tzinfo=None).isoformat(),
+        "detectado_at": ahora_madrid().isoformat(),
     }
 
     if existing is None:
@@ -563,7 +564,7 @@ def auto_resolver_alertas_respuesta_ree_por_ok(
         if not items_filtrados:
             # Detalle vacío → resolver la alerta
             alerta.estado = ESTADO_RESUELTA  # type: ignore[assignment]
-            alerta.resuelta_at = _madrid_now().replace(tzinfo=None)  # type: ignore[assignment]
+            alerta.resuelta_at = ahora_madrid()  # type: ignore[assignment]
             alerta.num_pendientes = 0  # type: ignore[assignment]
             alerta.detalle_json = json.dumps([], ensure_ascii=False)  # type: ignore[assignment]
             resueltas += 1
@@ -675,7 +676,7 @@ def crear_alerta_respuesta_ree_bad_inventario(
     nuevo_item = {
         "fichero": nombre_fichero,
         "bad_n": bad_n,
-        "detectado_at": _madrid_now().replace(tzinfo=None).isoformat(),
+        "detectado_at": ahora_madrid().isoformat(),
     }
 
     if existing is None:
@@ -774,7 +775,7 @@ def auto_resolver_alertas_respuesta_ree_inventario_por_ok(
             continue
         if not items_filtrados:
             alerta.estado = ESTADO_RESUELTA  # type: ignore[assignment]
-            alerta.resuelta_at = _madrid_now().replace(tzinfo=None)  # type: ignore[assignment]
+            alerta.resuelta_at = ahora_madrid()  # type: ignore[assignment]
             alerta.num_pendientes = 0  # type: ignore[assignment]
             alerta.detalle_json = json.dumps([], ensure_ascii=False)  # type: ignore[assignment]
             resueltas += 1

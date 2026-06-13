@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     FTP_SECRET_KEY: str = ""
     FTP_TZ_OFFSET: int = 2
 
+    # Zona horaria canónica de la app. Toda la lógica de tiempo
+    # (logs, fechas guardadas, búsquedas, JWT) usa esta TZ.
+    # Nunca cambiarla salvo migración consciente.
+    APP_TIMEZONE: str = "Europe/Madrid"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

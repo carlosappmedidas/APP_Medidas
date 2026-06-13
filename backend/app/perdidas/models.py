@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime,
     ForeignKey, Integer, Numeric, String, UniqueConstraint,
 )
 
+from app.core.datetime_utils import ahora_madrid
 from app.core.models_base import Base, TimestampMixin, TenantMixin
 
 
@@ -62,4 +61,5 @@ class PerdidaDiaria(TenantMixin, Base):
     num_contadores   = Column(Integer, nullable=False, default=0)     # contadores leídos
     horas_con_datos  = Column(Integer, nullable=False, default=0)     # horas con lectura (de 24)
     estado           = Column(String(20), nullable=False, default="ok")  # ok / incompleto / sin_datos
-    created_at       = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at       = Column(DateTime, nullable=False, default=ahora_madrid)
+

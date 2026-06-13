@@ -1,7 +1,7 @@
-from datetime import datetime
-
 from sqlalchemy import Column, DateTime, Integer
 from sqlalchemy.orm import declarative_base
+
+from app.core.datetime_utils import ahora_madrid
 
 # Base global de todos los modelos
 Base = declarative_base()
@@ -11,13 +11,13 @@ class TimestampMixin:
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=ahora_madrid,
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=ahora_madrid,
+        onupdate=ahora_madrid,
     )
 
 

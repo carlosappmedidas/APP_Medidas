@@ -23,8 +23,9 @@ parser de inventario:
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import List, Optional
+
+from app.core.datetime_utils import ahora_madrid
 
 from sqlalchemy.orm import Session
 
@@ -110,7 +111,7 @@ def _procesar_respuesta(
     reintentos_actuales = getattr(envio, "reintentos", None) or 0
 
     res.respuestas_revisadas += 1
-    ahora = datetime.utcnow()
+    ahora = ahora_madrid()
 
     if parsed.respuesta_tipo == "ok":
         # Idempotencia: si ya está como ok, no hacemos nada
