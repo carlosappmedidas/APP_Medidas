@@ -15,13 +15,13 @@ Endpoints:
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.datetime_utils import ahora_madrid
 from app.core.db import get_db
 from app.empresas.models import Empresa
 from app.envios.automatizacion.models import (
@@ -220,7 +220,7 @@ def resolver_alerta(
         )
 
     alerta.estado      = ESTADO_RESUELTA  # type: ignore[assignment]
-    alerta.resuelta_at = datetime.utcnow()  # type: ignore[assignment]
+    alerta.resuelta_at = ahora_madrid()  # type: ignore[assignment]
     alerta.resuelta_by = uid  # type: ignore[assignment]
     db.commit()
     db.refresh(alerta)
@@ -256,7 +256,7 @@ def descartar_alerta(
         )
 
     alerta.estado      = ESTADO_DESCARTADA  # type: ignore[assignment]
-    alerta.resuelta_at = datetime.utcnow()  # type: ignore[assignment]
+    alerta.resuelta_at = ahora_madrid()  # type: ignore[assignment]
     alerta.resuelta_by = uid  # type: ignore[assignment]
     db.commit()
     db.refresh(alerta)
