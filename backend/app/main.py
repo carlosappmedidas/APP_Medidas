@@ -1,5 +1,11 @@
 # app/main.py
 # pyright: reportMissingImports=false
+# ruff: noqa: E402
+# flake8: noqa: E402
+# Los imports están deliberadamente después del bloque os.environ["TZ"]=... para
+# forzar la zona horaria a nivel proceso ANTES de cargar cualquier módulo que
+# use datetime. Suprimimos E402 (module-level import not at top of file) porque
+# en este fichero ES intencional.
 
 # ── Forzar TZ a nivel proceso ANTES de cualquier import que use datetime ──
 # Esto hace que:
@@ -53,6 +59,44 @@ from app.topologia.routes import router as topologia_router
 from app.stg.routes import router as stg_router
 from app.stg.gisce.routes import router as gisce_router
 
+# ── Custom JSON response: añade offset Madrid a datetimes naive ──────────────
+# Los datetimes naive que escribe el backend ya están en hora Madrid local. JS
+# en el frontend interpreta strings ISO sin TZ como UTC y aplica +2h al
+# mostrarlas → mostraba 18:07 cuando eran las 16:07. Aquí post-procesamos cada
+# respuesta JSON añadiendo el offset Madrid correcto (CEST=+02:00 o CET=+01:00
+# según DST) a cada string datetime ISO naive.
+import re
+from datetime import datetime
+from fastapi.responses import JSONResponse
+from app.core.datetime_utils import TZ_MADRID
+
+_RE_NAIVE_DT_IN_JSON = re.compile(r'"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)"')
+
+
+def _add_madrid_offset_to_iso(match: "re.Match[str]") -> str:
+    """Toma un string ISO naive entre comillas y añade el offset Madrid (DST-aware)."""
+    iso = match.group(1)
+    try:
+        naive = datetime.fromisoformat(iso)
+        aware = naive.replace(tzinfo=TZ_MADRID)
+        return f'"{aware.isoformat()}"'
+    except (ValueError, TypeError):
+        return match.group(0)
+
+
+class MadridJSONResponse(JSONResponse):
+    """JSONResponse que añade offset Madrid a cualquier datetime naive ISO en el body."""
+
+    def render(self, content) -> bytes:
+        body = super().render(content)
+        try:
+            text = body.decode("utf-8")
+            transformed = _RE_NAIVE_DT_IN_JSON.sub(_add_madrid_offset_to_iso, text)
+            return transformed.encode("utf-8")
+        except (UnicodeDecodeError, ValueError):
+            return body
+
+
 # Importamos los modelos SOLO para que se registren en Base.metadata
 from app.alerts.models import AlertComment, AlertResult, AlertRuleCatalog, EmpresaAlertRuleConfig  # noqa: F401
 from app.calendario_laboral.models import DiaFestivoMadrid  # noqa: F401
@@ -94,7 +138,11 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
+app = FastAPI(
+    title=settings.APP_NAME,
+    lifespan=lifespan,
+    default_response_class=MadridJSONResponse,
+)
 
 # ---------- STATIC: Plantillas (globales) ----------
 BASE_DIR = Path(__file__).resolve().parent
