@@ -8,9 +8,10 @@ construcción (Paquetes 3-5).
 from __future__ import annotations
 
 import random
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Optional
 
+from app.core.datetime_utils import ahora_madrid
 from app.stg.adapters.base import (
     ConcentradorExterno,
     CupsExterno,
@@ -30,7 +31,7 @@ class MockStgAdapter(StgAdapter):
         return PingResult(ok=True, mensaje="Mock OK", tiempo_ms=random.randint(20, 80))
 
     def listar_concentradores(self) -> list[ConcentradorExterno]:
-        ahora = datetime.utcnow()
+        ahora = ahora_madrid()
         fabricantes = ["ZIV", "Landis+Gyr", "Circutor", "Itron", "Sagemcom"]
         protocolos = ["PRIME", "Meters&More", "G3-PLC"]
         salida: list[ConcentradorExterno] = []
@@ -55,7 +56,7 @@ class MockStgAdapter(StgAdapter):
         return salida
 
     def listar_cups(self) -> list[CupsExterno]:
-        ahora = datetime.utcnow()
+        ahora = ahora_madrid()
         fabricantes = ["ZIV", "Landis+Gyr", "Circutor", "Itron", "Sagemcom"]
         tarifas = ["2.0TD", "3.0TD", "6.1TD"]
         salida: list[CupsExterno] = []

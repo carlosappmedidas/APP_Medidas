@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.core.crypto import cifrar_password, descifrar_password
+from app.core.datetime_utils import ahora_madrid
 from app.stg.models import StgGisceConfig
 
 from .client import (
@@ -338,7 +339,6 @@ def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
 
     Transaccion unica: si algo falla, rollback total.
     """
-    from datetime import datetime
     from app.stg.models import Contador, Cups, StgConcentrador
     from .schemas import GiscePreviewItem
 
@@ -670,7 +670,7 @@ def execute_import(db: Session, empresa_id: int) -> "GisceExecuteResult":
                 ))
 
         # 8. Actualizar metadata de la config
-        ahora = datetime.utcnow()
+        ahora = ahora_madrid()
         cfg.ultimo_import = ahora
         cfg.estado = "ok"
         cfg.ultimo_error = None

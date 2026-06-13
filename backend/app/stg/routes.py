@@ -20,6 +20,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from app.core.auth import get_current_user
+from app.core.datetime_utils import ahora_madrid
 from app.core.db import get_db
 from app.stg import schemas, services
 from app.stg.models import (
@@ -317,7 +318,7 @@ def export_concentradores(
     wb.save(buf)
     buf.seek(0)
 
-    fecha_str = datetime.now().strftime("%Y-%m-%d")
+    fecha_str = ahora_madrid().strftime("%Y-%m-%d")
     filename = f"concentradores_{nombre_empresa}_{fecha_str}.xlsx"
     return StreamingResponse(
         buf,
@@ -652,7 +653,7 @@ def export_contadores_detectados(
     wb.save(buf)
     buf.seek(0)
 
-    fecha_str = datetime.now().strftime("%Y-%m-%d")
+    fecha_str = ahora_madrid().strftime("%Y-%m-%d")
     filename = f"equipos_medida_{nombre_empresa}_{fecha_str}.xlsx"
     return StreamingResponse(
         buf,

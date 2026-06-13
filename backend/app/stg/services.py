@@ -25,6 +25,7 @@ from app.core.permissions import (
     get_allowed_empresa_ids,
 )
 from app.core.crypto import cifrar_password, descifrar_password
+from app.core.datetime_utils import ahora_madrid
 from app.stg.adapters.base import StgAdapter
 from app.stg.adapters.mock_adapter import MockStgAdapter
 from app.stg.adapters.gisce_adapter import GisceAdapter
@@ -475,7 +476,7 @@ def probar_conexion(
         .first()
     )
     if conf:
-        conf.ultimo_ping = datetime.utcnow()
+        conf.ultimo_ping = ahora_madrid()
         conf.estado = "ok" if result.ok else "error"
         conf.ultimo_error = None if result.ok else result.mensaje
         db.commit()
@@ -1303,7 +1304,7 @@ def parsear_fichero(
             raise RuntimeError(f"dispatcher inválido para tipo '{tipo}'")
 
         fichero.parsed = True
-        fichero.parsed_at = datetime.utcnow()
+        fichero.parsed_at = ahora_madrid()
         fichero.parse_error = None
         db.commit()
 
@@ -1979,7 +1980,7 @@ def execute_excel_import(
         "no_encontradas": no_encontradas,
         "errores_count": len(errores),
     }
-    config.last_sync = datetime.utcnow()
+    config.last_sync = ahora_madrid()
     config.last_sync_status = "ok" if not errores else "ok_con_warnings"
     config.last_sync_resumen = resumen
 
