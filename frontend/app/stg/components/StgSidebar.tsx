@@ -15,6 +15,7 @@ const ITEMS: MenuItem[] = [
   { href: "/stg/dashboard",     label: "Dashboard",        icon: "📊" },
   { href: "/stg/cups",          label: "Equipos de medida", icon: "🔌" },
   { href: "/stg/concentradores", label: "Concentradores",   icon: "📡" },
+  { href: "/stg/wsprime",       label: "WS-PRIME",         icon: "🔗" },
   { href: "/stg/solicitudes",   label: "Solicitudes",      icon: "📥" },
   { href: "/stg/configuracion", label: "Configuración",    icon: "⚙️" },
 ];
