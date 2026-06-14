@@ -4,11 +4,11 @@
 export type Fabricante = "mock" | "circutor" | "ziv" | "sagemcom" | "landis";
 
 export const FABRICANTES_OPTIONS: { value: Fabricante; label: string; disponible: boolean }[] = [
-  { value: "mock",     label: "Mock (pruebas)",     disponible: true  },
-  { value: "circutor", label: "Circutor",           disponible: false }, // 11-5 lunes 16-jun
-  { value: "ziv",      label: "ZIV",                disponible: false }, // iteración futura
-  { value: "sagemcom", label: "Sagemcom",           disponible: false },
-  { value: "landis",   label: "Landis+Gyr",         disponible: false },
+  { value: "mock",     label: "Mock (pruebas)",     disponible: true },
+  { value: "circutor", label: "Circutor",           disponible: true },
+  { value: "ziv",      label: "ZIV",                disponible: true },
+  { value: "sagemcom", label: "Sagemcom",           disponible: true },
+  { value: "landis",   label: "Landis+Gyr",         disponible: true },
 ];
 
 // ---- Concentrador (extracto del listado /stg/concentradores) ----

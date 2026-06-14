@@ -1,0 +1,1 @@
+"""Adapters WS-PRIME por fabricante."""

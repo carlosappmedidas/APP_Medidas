@@ -64,23 +64,43 @@ def get_adapter(
         )
 
     if fab == "circutor":
-        raise NotImplementedError(
-            "CircutorAdapter pendiente (sub-paq 11-5, lunes 2026-06-16)"
+        from app.stg.wsprime.adapters.circutor import CircutorAdapter
+        return CircutorAdapter(
+            url=url,
+            usuario=usuario,
+            password=password,
+            timeout=timeout,
+            verify_ssl=verify_ssl,
         )
 
     if fab == "ziv":
-        raise NotImplementedError(
-            "ZivAdapter pendiente (Paq 11 iteracion futura)"
+        from app.stg.wsprime.adapters.ziv import ZivAdapter
+        return ZivAdapter(
+            url=url,
+            usuario=usuario,
+            password=password,
+            timeout=timeout,
+            verify_ssl=verify_ssl,
         )
 
     if fab == "sagemcom":
-        raise NotImplementedError(
-            "SagemcomAdapter pendiente (Paq 11 iteracion futura)"
+        from app.stg.wsprime.adapters.sagemcom import SagemcomAdapter
+        return SagemcomAdapter(
+            url=url,
+            usuario=usuario,
+            password=password,
+            timeout=timeout,
+            verify_ssl=verify_ssl,
         )
 
     if fab == "landis":
-        raise NotImplementedError(
-            "LandisAdapter pendiente (Paq 11 iteracion futura)"
+        from app.stg.wsprime.adapters.landis import LandisAdapter
+        return LandisAdapter(
+            url=url,
+            usuario=usuario,
+            password=password,
+            timeout=timeout,
+            verify_ssl=verify_ssl,
         )
 
     # Defensivo: si llegamos aqui, hay desalineacion entre FABRICANTES_VALIDOS
