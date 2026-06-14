@@ -58,6 +58,7 @@ from app.perdidas.routes import router as perdidas_router
 from app.topologia.routes import router as topologia_router
 from app.stg.routes import router as stg_router
 from app.stg.gisce.routes import router as gisce_router
+from app.stg.wsprime.routes import router as wsprime_router
 
 # ── Custom JSON response: añade offset Madrid a datetimes naive ──────────────
 # Los datetimes naive que escribe el backend ya están en hora Madrid local. JS
@@ -207,3 +208,4 @@ app.include_router(measures_descarga_router)
 app.include_router(measures_descarga_automatizacion_router)
 app.include_router(stg_router)
 app.include_router(gisce_router)
+app.include_router(wsprime_router)
