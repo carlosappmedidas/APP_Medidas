@@ -49,6 +49,9 @@ from app.stg.models import (  # noqa: F401
 # Paquete 11 — WS-PRIME (modelo modular en submódulo wsprime/)
 from app.stg.wsprime.models import StgWsPrimeConfig  # noqa: F401
 
+# Módulo ERP
+from app.erp.models import ErpTitular, ErpSuministro  # noqa: F401
+
 config = context.config
 
 # Settings de la app

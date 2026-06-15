@@ -32,17 +32,18 @@ export default function StgEmpresaSelector() {
     fetch(`${API_BASE_URL}/empresas/?solo_activas=false`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
-      .then((data: Empresa[]) => {
-        setEmpresas(data);
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: unknown) => {
+        const lista: Empresa[] = Array.isArray(data) ? (data as Empresa[]) : [];
+        setEmpresas(lista);
         // Recupera selección previa, si la hay
         const saved = localStorage.getItem("stg_empresa_id");
         const savedId = saved ? Number(saved) : null;
-        if (savedId && data.some((e) => e.id === savedId)) {
+        if (savedId && lista.some((e) => e.id === savedId)) {
           setSelectedId(savedId);
-        } else if (data.length > 0) {
-          setSelectedId(data[0].id);
-          localStorage.setItem("stg_empresa_id", String(data[0].id));
+        } else if (lista.length > 0) {
+          setSelectedId(lista[0].id);
+          localStorage.setItem("stg_empresa_id", String(lista[0].id));
         }
       })
       .catch(() => {

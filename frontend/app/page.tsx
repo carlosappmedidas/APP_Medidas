@@ -60,7 +60,7 @@ export default function AppSelectorPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "1fr 1fr 1fr",
             gap: 20,
           }}
         >
@@ -111,6 +111,31 @@ export default function AppSelectorPage() {
             <div style={{ fontSize: 12, color: "rgba(241,239,232,0.55)", lineHeight: 1.5 }}>
               Sistema de telegestión: equipos de medida, concentradores,
               solicitudes S0X y configuración GISCE.
+            </div>
+          </Link>
+
+          {/* Card APP ERP */}
+          <Link
+            href="/erp"
+            style={{
+              padding: "32px 24px",
+              background: "var(--ds-bg-sidebar, #16181D)",
+              border: "0.5px solid rgba(255,255,255,0.08)",
+              borderRadius: 12,
+              textDecoration: "none",
+              color: "var(--ds-text-primary, #F1EFE8)",
+              transition: "background 0.15s",
+              cursor: "pointer",
+              display: "block",
+            }}
+          >
+            <div style={{ fontSize: 40, marginBottom: 16 }}>🗂️</div>
+            <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 6 }}>
+              APP ERP
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(241,239,232,0.55)", lineHeight: 1.5 }}>
+              Maestro de suministros y contratos: titulares, CUPS, pólizas,
+              equipos de medida y facturación de servicios.
             </div>
           </Link>
         </div>

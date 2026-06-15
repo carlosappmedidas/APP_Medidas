@@ -59,6 +59,7 @@ from app.topologia.routes import router as topologia_router
 from app.stg.routes import router as stg_router
 from app.stg.gisce.routes import router as gisce_router
 from app.stg.wsprime.routes import router as wsprime_router
+from app.erp.routes import router as erp_router
 
 # ── Custom JSON response: añade offset Madrid a datetimes naive ──────────────
 # Los datetimes naive que escribe el backend ya están en hora Madrid local. JS
@@ -122,6 +123,9 @@ from app.stg.models import (  # noqa: F401
 )
 # Paquete 11 — WS-PRIME (modelo modular en submódulo wsprime/)
 from app.stg.wsprime.models import StgWsPrimeConfig  # noqa: F401
+
+# Módulo ERP
+from app.erp.models import ErpTitular, ErpSuministro  # noqa: F401
 
 # Scheduler FTP
 from app.comunicaciones.scheduler import start_scheduler, stop_scheduler
@@ -209,3 +213,4 @@ app.include_router(measures_descarga_automatizacion_router)
 app.include_router(stg_router)
 app.include_router(gisce_router)
 app.include_router(wsprime_router)
+app.include_router(erp_router)
