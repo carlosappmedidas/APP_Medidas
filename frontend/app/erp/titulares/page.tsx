@@ -8,12 +8,22 @@ import { useErpEmpresaId } from "../components/ErpEmpresaSelector";
 
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
+// Tipo de documento (TABLA_6 ATR)
+const TIPO_DOC: [string, string][] = [
+  ["", "—"], ["NI", "NIF"], ["NE", "NIE"], ["PS", "Pasaporte"], ["NV", "NIVA"], ["OT", "Otro"],
+];
+
 interface Titular {
   id?: number;
   empresa_id?: number;
   tipo_persona: string;
-  nif_cif: string | null;
-  nombre: string;
+  tipo_identificador: string | null;
+  identificador: string | null;
+  nombre_de_pila: string | null;
+  primer_apellido: string | null;
+  segundo_apellido: string | null;
+  razon_social: string | null;
+  nombre: string | null;            // display autocompuesto por el backend
   dir_tipo_via: string | null;
   dir_via: string | null;
   dir_numero: string | null;
@@ -22,7 +32,6 @@ interface Titular {
   dir_municipio: string | null;
   dir_provincia: string | null;
   dir_pais: string | null;
-  ref_catastral: string | null;
   telefono: string | null;
   movil: string | null;
   email: string | null;
@@ -35,10 +44,12 @@ interface Titular {
 
 const EMPTY: Titular = {
   tipo_persona: "juridica",
-  nif_cif: "", nombre: "",
+  tipo_identificador: "", identificador: "",
+  nombre_de_pila: "", primer_apellido: "", segundo_apellido: "", razon_social: "",
+  nombre: "",
   dir_tipo_via: "", dir_via: "", dir_numero: "", dir_resto: "",
   dir_cp: "", dir_municipio: "", dir_provincia: "", dir_pais: "España",
-  ref_catastral: "", telefono: "", movil: "", email: "",
+  telefono: "", movil: "", email: "",
   notas: "", codigo_interno: "", activo: true,
 };
 
@@ -130,8 +141,19 @@ export default function ErpTitularesPage() {
   const abrirEditar = (t: Titular) => { setForm({ ...EMPTY, ...t }); setPanelOpen(true); };
   const cerrar = () => { if (!saving) setPanelOpen(false); };
 
+  // Nombre de display (vista previa) y validación según normativa
+  const dispName =
+    form.tipo_persona === "fisica"
+      ? [form.nombre_de_pila, form.primer_apellido, form.segundo_apellido]
+          .filter((x) => x && x.trim()).join(" ")
+      : (form.razon_social || "").trim();
+  const nombreOk =
+    form.tipo_persona === "fisica"
+      ? !!(form.nombre_de_pila?.trim() || form.primer_apellido?.trim())
+      : !!form.razon_social?.trim();
+
   const guardar = async () => {
-    if (empresaId == null || !form.nombre.trim()) return;
+    if (empresaId == null || !nombreOk) return;
     const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     if (!token) return;
     setSaving(true);
@@ -141,13 +163,18 @@ export default function ErpTitularesPage() {
         ? `${API_BASE_URL}/erp/titulares?empresa_id=${empresaId}`
         : `${API_BASE_URL}/erp/titulares/${form.id}`;
       const payload = {
-        tipo_persona: form.tipo_persona, nif_cif: form.nif_cif, nombre: form.nombre,
+        tipo_persona: form.tipo_persona,
+        tipo_identificador: form.tipo_identificador || null,
+        identificador: form.identificador,
+        nombre_de_pila: form.nombre_de_pila,
+        primer_apellido: form.primer_apellido,
+        segundo_apellido: form.segundo_apellido,
+        razon_social: form.razon_social,
         dir_tipo_via: form.dir_tipo_via, dir_via: form.dir_via, dir_numero: form.dir_numero,
         dir_resto: form.dir_resto, dir_cp: form.dir_cp, dir_municipio: form.dir_municipio,
         dir_provincia: form.dir_provincia, dir_pais: form.dir_pais,
-        ref_catastral: form.ref_catastral, telefono: form.telefono, movil: form.movil,
-        email: form.email, notas: form.notas, codigo_interno: form.codigo_interno,
-        activo: form.activo,
+        telefono: form.telefono, movil: form.movil, email: form.email,
+        notas: form.notas, codigo_interno: form.codigo_interno, activo: form.activo,
       };
       const r = await fetch(url, {
         method: esNuevo ? "POST" : "PUT",
@@ -198,7 +225,7 @@ export default function ErpTitularesPage() {
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
           <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, opacity: 0.5 }}>🔍</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, NIF/CIF o código…"
+            placeholder="Buscar por nombre, documento o código…"
             style={{ ...inputStyle, paddingLeft: 30 }} />
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(241,239,232,0.7)", whiteSpace: "nowrap" }}>
@@ -226,7 +253,7 @@ export default function ErpTitularesPage() {
             <thead>
               <tr style={{ background: "rgba(255,255,255,0.03)", color: "rgba(241,239,232,0.55)" }}>
                 <th style={thStyle}>Nombre</th>
-                <th style={thStyle}>NIF/CIF</th>
+                <th style={thStyle}>Documento</th>
                 <th style={thStyle}>Municipio</th>
                 <th style={{ ...thStyle, width: 90 }}>Estado</th>
               </tr>
@@ -239,14 +266,14 @@ export default function ErpTitularesPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 15 }}>{t.tipo_persona === "fisica" ? "👤" : "🏢"}</span>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.nombre}</div>
+                        <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.nombre || "—"}</div>
                         {t.codigo_interno ? (
                           <div style={{ fontSize: 11, color: "rgba(241,239,232,0.4)" }}>{t.codigo_interno}</div>
                         ) : null}
                       </div>
                     </div>
                   </td>
-                  <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 12 }}>{t.nif_cif || "—"}</td>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 12 }}>{t.identificador || "—"}</td>
                   <td style={tdStyle}>{t.dir_municipio || "—"}</td>
                   <td style={tdStyle}>
                     {t.activo
@@ -268,7 +295,7 @@ export default function ErpTitularesPage() {
               <span style={{ fontSize: 20 }}>{form.tipo_persona === "fisica" ? "👤" : "🏢"}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {form.id ? (form.nombre || "Titular") : "Nuevo titular"}
+                  {form.id ? (dispName || form.nombre || "Titular") : (dispName || "Nuevo titular")}
                 </div>
                 <div style={{ fontSize: 12, color: "rgba(241,239,232,0.5)" }}>
                   {form.id ? "Editar titular" : "Alta de titular"}
@@ -289,8 +316,26 @@ export default function ErpTitularesPage() {
                     <option value="fisica" style={{ background: "#16181D" }}>Física</option>
                   </select>
                 </div>
-                <TextField label="NIF/CIF" value={form.nif_cif ?? ""} onChange={(v) => setForm({ ...form, nif_cif: v })} />
-                <TextField label="Nombre" span value={form.nombre} onChange={(v) => setForm({ ...form, nombre: v })} />
+                <div>
+                  <label style={labelStyle}>Tipo de documento</label>
+                  <select style={inputStyle} value={form.tipo_identificador ?? ""}
+                    onChange={(e) => setForm({ ...form, tipo_identificador: e.target.value })}>
+                    {TIPO_DOC.map(([v, l]) => (
+                      <option key={v} value={v} style={{ background: "#16181D" }}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+                <TextField label="Identificador (nº)" span value={form.identificador ?? ""} onChange={(v) => setForm({ ...form, identificador: v })} />
+
+                {form.tipo_persona === "fisica" ? (
+                  <>
+                    <TextField label="Nombre" value={form.nombre_de_pila ?? ""} onChange={(v) => setForm({ ...form, nombre_de_pila: v })} />
+                    <TextField label="Primer apellido" value={form.primer_apellido ?? ""} onChange={(v) => setForm({ ...form, primer_apellido: v })} />
+                    <TextField label="Segundo apellido" span value={form.segundo_apellido ?? ""} onChange={(v) => setForm({ ...form, segundo_apellido: v })} />
+                  </>
+                ) : (
+                  <TextField label="Razón social" span value={form.razon_social ?? ""} onChange={(v) => setForm({ ...form, razon_social: v })} />
+                )}
 
                 <div style={sectionLabelStyle}>Dirección fiscal</div>
                 <TextField label="Tipo vía" value={form.dir_tipo_via ?? ""} onChange={(v) => setForm({ ...form, dir_tipo_via: v })} />
@@ -309,7 +354,6 @@ export default function ErpTitularesPage() {
 
                 <div style={sectionLabelStyle}>Otros</div>
                 <TextField label="Código interno" value={form.codigo_interno ?? ""} onChange={(v) => setForm({ ...form, codigo_interno: v })} />
-                <TextField label="Ref. catastral" value={form.ref_catastral ?? ""} onChange={(v) => setForm({ ...form, ref_catastral: v })} />
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={labelStyle}>Notas</label>
                   <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
@@ -324,8 +368,8 @@ export default function ErpTitularesPage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 20px", borderTop: "0.5px solid rgba(255,255,255,0.08)" }}>
-              <button onClick={guardar} disabled={saving || !form.nombre.trim()}
-                style={{ background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: saving || !form.nombre.trim() ? "default" : "pointer", opacity: saving || !form.nombre.trim() ? 0.5 : 1 }}>
+              <button onClick={guardar} disabled={saving || !nombreOk}
+                style={{ background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: saving || !nombreOk ? "default" : "pointer", opacity: saving || !nombreOk ? 0.5 : 1 }}>
                 {saving ? "Guardando…" : "Guardar"}
               </button>
               {form.id ? (

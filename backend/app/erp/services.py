@@ -3,10 +3,14 @@
 """
 Servicios de negocio del módulo ERP.
 
-Paq E-2: CRUD del titular (erp_titular).
+Paq E-2: CRUD del titular (erp_titular) y suministro (erp_suministro).
 
 Patrón multi-tenant idéntico al resto de la app: cada operación valida el
 acceso con assert_empresa_access(db, user, empresa_id) antes de tocar datos.
+
+El campo `nombre` del titular es display autocompuesto (normativa ATR):
+  - jurídica -> razon_social
+  - física   -> nombre_de_pila + primer_apellido + segundo_apellido
 """
 from __future__ import annotations
 
@@ -29,6 +33,29 @@ from app.tenants.models import User
 def _ahora_madrid_naive() -> datetime:
     """datetime Madrid sin tzinfo (consistente con el resto del codebase)."""
     return datetime.now(ZoneInfo("Europe/Madrid")).replace(tzinfo=None)
+
+
+def _componer_nombre(
+    tipo_persona: Optional[str],
+    razon_social: Optional[str],
+    nombre_de_pila: Optional[str],
+    primer_apellido: Optional[str],
+    segundo_apellido: Optional[str],
+) -> Optional[str]:
+    """
+    Compone el `nombre` de display según normativa ATR:
+      - persona física  -> nombre_de_pila + primer_apellido + segundo_apellido
+      - persona jurídica -> razon_social
+    Devuelve None si no hay datos suficientes.
+    """
+    if (tipo_persona or "").strip().lower() == "fisica":
+        partes = [
+            p.strip()
+            for p in (nombre_de_pila, primer_apellido, segundo_apellido)
+            if p and str(p).strip()
+        ]
+        return " ".join(partes) or None
+    return (razon_social or "").strip() or None
 
 
 def _cargar_titular_con_acceso(
@@ -75,7 +102,7 @@ def listar_titulares(
         q = q.filter(
             or_(
                 ErpTitular.nombre.ilike(patron),
-                ErpTitular.nif_cif.ilike(patron),
+                ErpTitular.identificador.ilike(patron),
                 ErpTitular.codigo_interno.ilike(patron),
             )
         )
@@ -91,11 +118,20 @@ def obtener_titular(db: Session, user: User, titular_id: int) -> ErpTitular:
 def crear_titular(
     db: Session, user: User, empresa_id: int, payload: ErpTitularCreate
 ) -> ErpTitular:
-    """Crea un titular en la empresa indicada."""
+    """Crea un titular en la empresa indicada. Autocompone `nombre`."""
     assert_empresa_access(db, user, empresa_id)
 
     now = _ahora_madrid_naive()
     data = payload.model_dump()
+
+    nombre_calc = _componer_nombre(
+        data.get("tipo_persona"),
+        data.get("razon_social"),
+        data.get("nombre_de_pila"),
+        data.get("primer_apellido"),
+        data.get("segundo_apellido"),
+    )
+    data["nombre"] = nombre_calc or data.get("nombre") or data.get("razon_social") or ""
 
     titular = ErpTitular(
         tenant_id=user.tenant_id,
@@ -113,12 +149,24 @@ def crear_titular(
 def actualizar_titular(
     db: Session, user: User, titular_id: int, payload: ErpTitularUpdate
 ) -> ErpTitular:
-    """Actualiza solo los campos enviados (los no enviados se dejan igual)."""
+    """Actualiza solo los campos enviados. Recompone `nombre` si no se envía explícito."""
     titular = _cargar_titular_con_acceso(db, user, titular_id)
 
     data = payload.model_dump(exclude_unset=True)
     for campo, valor in data.items():
         setattr(titular, campo, valor)
+
+    # Recomponer el nombre de display salvo que lo hayan enviado explícitamente
+    if "nombre" not in data:
+        nombre_calc = _componer_nombre(
+            titular.tipo_persona,
+            titular.razon_social,
+            titular.nombre_de_pila,
+            titular.primer_apellido,
+            titular.segundo_apellido,
+        )
+        if nombre_calc:
+            titular.nombre = nombre_calc
 
     titular.updated_at = _ahora_madrid_naive()
     db.commit()
@@ -138,7 +186,6 @@ def desactivar_titular(db: Session, user: User, titular_id: int) -> ErpTitular:
 # ===========================================================================
 # Suministro (CUPS)  — Paq E-2 (vertical suministro)
 # ===========================================================================
-from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from app.erp.models import ErpSuministro

@@ -45,6 +45,10 @@ interface Form {
   ref_catastral: string;
   latitud: string;
   longitud: string;
+  utm_x: string;
+  utm_y: string;
+  utm_huso: string;
+  utm_banda: string;
   zona: string;
   orden: string;
   centro_transformador: string;
@@ -55,6 +59,8 @@ interface Form {
   potencia_adscrita_kw: string;
   potencia_adscrita_bloqueada: boolean;
   fecha_vigencia_adscrita: string;
+  potencia_convenio_kw: string;
+  criterio_regulatorio: string;
   fase_1: boolean;
   fase_2: boolean;
   fase_3: boolean;
@@ -71,9 +77,11 @@ const EMPTY: Form = {
   dir_cp: "", dir_municipio: "", dir_poblacion: "", dir_provincia: "",
   municipio_codigo_ine: "", poligono: "", parcela: "", ref_catastral: "",
   latitud: "", longitud: "",
+  utm_x: "", utm_y: "", utm_huso: "", utm_banda: "",
   zona: "", orden: "", centro_transformador: "", linea: "",
   tension_normalizada: "", tension_v: "", pot_max_admisible_cie_kw: "",
   potencia_adscrita_kw: "", potencia_adscrita_bloqueada: false, fecha_vigencia_adscrita: "",
+  potencia_convenio_kw: "", criterio_regulatorio: "",
   fase_1: false, fase_2: false, fase_3: false, neutro: false,
   fecha_alta: "", fecha_baja: "",
   notas: "", activo: true,
@@ -249,6 +257,10 @@ export default function SuministrosPage() {
         ref_catastral: s.ref_catastral ?? "",
         latitud: s.latitud != null ? String(s.latitud) : "",
         longitud: s.longitud != null ? String(s.longitud) : "",
+        utm_x: s.utm_x != null ? String(s.utm_x) : "",
+        utm_y: s.utm_y != null ? String(s.utm_y) : "",
+        utm_huso: s.utm_huso != null ? String(s.utm_huso) : "",
+        utm_banda: s.utm_banda ?? "",
         zona: s.zona ?? "",
         orden: s.orden ?? "",
         centro_transformador: s.centro_transformador ?? "",
@@ -259,6 +271,8 @@ export default function SuministrosPage() {
         potencia_adscrita_kw: s.potencia_adscrita_kw != null ? String(s.potencia_adscrita_kw) : "",
         potencia_adscrita_bloqueada: !!s.potencia_adscrita_bloqueada,
         fecha_vigencia_adscrita: s.fecha_vigencia_adscrita ?? "",
+        potencia_convenio_kw: s.potencia_convenio_kw != null ? String(s.potencia_convenio_kw) : "",
+        criterio_regulatorio: s.criterio_regulatorio ?? "",
         fase_1: !!s.fase_1, fase_2: !!s.fase_2, fase_3: !!s.fase_3, neutro: !!s.neutro,
         fecha_alta: s.fecha_alta ?? "",
         fecha_baja: s.fecha_baja ?? "",
@@ -301,6 +315,10 @@ export default function SuministrosPage() {
       ref_catastral: s(form.ref_catastral),
       latitud: n(form.latitud),
       longitud: n(form.longitud),
+      utm_x: n(form.utm_x),
+      utm_y: n(form.utm_y),
+      utm_huso: n(form.utm_huso),
+      utm_banda: s(form.utm_banda),
       zona: s(form.zona),
       orden: s(form.orden),
       centro_transformador: s(form.centro_transformador),
@@ -311,6 +329,8 @@ export default function SuministrosPage() {
       potencia_adscrita_kw: n(form.potencia_adscrita_kw),
       potencia_adscrita_bloqueada: form.potencia_adscrita_bloqueada,
       fecha_vigencia_adscrita: s(form.fecha_vigencia_adscrita),
+      potencia_convenio_kw: n(form.potencia_convenio_kw),
+      criterio_regulatorio: s(form.criterio_regulatorio),
       fase_1: form.fase_1, fase_2: form.fase_2, fase_3: form.fase_3, neutro: form.neutro,
       fecha_alta: s(form.fecha_alta),
       fecha_baja: s(form.fecha_baja),
@@ -518,6 +538,14 @@ export default function SuministrosPage() {
               <TextField label="Ref. catastral" value={form.ref_catastral} onChange={(v) => set("ref_catastral", v)} />
               <TextField label="Polígono" value={form.poligono} onChange={(v) => set("poligono", v)} />
               <TextField label="Parcela" value={form.parcela} onChange={(v) => set("parcela", v)} />
+            </div>
+
+            <div style={sectionLabelStyle}>Geolocalización</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <TextField label="UTM X (ETRS89)" value={form.utm_x} onChange={(v) => set("utm_x", v)} type="number" />
+              <TextField label="UTM Y (ETRS89)" value={form.utm_y} onChange={(v) => set("utm_y", v)} type="number" />
+              <TextField label="UTM huso" value={form.utm_huso} onChange={(v) => set("utm_huso", v)} type="number" />
+              <TextField label="UTM banda" value={form.utm_banda} onChange={(v) => set("utm_banda", v)} />
               <TextField label="Latitud" value={form.latitud} onChange={(v) => set("latitud", v)} type="number" />
               <TextField label="Longitud" value={form.longitud} onChange={(v) => set("longitud", v)} type="number" />
             </div>
@@ -536,6 +564,8 @@ export default function SuministrosPage() {
               <TextField label="Tensión (V)" value={form.tension_v} onChange={(v) => set("tension_v", v)} type="number" />
               <TextField label="Pot. máx. admisible CIE (kW)" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
               <TextField label="Potencia adscrita (kW)" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
+              <TextField label="Potencia de convenio (kW)" value={form.potencia_convenio_kw} onChange={(v) => set("potencia_convenio_kw", v)} type="number" />
+              <TextField label="Criterio regulatorio" value={form.criterio_regulatorio} onChange={(v) => set("criterio_regulatorio", v)} />
               <TextField label="Fecha vigencia adscrita" value={form.fecha_vigencia_adscrita} onChange={(v) => set("fecha_vigencia_adscrita", v)} type="date" />
             </div>
             <div style={{ marginTop: 12 }}>
