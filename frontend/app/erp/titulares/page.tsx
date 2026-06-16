@@ -150,7 +150,7 @@ export default function ErpTitularesPage() {
       : (form.razon_social || "").trim();
   const nombreOk =
     form.tipo_persona === "fisica"
-      ? !!(form.nombre_de_pila?.trim() || form.primer_apellido?.trim())
+      ? !!(form.nombre_de_pila?.trim() && form.primer_apellido?.trim())
       : !!form.razon_social?.trim();
 
   const guardar = async () => {
@@ -333,12 +333,12 @@ export default function ErpTitularesPage() {
 
                 {form.tipo_persona === "fisica" ? (
                   <>
-                    <TextField label="Nombre" value={form.nombre_de_pila ?? ""} onChange={(v) => setForm({ ...form, nombre_de_pila: v })} />
-                    <TextField label="Primer apellido" value={form.primer_apellido ?? ""} onChange={(v) => setForm({ ...form, primer_apellido: v })} />
+                    <TextField label="Nombre *" value={form.nombre_de_pila ?? ""} onChange={(v) => setForm({ ...form, nombre_de_pila: v })} />
+                    <TextField label="Primer apellido *" value={form.primer_apellido ?? ""} onChange={(v) => setForm({ ...form, primer_apellido: v })} />
                     <TextField label="Segundo apellido" span value={form.segundo_apellido ?? ""} onChange={(v) => setForm({ ...form, segundo_apellido: v })} />
                   </>
                 ) : (
-                  <TextField label="Razón social" span value={form.razon_social ?? ""} onChange={(v) => setForm({ ...form, razon_social: v })} />
+                  <TextField label="Razón social *" span value={form.razon_social ?? ""} onChange={(v) => setForm({ ...form, razon_social: v })} />
                 )}
 
                 <div style={sectionLabelStyle}>Dirección fiscal</div>
