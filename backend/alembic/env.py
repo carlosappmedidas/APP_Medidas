@@ -50,7 +50,11 @@ from app.stg.models import (  # noqa: F401
 from app.stg.wsprime.models import StgWsPrimeConfig  # noqa: F401
 
 # Módulo ERP
-from app.erp.models import ErpTitular, ErpSuministro  # noqa: F401
+from app.erp.models import (  # noqa: F401
+    ErpTitular, ErpSuministro,
+    ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
+    ErpContrato, ErpContratoPotencia,
+)
 
 config = context.config
 

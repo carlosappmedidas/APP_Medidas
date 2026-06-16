@@ -2,8 +2,8 @@
 """
 Endpoints REST del módulo ERP.
 
-Todos los endpoints requieren autenticación (Bearer JWT) y respetan los
-permisos multi-empresa del usuario.
+Titulares/suministros/contratos: requieren auth y respetan permisos
+multi-empresa. Catálogos (tarifas, comercializadoras): globales.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
-from app.erp import schemas, services
+from app.erp import schemas, services, services_contrato
 from app.tenants.models import User
 
 router = APIRouter(prefix="/erp", tags=["erp"])
@@ -40,24 +40,16 @@ def listar_titulares(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Lista los titulares de una empresa (con filtro de texto y de activos)."""
-    return services.listar_titulares(
-        db, user, empresa_id, search=search, solo_activos=solo_activos
-    )
+    return services.listar_titulares(db, user, empresa_id, search=search, solo_activos=solo_activos)
 
 
-@router.post(
-    "/titulares",
-    response_model=schemas.ErpTitularOut,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/titulares", response_model=schemas.ErpTitularOut, status_code=status.HTTP_201_CREATED)
 def crear_titular(
     payload: schemas.ErpTitularCreate,
     empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Crea un titular en la empresa indicada."""
     return services.crear_titular(db, user, empresa_id, payload)
 
 
@@ -67,7 +59,6 @@ def obtener_titular(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Devuelve un titular por id."""
     try:
         return services.obtener_titular(db, user, titular_id)
     except ValueError as e:
@@ -81,9 +72,10 @@ def actualizar_titular(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Actualiza los campos enviados de un titular."""
     try:
         return services.actualizar_titular(db, user, titular_id, payload)
+    except services.ValidacionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
@@ -94,24 +86,16 @@ def desactivar_titular(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Baja lógica de un titular (activo=False). No borra el registro."""
     try:
         return services.desactivar_titular(db, user, titular_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
-# ===========================================================================
-# Suministros (CUPS) — Paq E-2 (vertical suministro)
-# ===========================================================================
-from app.erp import services
-from app.erp.schemas import (
-    ErpSuministroCreate,
-    ErpSuministroUpdate,
-    ErpSuministroOut,
-)
 
-
-@router.get("/suministros", response_model=list[ErpSuministroOut])
+# ---------------------------------------------------------------------------
+# Suministros (CUPS)
+# ---------------------------------------------------------------------------
+@router.get("/suministros", response_model=list[schemas.ErpSuministroOut])
 def listar_suministros_endpoint(
     empresa_id: int = Query(...),
     search: Optional[str] = Query(None),
@@ -119,18 +103,12 @@ def listar_suministros_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return services.listar_suministros(
-        db, user, empresa_id, search=search, solo_activos=solo_activos
-    )
+    return services.listar_suministros(db, user, empresa_id, search=search, solo_activos=solo_activos)
 
 
-@router.post(
-    "/suministros",
-    response_model=ErpSuministroOut,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/suministros", response_model=schemas.ErpSuministroOut, status_code=status.HTTP_201_CREATED)
 def crear_suministro_endpoint(
-    payload: ErpSuministroCreate,
+    payload: schemas.ErpSuministroCreate,
     empresa_id: int = Query(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -141,7 +119,7 @@ def crear_suministro_endpoint(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
-@router.get("/suministros/{suministro_id}", response_model=ErpSuministroOut)
+@router.get("/suministros/{suministro_id}", response_model=schemas.ErpSuministroOut)
 def obtener_suministro_endpoint(
     suministro_id: int,
     db: Session = Depends(get_db),
@@ -153,10 +131,10 @@ def obtener_suministro_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.put("/suministros/{suministro_id}", response_model=ErpSuministroOut)
+@router.put("/suministros/{suministro_id}", response_model=schemas.ErpSuministroOut)
 def actualizar_suministro_endpoint(
     suministro_id: int,
-    payload: ErpSuministroUpdate,
+    payload: schemas.ErpSuministroUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -164,11 +142,13 @@ def actualizar_suministro_endpoint(
         return services.actualizar_suministro(db, user, suministro_id, payload)
     except services.DuplicateCupsError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except services.ValidacionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.delete("/suministros/{suministro_id}", response_model=ErpSuministroOut)
+@router.delete("/suministros/{suministro_id}", response_model=schemas.ErpSuministroOut)
 def desactivar_suministro_endpoint(
     suministro_id: int,
     db: Session = Depends(get_db),
@@ -176,5 +156,153 @@ def desactivar_suministro_endpoint(
 ):
     try:
         return services.desactivar_suministro(db, user, suministro_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Catálogos: tarifas (solo lectura) y comercializadoras (CRUD) — globales
+# ---------------------------------------------------------------------------
+@router.get("/tarifas", response_model=list[schemas.ErpTarifaOut])
+def listar_tarifas_endpoint(
+    solo_activas: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return services.listar_tarifas(db, solo_activas=solo_activas)
+
+
+@router.get("/comercializadoras", response_model=list[schemas.ErpComercializadoraOut])
+def listar_comercializadoras_endpoint(
+    search: Optional[str] = Query(None),
+    solo_activas: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return services.listar_comercializadoras(db, search=search, solo_activas=solo_activas)
+
+
+@router.post("/comercializadoras", response_model=schemas.ErpComercializadoraOut, status_code=status.HTTP_201_CREATED)
+def crear_comercializadora_endpoint(
+    payload: schemas.ErpComercializadoraCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.crear_comercializadora(db, payload)
+    except services.DuplicateComercializadoraError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
+@router.get("/comercializadoras/{com_id}", response_model=schemas.ErpComercializadoraOut)
+def obtener_comercializadora_endpoint(
+    com_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.obtener_comercializadora(db, com_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.put("/comercializadoras/{com_id}", response_model=schemas.ErpComercializadoraOut)
+def actualizar_comercializadora_endpoint(
+    com_id: int,
+    payload: schemas.ErpComercializadoraUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.actualizar_comercializadora(db, com_id, payload)
+    except services.DuplicateComercializadoraError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.delete("/comercializadoras/{com_id}", response_model=schemas.ErpComercializadoraOut)
+def desactivar_comercializadora_endpoint(
+    com_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.desactivar_comercializadora(db, com_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Contratos (E-6b)
+# ---------------------------------------------------------------------------
+@router.get("/contratos", response_model=list[schemas.ErpContratoOut])
+def listar_contratos_endpoint(
+    empresa_id: int = Query(...),
+    search: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    suministro_id: Optional[int] = Query(None),
+    solo_activos: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return services_contrato.listar_contratos(
+        db, user, empresa_id, search=search, estado=estado,
+        suministro_id=suministro_id, solo_activos=solo_activos,
+    )
+
+
+@router.post("/contratos", response_model=schemas.ErpContratoOut, status_code=status.HTTP_201_CREATED)
+def crear_contrato_endpoint(
+    payload: schemas.ErpContratoCreate,
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services_contrato.crear_contrato(db, user, empresa_id, payload)
+    except services_contrato.ContratoSuministroActivoError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except services_contrato.ContratoValidacionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/contratos/{contrato_id}", response_model=schemas.ErpContratoOut)
+def obtener_contrato_endpoint(
+    contrato_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services_contrato.obtener_contrato(db, user, contrato_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.put("/contratos/{contrato_id}", response_model=schemas.ErpContratoOut)
+def actualizar_contrato_endpoint(
+    contrato_id: int,
+    payload: schemas.ErpContratoUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services_contrato.actualizar_contrato(db, user, contrato_id, payload)
+    except services_contrato.ContratoSuministroActivoError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except services_contrato.ContratoValidacionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.delete("/contratos/{contrato_id}", response_model=schemas.ErpContratoOut)
+def desactivar_contrato_endpoint(
+    contrato_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services_contrato.desactivar_contrato(db, user, contrato_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

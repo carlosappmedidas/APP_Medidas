@@ -3,14 +3,15 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL } from "../../apiConfig";
+import { API_BASE_URL, readApiError  } from "../../apiConfig";
 import { useErpEmpresaId } from "../components/ErpEmpresaSelector";
 
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
 // Tipo de documento (TABLA_6 ATR)
 const TIPO_DOC: [string, string][] = [
-  ["", "—"], ["NI", "NIF"], ["NE", "NIE"], ["PS", "Pasaporte"], ["NV", "NIVA"], ["OT", "Otro"],
+  ["", "—"], ["NI", "NIF"], ["DN", "DNI"], ["CI", "CIF"], ["NE", "NIE"],
+  ["PS", "Pasaporte"], ["NV", "NIVA"], ["CT", "Carta de trabajo"], ["OT", "Otro"],
 ];
 
 interface Titular {
@@ -181,7 +182,10 @@ export default function ErpTitularesPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        alert(await readApiError(r, "No se pudo guardar el titular."));
+        return;
+      }
       setPanelOpen(false);
       await cargarTitulares();
     } catch {

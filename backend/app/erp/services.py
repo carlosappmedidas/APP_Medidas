@@ -3,10 +3,12 @@
 """
 Servicios de negocio del módulo ERP.
 
-Paq E-2: CRUD del titular (erp_titular) y suministro (erp_suministro).
+Paq E-2: CRUD de titular (erp_titular) y suministro (erp_suministro).
+Paq E-6a: catálogos compartidos (tarifa, comercializadora).
 
-Patrón multi-tenant idéntico al resto de la app: cada operación valida el
-acceso con assert_empresa_access(db, user, empresa_id) antes de tocar datos.
+Patrón multi-tenant idéntico al resto de la app: cada operación de
+titular/suministro valida el acceso con assert_empresa_access antes de tocar
+datos. Los catálogos son globales (sin empresa).
 
 El campo `nombre` del titular es display autocompuesto (normativa ATR):
   - jurídica -> razon_social
@@ -19,11 +21,20 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.permissions import assert_empresa_access
-from app.erp.models import ErpTitular
-from app.erp.schemas import ErpTitularCreate, ErpTitularUpdate
+from app.erp.models import (
+    ErpTitular, ErpSuministro,
+    ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
+)
+from app.erp.schemas import (
+    ErpTitularCreate, ErpTitularUpdate,
+    ErpSuministroCreate, ErpSuministroUpdate,
+    ErpTarifaOut, ErpTarifaPeriodoOut,
+    ErpComercializadoraCreate, ErpComercializadoraUpdate,
+)
 from app.tenants.models import User
 
 
@@ -80,7 +91,7 @@ def _cargar_titular_con_acceso(
 
 
 # ============================================================
-# CRUD
+# Titular
 # ============================================================
 def listar_titulares(
     db: Session,
@@ -146,6 +157,11 @@ def crear_titular(
     return titular
 
 
+class ValidacionError(ValueError):
+    """Validación de identidad fallida en escritura (CUPS/documento) -> 400."""
+    pass
+
+
 def actualizar_titular(
     db: Session, user: User, titular_id: int, payload: ErpTitularUpdate
 ) -> ErpTitular:
@@ -153,6 +169,21 @@ def actualizar_titular(
     titular = _cargar_titular_con_acceso(db, user, titular_id)
 
     data = payload.model_dump(exclude_unset=True)
+
+    # B1: validar el documento SOLO si cambia (no bloquear edición/reactivación de datos heredados)
+    cambia_doc = (
+        ("tipo_identificador" in data and data["tipo_identificador"] != titular.tipo_identificador)
+        or ("identificador" in data and data["identificador"] != titular.identificador)
+    )
+    if cambia_doc:
+        from app.erp.validators import validar_documento
+        ok, msg = validar_documento(
+            data.get("tipo_identificador", titular.tipo_identificador),
+            data.get("identificador", titular.identificador),
+        )
+        if not ok:
+            raise ValidacionError(msg)
+
     for campo, valor in data.items():
         setattr(titular, campo, valor)
 
@@ -183,15 +214,10 @@ def desactivar_titular(db: Session, user: User, titular_id: int) -> ErpTitular:
     db.refresh(titular)
     return titular
 
+
 # ===========================================================================
-# Suministro (CUPS)  — Paq E-2 (vertical suministro)
+# Suministro (CUPS)
 # ===========================================================================
-from sqlalchemy.exc import IntegrityError
-
-from app.erp.models import ErpSuministro
-from app.erp.schemas import ErpSuministroCreate, ErpSuministroUpdate
-
-
 class DuplicateCupsError(ValueError):
     """CUPS ya existente para esa empresa (UniqueConstraint empresa_id+cups)."""
     pass
@@ -300,6 +326,14 @@ def actualizar_suministro(
                 f"Ya existe un suministro con CUPS {nuevo_cups} en esta empresa"
             )
 
+    # B1: validar las 2 letras de control SOLO si el CUPS cambia (no bloquear reactivación de datos heredados)
+    if nuevo_cups is not None and nuevo_cups != s.cups:
+        from app.erp.validators import validar_cups_control
+        if not validar_cups_control(nuevo_cups):
+            raise ValidacionError(
+                "CUPS inválido: las 2 letras de control no corresponden a los 16 dígitos."
+            )
+
     for campo, valor in datos.items():
         setattr(s, campo, valor)
     s.updated_at = _ahora_madrid_naive()
@@ -325,3 +359,135 @@ def desactivar_suministro(
     db.commit()
     db.refresh(s)
     return s
+
+
+# ===========================================================================
+# Catálogos compartidos (E-6a) — tarifa / comercializadora
+# ===========================================================================
+def listar_tarifas(db: Session, solo_activas: bool = False) -> list[ErpTarifaOut]:
+    """Lista las tarifas de acceso con sus periodos. Catálogo global (sin empresa)."""
+    q = db.query(ErpTarifa)
+    if solo_activas:
+        q = q.filter(ErpTarifa.activo.is_(True))
+    tarifas = q.order_by(ErpTarifa.orden, ErpTarifa.codigo).all()
+
+    out: list[ErpTarifaOut] = []
+    for t in tarifas:
+        periodos = (
+            db.query(ErpTarifaPeriodo)
+            .filter(ErpTarifaPeriodo.tarifa_id == t.id)
+            .order_by(ErpTarifaPeriodo.tipo, ErpTarifaPeriodo.orden)
+            .all()
+        )
+        out.append(ErpTarifaOut(
+            id=t.id, codigo=t.codigo, descripcion=t.descripcion,
+            codigo_ree=t.codigo_ree, nivel_tension=t.nivel_tension,
+            num_periodos_energia=t.num_periodos_energia,
+            num_periodos_potencia=t.num_periodos_potencia,
+            referencia_normativa=t.referencia_normativa,
+            vigencia_desde=t.vigencia_desde, vigencia_hasta=t.vigencia_hasta,
+            orden=t.orden, activo=t.activo, notas=t.notas,
+            periodos=[ErpTarifaPeriodoOut.model_validate(p) for p in periodos],
+            created_at=t.created_at, updated_at=t.updated_at,
+        ))
+    return out
+
+
+class DuplicateComercializadoraError(ValueError):
+    """codigo_ree ya existe (UniqueConstraint uq_erp_comercializadora_codigo_ree)."""
+    pass
+
+
+def listar_comercializadoras(
+    db: Session, search: str | None = None, solo_activas: bool = False
+) -> list[ErpComercializadora]:
+    q = db.query(ErpComercializadora)
+    if solo_activas:
+        q = q.filter(ErpComercializadora.activo.is_(True))
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                ErpComercializadora.nombre.ilike(like),
+                ErpComercializadora.cif.ilike(like),
+                ErpComercializadora.codigo_ree.ilike(like),
+            )
+        )
+    return q.order_by(ErpComercializadora.nombre).all()
+
+
+def obtener_comercializadora(db: Session, com_id: int) -> ErpComercializadora:
+    c = db.query(ErpComercializadora).filter(ErpComercializadora.id == com_id).first()
+    if c is None:
+        raise ValueError(f"Comercializadora {com_id} no encontrada")
+    return c
+
+
+def crear_comercializadora(db: Session, payload: ErpComercializadoraCreate) -> ErpComercializadora:
+    existe = (
+        db.query(ErpComercializadora)
+        .filter(ErpComercializadora.codigo_ree == payload.codigo_ree)
+        .first()
+    )
+    if existe is not None:
+        raise DuplicateComercializadoraError(
+            f"Ya existe una comercializadora con código REE {payload.codigo_ree}"
+        )
+    ahora = _ahora_madrid_naive()
+    c = ErpComercializadora(created_at=ahora, updated_at=ahora, **payload.model_dump())
+    db.add(c)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateComercializadoraError(
+            f"Ya existe una comercializadora con código REE {payload.codigo_ree}"
+        )
+    db.refresh(c)
+    return c
+
+
+def actualizar_comercializadora(
+    db: Session, com_id: int, payload: ErpComercializadoraUpdate
+) -> ErpComercializadora:
+    c = obtener_comercializadora(db, com_id)
+    datos = payload.model_dump(exclude_unset=True)
+
+    nuevo_ree = datos.get("codigo_ree")
+    if nuevo_ree is not None and nuevo_ree != c.codigo_ree:
+        existe = (
+            db.query(ErpComercializadora)
+            .filter(
+                ErpComercializadora.codigo_ree == nuevo_ree,
+                ErpComercializadora.id != c.id,
+            )
+            .first()
+        )
+        if existe is not None:
+            raise DuplicateComercializadoraError(
+                f"Ya existe una comercializadora con código REE {nuevo_ree}"
+            )
+
+    for campo, valor in datos.items():
+        setattr(c, campo, valor)
+    c.updated_at = _ahora_madrid_naive()
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateComercializadoraError(
+            f"Ya existe una comercializadora con código REE {nuevo_ree}"
+        )
+    db.refresh(c)
+    return c
+
+
+def desactivar_comercializadora(db: Session, com_id: int) -> ErpComercializadora:
+    """Baja lógica (activo=False)."""
+    c = obtener_comercializadora(db, com_id)
+    c.activo = False
+    c.updated_at = _ahora_madrid_naive()
+    db.commit()
+    db.refresh(c)
+    return c

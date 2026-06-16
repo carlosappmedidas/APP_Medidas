@@ -11,15 +11,15 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.core.config import get_settings
-from app.core.security import get_password_hash
-from app.tenants.models import Tenant, User
+from app.core.config import get_settings  # noqa: E402
+from app.core.security import get_password_hash  # noqa: E402
+from app.tenants.models import Tenant, User  # noqa: E402
 
 # ✅ IMPORTANTE: importar modelos para que SQLAlchemy registre relaciones
 # (Tenant tiene relationship("Empresa") y si no se importa Empresa, peta)
-from app.empresas import models as empresas_models  # noqa: F401
-from app.ingestion import models as ingestion_models  # noqa: F401
-from app.measures import models as measures_models  # noqa: F401
+from app.empresas import models as empresas_models  # noqa: F401,E402
+from app.ingestion import models as ingestion_models  # noqa: F401,E402
+from app.measures import models as measures_models  # noqa: F401,E402
 
 TENANT_NAME = "plataforma"
 EMAIL = "superadmin@plataforma.com"

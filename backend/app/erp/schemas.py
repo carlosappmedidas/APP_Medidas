@@ -15,13 +15,22 @@ import re
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.erp.normativa_atr import (
+    TipoIdentificador,                 # TABLA_6 (8 valores)
+    validar_enums_contrato,            # tipo_contrato_atr / autoconsumo_tipo / modo_control_potencia
+)
+from app.erp.validators import (
+    validar_documento, validar_cups_control,
+    validar_formatos_titular, validar_formatos_suministro,
+)
 
 # CUPS: ES + 16 dígitos + 2 letras de control (+ 2 opcional de punto frontera)
 _CUPS_RE = re.compile(r"^ES\d{16}[A-Z]{2}([A-Z0-9]{2})?$")
 
 TipoPersona = Literal["fisica", "juridica"]
-TipoIdentificador = Literal["NI", "NE", "PS", "NV", "OT"]   # TABLA_6 ATR
+# TipoIdentificador se importa de app.erp.normativa_atr (TABLA_6 completa, 8 valores)
 
 
 def _validar_cups(v: Optional[str]) -> Optional[str]:
@@ -72,7 +81,16 @@ class ErpTitularBase(BaseModel):
 
 class ErpTitularCreate(ErpTitularBase):
     """Crear titular. tenant_id/empresa_id los inyecta el backend."""
-    pass
+
+    @model_validator(mode="after")
+    def _validar_titular(self):
+        ok, msg = validar_documento(self.tipo_identificador, self.identificador)
+        if not ok:
+            raise ValueError(msg)
+        ok, msg = validar_formatos_titular(self.dir_cp, self.email)
+        if not ok:
+            raise ValueError(msg)
+        return self
 
 
 class ErpTitularUpdate(BaseModel):
@@ -103,6 +121,15 @@ class ErpTitularUpdate(BaseModel):
     notas: Optional[str] = None
     codigo_interno: Optional[str] = None
     activo: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _validar_titular(self):
+        # Documento: solo en CREATE (y en el servicio si cambia);
+        # no se revalida aquí para no bloquear la edición/reactivación de datos heredados.
+        ok, msg = validar_formatos_titular(self.dir_cp, self.email)
+        if not ok:
+            raise ValueError(msg)
+        return self
 
 
 class ErpTitularOut(ErpTitularBase):
@@ -182,7 +209,15 @@ class ErpSuministroBase(BaseModel):
 
 class ErpSuministroCreate(ErpSuministroBase):
     """Crear suministro. tenant_id/empresa_id los inyecta el backend."""
-    pass
+
+    @model_validator(mode="after")
+    def _validar_suministro(self):
+        if self.cups and not validar_cups_control(self.cups):
+            raise ValueError("CUPS inválido: las 2 letras de control no corresponden a los 16 dígitos.")
+        ok, msg = validar_formatos_suministro(self.dir_cp, self.municipio_codigo_ine, self.ref_catastral)
+        if not ok:
+            raise ValueError(msg)
+        return self
 
 
 class ErpSuministroUpdate(BaseModel):
@@ -243,11 +278,271 @@ class ErpSuministroUpdate(BaseModel):
     def _cups_ok(cls, v):
         return _validar_cups(v)
 
+    @model_validator(mode="after")
+    def _validar_suministro(self):
+        # Control del CUPS: solo en CREATE (y en el servicio si el cups CAMBIA);
+        # no se revalida aquí para no bloquear la edición/reactivación de datos heredados.
+        ok, msg = validar_formatos_suministro(self.dir_cp, self.municipio_codigo_ine, self.ref_catastral)
+        if not ok:
+            raise ValueError(msg)
+        return self
+
 
 class ErpSuministroOut(ErpSuministroBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     empresa_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    # ---------------------------------------------------------------------------
+# Catálogos compartidos (E-6a) — tarifa / tarifa_periodo / comercializadora
+# ---------------------------------------------------------------------------
+
+# --- Tarifa de acceso (solo lectura: se gestiona por seed) ---
+class ErpTarifaPeriodoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    periodo: str                 # "P1"…"P6"
+    tipo: str                    # "energia" | "potencia"
+    orden: int
+    descripcion: Optional[str] = None
+
+
+class ErpTarifaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    descripcion: str
+    codigo_ree: Optional[str] = None
+    nivel_tension: str           # "BT" | "AT"
+    num_periodos_energia: int
+    num_periodos_potencia: int
+    referencia_normativa: Optional[str] = None
+    vigencia_desde: Optional[date] = None
+    vigencia_hasta: Optional[date] = None
+    orden: Optional[int] = None
+    activo: bool
+    notas: Optional[str] = None
+    periodos: list[ErpTarifaPeriodoOut] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# --- Comercializadora (CRUD completo) ---
+class ErpComercializadoraBase(BaseModel):
+    nombre: str
+    cif: str
+    codigo_ree: str                                # código REE (4 díg.)
+    codigo_cnmc: Optional[str] = None              # orden CNMC (R2-XXX)
+    codigo_liquidacion_cnmc: Optional[str] = None  # sujeto de liquidación CNMC
+    fecha_alta_cnmc: Optional[date] = None
+    fecha_baja_cnmc: Optional[date] = None
+    es_cur: bool = False         # comercializadora de referencia
+    activo: bool = True
+    notas: Optional[str] = None
+
+
+class ErpComercializadoraCreate(ErpComercializadoraBase):
+    pass
+
+
+class ErpComercializadoraUpdate(BaseModel):
+    nombre: Optional[str] = None
+    cif: Optional[str] = None
+    codigo_ree: Optional[str] = None
+    codigo_cnmc: Optional[str] = None
+    codigo_liquidacion_cnmc: Optional[str] = None
+    fecha_alta_cnmc: Optional[date] = None
+    fecha_baja_cnmc: Optional[date] = None
+    es_cur: Optional[bool] = None
+    activo: Optional[bool] = None
+    notas: Optional[str] = None
+
+
+class ErpComercializadoraOut(ErpComercializadoraBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+# ---------------------------------------------------------------------------
+# Contrato (E-6b) — erp_contrato + erp_contrato_potencia
+# ---------------------------------------------------------------------------
+ContratoEstado = Literal["borrador", "activo", "baja"]
+TipoVivienda = Literal["habitual", "no_habitual"]
+_PERIODO_RE = re.compile(r"^P[1-6]$")
+
+
+class ErpContratoPotenciaIn(BaseModel):
+    periodo: str
+    potencia_kw: float = Field(ge=0)
+
+    @field_validator("periodo")
+    @classmethod
+    def _periodo_ok(cls, v):
+        v = (v or "").strip().upper()
+        if not _PERIODO_RE.match(v):
+            raise ValueError("periodo debe ser P1…P6")
+        return v
+
+
+class ErpContratoPotenciaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    periodo: str
+    potencia_kw: float
+
+
+class ErpContratoBase(BaseModel):
+    # Identificación
+    numero_contrato: str
+    codigo_interno: Optional[str] = None
+    tipo_contrato_atr: str
+    estado: ContratoEstado = "activo"
+    fecha_alta: Optional[date] = None
+    fecha_activacion_prevista: Optional[date] = None
+    fecha_firma: Optional[date] = None
+    fecha_baja: Optional[date] = None
+    fecha_finalizacion: Optional[date] = None
+    renovacion_automatica: bool = False
+    # Partes
+    titular_id: int
+    pagador_id: Optional[int] = None
+    comercializadora_id: Optional[int] = None
+    referencia_comercializadora: Optional[str] = None
+    # Suministro
+    suministro_id: int
+    # Tarifa / potencia
+    tarifa_id: int
+    tension_normalizada: Optional[str] = None
+    modo_control_potencia: Optional[str] = None
+    agree_tarifa: Optional[date] = None
+    agree_dh: Optional[date] = None
+    agree_tensio: Optional[date] = None
+    agree_tipus: Optional[date] = None
+    # Régimen regulado
+    autoconsumo_tipo: Optional[str] = None
+    es_autoconsumo: bool = False
+    autoconsumo_colectivo: bool = False
+    potencia_generacion_kw: Optional[float] = None
+    bono_social: bool = False
+    suministro_minimo_vital: bool = False
+    tipo_vivienda: Optional[TipoVivienda] = None
+    tipo_subseccion: Optional[str] = None
+    peaje_directo: bool = False
+    telegestion: bool = False
+    tipo_medida: Optional[str] = None
+    electrointensivo: bool = False
+    codigo_solicitud_electrointensivo: Optional[str] = None
+    no_cortable: bool = False
+    art_56: bool = False
+    art_56_motivo: Optional[str] = None
+    art_56_porcentaje: Optional[float] = None
+    no_cesion_sips: bool = False
+    no_cesion_sips_fecha: Optional[date] = None
+    cie: Optional[str] = None
+    # Otros
+    cnae: Optional[str] = None
+    notas: Optional[str] = None
+    activo: bool = True
+
+
+class ErpContratoCreate(ErpContratoBase):
+    """tenant_id/empresa_id los inyecta el backend. `potencias` = set de periodos."""
+    potencias: list[ErpContratoPotenciaIn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _enums_ok(self):
+        ok, msg = validar_enums_contrato(
+            self.tipo_contrato_atr, self.autoconsumo_tipo, self.modo_control_potencia
+        )
+        if not ok:
+            raise ValueError(msg)
+        return self
+
+
+class ErpContratoUpdate(BaseModel):
+    """Parcial. Si se envía `potencias`, reemplaza el conjunto completo."""
+    numero_contrato: Optional[str] = None
+    codigo_interno: Optional[str] = None
+    tipo_contrato_atr: Optional[str] = None
+    estado: Optional[ContratoEstado] = None
+    fecha_alta: Optional[date] = None
+    fecha_activacion_prevista: Optional[date] = None
+    fecha_firma: Optional[date] = None
+    fecha_baja: Optional[date] = None
+    fecha_finalizacion: Optional[date] = None
+    renovacion_automatica: Optional[bool] = None
+
+    titular_id: Optional[int] = None
+    pagador_id: Optional[int] = None
+    comercializadora_id: Optional[int] = None
+    referencia_comercializadora: Optional[str] = None
+
+    suministro_id: Optional[int] = None
+
+    tarifa_id: Optional[int] = None
+    tension_normalizada: Optional[str] = None
+    modo_control_potencia: Optional[str] = None
+    agree_tarifa: Optional[date] = None
+    agree_dh: Optional[date] = None
+    agree_tensio: Optional[date] = None
+    agree_tipus: Optional[date] = None
+
+    autoconsumo_tipo: Optional[str] = None
+    es_autoconsumo: Optional[bool] = None
+    autoconsumo_colectivo: Optional[bool] = None
+    potencia_generacion_kw: Optional[float] = None
+    bono_social: Optional[bool] = None
+    suministro_minimo_vital: Optional[bool] = None
+    tipo_vivienda: Optional[TipoVivienda] = None
+    tipo_subseccion: Optional[str] = None
+    peaje_directo: Optional[bool] = None
+    telegestion: Optional[bool] = None
+    tipo_medida: Optional[str] = None
+    electrointensivo: Optional[bool] = None
+    codigo_solicitud_electrointensivo: Optional[str] = None
+    no_cortable: Optional[bool] = None
+    art_56: Optional[bool] = None
+    art_56_motivo: Optional[str] = None
+    art_56_porcentaje: Optional[float] = None
+    no_cesion_sips: Optional[bool] = None
+    no_cesion_sips_fecha: Optional[date] = None
+    cie: Optional[str] = None
+
+    cnae: Optional[str] = None
+    notas: Optional[str] = None
+    activo: Optional[bool] = None
+
+    potencias: Optional[list[ErpContratoPotenciaIn]] = None
+
+    @model_validator(mode="after")
+    def _enums_ok(self):
+        ok, msg = validar_enums_contrato(
+            self.tipo_contrato_atr, self.autoconsumo_tipo, self.modo_control_potencia
+        )
+        if not ok:
+            raise ValueError(msg)
+        return self
+
+
+class ErpContratoOut(ErpContratoBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    empresa_id: int
+    potencias: list[ErpContratoPotenciaOut] = Field(default_factory=list)
+
+    # Derivados de display (los rellena services.py vía join; no son columnas)
+    titular_nombre: Optional[str] = None
+    cups: Optional[str] = None
+    tarifa_codigo: Optional[str] = None
+    comercializadora_nombre: Optional[str] = None
+
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { API_BASE_URL } from "../../apiConfig";
+import { API_BASE_URL, readApiError } from "../../apiConfig";
 import { useErpEmpresaId } from "../components/ErpEmpresaSelector";
 
 // Cabeceras de autenticación: lee el token de localStorage (igual que el resto de la app)
@@ -363,7 +363,7 @@ export default function SuministrosPage() {
         if (r.status === 409) {
           setErrorMsg("Ya existe un suministro con ese CUPS en esta empresa.");
         } else {
-          setErrorMsg("No se pudo guardar el suministro.");
+          setErrorMsg(await readApiError(r, "No se pudo guardar el suministro."));
         }
         return;
       }

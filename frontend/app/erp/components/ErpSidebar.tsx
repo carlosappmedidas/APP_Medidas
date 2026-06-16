@@ -9,14 +9,15 @@ interface MenuItem {
   href: string;
   label: string;
   icon: string;
-  disabled?: boolean; // secciones aún no construidas
+  disabled?: boolean;
 }
 
 const ITEMS: MenuItem[] = [
   { href: "/erp",             label: "Inicio",      icon: "🏠" },
   { href: "/erp/titulares",   label: "Titulares",   icon: "👤" },
   { href: "/erp/suministros", label: "Suministros", icon: "🔌" },
-  { href: "/erp/contratos",   label: "Contratos",   icon: "📄", disabled: true },
+  { href: "/erp/contratos",   label: "Contratos",   icon: "📄" },
+  { href: "/erp/catalogos",   label: "Catálogos",   icon: "📚" },
 ];
 
 export default function ErpSidebar() {
