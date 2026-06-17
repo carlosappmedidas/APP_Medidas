@@ -45,27 +45,37 @@ class ErpTitular(TimestampMixin, Base):
 
     # --- Identificación (normativa ATR · bloque Cliente) ---
     tipo_persona       = Column(String(20), nullable=False, default="juridica")  # "fisica" | "juridica"
-    tipo_identificador = Column(String(2), nullable=True)   # TABLA_6: NI/NE/PS/NV/OT
-    identificador      = Column(String(20), nullable=True, index=True)  # nº de documento
+    tipo_identificador = Column(String(2), nullable=True)   # SIPS idTipoTitular X(2) · TABLA_6
+    identificador      = Column(String(14), nullable=True, index=True)  # SIPS idTitular X(14)
 
-    # Nombre desglosado según normativa
-    nombre_de_pila   = Column(String(120), nullable=True)   # persona física
-    primer_apellido  = Column(String(120), nullable=True)   # persona física
-    segundo_apellido = Column(String(120), nullable=True)   # persona física
-    razon_social     = Column(String(255), nullable=True)   # persona jurídica
-    nombre           = Column(String(255), nullable=True)   # display autocompuesto
+    # Nombre desglosado según normativa (longitudes SIPS)
+    nombre_de_pila   = Column(String(30), nullable=True)    # SIPS nombreTitular X(30)
+    primer_apellido  = Column(String(40), nullable=True)    # SIPS apellido1Titular X(40)
+    segundo_apellido = Column(String(30), nullable=True)    # SIPS apellido2Titular X(30)
+    razon_social     = Column(String(255), nullable=True)   # interno generoso; truncar a X(30) al exportar SIPS
+    nombre           = Column(String(255), nullable=True)   # display autocompuesto (no es campo SIPS)
 
     # --- Dirección fiscal / notificación (inline) ---
-    dir_tipo_via  = Column(String(50), nullable=True)
-    dir_via       = Column(String(255), nullable=True)
-    dir_numero    = Column(String(20), nullable=True)
-    dir_resto     = Column(String(255), nullable=True)   # escalera/planta/puerta/bloque
-    dir_cp        = Column(String(10), nullable=True)
-    dir_municipio = Column(String(120), nullable=True)
-    dir_provincia = Column(String(120), nullable=True)
-    dir_pais      = Column(String(120), nullable=True, default="España")
+    # Campos codificados guardan el CÓDIGO CNMC (desplegable contra erp_cnmc_*).
+    dir_tipo_via       = Column(String(2), nullable=True)     # SIPS X(2) · CNMC Tabla 12
+    dir_via            = Column(String(30), nullable=True)    # SIPS X(30)
+    dir_numero         = Column(String(5), nullable=True)     # SIPS X(5)
+    dir_duplicador     = Column(String(3), nullable=True)     # SIPS X(3) (BIS)
+    dir_escalera       = Column(String(3), nullable=True)     # SIPS X(3) · Tabla 13 (libre)
+    dir_piso           = Column(String(3), nullable=True)     # SIPS X(3) · CNMC Tabla 14
+    dir_puerta         = Column(String(3), nullable=True)     # SIPS X(3) · CNMC Tabla 15
+    dir_tipo_aclarador = Column(String(2), nullable=True)     # SIPS X(2) · CNMC Tabla 16
+    dir_aclarador      = Column(String(40), nullable=True)    # SIPS X(40) libre: "Bar", "Peluquería"
+    dir_cp             = Column(String(10), nullable=True)
+    dir_municipio      = Column(String(120), nullable=True)
+    dir_provincia      = Column(String(120), nullable=True)
+    dir_pais           = Column(String(120), nullable=True, default="España")
+
+    # Solo persona física (SIPS esViviendaHabitual S/N)
+    vivienda_habitual  = Column(Boolean, nullable=True)
 
     # --- Contacto ---
+    persona_contacto = Column(String(120), nullable=True)  # propio (no SIPS); solo jurídica
     telefono = Column(String(30), nullable=True)
     movil    = Column(String(30), nullable=True)
     email    = Column(String(255), nullable=True)
@@ -233,8 +243,61 @@ class ErpComercializadora(TimestampMixin, Base):
     )
 
 # ---------------------------------------------------------------------------
-# 4) ErpContrato + ErpContratoPotencia (E-6b) — multi-tenant
+# 3bis) Catálogos de NORMATIVA CNMC (erp_cnmc_*) — compartidos, sin multi-tenant
 # ---------------------------------------------------------------------------
+# Tablas maestras de códigos de la CNMC (docx "Tablas de códigos", y SIPS
+# CNMC 4.0). El prefijo erp_cnmc_ deja explícito que son catálogos de norma.
+# Estructura común (molde ErpTarifa): codigo + descripcion + orden + activo +
+# fecha_baja. `orden` controla el orden del desplegable (no alfabético).
+# Se rellenan vía scripts/seed_erp_cnmc.py. Los consumen las direcciones de
+# erp_titular y erp_suministro (campos codificados de dirección).
+
+class ErpCnmcTipoVia(TimestampMixin, Base):
+    """Catálogo CNMC — Tabla 12 «Tipo de vía» (formato X(2))."""
+    __tablename__ = "erp_cnmc_tipo_via"
+
+    id          = Column(Integer, primary_key=True)
+    codigo      = Column(String(2), nullable=False, unique=True, index=True)   # CL, AV, CR…
+    descripcion = Column(String(120), nullable=False)                          # Calle, Avenida…
+    orden       = Column(Integer, nullable=True)
+    activo      = Column(Boolean, nullable=False, default=True)
+    fecha_baja  = Column(Date, nullable=True)
+
+
+class ErpCnmcPiso(TimestampMixin, Base):
+    """Catálogo CNMC — Tabla 14 «Piso» (formato X(3))."""
+    __tablename__ = "erp_cnmc_piso"
+
+    id          = Column(Integer, primary_key=True)
+    codigo      = Column(String(3), nullable=False, unique=True, index=True)   # AT, BA, 001…
+    descripcion = Column(String(120), nullable=False)                          # Ático, Bajo, Primero…
+    orden       = Column(Integer, nullable=True)
+    activo      = Column(Boolean, nullable=False, default=True)
+    fecha_baja  = Column(Date, nullable=True)
+
+
+class ErpCnmcPuerta(TimestampMixin, Base):
+    """Catálogo CNMC — Tabla 15 «Puerta» (formato X(3))."""
+    __tablename__ = "erp_cnmc_puerta"
+
+    id          = Column(Integer, primary_key=True)
+    codigo      = Column(String(3), nullable=False, unique=True, index=True)   # ZD, ZH, 001…
+    descripcion = Column(String(120), nullable=False)                          # Izq, Ext, Una…
+    orden       = Column(Integer, nullable=True)
+    activo      = Column(Boolean, nullable=False, default=True)
+    fecha_baja  = Column(Date, nullable=True)
+
+
+class ErpCnmcAclaradorFinca(TimestampMixin, Base):
+    """Catálogo CNMC — Tabla 16 «Tipo de aclarador de finca» (formato X(2))."""
+    __tablename__ = "erp_cnmc_aclarador_finca"
+
+    id          = Column(Integer, primary_key=True)
+    codigo      = Column(String(2), nullable=False, unique=True, index=True)   # BI, KM, NO…
+    descripcion = Column(String(120), nullable=False)                          # BIS, Punto kilométrico…
+    orden       = Column(Integer, nullable=True)
+    activo      = Column(Boolean, nullable=False, default=True)
+    fecha_baja  = Column(Date, nullable=True)
 # El contrato enlaza por FK a titular/suministro/tarifa/comercializadora y NO
 # duplica los datos del CUPS (se leen por join). Un suministro puede tener N
 # contratos en el tiempo, con uno activo a la vez. Campo->norma en §6ter.3.

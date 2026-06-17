@@ -172,6 +172,15 @@ def listar_tarifas_endpoint(
     return services.listar_tarifas(db, solo_activas=solo_activas)
 
 
+@router.get("/cnmc-catalogos", response_model=schemas.ErpCnmcCatalogosOut)
+def listar_cnmc_catalogos_endpoint(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Catálogos CNMC de dirección (tipo vía/piso/puerta/aclarador) para desplegables."""
+    return services.listar_cnmc_catalogos(db)
+
+
 @router.get("/comercializadoras", response_model=list[schemas.ErpComercializadoraOut])
 def listar_comercializadoras_endpoint(
     search: Optional[str] = Query(None),

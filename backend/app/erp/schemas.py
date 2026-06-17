@@ -60,17 +60,25 @@ class ErpTitularBase(BaseModel):
     razon_social: Optional[str] = None
     nombre: Optional[str] = None                             # display autocompuesto
 
-    # Dirección fiscal
-    dir_tipo_via: Optional[str] = None
+    # Dirección fiscal (codificados = código CNMC; desplegables erp_cnmc_*)
+    dir_tipo_via: Optional[str] = None        # CNMC Tabla 12
     dir_via: Optional[str] = None
     dir_numero: Optional[str] = None
-    dir_resto: Optional[str] = None
+    dir_duplicador: Optional[str] = None      # SIPS X(3) (BIS)
+    dir_escalera: Optional[str] = None        # libre
+    dir_piso: Optional[str] = None            # CNMC Tabla 14
+    dir_puerta: Optional[str] = None          # CNMC Tabla 15
+    dir_tipo_aclarador: Optional[str] = None  # CNMC Tabla 16
+    dir_aclarador: Optional[str] = None       # texto libre
     dir_cp: Optional[str] = None
     dir_municipio: Optional[str] = None
     dir_provincia: Optional[str] = None
     dir_pais: Optional[str] = "España"
+    vivienda_habitual: Optional[bool] = None  # solo persona física
 
+    persona_contacto: Optional[str] = None  # propio (no SIPS); solo jurídica
     telefono: Optional[str] = None
+
     movil: Optional[str] = None
     email: Optional[str] = None
 
@@ -108,12 +116,19 @@ class ErpTitularUpdate(BaseModel):
     dir_tipo_via: Optional[str] = None
     dir_via: Optional[str] = None
     dir_numero: Optional[str] = None
-    dir_resto: Optional[str] = None
+    dir_duplicador: Optional[str] = None
+    dir_escalera: Optional[str] = None
+    dir_piso: Optional[str] = None
+    dir_puerta: Optional[str] = None
+    dir_tipo_aclarador: Optional[str] = None
+    dir_aclarador: Optional[str] = None
     dir_cp: Optional[str] = None
     dir_municipio: Optional[str] = None
     dir_provincia: Optional[str] = None
     dir_pais: Optional[str] = None
+    vivienda_habitual: Optional[bool] = None
 
+    persona_contacto: Optional[str] = None
     telefono: Optional[str] = None
     movil: Optional[str] = None
     email: Optional[str] = None
@@ -546,3 +561,18 @@ class ErpContratoOut(ErpContratoBase):
 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    # ---------------------------------------------------------------------------
+# Catálogos de normativa CNMC (dirección)
+# ---------------------------------------------------------------------------
+class ErpCnmcCodigoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    codigo: str
+    descripcion: str
+
+
+class ErpCnmcCatalogosOut(BaseModel):
+    tipo_via: list[ErpCnmcCodigoOut] = []
+    piso: list[ErpCnmcCodigoOut] = []
+    puerta: list[ErpCnmcCodigoOut] = []
+    aclarador_finca: list[ErpCnmcCodigoOut] = []

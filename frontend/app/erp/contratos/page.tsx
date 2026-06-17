@@ -90,42 +90,98 @@ const EMPTY: Form = {
   notas: "", activo: true, potencias: {},
 };
 
-const labelStyle: React.CSSProperties = { display: "block", fontSize: 12, color: "#9aa4b2", marginBottom: 4 };
-const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", background: "#0f1623", border: "1px solid #2a3441", borderRadius: 6, color: "#e5e7eb", fontSize: 14, boxSizing: "border-box" };
-const thStyle: React.CSSProperties = { textAlign: "left", fontSize: 12, color: "#9aa4b2", fontWeight: 500, padding: "10px 12px", borderBottom: "1px solid #1f2733" };
-const tdStyle: React.CSSProperties = { padding: "12px", fontSize: 14, borderBottom: "1px solid #161c26" };
-const sectionLabel: React.CSSProperties = { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280", margin: "18px 0 8px" };
-const mono: React.CSSProperties = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
+// ---------------------------------------------------------------------------
+// Estilos (estándar ficha A3)
+// ---------------------------------------------------------------------------
+const labelStyle: React.CSSProperties = {
+  display: "block", fontSize: 12, color: "rgba(241,239,232,0.55)", marginBottom: 4,
+};
+const inputStyle: React.CSSProperties = {
+  width: "100%", background: "rgba(255,255,255,0.04)",
+  border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 6,
+  color: "var(--ds-text-primary, #F1EFE8)", fontSize: 13,
+  padding: "8px 10px", outline: "none", boxSizing: "border-box",
+};
+const monoFont = "ui-monospace, SFMono-Regular, Menlo, monospace";
+const thStyle: React.CSSProperties = { textAlign: "left", fontWeight: 500, padding: "10px 14px" };
+const tdStyle: React.CSSProperties = { padding: "11px 14px", color: "var(--ds-text-primary, #F1EFE8)" };
 
-function estadoBadge(estado: string) {
-  const map: Record<string, [string, string, string]> = {
-    activo: ["#0e2a1a", "#34d399", "#1f5138"],
-    borrador: ["#2a2410", "#d9b441", "#5b4d1f"],
-    baja: ["#23262d", "#9aa4b2", "#2a3441"],
+const cardStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)",
+  borderRadius: 10, padding: "16px 18px", marginBottom: 12,
+};
+const cardTitleStyle: React.CSSProperties = {
+  fontSize: 13, fontWeight: 500, color: "var(--ds-text-primary, #F1EFE8)", marginBottom: 12,
+};
+const gridStyle: React.CSSProperties = {
+  display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12,
+};
+const btnPrimary: React.CSSProperties = {
+  background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6,
+  padding: "8px 16px", fontSize: 13, fontWeight: 500,
+};
+const btnGhost: React.CSSProperties = {
+  background: "transparent", color: "rgba(241,239,232,0.7)",
+  border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 6,
+  padding: "8px 14px", fontSize: 13, cursor: "pointer",
+};
+const btnDanger: React.CSSProperties = {
+  background: "transparent", color: "#F0999B",
+  border: "0.5px solid rgba(240,153,155,0.4)", borderRadius: 6,
+  padding: "8px 14px", fontSize: 13, cursor: "pointer",
+};
+const reqMark = <span style={{ color: "#F0999B" }}> *</span>;
+const optDark: React.CSSProperties = { background: "#16181D" };
+
+function estadoBadge(estado: string): React.CSSProperties {
+  const map: Record<string, [string, string]> = {
+    activo: ["rgba(74,222,128,0.15)", "#7BE0A3"],
+    borrador: ["rgba(224,201,123,0.15)", "#E0C97B"],
+    baja: ["rgba(255,255,255,0.06)", "rgba(241,239,232,0.5)"],
   };
-  const [bg, color, bd] = map[estado] || map.baja;
-  return <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, background: bg, color, border: `1px solid ${bd}` }}>{estado}</span>;
+  const [bg, color] = map[estado] || map.baja;
+  return { background: bg, color, fontSize: 12, padding: "2px 9px", borderRadius: 6 };
 }
 
-function TextField(props: { label: string; value: string; onChange: (v: string) => void; type?: string; mono?: boolean }) {
+// TextField FUERA del componente para no perder el foco al re-render.
+// Si la label termina en " *", pinta asterisco rojo. `span` ocupa toda la fila.
+function TextField(props: {
+  label: string; value: string; onChange: (v: string) => void;
+  span?: boolean; type?: string; monospace?: boolean;
+}) {
+  const { label, value, onChange, span, type = "text", monospace } = props;
+  const req = label.endsWith(" *");
+  const base = req ? label.slice(0, -2) : label;
   return (
-    <div>
-      <label style={labelStyle}>{props.label}</label>
-      <input type={props.type || "text"} value={props.value} onChange={(e) => props.onChange(e.target.value)}
-        style={props.mono ? { ...inputStyle, ...mono } : inputStyle} />
+    <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
+      <label style={labelStyle}>{base}{req ? reqMark : null}</label>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
+        style={monospace ? { ...inputStyle, fontFamily: monoFont } : inputStyle} />
     </div>
   );
 }
 
 function Check(props: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#e5e7eb" }}>
+    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(241,239,232,0.8)" }}>
       <input type="checkbox" checked={props.checked} onChange={(e) => props.onChange(e.target.checked)} />
       {props.label}
     </label>
   );
 }
 
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={cardStyle}>
+      <div style={cardTitleStyle}>{title}</div>
+      <div style={gridStyle}>{children}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Página
+// ---------------------------------------------------------------------------
 export default function ContratosPage() {
   const router = useRouter();
   const empresaId = useErpEmpresaId();
@@ -144,7 +200,6 @@ export default function ContratosPage() {
   const [form, setForm] = useState<Form>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [showRegimen, setShowRegimen] = useState(false);
 
   useEffect(() => {
     try { if (!localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)) { router.replace("/login"); return; } } catch { /* */ }
@@ -195,7 +250,7 @@ export default function ContratosPage() {
     [tarifaSel]
   );
 
-  const abrirNuevo = () => { setForm({ ...EMPTY }); setErrorMsg(null); setShowRegimen(false); setPanelOpen(true); };
+  const abrirNuevo = () => { setForm({ ...EMPTY }); setErrorMsg(null); setPanelOpen(true); };
   const abrirEditar = (c: Contrato) => {
     const pot: Record<string, string> = {};
     c.potencias.forEach((p) => { pot[p.periodo] = String(p.potencia_kw); });
@@ -213,7 +268,7 @@ export default function ContratosPage() {
       cnae: c.cnae ?? "",
       notas: c.notas ?? "", activo: c.activo, potencias: pot,
     });
-    setErrorMsg(null); setShowRegimen(false); setPanelOpen(true);
+      setErrorMsg(null); setPanelOpen(true);
   };
   const cerrar = () => { if (!saving) setPanelOpen(false); };
 
@@ -277,200 +332,229 @@ export default function ContratosPage() {
 
   if (!authChecked) return null;
 
+  // ============================================================
+  // Vista FICHA (estándar A3)
+  // ============================================================
+  if (panelOpen) {
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+          <div>
+            <button onClick={cerrar}
+              style={{ background: "none", border: "none", color: "rgba(241,239,232,0.5)", fontSize: 12, cursor: "pointer", padding: 0 }}>
+              ← Contratos
+            </button>
+            <h1 style={{ fontSize: 20, fontWeight: 600, margin: "6px 0 0", fontFamily: form.id != null ? monoFont : undefined }}>
+              {form.id != null ? (form.numero_contrato || "Contrato") : "Nuevo contrato"}
+            </h1>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo"
+              onClick={() => setForm({ ...form, activo: !form.activo })}
+              style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: "rgba(241,239,232,0.75)", fontSize: 13, padding: 0 }}>
+              {form.activo ? "Activo" : "Baja"}
+              <span style={{ position: "relative", width: 38, height: 22, borderRadius: 999, background: form.activo ? "#7BE0A3" : "rgba(255,255,255,0.15)", transition: "background .15s" }}>
+                <span style={{ position: "absolute", top: 2, left: form.activo ? 18 : 2, width: 18, height: 18, borderRadius: "50%", background: "#F1EFE8", transition: "left .15s" }} />
+              </span>
+            </button>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              {form.id != null ? (
+                <button onClick={desactivar} disabled={saving} style={btnDanger}>Dar de baja</button>
+              ) : null}
+              <button onClick={cerrar} disabled={saving} style={btnGhost}>Cancelar</button>
+              <button onClick={guardar} disabled={saving || !puedeGuardar}
+                style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
+                {saving ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 18, borderBottom: "0.5px solid rgba(255,255,255,0.08)", marginBottom: 16 }}>
+          <span style={{ fontSize: 14, padding: "8px 2px", borderBottom: "2px solid #F1EFE8", color: "var(--ds-text-primary, #F1EFE8)" }}>
+            Datos generales
+          </span>
+        </div>
+
+        {errorMsg && (
+          <div style={{ background: "rgba(240,153,155,0.1)", border: "0.5px solid rgba(240,153,155,0.4)", color: "#F0999B", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <SectionCard title="Identificación">
+          <TextField label="Nº contrato *" monospace value={form.numero_contrato} onChange={(v) => setForm({ ...form, numero_contrato: v })} />
+          <TextField label="Código interno" value={form.codigo_interno} onChange={(v) => setForm({ ...form, codigo_interno: v })} />
+          <div>
+            <label style={labelStyle}>Tipo contrato ATR{reqMark}</label>
+            <select style={inputStyle} value={form.tipo_contrato_atr} onChange={(e) => setForm({ ...form, tipo_contrato_atr: e.target.value })}>
+              <option value="" style={optDark}>— seleccionar —</option>
+              <option value="anual" style={optDark}>Anual (prórroga tácita)</option>
+              <option value="eventual" style={optDark}>Eventual (hasta 12 meses)</option>
+              <option value="temporada" style={optDark}>Temporada</option>
+              <option value="obras" style={optDark}>Suministro de obras</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Estado</label>
+            <select style={inputStyle} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })}>
+              <option value="borrador" style={optDark}>borrador</option>
+              <option value="activo" style={optDark}>activo</option>
+              <option value="baja" style={optDark}>baja</option>
+            </select>
+          </div>
+          <TextField label="Fecha alta" type="date" value={form.fecha_alta} onChange={(v) => setForm({ ...form, fecha_alta: v })} />
+          <TextField label="Fecha baja" type="date" value={form.fecha_baja} onChange={(v) => setForm({ ...form, fecha_baja: v })} />
+        </SectionCard>
+
+        <SectionCard title="Partes y suministro">
+          <div>
+            <label style={labelStyle}>Titular{reqMark}</label>
+            <select style={inputStyle} value={form.titular_id} onChange={(e) => setForm({ ...form, titular_id: e.target.value === "" ? "" : Number(e.target.value) })}>
+              <option value="" style={optDark}>— seleccionar —</option>
+              {titulares.map((t) => <option key={t.id} value={t.id} style={optDark}>{t.nombre || `#${t.id}`}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Suministro (CUPS){reqMark}</label>
+            <select style={inputStyle} value={form.suministro_id} onChange={(e) => setForm({ ...form, suministro_id: e.target.value === "" ? "" : Number(e.target.value) })}>
+              <option value="" style={optDark}>— seleccionar —</option>
+              {suministros.map((s) => <option key={s.id} value={s.id} style={optDark}>{s.cups}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Tarifa{reqMark}</label>
+            <select style={inputStyle} value={form.tarifa_id} onChange={(e) => setForm({ ...form, tarifa_id: e.target.value === "" ? "" : Number(e.target.value) })}>
+              <option value="" style={optDark}>— seleccionar —</option>
+              {tarifas.map((t) => <option key={t.id} value={t.id} style={optDark}>{t.codigo}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Comercializadora</label>
+            <select style={inputStyle} value={form.comercializadora_id} onChange={(e) => setForm({ ...form, comercializadora_id: e.target.value === "" ? "" : Number(e.target.value) })}>
+              <option value="" style={optDark}>— ninguna —</option>
+              {coms.map((c) => <option key={c.id} value={c.id} style={optDark}>{c.nombre}</option>)}
+            </select>
+          </div>
+        </SectionCard>
+
+        <div style={cardStyle}>
+          <div style={cardTitleStyle}>Potencias contratadas (kW)</div>
+          {form.tarifa_id === "" ? (
+            <p style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, margin: 0 }}>Elige una tarifa para ver sus periodos de potencia.</p>
+          ) : periodosPotencia.length === 0 ? (
+            <p style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, margin: 0 }}>La tarifa seleccionada no tiene periodos de potencia cargados.</p>
+          ) : (
+            <div style={gridStyle}>
+              {periodosPotencia.map((p) => (
+                <div key={p.periodo}>
+                  <label style={labelStyle}>{p.periodo}</label>
+                  <input type="number" value={form.potencias[p.periodo] ?? ""}
+                    onChange={(e) => setForm({ ...form, potencias: { ...form.potencias, [p.periodo]: e.target.value } })}
+                    style={inputStyle} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <div style={cardTitleStyle}>Datos técnicos / Otros</div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px 16px", alignItems: "center", marginBottom: 16 }}>
+            <Check label="Autoconsumo" checked={form.es_autoconsumo} onChange={(v) => setForm({ ...form, es_autoconsumo: v })} />
+            <Check label="Autoconsumo colectivo" checked={form.autoconsumo_colectivo} onChange={(v) => setForm({ ...form, autoconsumo_colectivo: v })} />
+            <Check label="Bono social" checked={form.bono_social} onChange={(v) => setForm({ ...form, bono_social: v })} />
+            <Check label="Suministro mínimo vital" checked={form.suministro_minimo_vital} onChange={(v) => setForm({ ...form, suministro_minimo_vital: v })} />
+            <Check label="Electrointensivo" checked={form.electrointensivo} onChange={(v) => setForm({ ...form, electrointensivo: v })} />
+            <Check label="No cortable (esencial)" checked={form.no_cortable} onChange={(v) => setForm({ ...form, no_cortable: v })} />
+            <Check label="Peaje directo" checked={form.peaje_directo} onChange={(v) => setForm({ ...form, peaje_directo: v })} />
+            <Check label="Telegestión" checked={form.telegestion} onChange={(v) => setForm({ ...form, telegestion: v })} />
+          </div>
+
+          <div style={gridStyle}>
+            <TextField label="Tensión normalizada" value={form.tension_normalizada} onChange={(v) => setForm({ ...form, tension_normalizada: v })} />
+            <div>
+              <label style={labelStyle}>Modo control potencia</label>
+              <select style={inputStyle} value={form.modo_control_potencia} onChange={(e) => setForm({ ...form, modo_control_potencia: e.target.value })}>
+                <option value="" style={optDark}>— sin especificar —</option>
+                <option value="icp" style={optDark}>ICP</option>
+                <option value="maximetro" style={optDark}>Maxímetro</option>
+              </select>
+            </div>
+            <TextField label="CNAE (actividad económica)" value={form.cnae} onChange={(v) => setForm({ ...form, cnae: v })} />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <label style={labelStyle}>Notas</label>
+            <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Vista LISTADO
+  // ============================================================
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>Contratos</h1>
-      <p style={{ color: "#9aa4b2", marginTop: 4, marginBottom: 18 }}>Contratos de acceso/suministro por CUPS.</p>
+      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Contratos</h1>
+      <p style={{ fontSize: 12, color: "rgba(241,239,232,0.5)", marginBottom: 18 }}>
+        Contratos de acceso/suministro por CUPS.
+      </p>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nº de contrato o código interno…" style={{ ...inputStyle, flex: 1 }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+          <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, opacity: 0.5 }}>🔍</span>
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nº de contrato o código interno…"
+            style={{ ...inputStyle, paddingLeft: 30 }} />
+        </div>
         <button onClick={abrirNuevo}
-          style={{ padding: "9px 14px", background: "#1f2733", color: "#e5e7eb", border: "1px solid #2a3441", borderRadius: 8, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }}>
+          style={{ background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
           + Nuevo contrato
         </button>
       </div>
 
       {empresaId == null ? (
-        <p style={{ color: "#6b7280" }}>Selecciona una empresa en el selector de arriba.</p>
+        <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Selecciona una empresa en el selector de arriba.</div>
       ) : loading ? (
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+        <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Cargando…</div>
       ) : items.length === 0 ? (
-        <p style={{ color: "#6b7280" }}>{search.trim() ? "Sin resultados." : "No hay contratos todavía."}</p>
+        <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>
+          {search.trim() ? "Sin resultados." : "No hay contratos todavía."}
+        </div>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={thStyle}>Nº contrato</th>
-              <th style={thStyle}>Titular</th>
-              <th style={thStyle}>CUPS</th>
-              <th style={thStyle}>Tarifa</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((c) => (
-              <tr key={c.id} onClick={() => abrirEditar(c)} style={{ cursor: "pointer", opacity: c.activo ? 1 : 0.55 }}>
-                <td style={{ ...tdStyle, ...mono }}>{c.numero_contrato}</td>
-                <td style={tdStyle}>{c.titular_nombre ?? "—"}</td>
-                <td style={{ ...tdStyle, ...mono, fontSize: 12 }}>{c.cups ?? "—"}</td>
-                <td style={tdStyle}>{c.tarifa_codigo ?? "—"}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{estadoBadge(c.estado)}</td>
+        <div style={{ border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "rgba(255,255,255,0.03)", color: "rgba(241,239,232,0.55)" }}>
+                <th style={thStyle}>Nº contrato</th>
+                <th style={thStyle}>Titular</th>
+                <th style={thStyle}>CUPS</th>
+                <th style={thStyle}>Tarifa</th>
+                <th style={{ ...thStyle, width: 90 }}>Estado</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {panelOpen && (
-        <>
-          <div onClick={cerrar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }} />
-          <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 540, maxWidth: "94vw", background: "#0b0f17", borderLeft: "1px solid #1f2733", zIndex: 50, padding: 24, overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{form.id != null ? (form.numero_contrato || "Contrato") : "Nuevo contrato"}</div>
-                <div style={{ fontSize: 13, color: "#9aa4b2" }}>{form.id != null ? "Editar contrato" : "Alta de contrato"}</div>
-              </div>
-              <button onClick={cerrar} style={{ background: "none", border: "none", color: "#9aa4b2", fontSize: 22, cursor: "pointer" }}>×</button>
-            </div>
-
-            {errorMsg && <div style={{ background: "#2a1416", border: "1px solid #5b2330", color: "#f7a3ad", padding: "8px 10px", borderRadius: 6, fontSize: 13, margin: "8px 0" }}>{errorMsg}</div>}
-
-            <div style={sectionLabel}>Identificación</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <TextField label="Nº contrato *" value={form.numero_contrato} onChange={(v) => setForm({ ...form, numero_contrato: v })} mono />
-              <TextField label="Código interno" value={form.codigo_interno} onChange={(v) => setForm({ ...form, codigo_interno: v })} />
-              <div>
-                <label style={labelStyle}>Tipo contrato ATR *</label>
-                <select style={inputStyle} value={form.tipo_contrato_atr} onChange={(e) => setForm({ ...form, tipo_contrato_atr: e.target.value })}>
-                  <option value="">— seleccionar —</option>
-                  <option value="anual">Anual (prórroga tácita)</option>
-                  <option value="eventual">Eventual (hasta 12 meses)</option>
-                  <option value="temporada">Temporada</option>
-                  <option value="obras">Suministro de obras</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Estado</label>
-                <select style={inputStyle} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })}>
-                  <option value="borrador">borrador</option>
-                  <option value="activo">activo</option>
-                  <option value="baja">baja</option>
-                </select>
-              </div>
-              <TextField label="Fecha alta" type="date" value={form.fecha_alta} onChange={(v) => setForm({ ...form, fecha_alta: v })} />
-              <TextField label="Fecha baja" type="date" value={form.fecha_baja} onChange={(v) => setForm({ ...form, fecha_baja: v })} />
-            </div>
-
-            <div style={sectionLabel}>Partes y suministro</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={labelStyle}>Titular *</label>
-                <select style={inputStyle} value={form.titular_id} onChange={(e) => setForm({ ...form, titular_id: e.target.value === "" ? "" : Number(e.target.value) })}>
-                  <option value="">— seleccionar —</option>
-                  {titulares.map((t) => <option key={t.id} value={t.id}>{t.nombre || `#${t.id}`}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Suministro (CUPS) *</label>
-                <select style={inputStyle} value={form.suministro_id} onChange={(e) => setForm({ ...form, suministro_id: e.target.value === "" ? "" : Number(e.target.value) })}>
-                  <option value="">— seleccionar —</option>
-                  {suministros.map((s) => <option key={s.id} value={s.id}>{s.cups}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Tarifa *</label>
-                <select style={inputStyle} value={form.tarifa_id} onChange={(e) => setForm({ ...form, tarifa_id: e.target.value === "" ? "" : Number(e.target.value) })}>
-                  <option value="">— seleccionar —</option>
-                  {tarifas.map((t) => <option key={t.id} value={t.id}>{t.codigo}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Comercializadora</label>
-                <select style={inputStyle} value={form.comercializadora_id} onChange={(e) => setForm({ ...form, comercializadora_id: e.target.value === "" ? "" : Number(e.target.value) })}>
-                  <option value="">— ninguna —</option>
-                  {coms.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div style={sectionLabel}>Potencias contratadas (kW)</div>
-            {form.tarifa_id === "" ? (
-              <p style={{ color: "#6b7280", fontSize: 13 }}>Elige una tarifa para ver sus periodos de potencia.</p>
-            ) : periodosPotencia.length === 0 ? (
-              <p style={{ color: "#6b7280", fontSize: 13 }}>La tarifa seleccionada no tiene periodos de potencia cargados.</p>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                {periodosPotencia.map((p) => (
-                  <div key={p.periodo}>
-                    <label style={labelStyle}>{p.periodo}</label>
-                    <input type="number" value={form.potencias[p.periodo] ?? ""}
-                      onChange={(e) => setForm({ ...form, potencias: { ...form.potencias, [p.periodo]: e.target.value } })}
-                      style={inputStyle} />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div style={{ ...sectionLabel, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-              onClick={() => setShowRegimen((s) => !s)}>
-              <span>{showRegimen ? "▾" : "▸"}</span> Régimen regulado
-            </div>
-            {showRegimen && (
-              <div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <Check label="Autoconsumo" checked={form.es_autoconsumo} onChange={(v) => setForm({ ...form, es_autoconsumo: v })} />
-                  <Check label="Autoconsumo colectivo" checked={form.autoconsumo_colectivo} onChange={(v) => setForm({ ...form, autoconsumo_colectivo: v })} />
-                  <Check label="Bono social" checked={form.bono_social} onChange={(v) => setForm({ ...form, bono_social: v })} />
-                  <Check label="Suministro mínimo vital" checked={form.suministro_minimo_vital} onChange={(v) => setForm({ ...form, suministro_minimo_vital: v })} />
-                  <Check label="Electrointensivo" checked={form.electrointensivo} onChange={(v) => setForm({ ...form, electrointensivo: v })} />
-                  <Check label="No cortable (esencial)" checked={form.no_cortable} onChange={(v) => setForm({ ...form, no_cortable: v })} />
-                  <Check label="Peaje directo" checked={form.peaje_directo} onChange={(v) => setForm({ ...form, peaje_directo: v })} />
-                  <Check label="Telegestión" checked={form.telegestion} onChange={(v) => setForm({ ...form, telegestion: v })} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-                  <TextField label="Tensión normalizada" value={form.tension_normalizada} onChange={(v) => setForm({ ...form, tension_normalizada: v })} />
-                  <div>
-                    <label style={labelStyle}>Modo control potencia</label>
-                    <select style={inputStyle} value={form.modo_control_potencia} onChange={(e) => setForm({ ...form, modo_control_potencia: e.target.value })}>
-                      <option value="">— sin especificar —</option>
-                      <option value="icp">ICP</option>
-                      <option value="maximetro">Maxímetro</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div style={sectionLabel}>Otros</div>
-            <div style={{ marginBottom: 12 }}>
-              <TextField label="CNAE (actividad económica)" value={form.cnae} onChange={(v) => setForm({ ...form, cnae: v })} />
-            </div>
-            <div>
-              <label style={labelStyle}>Notas</label>
-              <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <Check label="Activo" checked={form.activo} onChange={(v) => setForm({ ...form, activo: v })} />
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "space-between" }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={guardar} disabled={saving || !puedeGuardar}
-                  style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: saving || !puedeGuardar ? "default" : "pointer", background: puedeGuardar ? "#2563eb" : "#1f2733", color: "#fff", border: "none", opacity: saving ? 0.6 : 1 }}>
-                  {saving ? "Guardando…" : "Guardar"}
-                </button>
-                {form.id != null && (
-                  <button onClick={desactivar} disabled={saving}
-                    style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: "pointer", background: "none", color: "#f7a3ad", border: "1px solid #5b2330" }}>
-                    Dar de baja
-                  </button>
-                )}
-              </div>
-              <button onClick={cerrar} style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: "pointer", background: "none", color: "#9aa4b2", border: "1px solid #2a3441" }}>Cancelar</button>
-            </div>
-          </div>
-        </>
+            </thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.id} onClick={() => abrirEditar(c)}
+                  style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)", cursor: "pointer", opacity: c.activo ? 1 : 0.55 }}>
+                  <td style={{ ...tdStyle, fontFamily: monoFont }}>{c.numero_contrato}</td>
+                  <td style={tdStyle}>{c.titular_nombre ?? "—"}</td>
+                  <td style={{ ...tdStyle, fontFamily: monoFont, fontSize: 12 }}>{c.cups ?? "—"}</td>
+                  <td style={tdStyle}>{c.tarifa_codigo ?? "—"}</td>
+                  <td style={tdStyle}>
+                    <span style={estadoBadge(c.estado)}>{c.estado}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

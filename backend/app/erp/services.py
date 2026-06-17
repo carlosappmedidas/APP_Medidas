@@ -28,6 +28,7 @@ from app.core.permissions import assert_empresa_access
 from app.erp.models import (
     ErpTitular, ErpSuministro,
     ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
+    ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
 )
 from app.erp.schemas import (
     ErpTitularCreate, ErpTitularUpdate,
@@ -491,3 +492,22 @@ def desactivar_comercializadora(db: Session, com_id: int) -> ErpComercializadora
     db.commit()
     db.refresh(c)
     return c
+
+# ---------------------------------------------------------------------------
+# Catálogos de normativa CNMC (dirección) — globales, solo lectura
+# ---------------------------------------------------------------------------
+def listar_cnmc_catalogos(db: Session) -> dict:
+    """Códigos activos de los catálogos CNMC de dirección, ordenados por `orden`."""
+    def _vivos(Model):
+        return (
+            db.query(Model)
+            .filter(Model.activo.is_(True))
+            .order_by(Model.orden, Model.codigo)
+            .all()
+        )
+    return {
+        "tipo_via": _vivos(ErpCnmcTipoVia),
+        "piso": _vivos(ErpCnmcPiso),
+        "puerta": _vivos(ErpCnmcPuerta),
+        "aclarador_finca": _vivos(ErpCnmcAclaradorFinca),
+    }

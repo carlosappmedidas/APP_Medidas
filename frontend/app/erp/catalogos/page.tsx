@@ -59,57 +59,94 @@ const EMPTY_COM: Comercializadora = {
 };
 
 // ---------------------------------------------------------------------------
-// Estilos
+// Estilos (estándar ficha A3)
 // ---------------------------------------------------------------------------
-const labelStyle: React.CSSProperties = { display: "block", fontSize: 12, color: "#9aa4b2", marginBottom: 4 };
-const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "8px 10px", background: "#0f1623",
-  border: "1px solid #2a3441", borderRadius: 6, color: "#e5e7eb",
-  fontSize: 14, boxSizing: "border-box",
+const labelStyle: React.CSSProperties = {
+  display: "block", fontSize: 12, color: "rgba(241,239,232,0.55)", marginBottom: 4,
 };
-const thStyle: React.CSSProperties = { textAlign: "left", fontSize: 12, color: "#9aa4b2", fontWeight: 500, padding: "10px 12px", borderBottom: "1px solid #1f2733" };
-const tdStyle: React.CSSProperties = { padding: "12px", fontSize: 14, borderBottom: "1px solid #161c26" };
-const mono: React.CSSProperties = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
+const inputStyle: React.CSSProperties = {
+  width: "100%", background: "rgba(255,255,255,0.04)",
+  border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 6,
+  color: "var(--ds-text-primary, #F1EFE8)", fontSize: 13,
+  padding: "8px 10px", outline: "none", boxSizing: "border-box",
+};
+const monoFont = "ui-monospace, SFMono-Regular, Menlo, monospace";
+const thStyle: React.CSSProperties = { textAlign: "left", fontWeight: 500, padding: "10px 14px" };
+const tdStyle: React.CSSProperties = { padding: "11px 14px", color: "var(--ds-text-primary, #F1EFE8)" };
 
-function badge(activo: boolean) {
-  return (
-    <span style={{
-      fontSize: 12, padding: "2px 8px", borderRadius: 999,
-      background: activo ? "#0e2a1a" : "#23262d",
-      color: activo ? "#34d399" : "#9aa4b2",
-      border: `1px solid ${activo ? "#1f5138" : "#2a3441"}`,
-    }}>
-      {activo ? "activo" : "baja"}
-    </span>
-  );
+const cardStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)",
+  borderRadius: 10, padding: "16px 18px", marginBottom: 12,
+};
+const cardTitleStyle: React.CSSProperties = {
+  fontSize: 13, fontWeight: 500, color: "var(--ds-text-primary, #F1EFE8)", marginBottom: 12,
+};
+const gridStyle: React.CSSProperties = {
+  display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12,
+};
+const btnPrimary: React.CSSProperties = {
+  background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6,
+  padding: "8px 16px", fontSize: 13, fontWeight: 500,
+};
+const btnGhost: React.CSSProperties = {
+  background: "transparent", color: "rgba(241,239,232,0.7)",
+  border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 6,
+  padding: "8px 14px", fontSize: 13, cursor: "pointer",
+};
+const btnDanger: React.CSSProperties = {
+  background: "transparent", color: "#F0999B",
+  border: "0.5px solid rgba(240,153,155,0.4)", borderRadius: 6,
+  padding: "8px 14px", fontSize: 13, cursor: "pointer",
+};
+const reqMark = <span style={{ color: "#F0999B" }}> *</span>;
+
+function badge(activo: boolean): React.CSSProperties {
+  return activo
+    ? { background: "rgba(74,222,128,0.15)", color: "#7BE0A3", fontSize: 12, padding: "2px 9px", borderRadius: 6 }
+    : { background: "rgba(255,255,255,0.06)", color: "rgba(241,239,232,0.5)", fontSize: 12, padding: "2px 9px", borderRadius: 6 };
 }
 
 function tabBtn(active: boolean): React.CSSProperties {
   return {
-    padding: "8px 16px", fontSize: 14, cursor: "pointer", borderRadius: 8,
-    border: "1px solid " + (active ? "#2a3441" : "transparent"),
-    background: active ? "#1f2733" : "transparent",
-    color: active ? "#e5e7eb" : "#9aa4b2",
+    background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: "8px 2px",
+    color: active ? "var(--ds-text-primary, #F1EFE8)" : "rgba(241,239,232,0.5)",
+    borderBottom: active ? "2px solid #F1EFE8" : "2px solid transparent",
   };
 }
 
-function TextField(props: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; monospace?: boolean }) {
-  const { label, value, onChange, placeholder, monospace } = props;
+// TextField FUERA del componente para no perder el foco al re-render.
+// Si la label termina en " *", pinta asterisco rojo. `span` ocupa toda la fila.
+function TextField(props: {
+  label: string; value: string; onChange: (v: string) => void;
+  span?: boolean; type?: string; monospace?: boolean;
+}) {
+  const { label, value, onChange, span, type = "text", monospace } = props;
+  const req = label.endsWith(" *");
+  const base = req ? label.slice(0, -2) : label;
   return (
-    <div>
-      <label style={labelStyle}>{label}</label>
-      <input style={monospace ? { ...inputStyle, ...mono } : inputStyle} value={value}
-        placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
+      <label style={labelStyle}>{base}{req ? reqMark : null}</label>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
+        style={monospace ? { ...inputStyle, fontFamily: monoFont } : inputStyle} />
     </div>
   );
 }
 
 function Check(props: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#e5e7eb" }}>
+    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(241,239,232,0.8)" }}>
       <input type="checkbox" checked={props.checked} onChange={(e) => props.onChange(e.target.checked)} />
       {props.label}
     </label>
+  );
+}
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={cardStyle}>
+      <div style={cardTitleStyle}>{title}</div>
+      <div style={gridStyle}>{children}</div>
+    </div>
   );
 }
 
@@ -235,164 +272,191 @@ export default function CatalogosPage() {
   const periodosTxt = (t: Tarifa, tipo: string) =>
     t.periodos.filter((p) => p.tipo === tipo).sort((a, b) => a.orden - b.orden).map((p) => p.periodo).join(" ") || "—";
 
+  // ============================================================
+  // Vista FICHA comercializadora (estándar A3)
+  // ============================================================
+  if (panelOpen) {
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+          <div>
+            <button onClick={cerrar}
+              style={{ background: "none", border: "none", color: "rgba(241,239,232,0.5)", fontSize: 12, cursor: "pointer", padding: 0 }}>
+              ← Comercializadoras
+            </button>
+            <h1 style={{ fontSize: 20, fontWeight: 600, margin: "6px 0 0" }}>
+              {form.id != null ? (form.nombre || "Comercializadora") : "Nueva comercializadora"}
+            </h1>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activa"
+              onClick={() => setForm({ ...form, activo: !form.activo })}
+              style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: "rgba(241,239,232,0.75)", fontSize: 13, padding: 0 }}>
+              {form.activo ? "Activa" : "Baja"}
+              <span style={{ position: "relative", width: 38, height: 22, borderRadius: 999, background: form.activo ? "#7BE0A3" : "rgba(255,255,255,0.15)", transition: "background .15s" }}>
+                <span style={{ position: "absolute", top: 2, left: form.activo ? 18 : 2, width: 18, height: 18, borderRadius: "50%", background: "#F1EFE8", transition: "left .15s" }} />
+              </span>
+            </button>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              {form.id != null ? (
+                <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
+              ) : null}
+              <button onClick={cerrar} disabled={saving} style={btnGhost}>Cancelar</button>
+              <button onClick={guardar} disabled={saving || !puedeGuardar}
+                style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
+                {saving ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 18, borderBottom: "0.5px solid rgba(255,255,255,0.08)", marginBottom: 16 }}>
+          <span style={{ fontSize: 14, padding: "8px 2px", borderBottom: "2px solid #F1EFE8", color: "var(--ds-text-primary, #F1EFE8)" }}>
+            Datos generales
+          </span>
+        </div>
+
+        {errorMsg && (
+          <div style={{ background: "rgba(240,153,155,0.1)", border: "0.5px solid rgba(240,153,155,0.4)", color: "#F0999B", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <SectionCard title="Identificación">
+          <TextField label="Nombre *" span value={form.nombre} onChange={(v) => setForm({ ...form, nombre: v })} />
+          <TextField label="CIF *" monospace value={form.cif} onChange={(v) => setForm({ ...form, cif: v })} />
+          <TextField label="Código REE *" monospace value={form.codigo_ree} onChange={(v) => setForm({ ...form, codigo_ree: v })} />
+          <TextField label="Código CNMC (R2-XXX)" monospace value={form.codigo_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_cnmc: v })} />
+          <TextField label="Código liquidación CNMC" value={form.codigo_liquidacion_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_liquidacion_cnmc: v })} />
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Check label="Comercializadora de referencia (CUR/COR)" checked={form.es_cur} onChange={(v) => setForm({ ...form, es_cur: v })} />
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Registro CNMC">
+          <TextField label="Fecha alta CNMC" type="date" value={form.fecha_alta_cnmc ?? ""} onChange={(v) => setForm({ ...form, fecha_alta_cnmc: v })} />
+          <TextField label="Fecha baja CNMC" type="date" value={form.fecha_baja_cnmc ?? ""} onChange={(v) => setForm({ ...form, fecha_baja_cnmc: v })} />
+        </SectionCard>
+
+        <SectionCard title="Otros">
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={labelStyle}>Notas</label>
+            <textarea value={form.notas ?? ""} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={3} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Vista LISTADO (con pestañas Tarifas / Comercializadoras)
+  // ============================================================
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>Catálogos</h1>
-      <p style={{ color: "#9aa4b2", marginTop: 4, marginBottom: 18 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Catálogos</h1>
+      <p style={{ fontSize: 12, color: "rgba(241,239,232,0.5)", marginBottom: 18 }}>
         Tablas reguladas, comunes a todas las empresas.
       </p>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+      <div style={{ display: "flex", gap: 18, borderBottom: "0.5px solid rgba(255,255,255,0.08)", marginBottom: 18 }}>
         <button style={tabBtn(tab === "tarifas")} onClick={() => setTab("tarifas")}>Tarifas</button>
         <button style={tabBtn(tab === "comercializadoras")} onClick={() => setTab("comercializadoras")}>Comercializadoras</button>
       </div>
 
       {tab === "tarifas" ? (
         loadingTar ? (
-          <p style={{ color: "#6b7280" }}>Cargando…</p>
+          <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Cargando…</div>
         ) : tarifas.length === 0 ? (
-          <p style={{ color: "#6b7280" }}>No hay tarifas. Ejecuta el seed (scripts/seed_erp_tarifas.py).</p>
+          <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>No hay tarifas. Ejecuta el seed (scripts/seed_erp_tarifas.py).</div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Código</th>
-                <th style={thStyle}>Descripción</th>
-                <th style={thStyle}>REE</th>
-                <th style={thStyle}>Nivel</th>
-                <th style={thStyle}>Periodos energía</th>
-                <th style={thStyle}>Periodos potencia</th>
-                <th style={thStyle}>Vigencia</th>
-                <th style={thStyle}>Norma</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tarifas.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ ...tdStyle, ...mono, fontWeight: 600 }}>{t.codigo}</td>
-                  <td style={tdStyle}>{t.descripcion}</td>
-                  <td style={{ ...tdStyle, ...mono }}>{t.codigo_ree ?? "—"}</td>
-                  <td style={tdStyle}>{t.nivel_tension}</td>
-                  <td style={{ ...tdStyle, ...mono, fontSize: 12 }}>{periodosTxt(t, "energia")}</td>
-                  <td style={{ ...tdStyle, ...mono, fontSize: 12 }}>{periodosTxt(t, "potencia")}</td>
-                  <td style={{ ...tdStyle, fontSize: 12 }}>
-                    {t.vigencia_desde ?? "—"}{t.vigencia_hasta ? ` → ${t.vigencia_hasta}` : ""}
-                  </td>
-                  <td style={{ ...tdStyle, fontSize: 12, color: "#9aa4b2" }}>{t.referencia_normativa ?? "—"}</td>
+          <div style={{ border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "rgba(255,255,255,0.03)", color: "rgba(241,239,232,0.55)" }}>
+                  <th style={thStyle}>Código</th>
+                  <th style={thStyle}>Descripción</th>
+                  <th style={thStyle}>REE</th>
+                  <th style={thStyle}>Nivel</th>
+                  <th style={thStyle}>Periodos energía</th>
+                  <th style={thStyle}>Periodos potencia</th>
+                  <th style={thStyle}>Vigencia</th>
+                  <th style={thStyle}>Norma</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {tarifas.map((t) => (
+                  <tr key={t.id} style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)" }}>
+                    <td style={{ ...tdStyle, fontFamily: monoFont, fontWeight: 600 }}>{t.codigo}</td>
+                    <td style={tdStyle}>{t.descripcion}</td>
+                    <td style={{ ...tdStyle, fontFamily: monoFont }}>{t.codigo_ree ?? "—"}</td>
+                    <td style={tdStyle}>{t.nivel_tension}</td>
+                    <td style={{ ...tdStyle, fontFamily: monoFont, fontSize: 12 }}>{periodosTxt(t, "energia")}</td>
+                    <td style={{ ...tdStyle, fontFamily: monoFont, fontSize: 12 }}>{periodosTxt(t, "potencia")}</td>
+                    <td style={{ ...tdStyle, fontSize: 12 }}>
+                      {t.vigencia_desde ?? "—"}{t.vigencia_hasta ? ` → ${t.vigencia_hasta}` : ""}
+                    </td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "rgba(241,239,232,0.5)" }}>{t.referencia_normativa ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )
       ) : (
         <>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, CIF o código REE…" style={{ ...inputStyle, flex: 1 }} />
-            <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#9aa4b2", fontSize: 14, whiteSpace: "nowrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, opacity: 0.5 }}>🔍</span>
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nombre, CIF o código REE…"
+                style={{ ...inputStyle, paddingLeft: 30 }} />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(241,239,232,0.7)", whiteSpace: "nowrap" }}>
               <input type="checkbox" checked={soloActivas} onChange={(e) => setSoloActivas(e.target.checked)} /> Solo activas
             </label>
             <button onClick={abrirNuevo}
-              style={{ padding: "9px 14px", background: "#1f2733", color: "#e5e7eb", border: "1px solid #2a3441", borderRadius: 8, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }}>
+              style={{ background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
               + Nueva comercializadora
             </button>
           </div>
 
           {loadingCom ? (
-            <p style={{ color: "#6b7280" }}>Cargando…</p>
+            <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Cargando…</div>
           ) : coms.length === 0 ? (
-            <p style={{ color: "#6b7280" }}>
+            <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>
               {search.trim() ? "Sin resultados." : "No hay comercializadoras todavía."}
-            </p>
+            </div>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Nombre</th>
-                  <th style={thStyle}>CIF</th>
-                  <th style={thStyle}>Código REE</th>
-                  <th style={thStyle}>CUR</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coms.map((c) => (
-                  <tr key={c.id} onClick={() => abrirEditar(c)} style={{ cursor: "pointer", opacity: c.activo ? 1 : 0.55 }}>
-                    <td style={tdStyle}>{c.nombre}</td>
-                    <td style={{ ...tdStyle, ...mono }}>{c.cif}</td>
-                    <td style={{ ...tdStyle, ...mono }}>{c.codigo_ree}</td>
-                    <td style={tdStyle}>{c.es_cur ? "Sí" : "—"}</td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>{badge(c.activo)}</td>
+            <div style={{ border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "rgba(255,255,255,0.03)", color: "rgba(241,239,232,0.55)" }}>
+                    <th style={thStyle}>Nombre</th>
+                    <th style={thStyle}>CIF</th>
+                    <th style={thStyle}>Código REE</th>
+                    <th style={thStyle}>CUR</th>
+                    <th style={{ ...thStyle, width: 90 }}>Estado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {coms.map((c) => (
+                    <tr key={c.id} onClick={() => abrirEditar(c)}
+                      style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)", cursor: "pointer", opacity: c.activo ? 1 : 0.55 }}>
+                      <td style={tdStyle}>{c.nombre}</td>
+                      <td style={{ ...tdStyle, fontFamily: monoFont }}>{c.cif}</td>
+                      <td style={{ ...tdStyle, fontFamily: monoFont }}>{c.codigo_ree}</td>
+                      <td style={tdStyle}>{c.es_cur ? "Sí" : "—"}</td>
+                      <td style={tdStyle}>
+                        <span style={badge(c.activo)}>{c.activo ? "activa" : "baja"}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </>
-      )}
-
-      {panelOpen && (
-        <>
-          <div onClick={cerrar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }} />
-          <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 460, maxWidth: "92vw", background: "#0b0f17", borderLeft: "1px solid #1f2733", zIndex: 50, padding: 24, overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{form.id != null ? (form.nombre || "Comercializadora") : "Nueva comercializadora"}</div>
-                <div style={{ fontSize: 13, color: "#9aa4b2" }}>{form.id != null ? "Editar" : "Alta"}</div>
-              </div>
-              <button onClick={cerrar} style={{ background: "none", border: "none", color: "#9aa4b2", fontSize: 22, cursor: "pointer" }}>×</button>
-            </div>
-
-            {errorMsg && (
-              <div style={{ background: "#2a1416", border: "1px solid #5b2330", color: "#f7a3ad", padding: "8px 10px", borderRadius: 6, fontSize: 13, margin: "8px 0" }}>{errorMsg}</div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 8 }}>
-              <div style={{ gridColumn: "1 / -1" }}>
-                <TextField label="Nombre *" value={form.nombre} onChange={(v) => setForm({ ...form, nombre: v })} />
-              </div>
-              <TextField label="CIF *" value={form.cif} onChange={(v) => setForm({ ...form, cif: v })} monospace />
-              <TextField label="Código REE *" value={form.codigo_ree} onChange={(v) => setForm({ ...form, codigo_ree: v })} monospace />
-              <TextField label="Código CNMC (R2-XXX)" value={form.codigo_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_cnmc: v })} monospace />
-              <TextField label="Código liquidación CNMC" value={form.codigo_liquidacion_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_liquidacion_cnmc: v })} />
-              <div>
-                <label style={labelStyle}>Fecha alta CNMC</label>
-                <input type="date" style={inputStyle} value={form.fecha_alta_cnmc ?? ""} onChange={(e) => setForm({ ...form, fecha_alta_cnmc: e.target.value })} />
-              </div>
-              <div>
-                <label style={labelStyle}>Fecha baja CNMC</label>
-                <input type="date" style={inputStyle} value={form.fecha_baja_cnmc ?? ""} onChange={(e) => setForm({ ...form, fecha_baja_cnmc: e.target.value })} />
-              </div>
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <Check label="Comercializadora de referencia (CUR/COR)" checked={form.es_cur} onChange={(v) => setForm({ ...form, es_cur: v })} />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <label style={labelStyle}>Notas</label>
-              <textarea value={form.notas ?? ""} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <Check label="Activa" checked={form.activo} onChange={(v) => setForm({ ...form, activo: v })} />
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "space-between" }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={guardar} disabled={saving || !puedeGuardar}
-                  style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: saving || !puedeGuardar ? "default" : "pointer", background: puedeGuardar ? "#2563eb" : "#1f2733", color: "#fff", border: "none", opacity: saving ? 0.6 : 1 }}>
-                  {saving ? "Guardando…" : "Guardar"}
-                </button>
-                {form.id != null && (
-                  <button onClick={desactivar} disabled={saving}
-                    style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: "pointer", background: "none", color: "#f7a3ad", border: "1px solid #5b2330" }}>
-                    Desactivar
-                  </button>
-                )}
-              </div>
-              <button onClick={cerrar} style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: "pointer", background: "none", color: "#9aa4b2", border: "1px solid #2a3441" }}>
-                Cancelar
-              </button>
-            </div>
-          </div>
         </>
       )}
     </div>

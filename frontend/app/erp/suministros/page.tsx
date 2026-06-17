@@ -1,3 +1,4 @@
+// app/erp/suministros/page.tsx
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -6,9 +7,11 @@ import { useRouter } from "next/navigation";
 import { API_BASE_URL, readApiError } from "../../apiConfig";
 import { useErpEmpresaId } from "../components/ErpEmpresaSelector";
 
-// Cabeceras de autenticación: lee el token de localStorage (igual que el resto de la app)
+const AUTH_TOKEN_STORAGE_KEY = "auth_token";
+
+// Cabeceras de autenticación: lee el token de localStorage
 function authHeaders(): Record<string, string> {
-  const t = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const t = typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : null;
   return t ? { Authorization: "Bearer " + t } : {};
 }
 
@@ -88,63 +91,75 @@ const EMPTY: Form = {
 };
 
 // ---------------------------------------------------------------------------
-// Estilos
+// Estilos (estándar ficha A3)
 // ---------------------------------------------------------------------------
 const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: 12, color: "#9aa4b2", marginBottom: 4,
+  display: "block", fontSize: 12, color: "rgba(241,239,232,0.55)", marginBottom: 4,
 };
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "8px 10px", background: "#0f1623",
-  border: "1px solid #2a3441", borderRadius: 6, color: "#e5e7eb",
-  fontSize: 14, boxSizing: "border-box",
+  width: "100%", background: "rgba(255,255,255,0.04)",
+  border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 6,
+  color: "var(--ds-text-primary, #F1EFE8)", fontSize: 13,
+  padding: "8px 10px", outline: "none", boxSizing: "border-box",
 };
-const sectionLabelStyle: React.CSSProperties = {
-  fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em",
-  color: "#6b7280", margin: "18px 0 8px",
-};
-const thStyle: React.CSSProperties = {
-  textAlign: "left", fontSize: 12, color: "#9aa4b2", fontWeight: 500,
-  padding: "10px 12px", borderBottom: "1px solid #1f2733",
-};
-const tdStyle: React.CSSProperties = {
-  padding: "12px", fontSize: 14, borderBottom: "1px solid #161c26",
-};
-const mono: React.CSSProperties = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
+const monoFont = "ui-monospace, SFMono-Regular, Menlo, monospace";
+const thStyle: React.CSSProperties = { textAlign: "left", fontWeight: 500, padding: "10px 14px" };
+const tdStyle: React.CSSProperties = { padding: "11px 14px", color: "var(--ds-text-primary, #F1EFE8)" };
 
-function badge(activo: boolean) {
-  return (
-    <span
-      style={{
-        fontSize: 12, padding: "2px 8px", borderRadius: 999,
-        background: activo ? "#0e2a1a" : "#23262d",
-        color: activo ? "#34d399" : "#9aa4b2",
-        border: `1px solid ${activo ? "#1f5138" : "#2a3441"}`,
-      }}
-    >
-      {activo ? "activo" : "baja"}
-    </span>
-  );
+const cardStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)",
+  borderRadius: 10, padding: "16px 18px", marginBottom: 12,
+};
+const cardTitleStyle: React.CSSProperties = {
+  fontSize: 13, fontWeight: 500, color: "var(--ds-text-primary, #F1EFE8)", marginBottom: 12,
+};
+const gridStyle: React.CSSProperties = {
+  display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12,
+};
+const btnPrimary: React.CSSProperties = {
+  background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6,
+  padding: "8px 16px", fontSize: 13, fontWeight: 500,
+};
+const btnGhost: React.CSSProperties = {
+  background: "transparent", color: "rgba(241,239,232,0.7)",
+  border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 6,
+  padding: "8px 14px", fontSize: 13, cursor: "pointer",
+};
+const btnDanger: React.CSSProperties = {
+  background: "transparent", color: "#F0999B",
+  border: "0.5px solid rgba(240,153,155,0.4)", borderRadius: 6,
+  padding: "8px 14px", fontSize: 13, cursor: "pointer",
+};
+
+function badge(activo: boolean): React.CSSProperties {
+  return activo
+    ? { background: "rgba(74,222,128,0.15)", color: "#7BE0A3", fontSize: 12, padding: "2px 9px", borderRadius: 6 }
+    : { background: "rgba(255,255,255,0.06)", color: "rgba(241,239,232,0.5)", fontSize: 12, padding: "2px 9px", borderRadius: 6 };
 }
 
-// TextField FUERA del componente para no perder el foco al re-render
+// TextField FUERA del componente para no perder el foco al re-render.
+// Si la label termina en " *", pinta asterisco rojo. `span` ocupa toda la fila.
 function TextField(props: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  span?: boolean;
   type?: string;
   placeholder?: string;
   monospace?: boolean;
 }) {
-  const { label, value, onChange, type = "text", placeholder, monospace } = props;
+  const { label, value, onChange, span, type = "text", placeholder, monospace } = props;
+  const req = label.endsWith(" *");
+  const base = req ? label.slice(0, -2) : label;
   return (
-    <div>
-      <label style={labelStyle}>{label}</label>
+    <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
+      <label style={labelStyle}>{base}{req ? <span style={{ color: "#F0999B" }}> *</span> : null}</label>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        style={monospace ? { ...inputStyle, ...mono } : inputStyle}
+        style={monospace ? { ...inputStyle, fontFamily: monoFont } : inputStyle}
       />
     </div>
   );
@@ -152,14 +167,19 @@ function TextField(props: {
 
 function Check(props: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#e5e7eb" }}>
-      <input
-        type="checkbox"
-        checked={props.checked}
-        onChange={(e) => props.onChange(e.target.checked)}
-      />
+    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(241,239,232,0.8)" }}>
+      <input type="checkbox" checked={props.checked} onChange={(e) => props.onChange(e.target.checked)} />
       {props.label}
     </label>
+  );
+}
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={cardStyle}>
+      <div style={cardTitleStyle}>{title}</div>
+      <div style={gridStyle}>{children}</div>
+    </div>
   );
 }
 
@@ -183,7 +203,7 @@ export default function SuministrosPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && !localStorage.getItem("auth_token")) {
+    if (typeof window !== "undefined" && !localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)) {
       router.push("/login");
       return;
     }
@@ -287,6 +307,7 @@ export default function SuministrosPage() {
   }
 
   function cerrar() {
+    if (saving) return;
     setPanelOpen(false);
     setEditingId(null);
     setErrorMsg(null);
@@ -339,8 +360,18 @@ export default function SuministrosPage() {
     };
   }
 
+  // Obligatorios según ATR (TiposComplejos.xsd, tipo Direccion):
+  // CUPS + provincia + municipio + C.P. + vía + número.
+  const puedeGuardar =
+    !!form.cups.trim() &&
+    !!form.dir_provincia.trim() &&
+    !!form.dir_municipio.trim() &&
+    !!form.dir_cp.trim() &&
+    !!form.dir_via.trim() &&
+    !!form.dir_numero.trim();
+
   async function guardar() {
-    if (!form.cups.trim() || empresaId == null) return;
+    if (!puedeGuardar || empresaId == null) return;
     setSaving(true);
     setErrorMsg(null);
     try {
@@ -367,7 +398,8 @@ export default function SuministrosPage() {
         }
         return;
       }
-      cerrar();
+      setPanelOpen(false);
+      setEditingId(null);
       cargar();
     } catch {
       setErrorMsg("Error de conexión al guardar.");
@@ -386,7 +418,8 @@ export default function SuministrosPage() {
         headers: authHeaders(),
       });
       if (r.ok) {
-        cerrar();
+        setPanelOpen(false);
+        setEditingId(null);
         cargar();
       }
     } finally {
@@ -396,238 +429,201 @@ export default function SuministrosPage() {
 
   if (!authChecked) return null;
 
+  // ============================================================
+  // Vista FICHA (estándar A3: página completa, una pestaña, Activo arriba)
+  // ============================================================
+  if (panelOpen) {
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+          <div>
+            <button onClick={cerrar}
+              style={{ background: "none", border: "none", color: "rgba(241,239,232,0.5)", fontSize: 12, cursor: "pointer", padding: 0 }}>
+              ← Suministros
+            </button>
+            <h1 style={{ fontSize: 20, fontWeight: 600, margin: "6px 0 0", fontFamily: editingId != null ? monoFont : undefined }}>
+              {editingId != null ? (form.cups || "Suministro") : "Nuevo suministro"}
+            </h1>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo"
+              onClick={() => set("activo", !form.activo)}
+              style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: "rgba(241,239,232,0.75)", fontSize: 13, padding: 0 }}>
+              {form.activo ? "Activo" : "Baja"}
+              <span style={{ position: "relative", width: 38, height: 22, borderRadius: 999, background: form.activo ? "#7BE0A3" : "rgba(255,255,255,0.15)", transition: "background .15s" }}>
+                <span style={{ position: "absolute", top: 2, left: form.activo ? 18 : 2, width: 18, height: 18, borderRadius: "50%", background: "#F1EFE8", transition: "left .15s" }} />
+              </span>
+            </button>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              {editingId != null ? (
+                <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
+              ) : null}
+              <button onClick={cerrar} disabled={saving} style={btnGhost}>Cancelar</button>
+              <button onClick={guardar} disabled={saving || !puedeGuardar}
+                style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
+                {saving ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 18, borderBottom: "0.5px solid rgba(255,255,255,0.08)", marginBottom: 16 }}>
+          <span style={{ fontSize: 14, padding: "8px 2px", borderBottom: "2px solid #F1EFE8", color: "var(--ds-text-primary, #F1EFE8)" }}>
+            Datos generales
+          </span>
+        </div>
+
+        {errorMsg && (
+          <div style={{ background: "rgba(240,153,155,0.1)", border: "0.5px solid rgba(240,153,155,0.4)", color: "#F0999B", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <SectionCard title="Identificación">
+          <TextField label="CUPS *" span value={form.cups} onChange={(v) => set("cups", v)} monospace />
+          <TextField label="Distribuidora" value={form.distribuidora} onChange={(v) => set("distribuidora", v)} />
+          <div>
+            <label style={labelStyle}>Tipo punto de medida</label>
+            <select value={form.tipo_punto_medida} onChange={(e) => set("tipo_punto_medida", e.target.value)} style={inputStyle}>
+              <option value="" style={{ background: "#16181D" }}>—</option>
+              <option value="1" style={{ background: "#16181D" }}>1</option>
+              <option value="2" style={{ background: "#16181D" }}>2</option>
+              <option value="3" style={{ background: "#16181D" }}>3</option>
+              <option value="4" style={{ background: "#16181D" }}>4</option>
+              <option value="5" style={{ background: "#16181D" }}>5</option>
+            </select>
+          </div>
+          <TextField label="Acometida" value={form.acometida} onChange={(v) => set("acometida", v)} />
+        </SectionCard>
+
+        <SectionCard title="Dirección del suministro">
+          <TextField label="Tipo vía" value={form.dir_tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
+          <TextField label="Vía *" span value={form.dir_via} onChange={(v) => set("dir_via", v)} />
+          <TextField label="Número *" value={form.dir_numero} onChange={(v) => set("dir_numero", v)} />
+          <TextField label="C.P. *" value={form.dir_cp} onChange={(v) => set("dir_cp", v)} />
+          <TextField label="Resto (esc./planta/puerta)" span value={form.dir_resto} onChange={(v) => set("dir_resto", v)} />
+          <TextField label="Aclarador" span value={form.dir_aclarador} onChange={(v) => set("dir_aclarador", v)} />
+          <TextField label="Municipio *" value={form.dir_municipio} onChange={(v) => set("dir_municipio", v)} />
+          <TextField label="Población" value={form.dir_poblacion} onChange={(v) => set("dir_poblacion", v)} />
+          <TextField label="Provincia *" value={form.dir_provincia} onChange={(v) => set("dir_provincia", v)} />
+          <TextField label="Código INE municipio" value={form.municipio_codigo_ine} onChange={(v) => set("municipio_codigo_ine", v)} />
+          <TextField label="Ref. catastral" value={form.ref_catastral} onChange={(v) => set("ref_catastral", v)} />
+          <TextField label="Polígono" value={form.poligono} onChange={(v) => set("poligono", v)} />
+          <TextField label="Parcela" value={form.parcela} onChange={(v) => set("parcela", v)} />
+        </SectionCard>
+
+        <SectionCard title="Geolocalización">
+          <TextField label="UTM X (ETRS89)" value={form.utm_x} onChange={(v) => set("utm_x", v)} type="number" />
+          <TextField label="UTM Y (ETRS89)" value={form.utm_y} onChange={(v) => set("utm_y", v)} type="number" />
+          <TextField label="UTM huso" value={form.utm_huso} onChange={(v) => set("utm_huso", v)} type="number" />
+          <TextField label="UTM banda" value={form.utm_banda} onChange={(v) => set("utm_banda", v)} />
+          <TextField label="Latitud" value={form.latitud} onChange={(v) => set("latitud", v)} type="number" />
+          <TextField label="Longitud" value={form.longitud} onChange={(v) => set("longitud", v)} type="number" />
+        </SectionCard>
+
+        <SectionCard title="Trazabilidad de red">
+          <TextField label="Zona" value={form.zona} onChange={(v) => set("zona", v)} />
+          <TextField label="Orden" value={form.orden} onChange={(v) => set("orden", v)} />
+          <TextField label="Centro transformador" value={form.centro_transformador} onChange={(v) => set("centro_transformador", v)} />
+          <TextField label="Línea" value={form.linea} onChange={(v) => set("linea", v)} />
+        </SectionCard>
+
+        <SectionCard title="Datos eléctricos">
+          <TextField label="Tensión normalizada" value={form.tension_normalizada} onChange={(v) => set("tension_normalizada", v)} />
+          <TextField label="Tensión (V)" value={form.tension_v} onChange={(v) => set("tension_v", v)} type="number" />
+          <TextField label="Pot. máx. admisible CIE (kW)" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
+          <TextField label="Potencia adscrita (kW)" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
+          <TextField label="Potencia de convenio (kW)" value={form.potencia_convenio_kw} onChange={(v) => set("potencia_convenio_kw", v)} type="number" />
+          <TextField label="Criterio regulatorio" value={form.criterio_regulatorio} onChange={(v) => set("criterio_regulatorio", v)} />
+          <TextField label="Fecha vigencia adscrita" value={form.fecha_vigencia_adscrita} onChange={(v) => set("fecha_vigencia_adscrita", v)} type="date" />
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Check label="Potencia adscrita bloqueada" checked={form.potencia_adscrita_bloqueada} onChange={(v) => set("potencia_adscrita_bloqueada", v)} />
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Fases">
+          <Check label="Fase 1" checked={form.fase_1} onChange={(v) => set("fase_1", v)} />
+          <Check label="Fase 2" checked={form.fase_2} onChange={(v) => set("fase_2", v)} />
+          <Check label="Fase 3" checked={form.fase_3} onChange={(v) => set("fase_3", v)} />
+          <Check label="Neutro" checked={form.neutro} onChange={(v) => set("neutro", v)} />
+        </SectionCard>
+
+        <SectionCard title="Fechas y otros">
+          <TextField label="Fecha alta" value={form.fecha_alta} onChange={(v) => set("fecha_alta", v)} type="date" />
+          <TextField label="Fecha baja" value={form.fecha_baja} onChange={(v) => set("fecha_baja", v)} type="date" />
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={labelStyle}>Notas</label>
+            <textarea value={form.notas} onChange={(e) => set("notas", e.target.value)} rows={3} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Vista LISTADO
+  // ============================================================
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>Suministros</h1>
-      <p style={{ color: "#9aa4b2", marginTop: 4, marginBottom: 18 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Suministros</h1>
+      <p style={{ fontSize: 12, color: "rgba(241,239,232,0.5)", marginBottom: 18 }}>
         Puntos de suministro (CUPS) con sus datos físicos.
       </p>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por CUPS, municipio o distribuidora…"
-          style={{ ...inputStyle, flex: 1 }}
-        />
-        <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#9aa4b2", fontSize: 14, whiteSpace: "nowrap" }}>
-          <input type="checkbox" checked={soloActivos} onChange={(e) => setSoloActivos(e.target.checked)} />
-          Solo activos
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+          <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, opacity: 0.5 }}>🔍</span>
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por CUPS, municipio o distribuidora…"
+            style={{ ...inputStyle, paddingLeft: 30 }} />
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(241,239,232,0.7)", whiteSpace: "nowrap" }}>
+          <input type="checkbox" checked={soloActivos} onChange={(e) => setSoloActivos(e.target.checked)} /> Solo activos
         </label>
-        <button
-          onClick={abrirNuevo}
-          style={{
-            padding: "9px 14px", background: "#1f2733", color: "#e5e7eb",
-            border: "1px solid #2a3441", borderRadius: 8, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap",
-          }}
-        >
+        <button onClick={abrirNuevo}
+          style={{ background: "#F1EFE8", color: "#0E1014", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
           + Nuevo suministro
         </button>
       </div>
 
       {empresaId == null ? (
-        <p style={{ color: "#6b7280" }}>Selecciona una empresa en el selector de arriba.</p>
+        <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Selecciona una empresa en el selector de arriba.</div>
       ) : loading ? (
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+        <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Cargando…</div>
       ) : items.length === 0 ? (
-        <p style={{ color: "#6b7280" }}>
+        <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>
           {search.trim() ? "Sin resultados para la búsqueda." : "No hay suministros en esta empresa todavía."}
-        </p>
+        </div>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={thStyle}>CUPS</th>
-              <th style={thStyle}>Distribuidora</th>
-              <th style={thStyle}>Municipio</th>
-              <th style={thStyle}>Tensión</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((s) => (
-              <tr
-                key={s.id}
-                onClick={() => abrirFicha(s.id)}
-                style={{ cursor: "pointer", opacity: s.activo ? 1 : 0.55 }}
-              >
-                <td style={{ ...tdStyle, ...mono }}>{s.cups}</td>
-                <td style={tdStyle}>{s.distribuidora ?? "—"}</td>
-                <td style={tdStyle}>{s.dir_municipio ?? "—"}</td>
-                <td style={tdStyle}>
-                  {s.tension_normalizada ?? (s.tension_v != null ? `${s.tension_v} V` : "—")}
-                </td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{badge(s.activo)}</td>
+        <div style={{ border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "rgba(255,255,255,0.03)", color: "rgba(241,239,232,0.55)" }}>
+                <th style={thStyle}>CUPS</th>
+                <th style={thStyle}>Distribuidora</th>
+                <th style={thStyle}>Municipio</th>
+                <th style={thStyle}>Tensión</th>
+                <th style={{ ...thStyle, width: 90 }}>Estado</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {panelOpen && (
-        <>
-          <div
-            onClick={cerrar}
-            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }}
-          />
-          <div
-            style={{
-              position: "fixed", top: 0, right: 0, bottom: 0, width: 520, maxWidth: "92vw",
-              background: "#0b0f17", borderLeft: "1px solid #1f2733", zIndex: 50,
-              padding: 24, overflowY: "auto",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>
-                  {editingId != null ? form.cups || "Suministro" : "Nuevo suministro"}
-                </div>
-                <div style={{ fontSize: 13, color: "#9aa4b2" }}>
-                  {editingId != null ? "Editar suministro" : "Alta de suministro"}
-                </div>
-              </div>
-              <button onClick={cerrar} style={{ background: "none", border: "none", color: "#9aa4b2", fontSize: 22, cursor: "pointer" }}>
-                ×
-              </button>
-            </div>
-
-            {errorMsg && (
-              <div style={{ background: "#2a1416", border: "1px solid #5b2330", color: "#f7a3ad", padding: "8px 10px", borderRadius: 6, fontSize: 13, margin: "8px 0" }}>
-                {errorMsg}
-              </div>
-            )}
-
-            <div style={sectionLabelStyle}>Identificación</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <TextField label="CUPS *" value={form.cups} onChange={(v) => set("cups", v)} monospace />
-              <TextField label="Distribuidora" value={form.distribuidora} onChange={(v) => set("distribuidora", v)} />
-              <div>
-                <label style={labelStyle}>Tipo punto de medida</label>
-                <select value={form.tipo_punto_medida} onChange={(e) => set("tipo_punto_medida", e.target.value)} style={inputStyle}>
-                  <option value="">—</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
-              </div>
-              <TextField label="Acometida" value={form.acometida} onChange={(v) => set("acometida", v)} />
-            </div>
-
-            <div style={sectionLabelStyle}>Dirección</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <TextField label="Tipo vía" value={form.dir_tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
-              <TextField label="Número" value={form.dir_numero} onChange={(v) => set("dir_numero", v)} />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <TextField label="Vía" value={form.dir_via} onChange={(v) => set("dir_via", v)} />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <TextField label="Resto (esc./planta/puerta)" value={form.dir_resto} onChange={(v) => set("dir_resto", v)} />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <TextField label="Aclarador" value={form.dir_aclarador} onChange={(v) => set("dir_aclarador", v)} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-              <TextField label="C.P." value={form.dir_cp} onChange={(v) => set("dir_cp", v)} />
-              <TextField label="Municipio" value={form.dir_municipio} onChange={(v) => set("dir_municipio", v)} />
-              <TextField label="Población" value={form.dir_poblacion} onChange={(v) => set("dir_poblacion", v)} />
-              <TextField label="Provincia" value={form.dir_provincia} onChange={(v) => set("dir_provincia", v)} />
-              <TextField label="Código INE municipio" value={form.municipio_codigo_ine} onChange={(v) => set("municipio_codigo_ine", v)} />
-              <TextField label="Ref. catastral" value={form.ref_catastral} onChange={(v) => set("ref_catastral", v)} />
-              <TextField label="Polígono" value={form.poligono} onChange={(v) => set("poligono", v)} />
-              <TextField label="Parcela" value={form.parcela} onChange={(v) => set("parcela", v)} />
-            </div>
-
-            <div style={sectionLabelStyle}>Geolocalización</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <TextField label="UTM X (ETRS89)" value={form.utm_x} onChange={(v) => set("utm_x", v)} type="number" />
-              <TextField label="UTM Y (ETRS89)" value={form.utm_y} onChange={(v) => set("utm_y", v)} type="number" />
-              <TextField label="UTM huso" value={form.utm_huso} onChange={(v) => set("utm_huso", v)} type="number" />
-              <TextField label="UTM banda" value={form.utm_banda} onChange={(v) => set("utm_banda", v)} />
-              <TextField label="Latitud" value={form.latitud} onChange={(v) => set("latitud", v)} type="number" />
-              <TextField label="Longitud" value={form.longitud} onChange={(v) => set("longitud", v)} type="number" />
-            </div>
-
-            <div style={sectionLabelStyle}>Trazabilidad de red</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <TextField label="Zona" value={form.zona} onChange={(v) => set("zona", v)} />
-              <TextField label="Orden" value={form.orden} onChange={(v) => set("orden", v)} />
-              <TextField label="Centro transformador" value={form.centro_transformador} onChange={(v) => set("centro_transformador", v)} />
-              <TextField label="Línea" value={form.linea} onChange={(v) => set("linea", v)} />
-            </div>
-
-            <div style={sectionLabelStyle}>Datos eléctricos</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <TextField label="Tensión normalizada" value={form.tension_normalizada} onChange={(v) => set("tension_normalizada", v)} />
-              <TextField label="Tensión (V)" value={form.tension_v} onChange={(v) => set("tension_v", v)} type="number" />
-              <TextField label="Pot. máx. admisible CIE (kW)" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
-              <TextField label="Potencia adscrita (kW)" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
-              <TextField label="Potencia de convenio (kW)" value={form.potencia_convenio_kw} onChange={(v) => set("potencia_convenio_kw", v)} type="number" />
-              <TextField label="Criterio regulatorio" value={form.criterio_regulatorio} onChange={(v) => set("criterio_regulatorio", v)} />
-              <TextField label="Fecha vigencia adscrita" value={form.fecha_vigencia_adscrita} onChange={(v) => set("fecha_vigencia_adscrita", v)} type="date" />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <Check label="Potencia adscrita bloqueada" checked={form.potencia_adscrita_bloqueada} onChange={(v) => set("potencia_adscrita_bloqueada", v)} />
-            </div>
-
-            <div style={sectionLabelStyle}>Fases</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <Check label="Fase 1" checked={form.fase_1} onChange={(v) => set("fase_1", v)} />
-              <Check label="Fase 2" checked={form.fase_2} onChange={(v) => set("fase_2", v)} />
-              <Check label="Fase 3" checked={form.fase_3} onChange={(v) => set("fase_3", v)} />
-              <Check label="Neutro" checked={form.neutro} onChange={(v) => set("neutro", v)} />
-            </div>
-
-            <div style={sectionLabelStyle}>Fechas y otros</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <TextField label="Fecha alta" value={form.fecha_alta} onChange={(v) => set("fecha_alta", v)} type="date" />
-              <TextField label="Fecha baja" value={form.fecha_baja} onChange={(v) => set("fecha_baja", v)} type="date" />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <label style={labelStyle}>Notas</label>
-              <textarea value={form.notas} onChange={(e) => set("notas", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <Check label="Activo" checked={form.activo} onChange={(v) => set("activo", v)} />
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "space-between" }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button
-                  onClick={guardar}
-                  disabled={saving || !form.cups.trim()}
-                  style={{
-                    padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: "pointer",
-                    background: form.cups.trim() ? "#2563eb" : "#1f2733",
-                    color: "#fff", border: "none", opacity: saving ? 0.6 : 1,
-                  }}
-                >
-                  Guardar
-                </button>
-                {editingId != null && (
-                  <button
-                    onClick={desactivar}
-                    disabled={saving}
-                    style={{
-                      padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: "pointer",
-                      background: "none", color: "#f7a3ad", border: "1px solid #5b2330",
-                    }}
-                  >
-                    Desactivar
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={cerrar}
-                style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, cursor: "pointer", background: "none", color: "#9aa4b2", border: "1px solid #2a3441" }}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </>
+            </thead>
+            <tbody>
+              {items.map((s) => (
+                <tr key={s.id} onClick={() => abrirFicha(s.id)}
+                  style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)", cursor: "pointer", opacity: s.activo ? 1 : 0.55 }}>
+                  <td style={{ ...tdStyle, fontFamily: monoFont, fontSize: 12 }}>{s.cups}</td>
+                  <td style={tdStyle}>{s.distribuidora ?? "—"}</td>
+                  <td style={tdStyle}>{s.dir_municipio ?? "—"}</td>
+                  <td style={tdStyle}>{s.tension_normalizada ?? (s.tension_v != null ? `${s.tension_v} V` : "—")}</td>
+                  <td style={tdStyle}>
+                    <span style={badge(s.activo)}>{s.activo ? "activo" : "baja"}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
