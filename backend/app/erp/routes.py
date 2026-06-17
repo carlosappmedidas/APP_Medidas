@@ -243,6 +243,72 @@ def desactivar_comercializadora_endpoint(
 
 
 # ---------------------------------------------------------------------------
+# Comercializadoras por empresa (relación)
+# ---------------------------------------------------------------------------
+@router.get("/comercializadoras-empresa", response_model=list[schemas.ErpComercializadoraEmpresaOut])
+def listar_comercializadoras_empresa_endpoint(
+    empresa_id: int = Query(...),
+    search: Optional[str] = Query(None),
+    solo_activas: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return services.listar_comercializadoras_empresa(db, user, empresa_id, search=search, solo_activas=solo_activas)
+
+
+@router.post("/comercializadoras-empresa", response_model=schemas.ErpComercializadoraEmpresaOut, status_code=status.HTTP_201_CREATED)
+def crear_comercializadora_empresa_endpoint(
+    payload: schemas.ErpComercializadoraEmpresaCreate,
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.crear_comercializadora_empresa(db, user, empresa_id, payload)
+    except services.DuplicateComercializadoraEmpresaError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get("/comercializadoras-empresa/{rel_id}", response_model=schemas.ErpComercializadoraEmpresaOut)
+def obtener_comercializadora_empresa_endpoint(
+    rel_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.obtener_comercializadora_empresa(db, user, rel_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.put("/comercializadoras-empresa/{rel_id}", response_model=schemas.ErpComercializadoraEmpresaOut)
+def actualizar_comercializadora_empresa_endpoint(
+    rel_id: int,
+    payload: schemas.ErpComercializadoraEmpresaUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.actualizar_comercializadora_empresa(db, user, rel_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.delete("/comercializadoras-empresa/{rel_id}", response_model=schemas.ErpComercializadoraEmpresaOut)
+def desactivar_comercializadora_empresa_endpoint(
+    rel_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.desactivar_comercializadora_empresa(db, user, rel_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
 # Contratos (E-6b)
 # ---------------------------------------------------------------------------
 @router.get("/contratos", response_model=list[schemas.ErpContratoOut])

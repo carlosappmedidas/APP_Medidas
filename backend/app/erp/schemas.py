@@ -166,15 +166,20 @@ class ErpSuministroBase(BaseModel):
     acometida: Optional[str] = None
 
     # Dirección del suministro
-    dir_tipo_via: Optional[str] = None
+    dir_tipo_via: Optional[str] = None        # CNMC Tabla 12
     dir_via: Optional[str] = None
     dir_numero: Optional[str] = None
-    dir_resto: Optional[str] = None
-    dir_aclarador: Optional[str] = None
+    dir_duplicador: Optional[str] = None      # SIPS X(3) (BIS)
+    dir_escalera: Optional[str] = None
+    dir_piso: Optional[str] = None            # CNMC Tabla 14
+    dir_puerta: Optional[str] = None          # CNMC Tabla 15
+    dir_tipo_aclarador: Optional[str] = None  # CNMC Tabla 16
+    dir_aclarador: Optional[str] = None       # texto libre
     dir_cp: Optional[str] = None
     dir_municipio: Optional[str] = None
     dir_poblacion: Optional[str] = None
     dir_provincia: Optional[str] = None
+    dir_pais: Optional[str] = None
     municipio_codigo_ine: Optional[str] = None
     poligono: Optional[str] = None
     parcela: Optional[str] = None
@@ -204,11 +209,8 @@ class ErpSuministroBase(BaseModel):
     potencia_convenio_kw: Optional[float] = None
     criterio_regulatorio: Optional[str] = None
 
-    # Fases
-    fase_1: bool = False
-    fase_2: bool = False
-    fase_3: bool = False
-    neutro: bool = False
+    # Conexión: M=Monofásica / T=Trifásica (SIPS codigoFases X(1), CNMC)
+    codigo_fases: Optional[str] = None
 
     fecha_alta: Optional[date] = None
     fecha_baja: Optional[date] = None
@@ -576,3 +578,49 @@ class ErpCnmcCatalogosOut(BaseModel):
     piso: list[ErpCnmcCodigoOut] = []
     puerta: list[ErpCnmcCodigoOut] = []
     aclarador_finca: list[ErpCnmcCodigoOut] = []
+
+    # ---------------------------------------------------------------------------
+# Comercializadora por empresa (relación distribuidora ↔ comercializadora)
+# Los datos identificativos viven en el catálogo erp_comercializadora; aquí
+# solo los propios. El Out trae los del catálogo como derivados read-only.
+# ---------------------------------------------------------------------------
+class ErpComercializadoraEmpresaBase(BaseModel):
+    comercializadora_id: int
+    direccion: Optional[str] = None
+    tipo_pago: Optional[str] = None
+    datos_acceso_p0: Optional[str] = None
+    fecha_alta_erp: Optional[date] = None
+    fecha_baja_erp: Optional[date] = None
+    activo: bool = True
+
+
+class ErpComercializadoraEmpresaCreate(ErpComercializadoraEmpresaBase):
+    pass
+
+
+class ErpComercializadoraEmpresaUpdate(BaseModel):
+    # comercializadora_id no se cambia tras crear; solo los campos propios.
+    direccion: Optional[str] = None
+    tipo_pago: Optional[str] = None
+    datos_acceso_p0: Optional[str] = None
+    fecha_alta_erp: Optional[date] = None
+    fecha_baja_erp: Optional[date] = None
+    activo: Optional[bool] = None
+
+
+class ErpComercializadoraEmpresaOut(ErpComercializadoraEmpresaBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    empresa_id: int
+
+    # Derivados del catálogo (read-only; los rellena services vía join)
+    com_nombre: Optional[str] = None
+    com_cif: Optional[str] = None
+    com_codigo_ree: Optional[str] = None
+    com_codigo_cnmc: Optional[str] = None
+    com_codigo_liquidacion_cnmc: Optional[str] = None
+    com_es_cur: Optional[bool] = None
+
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

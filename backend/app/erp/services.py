@@ -29,12 +29,14 @@ from app.erp.models import (
     ErpTitular, ErpSuministro,
     ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
     ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
+    ErpComercializadoraEmpresa,
 )
 from app.erp.schemas import (
     ErpTitularCreate, ErpTitularUpdate,
     ErpSuministroCreate, ErpSuministroUpdate,
     ErpTarifaOut, ErpTarifaPeriodoOut,
     ErpComercializadoraCreate, ErpComercializadoraUpdate,
+    ErpComercializadoraEmpresaCreate, ErpComercializadoraEmpresaUpdate, ErpComercializadoraEmpresaOut,
 )
 from app.tenants.models import User
 
@@ -511,3 +513,140 @@ def listar_cnmc_catalogos(db: Session) -> dict:
         "puerta": _vivos(ErpCnmcPuerta),
         "aclarador_finca": _vivos(ErpCnmcAclaradorFinca),
     }
+
+# ===========================================================================
+# Comercializadora por empresa (relación distribuidora ↔ comercializadora)
+# ===========================================================================
+class DuplicateComercializadoraEmpresaError(ValueError):
+    """La comercializadora ya está dada de alta en esa empresa (unique)."""
+    pass
+
+
+def _com_empresa_out(
+    rel: ErpComercializadoraEmpresa, com: Optional[ErpComercializadora]
+) -> ErpComercializadoraEmpresaOut:
+    """Construye el Out con los datos propios + los derivados del catálogo."""
+    out = ErpComercializadoraEmpresaOut.model_validate(rel)
+    if com is not None:
+        out.com_nombre = com.nombre
+        out.com_cif = com.cif
+        out.com_codigo_ree = com.codigo_ree
+        out.com_codigo_cnmc = com.codigo_cnmc
+        out.com_codigo_liquidacion_cnmc = com.codigo_liquidacion_cnmc
+        out.com_es_cur = com.es_cur
+    return out
+
+
+def _cargar_com_empresa_con_acceso(
+    db: Session, user: User, rel_id: int
+) -> ErpComercializadoraEmpresa:
+    rel = (
+        db.query(ErpComercializadoraEmpresa)
+        .filter(ErpComercializadoraEmpresa.id == rel_id)
+        .first()
+    )
+    if rel is None:
+        raise ValueError(f"Relación de comercializadora {rel_id} no encontrada")
+    assert_empresa_access(db, user, rel.empresa_id)
+    return rel
+
+
+def listar_comercializadoras_empresa(
+    db: Session, user: User, empresa_id: int,
+    search: Optional[str] = None, solo_activas: bool = False,
+) -> list[ErpComercializadoraEmpresaOut]:
+    assert_empresa_access(db, user, empresa_id)
+    q = (
+        db.query(ErpComercializadoraEmpresa, ErpComercializadora)
+        .join(ErpComercializadora, ErpComercializadora.id == ErpComercializadoraEmpresa.comercializadora_id)
+        .filter(ErpComercializadoraEmpresa.empresa_id == empresa_id)
+    )
+    if solo_activas:
+        q = q.filter(ErpComercializadoraEmpresa.activo.is_(True))
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                ErpComercializadora.nombre.ilike(like),
+                ErpComercializadora.cif.ilike(like),
+                ErpComercializadora.codigo_ree.ilike(like),
+            )
+        )
+    rows = q.order_by(ErpComercializadora.nombre.asc()).all()
+    return [_com_empresa_out(rel, com) for rel, com in rows]
+
+
+def crear_comercializadora_empresa(
+    db: Session, user: User, empresa_id: int, payload: ErpComercializadoraEmpresaCreate
+) -> ErpComercializadoraEmpresaOut:
+    assert_empresa_access(db, user, empresa_id)
+    com = (
+        db.query(ErpComercializadora)
+        .filter(ErpComercializadora.id == payload.comercializadora_id)
+        .first()
+    )
+    if com is None:
+        raise ValueError(f"Comercializadora {payload.comercializadora_id} no existe en el catálogo")
+    now = _ahora_madrid_naive()
+    rel = ErpComercializadoraEmpresa(
+        tenant_id=user.tenant_id,
+        empresa_id=empresa_id,
+        created_at=now,
+        updated_at=now,
+        **payload.model_dump(),
+    )
+    db.add(rel)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateComercializadoraEmpresaError(
+            "Esa comercializadora ya está dada de alta en esta empresa."
+        )
+    db.refresh(rel)
+    return _com_empresa_out(rel, com)
+
+
+def obtener_comercializadora_empresa(
+    db: Session, user: User, rel_id: int
+) -> ErpComercializadoraEmpresaOut:
+    rel = _cargar_com_empresa_con_acceso(db, user, rel_id)
+    com = (
+        db.query(ErpComercializadora)
+        .filter(ErpComercializadora.id == rel.comercializadora_id)
+        .first()
+    )
+    return _com_empresa_out(rel, com)
+
+
+def actualizar_comercializadora_empresa(
+    db: Session, user: User, rel_id: int, payload: ErpComercializadoraEmpresaUpdate
+) -> ErpComercializadoraEmpresaOut:
+    rel = _cargar_com_empresa_con_acceso(db, user, rel_id)
+    for campo, valor in payload.model_dump(exclude_unset=True).items():
+        setattr(rel, campo, valor)
+    rel.updated_at = _ahora_madrid_naive()
+    db.commit()
+    db.refresh(rel)
+    com = (
+        db.query(ErpComercializadora)
+        .filter(ErpComercializadora.id == rel.comercializadora_id)
+        .first()
+    )
+    return _com_empresa_out(rel, com)
+
+
+def desactivar_comercializadora_empresa(
+    db: Session, user: User, rel_id: int
+) -> ErpComercializadoraEmpresaOut:
+    rel = _cargar_com_empresa_con_acceso(db, user, rel_id)
+    rel.activo = False
+    rel.updated_at = _ahora_madrid_naive()
+    db.commit()
+    db.refresh(rel)
+    com = (
+        db.query(ErpComercializadora)
+        .filter(ErpComercializadora.id == rel.comercializadora_id)
+        .first()
+    )
+    return _com_empresa_out(rel, com)

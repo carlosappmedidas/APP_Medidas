@@ -28,20 +28,26 @@ interface SuministroRow {
   activo: boolean;
 }
 
+type Opcion = { codigo: string; descripcion: string };
+
 interface Form {
   cups: string;
   distribuidora: string;
-  tipo_punto_medida: string;
   acometida: string;
   dir_tipo_via: string;
   dir_via: string;
   dir_numero: string;
-  dir_resto: string;
+  dir_duplicador: string;
+  dir_escalera: string;
+  dir_piso: string;
+  dir_puerta: string;
+  dir_tipo_aclarador: string;
   dir_aclarador: string;
   dir_cp: string;
   dir_municipio: string;
   dir_poblacion: string;
   dir_provincia: string;
+  dir_pais: string;
   municipio_codigo_ine: string;
   poligono: string;
   parcela: string;
@@ -56,18 +62,12 @@ interface Form {
   orden: string;
   centro_transformador: string;
   linea: string;
-  tension_normalizada: string;
-  tension_v: string;
   pot_max_admisible_cie_kw: string;
   potencia_adscrita_kw: string;
   potencia_adscrita_bloqueada: boolean;
   fecha_vigencia_adscrita: string;
   potencia_convenio_kw: string;
   criterio_regulatorio: string;
-  fase_1: boolean;
-  fase_2: boolean;
-  fase_3: boolean;
-  neutro: boolean;
   fecha_alta: string;
   fecha_baja: string;
   notas: string;
@@ -75,17 +75,17 @@ interface Form {
 }
 
 const EMPTY: Form = {
-  cups: "", distribuidora: "", tipo_punto_medida: "", acometida: "",
-  dir_tipo_via: "", dir_via: "", dir_numero: "", dir_resto: "", dir_aclarador: "",
-  dir_cp: "", dir_municipio: "", dir_poblacion: "", dir_provincia: "",
+  cups: "", distribuidora: "", acometida: "",
+  dir_tipo_via: "", dir_via: "", dir_numero: "", dir_duplicador: "",
+  dir_escalera: "", dir_piso: "", dir_puerta: "", dir_tipo_aclarador: "", dir_aclarador: "",
+  dir_cp: "", dir_municipio: "", dir_poblacion: "", dir_provincia: "", dir_pais: "España",
   municipio_codigo_ine: "", poligono: "", parcela: "", ref_catastral: "",
   latitud: "", longitud: "",
   utm_x: "", utm_y: "", utm_huso: "", utm_banda: "",
   zona: "", orden: "", centro_transformador: "", linea: "",
-  tension_normalizada: "", tension_v: "", pot_max_admisible_cie_kw: "",
+  pot_max_admisible_cie_kw: "",
   potencia_adscrita_kw: "", potencia_adscrita_bloqueada: false, fecha_vigencia_adscrita: "",
   potencia_convenio_kw: "", criterio_regulatorio: "",
-  fase_1: false, fase_2: false, fase_3: false, neutro: false,
   fecha_alta: "", fecha_baja: "",
   notas: "", activo: true,
 };
@@ -147,8 +147,9 @@ function TextField(props: {
   type?: string;
   placeholder?: string;
   monospace?: boolean;
+  maxLength?: number;
 }) {
-  const { label, value, onChange, span, type = "text", placeholder, monospace } = props;
+  const { label, value, onChange, span, type = "text", placeholder, monospace, maxLength } = props;
   const req = label.endsWith(" *");
   const base = req ? label.slice(0, -2) : label;
   return (
@@ -158,9 +159,59 @@ function TextField(props: {
         type={type}
         value={value}
         placeholder={placeholder}
+        maxLength={maxLength}
         onChange={(e) => onChange(e.target.value)}
         style={monospace ? { ...inputStyle, fontFamily: monoFont } : inputStyle}
       />
+    </div>
+  );
+}
+
+// Desplegable cerrado (listas CNMC de verdad: tipo de vía, tipo de aclarador, fases)
+function SelectField(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Opcion[];
+  span?: boolean;
+}) {
+  const { label, value, onChange, options, span } = props;
+  return (
+    <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
+      <label style={labelStyle}>{label}</label>
+      <select style={inputStyle} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="" style={{ background: "#16181D" }}>—</option>
+        {options.map((o) => (
+          <option key={o.codigo} value={o.codigo} style={{ background: "#16181D" }}>
+            {o.codigo} · {o.descripcion}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// Escribible con sugerencias (piso/puerta: X(3) libre + códigos CNMC como pistas)
+function ComboField(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Opcion[];
+  maxLength?: number;
+  span?: boolean;
+}) {
+  const { label, value, onChange, options, maxLength, span } = props;
+  const listId = `dl-sum-${label.replace(/\s+/g, "-").toLowerCase()}`;
+  return (
+    <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
+      <label style={labelStyle}>{label}</label>
+      <input style={inputStyle} value={value} list={listId} maxLength={maxLength}
+        onChange={(e) => onChange(e.target.value)} />
+      <datalist id={listId}>
+        {options.map((o) => (
+          <option key={o.codigo} value={o.codigo}>{o.codigo} · {o.descripcion}</option>
+        ))}
+      </datalist>
     </div>
   );
 }
@@ -201,6 +252,18 @@ export default function SuministrosPage() {
   const [form, setForm] = useState<Form>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [catalogos, setCatalogos] = useState<{ tipo_via: Opcion[]; piso: Opcion[]; puerta: Opcion[]; aclarador_finca: Opcion[] }>(
+    { tipo_via: [], piso: [], puerta: [], aclarador_finca: [] }
+  );
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : null;
+    if (!token) return;
+    fetch(`${API_BASE_URL}/erp/cnmc-catalogos`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setCatalogos(d); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)) {
@@ -260,17 +323,21 @@ export default function SuministrosPage() {
       setForm({
         cups: s.cups ?? "",
         distribuidora: s.distribuidora ?? "",
-        tipo_punto_medida: s.tipo_punto_medida != null ? String(s.tipo_punto_medida) : "",
         acometida: s.acometida ?? "",
         dir_tipo_via: s.dir_tipo_via ?? "",
         dir_via: s.dir_via ?? "",
         dir_numero: s.dir_numero ?? "",
-        dir_resto: s.dir_resto ?? "",
+        dir_duplicador: s.dir_duplicador ?? "",
+        dir_escalera: s.dir_escalera ?? "",
+        dir_piso: s.dir_piso ?? "",
+        dir_puerta: s.dir_puerta ?? "",
+        dir_tipo_aclarador: s.dir_tipo_aclarador ?? "",
         dir_aclarador: s.dir_aclarador ?? "",
         dir_cp: s.dir_cp ?? "",
         dir_municipio: s.dir_municipio ?? "",
         dir_poblacion: s.dir_poblacion ?? "",
         dir_provincia: s.dir_provincia ?? "",
+        dir_pais: s.dir_pais ?? "",
         municipio_codigo_ine: s.municipio_codigo_ine ?? "",
         poligono: s.poligono ?? "",
         parcela: s.parcela ?? "",
@@ -285,15 +352,12 @@ export default function SuministrosPage() {
         orden: s.orden ?? "",
         centro_transformador: s.centro_transformador ?? "",
         linea: s.linea ?? "",
-        tension_normalizada: s.tension_normalizada ?? "",
-        tension_v: s.tension_v != null ? String(s.tension_v) : "",
         pot_max_admisible_cie_kw: s.pot_max_admisible_cie_kw != null ? String(s.pot_max_admisible_cie_kw) : "",
         potencia_adscrita_kw: s.potencia_adscrita_kw != null ? String(s.potencia_adscrita_kw) : "",
         potencia_adscrita_bloqueada: !!s.potencia_adscrita_bloqueada,
         fecha_vigencia_adscrita: s.fecha_vigencia_adscrita ?? "",
         potencia_convenio_kw: s.potencia_convenio_kw != null ? String(s.potencia_convenio_kw) : "",
         criterio_regulatorio: s.criterio_regulatorio ?? "",
-        fase_1: !!s.fase_1, fase_2: !!s.fase_2, fase_3: !!s.fase_3, neutro: !!s.neutro,
         fecha_alta: s.fecha_alta ?? "",
         fecha_baja: s.fecha_baja ?? "",
         notas: s.notas ?? "",
@@ -319,17 +383,21 @@ export default function SuministrosPage() {
     return {
       cups: form.cups.trim(),
       distribuidora: s(form.distribuidora),
-      tipo_punto_medida: n(form.tipo_punto_medida),
       acometida: s(form.acometida),
       dir_tipo_via: s(form.dir_tipo_via),
       dir_via: s(form.dir_via),
       dir_numero: s(form.dir_numero),
-      dir_resto: s(form.dir_resto),
+      dir_duplicador: s(form.dir_duplicador),
+      dir_escalera: s(form.dir_escalera),
+      dir_piso: s(form.dir_piso),
+      dir_puerta: s(form.dir_puerta),
+      dir_tipo_aclarador: s(form.dir_tipo_aclarador),
       dir_aclarador: s(form.dir_aclarador),
       dir_cp: s(form.dir_cp),
       dir_municipio: s(form.dir_municipio),
       dir_poblacion: s(form.dir_poblacion),
       dir_provincia: s(form.dir_provincia),
+      dir_pais: s(form.dir_pais),
       municipio_codigo_ine: s(form.municipio_codigo_ine),
       poligono: s(form.poligono),
       parcela: s(form.parcela),
@@ -344,15 +412,12 @@ export default function SuministrosPage() {
       orden: s(form.orden),
       centro_transformador: s(form.centro_transformador),
       linea: s(form.linea),
-      tension_normalizada: s(form.tension_normalizada),
-      tension_v: n(form.tension_v),
       pot_max_admisible_cie_kw: n(form.pot_max_admisible_cie_kw),
       potencia_adscrita_kw: n(form.potencia_adscrita_kw),
       potencia_adscrita_bloqueada: form.potencia_adscrita_bloqueada,
       fecha_vigencia_adscrita: s(form.fecha_vigencia_adscrita),
       potencia_convenio_kw: n(form.potencia_convenio_kw),
       criterio_regulatorio: s(form.criterio_regulatorio),
-      fase_1: form.fase_1, fase_2: form.fase_2, fase_3: form.fase_3, neutro: form.neutro,
       fecha_alta: s(form.fecha_alta),
       fecha_baja: s(form.fecha_baja),
       notas: s(form.notas),
@@ -484,30 +549,24 @@ export default function SuministrosPage() {
         <SectionCard title="Identificación">
           <TextField label="CUPS *" span value={form.cups} onChange={(v) => set("cups", v)} monospace />
           <TextField label="Distribuidora" value={form.distribuidora} onChange={(v) => set("distribuidora", v)} />
-          <div>
-            <label style={labelStyle}>Tipo punto de medida</label>
-            <select value={form.tipo_punto_medida} onChange={(e) => set("tipo_punto_medida", e.target.value)} style={inputStyle}>
-              <option value="" style={{ background: "#16181D" }}>—</option>
-              <option value="1" style={{ background: "#16181D" }}>1</option>
-              <option value="2" style={{ background: "#16181D" }}>2</option>
-              <option value="3" style={{ background: "#16181D" }}>3</option>
-              <option value="4" style={{ background: "#16181D" }}>4</option>
-              <option value="5" style={{ background: "#16181D" }}>5</option>
-            </select>
-          </div>
           <TextField label="Acometida" value={form.acometida} onChange={(v) => set("acometida", v)} />
         </SectionCard>
 
         <SectionCard title="Dirección del suministro">
-          <TextField label="Tipo vía" value={form.dir_tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
-          <TextField label="Vía *" span value={form.dir_via} onChange={(v) => set("dir_via", v)} />
-          <TextField label="Número *" value={form.dir_numero} onChange={(v) => set("dir_numero", v)} />
-          <TextField label="C.P. *" value={form.dir_cp} onChange={(v) => set("dir_cp", v)} />
-          <TextField label="Resto (esc./planta/puerta)" span value={form.dir_resto} onChange={(v) => set("dir_resto", v)} />
-          <TextField label="Aclarador" span value={form.dir_aclarador} onChange={(v) => set("dir_aclarador", v)} />
-          <TextField label="Municipio *" value={form.dir_municipio} onChange={(v) => set("dir_municipio", v)} />
-          <TextField label="Población" value={form.dir_poblacion} onChange={(v) => set("dir_poblacion", v)} />
-          <TextField label="Provincia *" value={form.dir_provincia} onChange={(v) => set("dir_provincia", v)} />
+          <SelectField label="Tipo vía" value={form.dir_tipo_via} options={catalogos.tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
+          <TextField label="Vía *" value={form.dir_via} maxLength={30} onChange={(v) => set("dir_via", v)} />
+          <TextField label="Número *" value={form.dir_numero} maxLength={5} onChange={(v) => set("dir_numero", v)} />
+          <TextField label="Duplicador" value={form.dir_duplicador} maxLength={3} onChange={(v) => set("dir_duplicador", v)} />
+          <TextField label="Escalera" value={form.dir_escalera} maxLength={3} onChange={(v) => set("dir_escalera", v)} />
+          <ComboField label="Piso" value={form.dir_piso} options={catalogos.piso} maxLength={3} onChange={(v) => set("dir_piso", v)} />
+          <ComboField label="Puerta" value={form.dir_puerta} options={catalogos.puerta} maxLength={3} onChange={(v) => set("dir_puerta", v)} />
+          <SelectField label="Tipo de aclarador" value={form.dir_tipo_aclarador} options={catalogos.aclarador_finca} onChange={(v) => set("dir_tipo_aclarador", v)} />
+          <TextField label="Aclarador" value={form.dir_aclarador} maxLength={40} onChange={(v) => set("dir_aclarador", v)} />
+          <TextField label="C.P. *" value={form.dir_cp} maxLength={10} onChange={(v) => set("dir_cp", v)} />
+          <TextField label="Municipio *" value={form.dir_municipio} maxLength={120} onChange={(v) => set("dir_municipio", v)} />
+          <TextField label="Población" value={form.dir_poblacion} maxLength={120} onChange={(v) => set("dir_poblacion", v)} />
+          <TextField label="Provincia *" value={form.dir_provincia} maxLength={120} onChange={(v) => set("dir_provincia", v)} />
+          <TextField label="País" value={form.dir_pais} maxLength={120} onChange={(v) => set("dir_pais", v)} />
           <TextField label="Código INE municipio" value={form.municipio_codigo_ine} onChange={(v) => set("municipio_codigo_ine", v)} />
           <TextField label="Ref. catastral" value={form.ref_catastral} onChange={(v) => set("ref_catastral", v)} />
           <TextField label="Polígono" value={form.poligono} onChange={(v) => set("poligono", v)} />
@@ -531,8 +590,6 @@ export default function SuministrosPage() {
         </SectionCard>
 
         <SectionCard title="Datos eléctricos">
-          <TextField label="Tensión normalizada" value={form.tension_normalizada} onChange={(v) => set("tension_normalizada", v)} />
-          <TextField label="Tensión (V)" value={form.tension_v} onChange={(v) => set("tension_v", v)} type="number" />
           <TextField label="Pot. máx. admisible CIE (kW)" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
           <TextField label="Potencia adscrita (kW)" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
           <TextField label="Potencia de convenio (kW)" value={form.potencia_convenio_kw} onChange={(v) => set("potencia_convenio_kw", v)} type="number" />
@@ -541,13 +598,6 @@ export default function SuministrosPage() {
           <div style={{ gridColumn: "1 / -1" }}>
             <Check label="Potencia adscrita bloqueada" checked={form.potencia_adscrita_bloqueada} onChange={(v) => set("potencia_adscrita_bloqueada", v)} />
           </div>
-        </SectionCard>
-
-        <SectionCard title="Fases">
-          <Check label="Fase 1" checked={form.fase_1} onChange={(v) => set("fase_1", v)} />
-          <Check label="Fase 2" checked={form.fase_2} onChange={(v) => set("fase_2", v)} />
-          <Check label="Fase 3" checked={form.fase_3} onChange={(v) => set("fase_3", v)} />
-          <Check label="Neutro" checked={form.neutro} onChange={(v) => set("neutro", v)} />
         </SectionCard>
 
         <SectionCard title="Fechas y otros">

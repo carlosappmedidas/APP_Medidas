@@ -96,7 +96,8 @@ class ErpSuministro(TimestampMixin, Base):
     Lo contractual (titular, tarifa, potencia contratada, comercializadora)
     NO vive aquí: se deriva del contrato activo (erp_contrato, Paq E-6).
 
-    tipo_punto_medida: tipo de punto de medida regulado (1–5, RPUM RD 1110/2007).
+    codigo_fases: conexión M=Monofásica / T=Trifásica (SIPS codigoFases, CNMC).
+    (tipo_punto_medida se traslada a erp_contrato — no vive aquí.)
     Geo: UTM (utm_x/utm_y/utm_huso/utm_banda, ETRS89) es la referencia oficial;
     latitud/longitud se mantienen opcionales para mapas.
     """
@@ -108,19 +109,23 @@ class ErpSuministro(TimestampMixin, Base):
 
     cups              = Column(String(22), nullable=False, index=True)
     distribuidora     = Column(String(120), nullable=True)
-    tipo_punto_medida = Column(Integer, nullable=True)   # 1–5 (regulado)
     acometida         = Column(String(255), nullable=True)
 
-    # Dirección del suministro
-    dir_tipo_via         = Column(String(50), nullable=True)
-    dir_via              = Column(String(255), nullable=True)
-    dir_numero           = Column(String(20), nullable=True)
-    dir_resto            = Column(String(255), nullable=True)
-    dir_aclarador        = Column(String(255), nullable=True)
+    # Dirección del suministro (formato SIPS …PS; códigos CNMC en erp_cnmc_*)
+    dir_tipo_via         = Column(String(2), nullable=True)    # CNMC Tabla 12
+    dir_via              = Column(String(30), nullable=True)
+    dir_numero           = Column(String(5), nullable=True)
+    dir_duplicador       = Column(String(3), nullable=True)    # SIPS X(3) (BIS)
+    dir_escalera         = Column(String(3), nullable=True)
+    dir_piso             = Column(String(3), nullable=True)    # CNMC Tabla 14
+    dir_puerta           = Column(String(3), nullable=True)    # CNMC Tabla 15
+    dir_tipo_aclarador   = Column(String(2), nullable=True)    # CNMC Tabla 16
+    dir_aclarador        = Column(String(40), nullable=True)   # texto libre
     dir_cp               = Column(String(10), nullable=True)
     dir_municipio        = Column(String(120), nullable=True)
     dir_poblacion        = Column(String(120), nullable=True)
     dir_provincia        = Column(String(120), nullable=True)
+    dir_pais             = Column(String(120), nullable=True)
     municipio_codigo_ine = Column(String(10), nullable=True)
     poligono             = Column(String(50), nullable=True)   # zona industrial
     parcela              = Column(String(50), nullable=True)   # zona industrial
@@ -150,11 +155,8 @@ class ErpSuministro(TimestampMixin, Base):
     potencia_convenio_kw        = Column(Float, nullable=True)
     criterio_regulatorio        = Column(String(50), nullable=True)
 
-    # Fases (pestaña Información Eléctrica)
-    fase_1 = Column(Boolean, nullable=False, default=False)
-    fase_2 = Column(Boolean, nullable=False, default=False)
-    fase_3 = Column(Boolean, nullable=False, default=False)
-    neutro = Column(Boolean, nullable=False, default=False)
+    # Conexión (SIPS codigoFasesEquipoMedida X(1), CNMC: M=Monofásica, T=Trifásica)
+    codigo_fases = Column(String(1), nullable=True)
 
     fecha_alta = Column(Date, nullable=True)
     fecha_baja = Column(Date, nullable=True)
@@ -383,3 +385,35 @@ class ErpContratoPotencia(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("contrato_id", "periodo", name="uq_erp_contrato_potencia"),
     )
+
+    # ---------------------------------------------------------------------------
+# 5) ErpComercializadoraEmpresa -- relación por empresa con una comercializadora
+#    del catálogo global. Los datos identificativos (nombre, CIF, códigos
+#    REE/CNMC/liquidación, COR=es_cur) viven SOLO en erp_comercializadora y se
+#    muestran derivados vía el FK; aquí solo los datos propios de la relación.
+# ---------------------------------------------------------------------------
+class ErpComercializadoraEmpresa(TimestampMixin, Base):
+    """Relación distribuidora (empresa) ↔ comercializadora del catálogo."""
+    __tablename__ = "erp_comercializadora_empresa"
+
+    id         = Column(Integer, primary_key=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    comercializadora_id = Column(Integer, ForeignKey("erp_comercializadora.id"), nullable=False, index=True)
+
+    # Datos propios de la relación (lo demás se deriva del catálogo)
+    direccion       = Column(String(255), nullable=True)   # texto simple
+    tipo_pago       = Column(String(120), nullable=True)   # texto libre (de momento)
+    datos_acceso_p0 = Column(Text, nullable=True)          # texto; se desarrolla luego
+    fecha_alta_erp  = Column(Date, nullable=True)          # alta de la relación (≠ fechas CNMC)
+    fecha_baja_erp  = Column(Date, nullable=True)
+
+    activo = Column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "comercializadora_id",
+                         name="uq_erp_com_empresa_comercializadora"),
+    )
+
+
