@@ -34,9 +34,11 @@ interface Contrato {
   bono_social: boolean;
   electrointensivo: boolean;
   no_cortable: boolean;
+  exencion_iese: boolean;
   peaje_directo: boolean;
   telegestion: boolean;
   vivienda_habitual: boolean | null;
+
   tension_normalizada: string | null;
   tension_v: number | null;
   tipo_punto_medida: number | null;
@@ -95,6 +97,7 @@ interface Form {
   bono_social: boolean;
   electrointensivo: boolean;
   no_cortable: boolean;
+  exencion_iese: boolean;
   peaje_directo: boolean;
   telegestion: boolean;
   vivienda_habitual: boolean;
@@ -114,6 +117,7 @@ const EMPTY: Form = {
   titular_id: "", suministro_id: "", tarifa_id: "", comercializadora_id: "",
   es_autoconsumo: false, bono_social: false,
   electrointensivo: false, no_cortable: false, peaje_directo: false, telegestion: false,
+  exencion_iese: false,
   vivienda_habitual: false,
   tension_normalizada: "", tension_v: "", tipo_punto_medida: "", modo_control_potencia: "",
   cnae: "",
@@ -132,6 +136,7 @@ function formFromContrato(c: Contrato): Form {
     es_autoconsumo: c.es_autoconsumo,
     bono_social: c.bono_social, electrointensivo: c.electrointensivo, no_cortable: c.no_cortable,
     peaje_directo: c.peaje_directo, telegestion: c.telegestion,
+    exencion_iese: c.exencion_iese,
     vivienda_habitual: c.vivienda_habitual ?? false,
     tension_normalizada: c.tension_normalizada ?? "",
     tension_v: c.tension_v != null ? String(c.tension_v) : "",
@@ -416,6 +421,7 @@ export default function ContratosPage() {
     push("Bono social", original.bono_social, form.bono_social);
     push("Esencial (no cortable)", original.no_cortable, form.no_cortable);
     push("Electrointensivo", original.electrointensivo, form.electrointensivo);
+    push("Exención IESE", original.exencion_iese, form.exencion_iese);
     push("Vivienda habitual", original.vivienda_habitual, form.vivienda_habitual);
     push("Peaje directo", original.peaje_directo, form.peaje_directo);
     const origPot: Record<string, number> = {};
@@ -459,6 +465,7 @@ export default function ContratosPage() {
         electrointensivo: form.electrointensivo, no_cortable: form.no_cortable,
         peaje_directo: form.peaje_directo, telegestion: form.telegestion,
         vivienda_habitual: form.vivienda_habitual,
+        exencion_iese: form.exencion_iese,
         tension_normalizada: form.tension_normalizada || null,
         tension_v: form.tension_v.trim() === "" ? null : Number(form.tension_v),
         tipo_punto_medida: form.tipo_punto_medida === "" ? null : Number(form.tipo_punto_medida),
@@ -687,6 +694,7 @@ export default function ContratosPage() {
             <Check label="Peaje directo" disabled={ver} checked={form.peaje_directo} onChange={(v) => setForm({ ...form, peaje_directo: v })} />
             <Check label="Vivienda habitual" disabled={ver} checked={form.vivienda_habitual} onChange={(v) => setForm({ ...form, vivienda_habitual: v })} />
             <Check label="Electrointensivo" disabled={ver} checked={form.electrointensivo} onChange={(v) => setForm({ ...form, electrointensivo: v })} />
+            <Check label="Exención IESE" disabled={ver} checked={form.exencion_iese} onChange={(v) => setForm({ ...form, exencion_iese: v })} />
           </div>
         </div>
 

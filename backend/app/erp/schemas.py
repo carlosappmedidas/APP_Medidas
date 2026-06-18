@@ -449,6 +449,7 @@ class ErpContratoBase(BaseModel):
     electrointensivo: bool = False
     codigo_solicitud_electrointensivo: Optional[str] = None
     no_cortable: bool = False
+    exencion_iese: bool = False
     art_56: bool = False
     art_56_motivo: Optional[str] = None
     art_56_porcentaje: Optional[float] = None
@@ -516,6 +517,7 @@ class ErpContratoUpdate(BaseModel):
     electrointensivo: Optional[bool] = None
     codigo_solicitud_electrointensivo: Optional[str] = None
     no_cortable: Optional[bool] = None
+    exencion_iese: Optional[bool] = None
     art_56: Optional[bool] = None
     art_56_motivo: Optional[str] = None
     art_56_porcentaje: Optional[float] = None
