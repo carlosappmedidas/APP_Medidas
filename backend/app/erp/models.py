@@ -332,6 +332,8 @@ class ErpContrato(TimestampMixin, Base):
     # --- Tarifa / potencia (CNMC Circular 3/2020; RD 1110/2007) ---
     tarifa_id             = Column(Integer, ForeignKey("erp_tarifa.id"), nullable=False, index=True)
     tension_normalizada   = Column(String(50), nullable=True)
+    tension_v             = Column(Integer, nullable=True)   # tensión real (voltios)
+    tipo_punto_medida     = Column(Integer, nullable=True)   # 1–5 (RPUM)
     modo_control_potencia = Column(String(20), nullable=True)   # ICP | maximetro
     agree_tarifa = Column(Date, nullable=True)
     agree_dh     = Column(Date, nullable=True)
