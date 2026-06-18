@@ -25,11 +25,12 @@ from sqlalchemy.orm import Session
 
 from app.core.permissions import assert_empresa_access
 from app.erp.models import (
-    ErpContrato, ErpContratoPotencia,
+    ErpContrato, ErpContratoPotencia, ErpContratoVersion,
     ErpTitular, ErpSuministro, ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
 )
 from app.erp.schemas import (
     ErpContratoCreate, ErpContratoUpdate, ErpContratoOut, ErpContratoPotenciaOut,
+    ErpContratoVersionListItem, ErpContratoVersionOut,
 )
 from app.tenants.models import User
 
@@ -189,6 +190,138 @@ def _contrato_out(db: Session, c: ErpContrato) -> ErpContratoOut:
 
 
 # ============================================================
+# Histórico de versiones (erp_contrato_version)
+# ============================================================
+# Campos del contrato que se comparan en el diff "Cambios detectados".
+# Para los FK se compara el valor de display (nombre/código), no el id.
+_CAMPOS_DIFF: list[tuple[str, str]] = [
+    ("numero_contrato", "Nº contrato"),
+    ("tipo_contrato_atr", "Tipo ATR"),
+    ("estado", "Estado"),
+    ("titular_nombre", "Titular"),
+    ("cups", "CUPS"),
+    ("comercializadora_nombre", "Comercializadora"),
+    ("cnae", "CNAE"),
+    ("tarifa_codigo", "Tarifa"),
+    ("modo_control_potencia", "Modo control potencia"),
+    ("tension_v", "Tensión (V)"),
+    ("tension_normalizada", "Tensión normalizada"),
+    ("tipo_punto_medida", "Tipo punto de medida"),
+    ("es_autoconsumo", "Autoconsumo"),
+    ("telegestion", "Telegestión"),
+    ("bono_social", "Bono social"),
+    ("no_cortable", "Esencial (no cortable)"),
+    ("electrointensivo", "Electrointensivo"),
+    ("exencion_iese", "Exención IESE"),
+    ("vivienda_habitual", "Vivienda habitual"),
+    ("peaje_directo", "Peaje directo"),
+]
+
+
+def _componer_snapshot(db: Session, c: ErpContrato) -> dict:
+    """Foto del contrato para guardar en erp_contrato_version.snapshot (JSON).
+
+    Guarda id + nombre de display de los FK (para ser fiel aunque luego se
+    renombre el catálogo) y las potencias por periodo.
+    """
+    titular = db.query(ErpTitular).filter(ErpTitular.id == c.titular_id).first()
+    suministro = db.query(ErpSuministro).filter(ErpSuministro.id == c.suministro_id).first()
+    tarifa = db.query(ErpTarifa).filter(ErpTarifa.id == c.tarifa_id).first()
+    com = None
+    if c.comercializadora_id:
+        com = db.query(ErpComercializadora).filter(ErpComercializadora.id == c.comercializadora_id).first()
+    potencias = {
+        p.periodo: (float(p.potencia_kw) if p.potencia_kw is not None else None)
+        for p in db.query(ErpContratoPotencia)
+        .filter(ErpContratoPotencia.contrato_id == c.id)
+        .order_by(ErpContratoPotencia.periodo)
+        .all()
+    }
+    return {
+        "numero_contrato": c.numero_contrato,
+        "tipo_contrato_atr": c.tipo_contrato_atr,
+        "estado": c.estado,
+        "titular_id": c.titular_id,
+        "titular_nombre": titular.nombre if titular else None,
+        "suministro_id": c.suministro_id,
+        "cups": suministro.cups if suministro else None,
+        "comercializadora_id": c.comercializadora_id,
+        "comercializadora_nombre": com.nombre if com else None,
+        "cnae": c.cnae,
+        "tarifa_id": c.tarifa_id,
+        "tarifa_codigo": tarifa.codigo if tarifa else None,
+        "modo_control_potencia": c.modo_control_potencia,
+        "tension_v": c.tension_v,
+        "tension_normalizada": c.tension_normalizada,
+        "tipo_punto_medida": c.tipo_punto_medida,
+        "es_autoconsumo": c.es_autoconsumo,
+        "telegestion": c.telegestion,
+        "bono_social": c.bono_social,
+        "no_cortable": c.no_cortable,
+        "electrointensivo": c.electrointensivo,
+        "exencion_iese": c.exencion_iese,
+        "vivienda_habitual": c.vivienda_habitual,
+        "peaje_directo": c.peaje_directo,
+        "potencias": potencias,
+    }
+
+
+def _calcular_diff(antes: Optional[dict], despues: dict) -> list[dict]:
+    """Diff [{campo, etiqueta, antes, despues}] entre dos snapshots."""
+    antes = antes or {}
+    cambios: list[dict] = []
+    for campo, etiqueta in _CAMPOS_DIFF:
+        a = antes.get(campo)
+        d = despues.get(campo)
+        if a != d:
+            cambios.append({"campo": campo, "etiqueta": etiqueta, "antes": a, "despues": d})
+    pa = antes.get("potencias") or {}
+    pd = despues.get("potencias") or {}
+    for per in sorted(set(pa) | set(pd)):
+        a = pa.get(per)
+        d = pd.get(per)
+        if a != d:
+            cambios.append({
+                "campo": f"potencia_{per.lower()}", "etiqueta": f"Potencia {per}",
+                "antes": a, "despues": d,
+            })
+    return cambios
+
+
+def _estado_version(v: ErpContratoVersion) -> str:
+    return "Activa" if v.fecha_baja is None else "Histórica"
+
+
+def _version_list_item(v: ErpContratoVersion) -> ErpContratoVersionListItem:
+    snap = v.snapshot or {}
+    pots = snap.get("potencias") or {}
+    potencia_txt = " / ".join(
+        (f"{pots[p]:g}" if isinstance(pots[p], (int, float)) else str(pots[p]))
+        for p in sorted(pots)
+    ) or None
+    return ErpContratoVersionListItem(
+        id=v.id, version=v.version, tipo_atr=v.tipo_atr,
+        comercializadora=snap.get("comercializadora_nombre"),
+        tarifa=snap.get("tarifa_codigo"),
+        potencia=potencia_txt,
+        fecha_alta=v.fecha_alta, fecha_baja=v.fecha_baja,
+        fecha_modificacion=v.fecha_modificacion,
+        estado=_estado_version(v),
+    )
+
+
+def _version_out(v: ErpContratoVersion) -> ErpContratoVersionOut:
+    return ErpContratoVersionOut(
+        id=v.id, contrato_id=v.contrato_id, suministro_id=v.suministro_id,
+        version=v.version, tipo_atr=v.tipo_atr, motivo=v.motivo, referencia=v.referencia,
+        fecha_alta=v.fecha_alta, fecha_baja=v.fecha_baja, fecha_modificacion=v.fecha_modificacion,
+        estado=_estado_version(v),
+        snapshot=v.snapshot or {}, cambios=v.cambios,
+        created_at=v.created_at, updated_at=v.updated_at,
+    )
+
+
+# ============================================================
 # CRUD
 # ============================================================
 def listar_contratos(
@@ -254,6 +387,17 @@ def crear_contrato(
             created_at=ahora, updated_at=ahora,
         ))
 
+    # Histórico: v1 = alta (A3), foto del contrato recién creado, sin diff.
+    db.flush()  # las potencias ya son consultables para la foto
+    db.add(ErpContratoVersion(
+        tenant_id=user.tenant_id, empresa_id=empresa_id,
+        contrato_id=c.id, suministro_id=c.suministro_id,
+        version=1, tipo_atr="A3", motivo=None, referencia=None,
+        fecha_alta=ahora.date(), fecha_baja=None, fecha_modificacion=ahora.date(),
+        snapshot=_componer_snapshot(db, c), cambios=None,
+        created_at=ahora, updated_at=ahora,
+    ))
+
     db.commit()
     db.refresh(c)
     return _contrato_out(db, c)
@@ -263,6 +407,7 @@ def actualizar_contrato(
     db: Session, user: User, contrato_id: int, payload: ErpContratoUpdate
 ) -> ErpContratoOut:
     c = _cargar_contrato_con_acceso(db, user, contrato_id)
+    snap_antes = _componer_snapshot(db, c)   # foto ANTES de tocar nada (para el diff)
     data = payload.model_dump(exclude_unset=True)
     potencias = data.pop("potencias", None)  # None = no tocar; lista = reemplazar
 
@@ -299,6 +444,43 @@ def actualizar_contrato(
                 created_at=ahora, updated_at=ahora,
             ))
 
+    # Histórico: si hubo cambios reales, se cierra la versión activa y se crea vN+1 (M1).
+    db.flush()  # potencias nuevas consultables para la foto
+    snap_despues = _componer_snapshot(db, c)
+    diff = _calcular_diff(snap_antes, snap_despues)
+    if diff:
+        ahora_v = _ahora_madrid_naive()
+        hoy = ahora_v.date()
+        ultima_v = (
+            db.query(ErpContratoVersion)
+            .filter(ErpContratoVersion.contrato_id == c.id)
+            .order_by(ErpContratoVersion.version.desc())
+            .first()
+        )
+        if ultima_v is None:
+            # Contrato sin histórico previo: sembramos la v1 (alta A3) con la foto ANTERIOR.
+            db.add(ErpContratoVersion(
+                tenant_id=c.tenant_id, empresa_id=c.empresa_id,
+                contrato_id=c.id, suministro_id=c.suministro_id,
+                version=1, tipo_atr="A3", motivo=None, referencia=None,
+                fecha_alta=None, fecha_baja=hoy, fecha_modificacion=hoy,
+                snapshot=snap_antes, cambios=None,
+                created_at=ahora_v, updated_at=ahora_v,
+            ))
+            siguiente = 2
+        else:
+            ultima_v.fecha_baja = hoy
+            ultima_v.updated_at = ahora_v
+            siguiente = ultima_v.version + 1
+        db.add(ErpContratoVersion(
+            tenant_id=c.tenant_id, empresa_id=c.empresa_id,
+            contrato_id=c.id, suministro_id=c.suministro_id,
+            version=siguiente, tipo_atr="M1", motivo=None, referencia=None,
+            fecha_alta=hoy, fecha_baja=None, fecha_modificacion=hoy,
+            snapshot=snap_despues, cambios=diff,
+            created_at=ahora_v, updated_at=ahora_v,
+        ))
+
     db.commit()
     db.refresh(c)
     return _contrato_out(db, c)
@@ -313,3 +495,36 @@ def desactivar_contrato(db: Session, user: User, contrato_id: int) -> ErpContrat
     db.commit()
     db.refresh(c)
     return _contrato_out(db, c)
+
+
+# ============================================================
+# Histórico — lectura (pestaña "Histórico del contrato")
+# ============================================================
+def listar_versiones(
+    db: Session, user: User, contrato_id: int
+) -> list[ErpContratoVersionListItem]:
+    c = _cargar_contrato_con_acceso(db, user, contrato_id)
+    versiones = (
+        db.query(ErpContratoVersion)
+        .filter(ErpContratoVersion.contrato_id == c.id)
+        .order_by(ErpContratoVersion.version.desc())
+        .all()
+    )
+    return [_version_list_item(v) for v in versiones]
+
+
+def obtener_version(
+    db: Session, user: User, contrato_id: int, version_id: int
+) -> ErpContratoVersionOut:
+    c = _cargar_contrato_con_acceso(db, user, contrato_id)
+    v = (
+        db.query(ErpContratoVersion)
+        .filter(
+            ErpContratoVersion.id == version_id,
+            ErpContratoVersion.contrato_id == c.id,
+        )
+        .first()
+    )
+    if v is None:
+        raise ValueError(f"Versión {version_id} no encontrada para el contrato {contrato_id}")
+    return _version_out(v)

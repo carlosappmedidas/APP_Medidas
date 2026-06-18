@@ -381,3 +381,37 @@ def desactivar_contrato_endpoint(
         return services_contrato.desactivar_contrato(db, user, contrato_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Contratos — histórico de versiones
+# ---------------------------------------------------------------------------
+@router.get(
+    "/contratos/{contrato_id}/versiones",
+    response_model=list[schemas.ErpContratoVersionListItem],
+)
+def listar_versiones_contrato_endpoint(
+    contrato_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services_contrato.listar_versiones(db, user, contrato_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get(
+    "/contratos/{contrato_id}/versiones/{version_id}",
+    response_model=schemas.ErpContratoVersionOut,
+)
+def obtener_version_contrato_endpoint(
+    contrato_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services_contrato.obtener_version(db, user, contrato_id, version_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

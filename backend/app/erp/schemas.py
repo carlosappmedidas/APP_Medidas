@@ -13,7 +13,7 @@ Validaciones de formato (D5): tipo_persona, tipo_identificador, CUPS, tipo_punto
 """
 import re
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -74,7 +74,6 @@ class ErpTitularBase(BaseModel):
     dir_municipio: Optional[str] = None
     dir_provincia: Optional[str] = None
     dir_pais: Optional[str] = "España"
-    vivienda_habitual: Optional[bool] = None  # solo persona física
 
     persona_contacto: Optional[str] = None  # propio (no SIPS); solo jurídica
     telefono: Optional[str] = None
@@ -126,7 +125,6 @@ class ErpTitularUpdate(BaseModel):
     dir_municipio: Optional[str] = None
     dir_provincia: Optional[str] = None
     dir_pais: Optional[str] = None
-    vivienda_habitual: Optional[bool] = None
 
     persona_contacto: Optional[str] = None
     telefono: Optional[str] = None
@@ -162,7 +160,6 @@ class ErpTitularOut(ErpTitularBase):
 class ErpSuministroBase(BaseModel):
     cups: str
     distribuidora: Optional[str] = None
-    tipo_punto_medida: Optional[int] = Field(default=None, ge=1, le=5)   # 1–5 (RPUM)
     acometida: Optional[str] = None
 
     # Dirección del suministro
@@ -200,8 +197,6 @@ class ErpSuministroBase(BaseModel):
     linea: Optional[str] = None
 
     # Datos eléctricos
-    tension_normalizada: Optional[str] = None
-    tension_v: Optional[int] = None
     pot_max_admisible_cie_kw: Optional[float] = None
     potencia_adscrita_kw: Optional[float] = None
     potencia_adscrita_bloqueada: bool = False
@@ -241,7 +236,6 @@ class ErpSuministroUpdate(BaseModel):
     """Actualización parcial: todos los campos opcionales."""
     cups: Optional[str] = None
     distribuidora: Optional[str] = None
-    tipo_punto_medida: Optional[int] = Field(default=None, ge=1, le=5)
     acometida: Optional[str] = None
 
     dir_tipo_via: Optional[str] = None
@@ -270,11 +264,10 @@ class ErpSuministroUpdate(BaseModel):
     centro_transformador: Optional[str] = None
     linea: Optional[str] = None
 
-    tension_normalizada: Optional[str] = None
-    tension_v: Optional[int] = None
     pot_max_admisible_cie_kw: Optional[float] = None
     potencia_adscrita_kw: Optional[float] = None
     potencia_adscrita_bloqueada: Optional[bool] = None
+
     fecha_vigencia_adscrita: Optional[date] = None
     potencia_convenio_kw: Optional[float] = None
     criterio_regulatorio: Optional[str] = None
@@ -437,6 +430,8 @@ class ErpContratoBase(BaseModel):
     # Tarifa / potencia
     tarifa_id: int
     tension_normalizada: Optional[str] = None
+    tension_v: Optional[int] = None
+    tipo_punto_medida: Optional[int] = Field(default=None, ge=1, le=5)   # 1–5 (RPUM)
     modo_control_potencia: Optional[str] = None
     agree_tarifa: Optional[date] = None
     agree_dh: Optional[date] = None
@@ -445,15 +440,12 @@ class ErpContratoBase(BaseModel):
     # Régimen regulado
     autoconsumo_tipo: Optional[str] = None
     es_autoconsumo: bool = False
-    autoconsumo_colectivo: bool = False
     potencia_generacion_kw: Optional[float] = None
     bono_social: bool = False
-    suministro_minimo_vital: bool = False
-    tipo_vivienda: Optional[TipoVivienda] = None
+    vivienda_habitual: Optional[bool] = None
     tipo_subseccion: Optional[str] = None
     peaje_directo: bool = False
     telegestion: bool = False
-    tipo_medida: Optional[str] = None
     electrointensivo: bool = False
     codigo_solicitud_electrointensivo: Optional[str] = None
     no_cortable: bool = False
@@ -505,6 +497,8 @@ class ErpContratoUpdate(BaseModel):
 
     tarifa_id: Optional[int] = None
     tension_normalizada: Optional[str] = None
+    tension_v: Optional[int] = None
+    tipo_punto_medida: Optional[int] = Field(default=None, ge=1, le=5)
     modo_control_potencia: Optional[str] = None
     agree_tarifa: Optional[date] = None
     agree_dh: Optional[date] = None
@@ -513,15 +507,12 @@ class ErpContratoUpdate(BaseModel):
 
     autoconsumo_tipo: Optional[str] = None
     es_autoconsumo: Optional[bool] = None
-    autoconsumo_colectivo: Optional[bool] = None
     potencia_generacion_kw: Optional[float] = None
     bono_social: Optional[bool] = None
-    suministro_minimo_vital: Optional[bool] = None
-    tipo_vivienda: Optional[TipoVivienda] = None
+    vivienda_habitual: Optional[bool] = None
     tipo_subseccion: Optional[str] = None
     peaje_directo: Optional[bool] = None
     telegestion: Optional[bool] = None
-    tipo_medida: Optional[str] = None
     electrointensivo: Optional[bool] = None
     codigo_solicitud_electrointensivo: Optional[str] = None
     no_cortable: Optional[bool] = None
@@ -624,3 +615,64 @@ class ErpComercializadoraEmpresaOut(ErpComercializadoraEmpresaBase):
 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# Histórico de versiones del contrato (erp_contrato_version)
+# ---------------------------------------------------------------------------
+class CambioDetectado(BaseModel):
+    """
+    Una línea del diff 'Cambios detectados': un campo que cambió, con su
+    valor antes y después. `antes`/`despues` son libres (texto, número, bool
+    o None) porque cubren cualquier campo del contrato.
+    """
+    campo: str                      # nombre técnico, p. ej. "tarifa_id", "potencia_p1"
+    etiqueta: str                   # etiqueta legible, p. ej. "Tarifa", "Potencia P1"
+    antes: Any = None
+    despues: Any = None
+
+
+class ErpContratoVersionListItem(BaseModel):
+    """
+    Fila de la tabla de la pestaña 'Histórico del contrato'.
+    Los campos de display (comercializadora/tarifa/potencia) y `estado` los
+    compone services a partir del snapshot; no son columnas de la tabla.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    version: int
+    tipo_atr: Optional[str] = None
+    comercializadora: Optional[str] = None     # nombre (del snapshot)
+    tarifa: Optional[str] = None               # código (del snapshot)
+    potencia: Optional[str] = None             # las 6 en una línea: "P1 / … / P6"
+    fecha_alta: Optional[date] = None
+    fecha_baja: Optional[date] = None
+    fecha_modificacion: Optional[date] = None
+    estado: str                                # derivado: "Activa" | "Histórica"
+
+
+class ErpContratoVersionOut(BaseModel):
+    """
+    Detalle de una versión: foto completa (snapshot) + diff (cambios).
+    - snapshot -> sub-pestaña 'Modificación' (las 4 tarjetas).
+    - cambios  -> sub-pestaña 'Cambios detectados' (NULL en la v1/alta).
+    `estado` lo deriva services (fecha_baja NULL = Activa).
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    contrato_id: int
+    suministro_id: Optional[int] = None
+    version: int
+    tipo_atr: Optional[str] = None
+    motivo: Optional[str] = None
+    referencia: Optional[str] = None
+    fecha_alta: Optional[date] = None
+    fecha_baja: Optional[date] = None
+    fecha_modificacion: Optional[date] = None
+    estado: str                                # derivado
+    snapshot: dict[str, Any]                   # foto del contrato en esta versión
+    cambios: Optional[list[CambioDetectado]] = None
+    created_at: datetime
+    updated_at: datetime

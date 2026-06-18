@@ -55,9 +55,8 @@ from app.erp.models import (  # noqa: F401
     ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
     ErpContrato, ErpContratoPotencia,
     ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
-    ErpComercializadoraEmpresa,
+    ErpComercializadoraEmpresa, ErpContratoVersion,
 )
-
 config = context.config
 
 # Settings de la app

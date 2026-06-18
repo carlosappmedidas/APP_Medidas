@@ -17,6 +17,7 @@ from sqlalchemy import (
     Boolean, Column, Date, Float, ForeignKey,
     Integer, String, Text, UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.core.models_base import Base, TimestampMixin
 
@@ -70,9 +71,6 @@ class ErpTitular(TimestampMixin, Base):
     dir_municipio      = Column(String(120), nullable=True)
     dir_provincia      = Column(String(120), nullable=True)
     dir_pais           = Column(String(120), nullable=True, default="España")
-
-    # Solo persona física (SIPS esViviendaHabitual S/N)
-    vivienda_habitual  = Column(Boolean, nullable=True)
 
     # --- Contacto ---
     persona_contacto = Column(String(120), nullable=True)  # propio (no SIPS); solo jurídica
@@ -146,8 +144,6 @@ class ErpSuministro(TimestampMixin, Base):
     linea                = Column(String(120), nullable=True)
 
     # Datos eléctricos
-    tension_normalizada         = Column(String(50), nullable=True)
-    tension_v                   = Column(Integer, nullable=True)
     pot_max_admisible_cie_kw    = Column(Float, nullable=True)
     potencia_adscrita_kw        = Column(Float, nullable=True)
     potencia_adscrita_bloqueada = Column(Boolean, nullable=False, default=False)
@@ -345,17 +341,15 @@ class ErpContrato(TimestampMixin, Base):
     # --- Régimen regulado ---
     autoconsumo_tipo                  = Column(String(20), nullable=True)   # Ley 24/2013 art.9 + RD 244/2019 art.4
     es_autoconsumo                    = Column(Boolean, nullable=False, default=False)
-    autoconsumo_colectivo             = Column(Boolean, nullable=False, default=False)
     potencia_generacion_kw            = Column(Float, nullable=True)
     bono_social                       = Column(Boolean, nullable=False, default=False)   # RD 897/2017
-    suministro_minimo_vital           = Column(Boolean, nullable=False, default=False)
-    tipo_vivienda                     = Column(String(20), nullable=True)   # habitual | no_habitual
+    vivienda_habitual                 = Column(Boolean, nullable=True)   # check vivienda habitual (movido desde titular)
     tipo_subseccion                   = Column(String(10), nullable=True)
     peaje_directo                     = Column(Boolean, nullable=False, default=False)
     telegestion                       = Column(Boolean, nullable=False, default=False)
-    tipo_medida                       = Column(String(20), nullable=True)
     electrointensivo                  = Column(Boolean, nullable=False, default=False)   # RD 1106/2020
     codigo_solicitud_electrointensivo = Column(String(50), nullable=True)
+    exencion_iese                     = Column(Boolean, nullable=False, default=False)   # exención IESE (Impuesto Especial Electricidad)
     no_cortable                       = Column(Boolean, nullable=False, default=False)   # Ley 24/2013 art.52.4
     art_56                            = Column(Boolean, nullable=False, default=False)   # corte a vulnerables
     art_56_motivo                     = Column(String(255), nullable=True)
@@ -414,6 +408,54 @@ class ErpComercializadoraEmpresa(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("empresa_id", "comercializadora_id",
                          name="uq_erp_com_empresa_comercializadora"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6) ErpContratoVersion -- histórico de modificaciones del contrato.
+#    Cada fila = una versión = foto (snapshot) del contrato en ese momento +
+#    metadatos de la operación ATR + diff respecto a la versión anterior.
+#    erp_contrato sigue siendo la fila VIVA (estado actual); esto es archivo.
+# ---------------------------------------------------------------------------
+class ErpContratoVersion(TimestampMixin, Base):
+    """
+    Versión histórica de un contrato (pestaña 'Histórico del contrato').
+
+    - snapshot: foto completa del contrato tal como quedó en esta versión
+      (alimenta la sub-pestaña 'Modificación'). Guardará también valores de
+      display (nombre comercializadora/tarifa/titular, CUPS) para ser fiel
+      aunque luego se renombren los catálogos.
+    - cambios: diff respecto a la versión anterior (alimenta 'Cambios
+      detectados'). NULL en la v1 (alta A3).
+    - El estado de la lista (Activa/Histórica) se DERIVA: fecha_baja NULL = activa.
+    """
+    __tablename__ = "erp_contrato_version"
+
+    id         = Column(Integer, primary_key=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    contrato_id   = Column(Integer, ForeignKey("erp_contrato.id", ondelete="CASCADE"), nullable=False, index=True)
+    suministro_id = Column(Integer, ForeignKey("erp_suministro.id"), nullable=True, index=True)   # histórico por CUPS
+
+    version = Column(Integer, nullable=False)   # correlativo por contrato (1, 2, 3…)
+
+    # --- Operación ATR ---
+    tipo_atr   = Column(String(10), nullable=True)    # A3 | C1 | C2 | M1 | B1 | D1…
+    motivo     = Column(String(255), nullable=True)
+    referencia = Column(String(80), nullable=True)    # nº de expediente/solicitud ATR
+
+    # --- Vigencia de la versión ---
+    fecha_alta         = Column(Date, nullable=True)  # inicio de vigencia de la versión
+    fecha_baja         = Column(Date, nullable=True)  # NULL = versión activa
+    fecha_modificacion = Column(Date, nullable=True)  # cuándo se registró la modificación
+
+    # --- Foto + diff ---
+    snapshot = Column(JSONB, nullable=False)          # foto del contrato en esta versión
+    cambios  = Column(JSONB, nullable=True)           # diff vs versión anterior (NULL en alta)
+
+    __table_args__ = (
+        UniqueConstraint("contrato_id", "version", name="uq_erp_contrato_version"),
     )
 
 

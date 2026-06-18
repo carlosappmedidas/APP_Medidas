@@ -38,7 +38,6 @@ interface Titular {
   dir_municipio: string | null;
   dir_provincia: string | null;
   dir_pais: string | null;
-  vivienda_habitual: boolean | null;
   persona_contacto: string | null;
   telefono: string | null;
   movil: string | null;
@@ -58,7 +57,6 @@ const EMPTY: Titular = {
   dir_tipo_via: "", dir_via: "", dir_numero: "", dir_duplicador: "",
   dir_escalera: "", dir_piso: "", dir_puerta: "", dir_tipo_aclarador: "", dir_aclarador: "",
   dir_cp: "", dir_municipio: "", dir_provincia: "", dir_pais: "España",
-  vivienda_habitual: null,
   persona_contacto: "",
   telefono: "", movil: "", email: "",
   notas: "", codigo_interno: "", activo: true,
@@ -275,7 +273,6 @@ export default function ErpTitularesPage() {
         dir_tipo_aclarador: form.dir_tipo_aclarador, dir_aclarador: form.dir_aclarador,
         dir_cp: form.dir_cp, dir_municipio: form.dir_municipio,
         dir_provincia: form.dir_provincia, dir_pais: form.dir_pais,
-        vivienda_habitual: form.tipo_persona === "fisica" ? form.vivienda_habitual : null,
         persona_contacto: form.tipo_persona === "juridica" ? form.persona_contacto : null,
         telefono: form.telefono, movil: form.movil, email: form.email,
         notas: form.notas, codigo_interno: form.codigo_interno, activo: form.activo,
@@ -412,13 +409,6 @@ export default function ErpTitularesPage() {
           <TextField label="Municipio" value={form.dir_municipio ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_municipio: v })} />
           <TextField label="Provincia" value={form.dir_provincia ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_provincia: v })} />
           <TextField label="País" value={form.dir_pais ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_pais: v })} />
-          {form.tipo_persona === "fisica" && (
-            <label style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ds-text-primary, #F1EFE8)", marginTop: 4 }}>
-              <input type="checkbox" checked={!!form.vivienda_habitual}
-                onChange={(e) => setForm({ ...form, vivienda_habitual: e.target.checked })} />
-              Vivienda habitual
-            </label>
-          )}
         </SectionCard>
 
         <SectionCard title="Contacto">
