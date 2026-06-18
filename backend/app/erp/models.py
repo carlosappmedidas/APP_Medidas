@@ -341,7 +341,7 @@ class ErpContrato(TimestampMixin, Base):
     agree_tipus  = Column(Date, nullable=True)
 
     # --- Régimen regulado ---
-    autoconsumo_tipo                  = Column(String(20), nullable=True)   # Ley 24/2013 art.9 + RD 244/2019 art.4
+    autoconsumo_tipo                  = Column(String(40), nullable=True)   # Ley 24/2013 art.9 + RD 244/2019 art.4 (valores enum hasta 30 chars)
     es_autoconsumo                    = Column(Boolean, nullable=False, default=False)
     potencia_generacion_kw            = Column(Float, nullable=True)
     bono_social                       = Column(Boolean, nullable=False, default=False)   # RD 897/2017
