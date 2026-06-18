@@ -16,7 +16,7 @@ interface PeriodoTarifa { periodo: string; tipo: string; orden: number; }
 interface Tarifa { id: number; codigo: string; num_periodos_potencia: number; periodos: PeriodoTarifa[]; }
 interface OptTitular { id: number; nombre: string | null; }
 interface OptSuministro { id: number; cups: string; }
-interface OptCom { id: number; nombre: string; }
+interface OptCom { id: number; com_nombre: string | null; }
 interface ContratoPotencia { periodo: string; potencia_kw: number; }
 interface Contrato {
   id: number;
@@ -27,7 +27,7 @@ interface Contrato {
   fecha_alta: string | null;
   fecha_baja: string | null;
   titular_id: number;
-  comercializadora_id: number | null;
+  comercializadora_empresa_id: number | null;
   suministro_id: number;
   tarifa_id: number;
   es_autoconsumo: boolean;
@@ -92,7 +92,7 @@ interface Form {
   titular_id: number | "";
   suministro_id: number | "";
   tarifa_id: number | "";
-  comercializadora_id: number | "";
+  comercializadora_empresa_id: number | "";
   es_autoconsumo: boolean;
   bono_social: boolean;
   electrointensivo: boolean;
@@ -114,7 +114,7 @@ interface Form {
 const EMPTY: Form = {
   numero_contrato: "", codigo_interno: "", tipo_contrato_atr: "", estado: "activo",
   fecha_alta: "", fecha_baja: "",
-  titular_id: "", suministro_id: "", tarifa_id: "", comercializadora_id: "",
+  titular_id: "", suministro_id: "", tarifa_id: "", comercializadora_empresa_id: "",
   es_autoconsumo: false, bono_social: false,
   electrointensivo: false, no_cortable: false, peaje_directo: false, telegestion: false,
   exencion_iese: false,
@@ -132,7 +132,7 @@ function formFromContrato(c: Contrato): Form {
     tipo_contrato_atr: c.tipo_contrato_atr, estado: c.estado,
     fecha_alta: c.fecha_alta ?? "", fecha_baja: c.fecha_baja ?? "",
     titular_id: c.titular_id, suministro_id: c.suministro_id, tarifa_id: c.tarifa_id,
-    comercializadora_id: c.comercializadora_id ?? "",
+    comercializadora_empresa_id: c.comercializadora_empresa_id ?? "",
     es_autoconsumo: c.es_autoconsumo,
     bono_social: c.bono_social, electrointensivo: c.electrointensivo, no_cortable: c.no_cortable,
     peaje_directo: c.peaje_directo, telegestion: c.telegestion,
@@ -337,7 +337,7 @@ export default function ContratosPage() {
         fetch(`${API_BASE_URL}/erp/titulares?empresa_id=${ep}&solo_activos=true`, { headers: authHeaders() }),
         fetch(`${API_BASE_URL}/erp/suministros?empresa_id=${ep}&solo_activos=true`, { headers: authHeaders() }),
         fetch(`${API_BASE_URL}/erp/tarifas?solo_activas=true`, { headers: authHeaders() }),
-        fetch(`${API_BASE_URL}/erp/comercializadoras?solo_activas=true`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/erp/comercializadoras-empresa?empresa_id=${ep}`, { headers: authHeaders() }),
       ]);
       setTitulares(tit.ok ? await tit.json() : []);
       setSuministros(sum.ok ? await sum.json() : []);
@@ -403,13 +403,13 @@ export default function ContratosPage() {
     const titNombre = (id: number | "") => titulares.find((t) => t.id === id)?.nombre ?? null;
     const cupsDe = (id: number | "") => suministros.find((s) => s.id === id)?.cups ?? null;
     const tarCod = (id: number | "") => tarifas.find((t) => t.id === id)?.codigo ?? null;
-    const comNom = (id: number | "") => (id === "" ? null : (coms.find((c) => c.id === id)?.nombre ?? null));
+    const comNom = (id: number | "") => (id === "" ? null : (coms.find((c) => c.id === id)?.com_nombre ?? null));
     push("Nº contrato", original.numero_contrato, form.numero_contrato);
     push("Tipo ATR", original.tipo_contrato_atr, form.tipo_contrato_atr);
     push("Estado", original.estado, form.estado);
     push("Titular", original.titular_nombre, titNombre(form.titular_id));
     push("CUPS", original.cups, cupsDe(form.suministro_id));
-    push("Comercializadora", original.comercializadora_nombre, comNom(form.comercializadora_id));
+    push("Comercializadora", original.comercializadora_nombre, comNom(form.comercializadora_empresa_id));
     push("CNAE", original.cnae, form.cnae || null);
     push("Tarifa", original.tarifa_codigo, tarCod(form.tarifa_id));
     push("Modo control potencia", original.modo_control_potencia, form.modo_control_potencia || null);
@@ -459,7 +459,7 @@ export default function ContratosPage() {
         fecha_alta: form.fecha_alta || null, fecha_baja: form.fecha_baja || null,
         titular_id: Number(form.titular_id), suministro_id: Number(form.suministro_id),
         tarifa_id: Number(form.tarifa_id),
-        comercializadora_id: form.comercializadora_id === "" ? null : Number(form.comercializadora_id),
+        comercializadora_empresa_id: form.comercializadora_empresa_id === "" ? null : Number(form.comercializadora_empresa_id),
         es_autoconsumo: form.es_autoconsumo,
         bono_social: form.bono_social,
         electrointensivo: form.electrointensivo, no_cortable: form.no_cortable,
@@ -615,9 +615,9 @@ export default function ContratosPage() {
           </div>
           <div>
             <label style={labelStyle}>Comercializadora</label>
-            <select style={inputStyle} disabled={ver} value={form.comercializadora_id} onChange={(e) => setForm({ ...form, comercializadora_id: e.target.value === "" ? "" : Number(e.target.value) })}>
+            <select style={inputStyle} disabled={ver} value={form.comercializadora_empresa_id} onChange={(e) => setForm({ ...form, comercializadora_empresa_id: e.target.value === "" ? "" : Number(e.target.value) })}>
               <option value="" style={optDark}>— ninguna —</option>
-              {coms.map((c) => <option key={c.id} value={c.id} style={optDark}>{c.nombre}</option>)}
+              {coms.map((c) => <option key={c.id} value={c.id} style={optDark}>{c.com_nombre ?? `#${c.id}`}</option>)}
             </select>
           </div>
           <TextField label="CNAE" disabled={ver} value={form.cnae} onChange={(v) => setForm({ ...form, cnae: v })} />

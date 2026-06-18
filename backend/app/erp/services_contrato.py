@@ -27,6 +27,7 @@ from app.core.permissions import assert_empresa_access
 from app.erp.models import (
     ErpContrato, ErpContratoPotencia, ErpContratoVersion,
     ErpTitular, ErpSuministro, ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
+    ErpComercializadoraEmpresa,
 )
 from app.erp.schemas import (
     ErpContratoCreate, ErpContratoUpdate, ErpContratoOut, ErpContratoPotenciaOut,
@@ -64,7 +65,7 @@ def _cargar_contrato_con_acceso(db: Session, user: User, contrato_id: int) -> Er
 def _validar_fks(
     db: Session, empresa_id: int,
     titular_id: int, pagador_id: Optional[int], suministro_id: int,
-    tarifa_id: int, comercializadora_id: Optional[int],
+    tarifa_id: int, comercializadora_empresa_id: Optional[int],
 ) -> None:
     t = db.query(ErpTitular).filter(ErpTitular.id == titular_id).first()
     if t is None or t.empresa_id != empresa_id:
@@ -78,9 +79,14 @@ def _validar_fks(
         raise ContratoValidacionError(f"Suministro {suministro_id} no válido para esta empresa")
     if db.query(ErpTarifa).filter(ErpTarifa.id == tarifa_id).first() is None:
         raise ContratoValidacionError(f"Tarifa {tarifa_id} no existe")
-    if comercializadora_id is not None:
-        if db.query(ErpComercializadora).filter(ErpComercializadora.id == comercializadora_id).first() is None:
-            raise ContratoValidacionError(f"Comercializadora {comercializadora_id} no existe")
+    if comercializadora_empresa_id is not None:
+        rel = db.query(ErpComercializadoraEmpresa).filter(
+            ErpComercializadoraEmpresa.id == comercializadora_empresa_id
+        ).first()
+        if rel is None or rel.empresa_id != empresa_id:
+            raise ContratoValidacionError(
+                f"Comercializadora (empresa) {comercializadora_empresa_id} no válida para esta empresa"
+            )
 
 
 def _validar_periodos_tarifa(db: Session, tarifa_id: int, potencias: list[dict]) -> None:
@@ -183,9 +189,15 @@ def _contrato_out(db: Session, c: ErpContrato) -> ErpContratoOut:
     out.cups = suministro.cups if suministro else None
     tarifa = db.query(ErpTarifa).filter(ErpTarifa.id == c.tarifa_id).first()
     out.tarifa_codigo = tarifa.codigo if tarifa else None
-    if c.comercializadora_id:
-        com = db.query(ErpComercializadora).filter(ErpComercializadora.id == c.comercializadora_id).first()
-        out.comercializadora_nombre = com.nombre if com else None
+    if c.comercializadora_empresa_id:
+        rel = db.query(ErpComercializadoraEmpresa).filter(
+            ErpComercializadoraEmpresa.id == c.comercializadora_empresa_id
+        ).first()
+        if rel is not None:
+            com = db.query(ErpComercializadora).filter(
+                ErpComercializadora.id == rel.comercializadora_id
+            ).first()
+            out.comercializadora_nombre = com.nombre if com else None
     return out
 
 
@@ -228,8 +240,14 @@ def _componer_snapshot(db: Session, c: ErpContrato) -> dict:
     suministro = db.query(ErpSuministro).filter(ErpSuministro.id == c.suministro_id).first()
     tarifa = db.query(ErpTarifa).filter(ErpTarifa.id == c.tarifa_id).first()
     com = None
-    if c.comercializadora_id:
-        com = db.query(ErpComercializadora).filter(ErpComercializadora.id == c.comercializadora_id).first()
+    if c.comercializadora_empresa_id:
+        rel = db.query(ErpComercializadoraEmpresa).filter(
+            ErpComercializadoraEmpresa.id == c.comercializadora_empresa_id
+        ).first()
+        if rel is not None:
+            com = db.query(ErpComercializadora).filter(
+                ErpComercializadora.id == rel.comercializadora_id
+            ).first()
     potencias = {
         p.periodo: (float(p.potencia_kw) if p.potencia_kw is not None else None)
         for p in db.query(ErpContratoPotencia)
@@ -245,7 +263,7 @@ def _componer_snapshot(db: Session, c: ErpContrato) -> dict:
         "titular_nombre": titular.nombre if titular else None,
         "suministro_id": c.suministro_id,
         "cups": suministro.cups if suministro else None,
-        "comercializadora_id": c.comercializadora_id,
+        "comercializadora_empresa_id": c.comercializadora_empresa_id,
         "comercializadora_nombre": com.nombre if com else None,
         "cnae": c.cnae,
         "tarifa_id": c.tarifa_id,
@@ -364,7 +382,7 @@ def crear_contrato(
     _validar_fks(
         db, empresa_id,
         data["titular_id"], data.get("pagador_id"), data["suministro_id"],
-        data["tarifa_id"], data.get("comercializadora_id"),
+        data["tarifa_id"], data.get("comercializadora_empresa_id"),
     )
     _validar_periodos_tarifa(db, data["tarifa_id"], potencias)
     _validar_potencias_crecientes(potencias)
@@ -415,7 +433,7 @@ def actualizar_contrato(
     eff_pagador = data.get("pagador_id", c.pagador_id)
     eff_suministro = data.get("suministro_id", c.suministro_id)
     eff_tarifa = data.get("tarifa_id", c.tarifa_id)
-    eff_com = data.get("comercializadora_id", c.comercializadora_id)
+    eff_com = data.get("comercializadora_empresa_id", c.comercializadora_empresa_id)
     eff_estado = data.get("estado", c.estado)
 
     _validar_fks(db, c.empresa_id, eff_titular, eff_pagador, eff_suministro, eff_tarifa, eff_com)

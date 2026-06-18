@@ -423,7 +423,7 @@ class ErpContratoBase(BaseModel):
     # Partes
     titular_id: int
     pagador_id: Optional[int] = None
-    comercializadora_id: Optional[int] = None
+    comercializadora_empresa_id: Optional[int] = None
     referencia_comercializadora: Optional[str] = None
     # Suministro
     suministro_id: int
@@ -491,7 +491,7 @@ class ErpContratoUpdate(BaseModel):
 
     titular_id: Optional[int] = None
     pagador_id: Optional[int] = None
-    comercializadora_id: Optional[int] = None
+    comercializadora_empresa_id: Optional[int] = None
     referencia_comercializadora: Optional[str] = None
 
     suministro_id: Optional[int] = None

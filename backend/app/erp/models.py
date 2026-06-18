@@ -323,7 +323,7 @@ class ErpContrato(TimestampMixin, Base):
     # --- Partes (FK) ---
     titular_id                  = Column(Integer, ForeignKey("erp_titular.id"), nullable=False, index=True)
     pagador_id                  = Column(Integer, ForeignKey("erp_titular.id"), nullable=True)
-    comercializadora_id         = Column(Integer, ForeignKey("erp_comercializadora.id"), nullable=True)
+    comercializadora_empresa_id = Column(Integer, ForeignKey("erp_comercializadora_empresa.id"), nullable=True)
     referencia_comercializadora = Column(String(120), nullable=True)
 
     # --- Suministro (FK; sin duplicar datos del CUPS) ---
