@@ -11,7 +11,7 @@ const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 // Tipo de documento (TABLA_6 ATR)
 const TIPO_DOC: [string, string][] = [
   ["", "—"], ["NI", "NIF"], ["DN", "DNI"], ["CI", "CIF"], ["NE", "NIE"],
-  ["PS", "Pasaporte"], ["NV", "NIVA"], ["CT", "Carta de trabajo"], ["OT", "Otro"],
+  ["OT", "Otro"],
 ];
 
 interface Titular {
