@@ -51,6 +51,21 @@ interface Comercializadora {
   activo: boolean;
   notas: string | null;
 }
+interface TablaCatalogoValor {
+  codigo: string;
+  descripcion: string | null;
+}
+interface TablaCatalogo {
+  clave: string;
+  nombre: string;
+  modulo: string;
+  seccion: string;
+  origen: string;
+  normativa: string | null;
+  tipo_fuente: string;
+  num_valores: number;
+  valores: TablaCatalogoValor[];
+}
 
 const EMPTY_COM: Comercializadora = {
   nombre: "", cif: "", codigo_ree: "",
@@ -156,7 +171,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
 export default function CatalogosPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
-  const [tab, setTab] = useState<"tarifas" | "comercializadoras">("tarifas");
+  const [tab, setTab] = useState<"tarifas" | "comercializadoras" | "tablas">("tarifas");
 
   // Tarifas
   const [tarifas, setTarifas] = useState<Tarifa[]>([]);
@@ -165,6 +180,11 @@ export default function CatalogosPage() {
   // Comercializadoras
   const [coms, setComs] = useState<Comercializadora[]>([]);
   const [loadingCom, setLoadingCom] = useState(false);
+
+  // Tablas (catálogo de tablas auxiliares del ERP)
+  const [tablas, setTablas] = useState<TablaCatalogo[]>([]);
+  const [loadingTablas, setLoadingTablas] = useState(false);
+  const [expandida, setExpandida] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [soloActivas, setSoloActivas] = useState(false);
 
@@ -202,6 +222,21 @@ export default function CatalogosPage() {
     } catch { setComs([]); }
     finally { setLoadingCom(false); }
   }, [search, soloActivas]);
+
+  const cargarTablas = useCallback(async () => {
+    setLoadingTablas(true);
+    try {
+      const r = await fetch(`${API_BASE_URL}/erp/tablas`, { headers: authHeaders() });
+      const data: unknown = r.ok ? await r.json() : [];
+      setTablas(Array.isArray(data) ? (data as TablaCatalogo[]) : []);
+    } catch { setTablas([]); }
+    finally { setLoadingTablas(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!authChecked || tab !== "tablas") return;
+    cargarTablas();
+  }, [authChecked, tab, cargarTablas]);
 
   useEffect(() => {
     if (!authChecked || tab !== "tarifas") return;
@@ -363,9 +398,70 @@ export default function CatalogosPage() {
       <div style={{ display: "flex", gap: 18, borderBottom: "0.5px solid rgba(255,255,255,0.08)", marginBottom: 18 }}>
         <button style={tabBtn(tab === "tarifas")} onClick={() => setTab("tarifas")}>Tarifas</button>
         <button style={tabBtn(tab === "comercializadoras")} onClick={() => setTab("comercializadoras")}>Comercializadoras</button>
+        <button style={tabBtn(tab === "tablas")} onClick={() => setTab("tablas")}>Tablas</button>
       </div>
 
-      {tab === "tarifas" ? (
+      {tab === "tablas" ? (
+        loadingTablas ? (
+          <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Cargando…</div>
+        ) : tablas.length === 0 ? (
+          <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>No hay tablas registradas.</div>
+        ) : (
+          <div>
+            {Array.from(new Set(tablas.map((t) => t.modulo))).map((modulo) => (
+              <div key={modulo} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>{modulo}</div>
+                {Array.from(new Set(tablas.filter((t) => t.modulo === modulo).map((t) => t.seccion))).map((seccion) => (
+                  <div key={seccion} style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", color: "rgba(241,239,232,0.4)", margin: "0 0 6px 2px" }}>{seccion}</div>
+                    {tablas.filter((t) => t.modulo === modulo && t.seccion === seccion).map((t) => {
+                      const abierta = expandida === t.clave;
+                      return (
+                        <div key={t.clave} style={{ border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}>
+                          <div onClick={() => setExpandida(abierta ? null : t.clave)}
+                            style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer" }}>
+                            <span style={{ fontSize: 12, opacity: 0.6 }}>{abierta ? "▾" : "▸"}</span>
+                            <span style={{ fontSize: 13, fontWeight: 500, fontFamily: monoFont }}>{t.clave}</span>
+                            <span style={{ fontSize: 12, color: "rgba(241,239,232,0.6)" }}>{t.nombre}</span>
+                            <span style={t.origen === "normativa"
+                              ? { fontSize: 11, padding: "2px 9px", borderRadius: 6, background: "rgba(55,138,221,0.15)", color: "#85B7EB" }
+                              : { fontSize: 11, padding: "2px 9px", borderRadius: 6, background: "rgba(255,255,255,0.06)", color: "rgba(241,239,232,0.6)" }}>
+                              {t.origen === "normativa" ? (t.normativa ?? "Normativa") : "Propia"}
+                            </span>
+                            <span style={{ marginLeft: "auto", fontSize: 12, color: "rgba(241,239,232,0.4)" }}>
+                              {t.tipo_fuente === "tabla" ? `${t.num_valores} filas` : `${t.num_valores} valores`}
+                            </span>
+                          </div>
+                          {abierta && (
+                            <div style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)" }}>
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                <thead>
+                                  <tr style={{ background: "rgba(255,255,255,0.02)", color: "rgba(241,239,232,0.5)" }}>
+                                    <th style={{ ...thStyle, width: 140 }}>Código</th>
+                                    <th style={thStyle}>Descripción</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {t.valores.map((v) => (
+                                    <tr key={v.codigo} style={{ borderTop: "0.5px solid rgba(255,255,255,0.05)" }}>
+                                      <td style={{ ...tdStyle, fontFamily: monoFont, fontWeight: 600 }}>{v.codigo}</td>
+                                      <td style={tdStyle}>{v.descripcion ?? "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )
+      ) : tab === "tarifas" ? (
         loadingTar ? (
           <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Cargando…</div>
         ) : tarifas.length === 0 ? (

@@ -12,6 +12,14 @@ from typing import Literal, get_args
 # TABLA_6 — Tipos de documento identificativo del cliente (bloque Cliente ATR)
 # Ref.: formatos de intercambio ATR CNMC (Resolución 16-may-2024); gestionatr TABLA_6.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Tipo de persona — clasificacion propia del ERP (fisica / juridica)
+# ---------------------------------------------------------------------------
+TIPO_PERSONA_LABEL: dict[str, str] = {
+    "fisica": "Persona física",
+    "juridica": "Persona jurídica",
+}
+
 TipoIdentificador = Literal["CI", "DN", "NI", "OT", "NE"]
 
 TIPO_IDENTIFICADOR_LABEL: dict[str, str] = {

@@ -692,3 +692,57 @@ def desactivar_comercializadora_empresa(
         .first()
     )
     return _com_empresa_out(rel, com)
+
+# ===========================================================================
+# Catálogo de TABLAS auxiliares del ERP (pestaña "Tablas")
+# ===========================================================================
+def listar_tablas_catalogo(db: Session) -> list[dict]:
+    """Resuelve el registro de tablas auxiliares a un árbol con sus valores.
+
+    Lee REGISTRO_TABLAS y, por cada entrada, saca los valores de la fuente real:
+      - ("enum", "<LABEL_DICT>")   -> dict de normativa_atr.py  -> filas codigo/descripcion
+      - ("tabla", "<NombreModelo>") -> tabla BD (activos)        -> filas codigo/descripcion
+    No duplica datos: tira de las fuentes ya existentes.
+    """
+    from app.erp import normativa_atr
+    from app.erp.tablas_catalogo import REGISTRO_TABLAS
+    from app.erp.models import (
+        ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
+    )
+
+    modelos_bd = {
+        "ErpCnmcTipoVia": ErpCnmcTipoVia,
+        "ErpCnmcPiso": ErpCnmcPiso,
+        "ErpCnmcPuerta": ErpCnmcPuerta,
+        "ErpCnmcAclaradorFinca": ErpCnmcAclaradorFinca,
+    }
+
+    salida = []
+    for entrada in REGISTRO_TABLAS:
+        tipo_fuente, ref = entrada["fuente"]
+        valores = []
+        if tipo_fuente == "enum":
+            label_dict = getattr(normativa_atr, ref, {})
+            valores = [{"codigo": k, "descripcion": v} for k, v in label_dict.items()]
+        elif tipo_fuente == "tabla":
+            Model = modelos_bd.get(ref)
+            if Model is not None:
+                filas = (
+                    db.query(Model)
+                    .filter(Model.activo.is_(True))
+                    .order_by(Model.orden, Model.codigo)
+                    .all()
+                )
+                valores = [{"codigo": f.codigo, "descripcion": f.descripcion} for f in filas]
+        salida.append({
+            "clave": entrada["clave"],
+            "nombre": entrada["nombre"],
+            "modulo": entrada["modulo"],
+            "seccion": entrada["seccion"],
+            "origen": entrada["origen"],
+            "normativa": entrada["normativa"],
+            "tipo_fuente": tipo_fuente,
+            "num_valores": len(valores),
+            "valores": valores,
+        })
+    return salida

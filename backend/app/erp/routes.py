@@ -185,6 +185,14 @@ def listar_cnmc_catalogos_endpoint(
     """Catálogos CNMC de dirección (tipo vía/piso/puerta/aclarador) para desplegables."""
     return services.listar_cnmc_catalogos(db)
 
+@router.get("/tablas")
+def listar_tablas_catalogo_endpoint(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Catálogo de tablas auxiliares del ERP (pestaña Tablas). Solo lectura."""
+    return services.listar_tablas_catalogo(db)
+
 
 @router.get("/comercializadoras", response_model=list[schemas.ErpComercializadoraOut])
 def listar_comercializadoras_endpoint(
