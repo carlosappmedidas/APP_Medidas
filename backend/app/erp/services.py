@@ -761,6 +761,7 @@ def listar_tablas_catalogo(db: Session) -> list[dict]:
             "nombre": entrada["nombre"],
             "modulo": entrada["modulo"],
             "seccion": entrada["seccion"],
+            "usado_por": entrada.get("usado_por", []),
             "origen": entrada["origen"],
             "normativa": entrada["normativa"],
             "tipo_fuente": tipo_fuente,

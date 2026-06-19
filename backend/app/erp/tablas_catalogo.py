@@ -7,7 +7,8 @@ Cada entrada declara:
 - clave:     identificador unico de la tabla auxiliar
 - nombre:    nombre legible
 - modulo:    modulo del ERP (ej. "Modulo 1 - Maestro Suministros y Contratos")
-- seccion:   pantalla dentro del modulo (Titulares / Suministros / Contratos)
+- seccion:   agrupador dentro del modulo (Titulares / Direccion (CNMC) / Suministros / Contratos)
+- usado_por: lista de pantallas que consumen esta tabla (declarada a mano)
 - origen:    "normativa" | "propia"
 - normativa: referencia legal + articulo (solo si origen == "normativa"); None si propia
 - fuente:    de donde se resuelven los valores:
@@ -24,6 +25,7 @@ REGISTRO_TABLAS = [
         "nombre": "Tipo de persona",
         "modulo": "Modulo 1 - Maestro de Suministros y Contratos",
         "seccion": "Titulares",
+        "usado_por": ["Titulares"],
         "origen": "propia",
         "normativa": None,
         "fuente": ("enum", "TIPO_PERSONA_LABEL"),
@@ -33,6 +35,7 @@ REGISTRO_TABLAS = [
         "nombre": "Tipo de documento",
         "modulo": "Modulo 1 - Maestro de Suministros y Contratos",
         "seccion": "Titulares",
+        "usado_por": ["Titulares"],
         "origen": "normativa",
         "normativa": "ATR - Tabla 6 (Res. CNMC 16-may-2024)",
         "fuente": ("enum", "TIPO_IDENTIFICADOR_LABEL"),
@@ -41,7 +44,8 @@ REGISTRO_TABLAS = [
         "clave": "erp_cnmc_tipo_via",
         "nombre": "Tipo de via",
         "modulo": "Modulo 1 - Maestro de Suministros y Contratos",
-        "seccion": "Titulares",
+        "seccion": "Direccion (CNMC)",
+        "usado_por": ["Titulares", "Suministros"],
         "origen": "normativa",
         "normativa": "CNMC - formato SIPS (tipo de via)",
         "fuente": ("tabla", "ErpCnmcTipoVia"),
@@ -50,7 +54,8 @@ REGISTRO_TABLAS = [
         "clave": "erp_cnmc_piso",
         "nombre": "Piso",
         "modulo": "Modulo 1 - Maestro de Suministros y Contratos",
-        "seccion": "Titulares",
+        "seccion": "Direccion (CNMC)",
+        "usado_por": ["Titulares", "Suministros"],
         "origen": "normativa",
         "normativa": "CNMC - formato SIPS (piso)",
         "fuente": ("tabla", "ErpCnmcPiso"),
@@ -59,7 +64,8 @@ REGISTRO_TABLAS = [
         "clave": "erp_cnmc_puerta",
         "nombre": "Puerta",
         "modulo": "Modulo 1 - Maestro de Suministros y Contratos",
-        "seccion": "Titulares",
+        "seccion": "Direccion (CNMC)",
+        "usado_por": ["Titulares", "Suministros"],
         "origen": "normativa",
         "normativa": "CNMC - formato SIPS (puerta)",
         "fuente": ("tabla", "ErpCnmcPuerta"),
@@ -68,7 +74,8 @@ REGISTRO_TABLAS = [
         "clave": "erp_cnmc_aclarador_finca",
         "nombre": "Tipo de aclarador de finca",
         "modulo": "Modulo 1 - Maestro de Suministros y Contratos",
-        "seccion": "Titulares",
+        "seccion": "Direccion (CNMC)",
+        "usado_por": ["Titulares", "Suministros"],
         "origen": "normativa",
         "normativa": "CNMC - formato SIPS (aclarador de finca)",
         "fuente": ("tabla", "ErpCnmcAclaradorFinca"),

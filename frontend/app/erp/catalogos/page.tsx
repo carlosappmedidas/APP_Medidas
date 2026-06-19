@@ -60,6 +60,7 @@ interface TablaCatalogo {
   nombre: string;
   modulo: string;
   seccion: string;
+  usado_por: string[];
   origen: string;
   normativa: string | null;
   tipo_fuente: string;
@@ -428,6 +429,11 @@ export default function CatalogosPage() {
                               : { fontSize: 11, padding: "2px 9px", borderRadius: 6, background: "rgba(255,255,255,0.06)", color: "rgba(241,239,232,0.6)" }}>
                               {t.origen === "normativa" ? (t.normativa ?? "Normativa") : "Propia"}
                             </span>
+                            {t.usado_por && t.usado_por.length > 0 && (
+                              <span style={{ fontSize: 11, color: "rgba(241,239,232,0.45)" }}>
+                                Usada en: {t.usado_por.join(", ")}
+                              </span>
+                            )}
                             <span style={{ marginLeft: "auto", fontSize: 12, color: "rgba(241,239,232,0.4)" }}>
                               {t.tipo_fuente === "tabla" ? `${t.num_valores} filas` : `${t.num_valores} valores`}
                             </span>
