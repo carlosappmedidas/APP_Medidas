@@ -225,8 +225,8 @@ class ErpComercializadora(TimestampMixin, Base):
     nombre     = Column(String(255), nullable=False)
     cif        = Column(String(20), nullable=False, index=True)
     codigo_ree              = Column(String(10), nullable=False, index=True)  # código REE (4 díg.)
-    codigo_cnmc             = Column(String(20), nullable=True)   # orden CNMC comercializadora eléctrica (R2-XXX)
-    codigo_liquidacion_cnmc = Column(String(40), nullable=True)   # sujeto de liquidación CNMC (asignado)
+    codigo_cnmc             = Column(String(20), nullable=False)  # orden CNMC comercializadora eléctrica (R2-XXX)
+    codigo_liquidacion_cnmc = Column(String(40), nullable=False)  # sujeto de liquidación CNMC (asignado)
     fecha_alta_cnmc         = Column(Date, nullable=True)         # inicio autorización CNMC
     fecha_baja_cnmc         = Column(Date, nullable=True)         # fin autorización CNMC ("Fecha final CNMC")
     es_cur     = Column(Boolean, nullable=False, default=False)   # comercializadora de referencia
@@ -235,6 +235,8 @@ class ErpComercializadora(TimestampMixin, Base):
 
     __table_args__ = (
         UniqueConstraint("codigo_ree", name="uq_erp_comercializadora_codigo_ree"),
+        UniqueConstraint("codigo_cnmc", name="uq_erp_comercializadora_codigo_cnmc"),
+        UniqueConstraint("codigo_liquidacion_cnmc", name="uq_erp_comercializadora_codigo_liq_cnmc"),
     )
 
 # ---------------------------------------------------------------------------

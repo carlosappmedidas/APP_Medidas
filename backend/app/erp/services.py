@@ -490,6 +490,23 @@ def obtener_comercializadora(db: Session, com_id: int) -> ErpComercializadora:
     return c
 
 
+def _validar_codigos_unicos_comercializadora(db: Session, codigo_cnmc, codigo_liq, exclude_id=None) -> None:
+    """codigo_cnmc y codigo_liquidacion_cnmc únicos a nivel global (catálogo)."""
+    for campo, valor, etiqueta in (
+        (ErpComercializadora.codigo_cnmc, codigo_cnmc, "código CNMC"),
+        (ErpComercializadora.codigo_liquidacion_cnmc, codigo_liq, "código de liquidación CNMC"),
+    ):
+        if valor is None:
+            continue
+        q = db.query(ErpComercializadora).filter(campo == valor)
+        if exclude_id is not None:
+            q = q.filter(ErpComercializadora.id != exclude_id)
+        if q.first() is not None:
+            raise DuplicateComercializadoraError(
+                f"Ya existe una comercializadora con {etiqueta} {valor}"
+            )
+
+
 def crear_comercializadora(db: Session, payload: ErpComercializadoraCreate) -> ErpComercializadora:
     existe = (
         db.query(ErpComercializadora)
@@ -500,6 +517,7 @@ def crear_comercializadora(db: Session, payload: ErpComercializadoraCreate) -> E
         raise DuplicateComercializadoraError(
             f"Ya existe una comercializadora con código REE {payload.codigo_ree}"
         )
+    _validar_codigos_unicos_comercializadora(db, payload.codigo_cnmc, payload.codigo_liquidacion_cnmc)
     ahora = _ahora_madrid_naive()
     c = ErpComercializadora(created_at=ahora, updated_at=ahora, **payload.model_dump())
     db.add(c)
@@ -534,6 +552,15 @@ def actualizar_comercializadora(
             raise DuplicateComercializadoraError(
                 f"Ya existe una comercializadora con código REE {nuevo_ree}"
             )
+
+    nuevo_cnmc = datos.get("codigo_cnmc")
+    nuevo_liq = datos.get("codigo_liquidacion_cnmc")
+    _validar_codigos_unicos_comercializadora(
+        db,
+        nuevo_cnmc if (nuevo_cnmc is not None and nuevo_cnmc != c.codigo_cnmc) else None,
+        nuevo_liq if (nuevo_liq is not None and nuevo_liq != c.codigo_liquidacion_cnmc) else None,
+        exclude_id=c.id,
+    )
 
     for campo, valor in datos.items():
         setattr(c, campo, valor)

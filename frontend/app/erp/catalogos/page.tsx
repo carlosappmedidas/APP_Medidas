@@ -254,8 +254,8 @@ export default function CatalogosPage() {
   const abrirEditar = (c: Comercializadora) => { setForm({ ...EMPTY_COM, ...c }); setErrorMsg(null); setPanelOpen(true); };
   const cerrar = () => { if (!saving) setPanelOpen(false); };
 
-  const puedeGuardar = !!(form.nombre.trim() && form.cif.trim() && form.codigo_ree.trim());
-
+  const puedeGuardar = !!(form.nombre.trim() && form.cif.trim() && form.codigo_ree.trim()
+    && (form.codigo_cnmc ?? "").trim() && (form.codigo_liquidacion_cnmc ?? "").trim());
   const guardar = async () => {
     if (!puedeGuardar) return;
     setSaving(true); setErrorMsg(null);
@@ -266,8 +266,8 @@ export default function CatalogosPage() {
         : `${API_BASE_URL}/erp/comercializadoras/${form.id}`;
       const payload = {
         nombre: form.nombre, cif: form.cif, codigo_ree: form.codigo_ree,
-        codigo_cnmc: form.codigo_cnmc || null,
-        codigo_liquidacion_cnmc: form.codigo_liquidacion_cnmc || null,
+        codigo_cnmc: form.codigo_cnmc,
+        codigo_liquidacion_cnmc: form.codigo_liquidacion_cnmc,
         fecha_alta_cnmc: form.fecha_alta_cnmc || null,
         fecha_baja_cnmc: form.fecha_baja_cnmc || null,
         es_cur: form.es_cur, activo: form.activo, notas: form.notas,
@@ -278,7 +278,7 @@ export default function CatalogosPage() {
         body: JSON.stringify(payload),
       });
       if (!r.ok) {
-        if (r.status === 409) setErrorMsg("Ya existe una comercializadora con ese código REE.");
+        if (r.status === 409) setErrorMsg(await readApiError(r, "Ya existe una comercializadora con ese código (REE, CNMC o liquidación)."));
         else setErrorMsg(await readApiError(r, "No se pudo guardar la comercializadora."));
         return;
       }
@@ -364,8 +364,8 @@ export default function CatalogosPage() {
           <TextField label="Nombre *" span value={form.nombre} onChange={(v) => setForm({ ...form, nombre: v })} />
           <TextField label="CIF *" monospace value={form.cif} onChange={(v) => setForm({ ...form, cif: v })} />
           <TextField label="Código REE *" monospace value={form.codigo_ree} onChange={(v) => setForm({ ...form, codigo_ree: v })} />
-          <TextField label="Código CNMC (R2-XXX)" monospace value={form.codigo_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_cnmc: v })} />
-          <TextField label="Código liquidación CNMC" value={form.codigo_liquidacion_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_liquidacion_cnmc: v })} />
+          <TextField label="Código CNMC (R2-XXX) *" monospace value={form.codigo_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_cnmc: v })} />
+          <TextField label="Código liquidación CNMC *" value={form.codigo_liquidacion_cnmc ?? ""} onChange={(v) => setForm({ ...form, codigo_liquidacion_cnmc: v })} />
           <div style={{ gridColumn: "1 / -1" }}>
             <Check label="Comercializadora de referencia (CUR/COR)" checked={form.es_cur} onChange={(v) => setForm({ ...form, es_cur: v })} />
           </div>

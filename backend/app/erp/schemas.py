@@ -22,7 +22,7 @@ from app.erp.normativa_atr import (
     validar_enums_contrato,            # tipo_contrato_atr / modo_control_potencia
 )
 from app.erp.validators import (
-    validar_documento, validar_cups_control,
+    validar_documento, validar_cups_control, validar_cif,
     validar_formatos_titular, validar_formatos_suministro,
     validar_telefono_es,
     normalizar_identificador,
@@ -411,8 +411,8 @@ class ErpComercializadoraBase(BaseModel):
     nombre: str
     cif: str
     codigo_ree: str                                # código REE (4 díg.)
-    codigo_cnmc: Optional[str] = None              # orden CNMC (R2-XXX)
-    codigo_liquidacion_cnmc: Optional[str] = None  # sujeto de liquidación CNMC
+    codigo_cnmc: str                               # orden CNMC (R2-XXX) — obligatorio
+    codigo_liquidacion_cnmc: str                   # sujeto de liquidación CNMC — obligatorio
     fecha_alta_cnmc: Optional[date] = None
     fecha_baja_cnmc: Optional[date] = None
     es_cur: bool = False         # comercializadora de referencia
@@ -421,7 +421,11 @@ class ErpComercializadoraBase(BaseModel):
 
 
 class ErpComercializadoraCreate(ErpComercializadoraBase):
-    pass
+    @model_validator(mode="after")
+    def _validar_cif(self):
+        if not validar_cif(self.cif):
+            raise ValueError("CIF inválido (letra de organización + 7 dígitos + control)")
+        return self
 
 
 class ErpComercializadoraUpdate(BaseModel):
@@ -435,6 +439,12 @@ class ErpComercializadoraUpdate(BaseModel):
     es_cur: Optional[bool] = None
     activo: Optional[bool] = None
     notas: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validar_cif(self):
+        if self.cif is not None and not validar_cif(self.cif):
+            raise ValueError("CIF inválido (letra de organización + 7 dígitos + control)")
+        return self
 
 
 class ErpComercializadoraOut(ErpComercializadoraBase):
