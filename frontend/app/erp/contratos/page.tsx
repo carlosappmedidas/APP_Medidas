@@ -12,6 +12,17 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: "Bearer " + t } : {};
 }
 
+// Espejo de tipo_punto_medida_rpum (backend, normativa_atr.py). Solo feedback visual:
+// el backend recalcula y guarda como fuente de verdad. RPUM RD 1110/2007.
+function tipoPuntoMedidaRpum(pMaxKw: number | null): number | null {
+  if (pMaxKw == null) return null;
+  if (pMaxKw <= 15) return 5;
+  if (pMaxKw <= 50) return 4;
+  if (pMaxKw <= 450) return 3;
+  if (pMaxKw < 10000) return 2;
+  return 1;
+}
+
 interface PeriodoTarifa { periodo: string; tipo: string; orden: number; }
 interface Tarifa { id: number; codigo: string; num_periodos_potencia: number; periodos: PeriodoTarifa[]; }
 interface OptTitular { id: number; nombre: string | null; }
@@ -393,6 +404,15 @@ export default function ContratosPage() {
   const puedeGuardar = !!(form.numero_contrato.trim() && form.tipo_contrato_atr.trim()
     && form.titular_id !== "" && form.suministro_id !== "" && form.tarifa_id !== "");
 
+  // tipo_punto_medida en vivo: máximo de las potencias cumplimentadas → RPUM (espejo del backend)
+  const tipoPuntoMedidaLive = useMemo(() => {
+    const vals = Object.values(form.potencias)
+      .map((v) => parseFloat(v))
+      .filter((n) => !isNaN(n));
+    if (vals.length === 0) return null;
+    return tipoPuntoMedidaRpum(Math.max(...vals));
+  }, [form.potencias]);
+
   const diffPreview = (): { etiqueta: string; antes: string; despues: string }[] => {
     if (!original) return [];
     const out: { etiqueta: string; antes: string; despues: string }[] = [];
@@ -648,7 +668,7 @@ export default function ContratosPage() {
               <TextField label="Tensión normalizada" disabled={ver} value={form.tension_normalizada} onChange={(v) => setForm({ ...form, tension_normalizada: v })} />
               <div>
                 <label style={labelStyle}>Tipo punto de medida</label>
-                <input style={{ ...inputStyle, opacity: 0.7 }} disabled value={form.tipo_punto_medida || "— se calcula al guardar (según potencia) —"} readOnly />
+                <input style={{ ...inputStyle, opacity: 0.7 }} disabled readOnly value={tipoPuntoMedidaLive != null ? String(tipoPuntoMedidaLive) : "— introduce las potencias —"} />
               </div>
               <div />
               <BoolField label="Autoconsumo" disabled={ver} checked={form.es_autoconsumo} onChange={(v) => setForm({ ...form, es_autoconsumo: v })} />
