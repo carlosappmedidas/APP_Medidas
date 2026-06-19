@@ -176,9 +176,11 @@ function SelectField(props: {
   span?: boolean;
 }) {
   const { label, value, onChange, options, span } = props;
+  const req = label.endsWith(" *");
+  const base = req ? label.slice(0, -2) : label;
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
-      <label style={labelStyle}>{label}</label>
+      <label style={labelStyle}>{base}{req ? <span style={{ color: "#F0999B" }}> *</span> : null}</label>
       <select style={inputStyle} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="" style={{ background: "#16181D" }}>—</option>
         {options.map((o) => (
@@ -429,11 +431,17 @@ export default function SuministrosPage() {
   // CUPS + provincia + municipio + C.P. + vía + número.
   const puedeGuardar =
     !!form.cups.trim() &&
-    !!form.dir_provincia.trim() &&
-    !!form.dir_municipio.trim() &&
-    !!form.dir_cp.trim() &&
+    !!form.dir_tipo_via.trim() &&
     !!form.dir_via.trim() &&
-    !!form.dir_numero.trim();
+    !!form.dir_numero.trim() &&
+    !!form.dir_cp.trim() &&
+    !!form.dir_municipio.trim() &&
+    !!form.dir_poblacion.trim() &&
+    !!form.dir_provincia.trim() &&
+    !!form.dir_pais.trim() &&
+    !!form.municipio_codigo_ine.trim() &&
+    !!form.pot_max_admisible_cie_kw.trim() &&
+    !!form.potencia_adscrita_kw.trim();
 
   async function guardar() {
     if (!puedeGuardar || empresaId == null) return;
@@ -550,12 +558,14 @@ export default function SuministrosPage() {
           <TextField label="CUPS *" span value={form.cups} onChange={(v) => set("cups", v)} monospace />
           <TextField label="Distribuidora" value={form.distribuidora} onChange={(v) => set("distribuidora", v)} />
           <TextField label="Acometida" value={form.acometida} onChange={(v) => set("acometida", v)} />
+          <TextField label="Fecha alta" value={form.fecha_alta} onChange={(v) => set("fecha_alta", v)} type="date" />
+          <TextField label="Fecha baja" value={form.fecha_baja} onChange={(v) => set("fecha_baja", v)} type="date" />
         </SectionCard>
 
         <SectionCard title="Dirección del suministro">
-          <SelectField label="Tipo vía" value={form.dir_tipo_via} options={catalogos.tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
+          <SelectField label="Tipo vía *" value={form.dir_tipo_via} options={catalogos.tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
           <TextField label="Vía *" value={form.dir_via} maxLength={30} onChange={(v) => set("dir_via", v)} />
-          <TextField label="Número *" value={form.dir_numero} maxLength={5} onChange={(v) => set("dir_numero", v)} />
+          <TextField label="Número *" value={form.dir_numero} maxLength={5} placeholder="nº o SN" onChange={(v) => set("dir_numero", v)} />
           <TextField label="Duplicador" value={form.dir_duplicador} maxLength={3} onChange={(v) => set("dir_duplicador", v)} />
           <TextField label="Escalera" value={form.dir_escalera} maxLength={3} onChange={(v) => set("dir_escalera", v)} />
           <ComboField label="Piso" value={form.dir_piso} options={catalogos.piso} maxLength={3} onChange={(v) => set("dir_piso", v)} />
@@ -564,10 +574,10 @@ export default function SuministrosPage() {
           <TextField label="Aclarador" value={form.dir_aclarador} maxLength={40} onChange={(v) => set("dir_aclarador", v)} />
           <TextField label="C.P. *" value={form.dir_cp} maxLength={10} onChange={(v) => set("dir_cp", v)} />
           <TextField label="Municipio *" value={form.dir_municipio} maxLength={120} onChange={(v) => set("dir_municipio", v)} />
-          <TextField label="Población" value={form.dir_poblacion} maxLength={120} onChange={(v) => set("dir_poblacion", v)} />
+          <TextField label="Población *" value={form.dir_poblacion} maxLength={120} onChange={(v) => set("dir_poblacion", v)} />
           <TextField label="Provincia *" value={form.dir_provincia} maxLength={120} onChange={(v) => set("dir_provincia", v)} />
-          <TextField label="País" value={form.dir_pais} maxLength={120} onChange={(v) => set("dir_pais", v)} />
-          <TextField label="Código INE municipio" value={form.municipio_codigo_ine} onChange={(v) => set("municipio_codigo_ine", v)} />
+          <TextField label="País *" value={form.dir_pais} maxLength={120} onChange={(v) => set("dir_pais", v)} />
+          <TextField label="Código INE municipio *" value={form.municipio_codigo_ine} onChange={(v) => set("municipio_codigo_ine", v)} />
           <TextField label="Ref. catastral" value={form.ref_catastral} onChange={(v) => set("ref_catastral", v)} />
           <TextField label="Polígono" value={form.poligono} onChange={(v) => set("poligono", v)} />
           <TextField label="Parcela" value={form.parcela} onChange={(v) => set("parcela", v)} />
@@ -590,8 +600,8 @@ export default function SuministrosPage() {
         </SectionCard>
 
         <SectionCard title="Datos eléctricos">
-          <TextField label="Pot. máx. admisible CIE (kW)" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
-          <TextField label="Potencia adscrita (kW)" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
+          <TextField label="Pot. máx. admisible CIE (kW) *" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
+          <TextField label="Potencia adscrita (kW) *" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
           <TextField label="Potencia de convenio (kW)" value={form.potencia_convenio_kw} onChange={(v) => set("potencia_convenio_kw", v)} type="number" />
           <TextField label="Criterio regulatorio" value={form.criterio_regulatorio} onChange={(v) => set("criterio_regulatorio", v)} />
           <TextField label="Fecha vigencia adscrita" value={form.fecha_vigencia_adscrita} onChange={(v) => set("fecha_vigencia_adscrita", v)} type="date" />
@@ -600,9 +610,7 @@ export default function SuministrosPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Fechas y otros">
-          <TextField label="Fecha alta" value={form.fecha_alta} onChange={(v) => set("fecha_alta", v)} type="date" />
-          <TextField label="Fecha baja" value={form.fecha_baja} onChange={(v) => set("fecha_baja", v)} type="date" />
+        <SectionCard title="Otros">
           <div style={{ gridColumn: "1 / -1" }}>
             <label style={labelStyle}>Notas</label>
             <textarea value={form.notas} onChange={(e) => set("notas", e.target.value)} rows={3} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />

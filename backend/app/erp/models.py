@@ -94,8 +94,8 @@ class ErpSuministro(TimestampMixin, Base):
     Lo contractual (titular, tarifa, potencia contratada, comercializadora)
     NO vive aquí: se deriva del contrato activo (erp_contrato, Paq E-6).
 
-    codigo_fases: conexión M=Monofásica / T=Trifásica (SIPS codigoFases, CNMC).
     (tipo_punto_medida se traslada a erp_contrato — no vive aquí.)
+    (codigo_fases se traslada a erp_equipo_medida, Módulo 2 — no vive aquí.)
     Geo: UTM (utm_x/utm_y/utm_huso/utm_banda, ETRS89) es la referencia oficial;
     latitud/longitud se mantienen opcionales para mapas.
     """
@@ -110,21 +110,21 @@ class ErpSuministro(TimestampMixin, Base):
     acometida         = Column(String(255), nullable=True)
 
     # Dirección del suministro (formato SIPS …PS; códigos CNMC en erp_cnmc_*)
-    dir_tipo_via         = Column(String(2), nullable=True)    # CNMC Tabla 12
-    dir_via              = Column(String(30), nullable=True)
-    dir_numero           = Column(String(5), nullable=True)
+    dir_tipo_via         = Column(String(2), nullable=False)   # CNMC Tabla 12
+    dir_via              = Column(String(30), nullable=False)
+    dir_numero           = Column(String(5), nullable=False)
     dir_duplicador       = Column(String(3), nullable=True)    # SIPS X(3) (BIS)
     dir_escalera         = Column(String(3), nullable=True)
     dir_piso             = Column(String(3), nullable=True)    # CNMC Tabla 14
     dir_puerta           = Column(String(3), nullable=True)    # CNMC Tabla 15
     dir_tipo_aclarador   = Column(String(2), nullable=True)    # CNMC Tabla 16
     dir_aclarador        = Column(String(40), nullable=True)   # texto libre
-    dir_cp               = Column(String(10), nullable=True)
-    dir_municipio        = Column(String(120), nullable=True)
-    dir_poblacion        = Column(String(120), nullable=True)
-    dir_provincia        = Column(String(120), nullable=True)
-    dir_pais             = Column(String(120), nullable=True)
-    municipio_codigo_ine = Column(String(10), nullable=True)
+    dir_cp               = Column(String(10), nullable=False)
+    dir_municipio        = Column(String(120), nullable=False)
+    dir_poblacion        = Column(String(120), nullable=False)
+    dir_provincia        = Column(String(120), nullable=False)
+    dir_pais             = Column(String(120), nullable=False, default="España", server_default="España")
+    municipio_codigo_ine = Column(String(10), nullable=False)
     poligono             = Column(String(50), nullable=True)   # zona industrial
     parcela              = Column(String(50), nullable=True)   # zona industrial
     ref_catastral        = Column(String(30), nullable=True)
@@ -144,15 +144,12 @@ class ErpSuministro(TimestampMixin, Base):
     linea                = Column(String(120), nullable=True)
 
     # Datos eléctricos
-    pot_max_admisible_cie_kw    = Column(Float, nullable=True)
-    potencia_adscrita_kw        = Column(Float, nullable=True)
+    pot_max_admisible_cie_kw    = Column(Float, nullable=False)
+    potencia_adscrita_kw        = Column(Float, nullable=False)
     potencia_adscrita_bloqueada = Column(Boolean, nullable=False, default=False)
     fecha_vigencia_adscrita     = Column(Date, nullable=True)
     potencia_convenio_kw        = Column(Float, nullable=True)
     criterio_regulatorio        = Column(String(50), nullable=True)
-
-    # Conexión (SIPS codigoFasesEquipoMedida X(1), CNMC: M=Monofásica, T=Trifásica)
-    codigo_fases = Column(String(1), nullable=True)
 
     fecha_alta = Column(Date, nullable=True)
     fecha_baja = Column(Date, nullable=True)

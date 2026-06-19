@@ -26,6 +26,7 @@ from app.erp.validators import (
     validar_formatos_titular, validar_formatos_suministro,
     validar_telefono_es,
     normalizar_identificador,
+    normalizar_cups, validar_geolocalizacion,
 )
 
 # CUPS: ES + 16 dígitos + 2 letras de control (+ 2 opcional de punto frontera)
@@ -229,15 +230,12 @@ class ErpSuministroBase(BaseModel):
     linea: Optional[str] = None
 
     # Datos eléctricos
-    pot_max_admisible_cie_kw: Optional[float] = None
-    potencia_adscrita_kw: Optional[float] = None
+    pot_max_admisible_cie_kw: Optional[float] = Field(default=None, gt=0)
+    potencia_adscrita_kw: Optional[float] = Field(default=None, gt=0)
     potencia_adscrita_bloqueada: bool = False
     fecha_vigencia_adscrita: Optional[date] = None
-    potencia_convenio_kw: Optional[float] = None
+    potencia_convenio_kw: Optional[float] = Field(default=None, gt=0)
     criterio_regulatorio: Optional[str] = None
-
-    # Conexión: M=Monofásica / T=Trifásica (SIPS codigoFases X(1), CNMC)
-    codigo_fases: Optional[str] = None
 
     fecha_alta: Optional[date] = None
     fecha_baja: Optional[date] = None
@@ -256,9 +254,41 @@ class ErpSuministroCreate(ErpSuministroBase):
 
     @model_validator(mode="after")
     def _validar_suministro(self):
-        if self.cups and not validar_cups_control(self.cups):
+        # CUPS: normalizar a forma canónica y comprobar control
+        cups_norm = normalizar_cups(self.cups)
+        if not cups_norm:
+            raise ValueError("El CUPS es obligatorio")
+        self.cups = cups_norm
+        if not validar_cups_control(self.cups):
             raise ValueError("CUPS inválido: las 2 letras de control no corresponden a los 16 dígitos.")
+        # dir_numero admite 'SN' (sin número); se normaliza a mayúsculas
+        if self.dir_numero:
+            self.dir_numero = self.dir_numero.strip().upper()
+        # Dirección obligatoria (presencia; los códigos CNMC se validan en services)
+        obligatorios = {
+            "dir_tipo_via": "el tipo de vía",
+            "dir_via": "la vía",
+            "dir_numero": "el número",
+            "dir_cp": "el código postal",
+            "dir_municipio": "el municipio",
+            "dir_provincia": "la provincia",
+            "dir_poblacion": "la población",
+            "dir_pais": "el país",
+            "municipio_codigo_ine": "el código INE del municipio",
+        }
+        for campo, etiqueta in obligatorios.items():
+            valor = getattr(self, campo, None)
+            if not (valor and str(valor).strip()):
+                raise ValueError(f"Falta {etiqueta} (obligatorio)")
+        # Potencias obligatorias
+        if self.pot_max_admisible_cie_kw is None:
+            raise ValueError("Falta la potencia máxima admisible CIE (kW)")
+        if self.potencia_adscrita_kw is None:
+            raise ValueError("Falta la potencia adscrita (kW)")
         ok, msg = validar_formatos_suministro(self.dir_cp, self.municipio_codigo_ine, self.ref_catastral)
+        if not ok:
+            raise ValueError(msg)
+        ok, msg = validar_geolocalizacion(self.utm_x, self.utm_y, self.utm_huso, self.latitud, self.longitud)
         if not ok:
             raise ValueError(msg)
         return self
@@ -273,7 +303,6 @@ class ErpSuministroUpdate(BaseModel):
     dir_tipo_via: Optional[str] = None
     dir_via: Optional[str] = None
     dir_numero: Optional[str] = None
-    dir_resto: Optional[str] = None
     dir_aclarador: Optional[str] = None
     dir_cp: Optional[str] = None
     dir_municipio: Optional[str] = None
@@ -296,18 +325,13 @@ class ErpSuministroUpdate(BaseModel):
     centro_transformador: Optional[str] = None
     linea: Optional[str] = None
 
-    pot_max_admisible_cie_kw: Optional[float] = None
-    potencia_adscrita_kw: Optional[float] = None
+    pot_max_admisible_cie_kw: Optional[float] = Field(default=None, gt=0)
+    potencia_adscrita_kw: Optional[float] = Field(default=None, gt=0)
     potencia_adscrita_bloqueada: Optional[bool] = None
 
     fecha_vigencia_adscrita: Optional[date] = None
-    potencia_convenio_kw: Optional[float] = None
+    potencia_convenio_kw: Optional[float] = Field(default=None, gt=0)
     criterio_regulatorio: Optional[str] = None
-
-    fase_1: Optional[bool] = None
-    fase_2: Optional[bool] = None
-    fase_3: Optional[bool] = None
-    neutro: Optional[bool] = None
 
     fecha_alta: Optional[date] = None
     fecha_baja: Optional[date] = None
@@ -324,7 +348,15 @@ class ErpSuministroUpdate(BaseModel):
     def _validar_suministro(self):
         # Control del CUPS: solo en CREATE (y en el servicio si el cups CAMBIA);
         # no se revalida aquí para no bloquear la edición/reactivación de datos heredados.
+        # Si llega un CUPS, se normaliza a forma canónica.
+        if self.cups is not None:
+            self.cups = normalizar_cups(self.cups)
+        if self.dir_numero:
+            self.dir_numero = self.dir_numero.strip().upper()
         ok, msg = validar_formatos_suministro(self.dir_cp, self.municipio_codigo_ine, self.ref_catastral)
+        if not ok:
+            raise ValueError(msg)
+        ok, msg = validar_geolocalizacion(self.utm_x, self.utm_y, self.utm_huso, self.latitud, self.longitud)
         if not ok:
             raise ValueError(msg)
         return self

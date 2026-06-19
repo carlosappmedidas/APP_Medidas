@@ -122,6 +122,8 @@ def crear_suministro_endpoint(
         return services.crear_suministro(db, user, empresa_id, payload)
     except services.DuplicateCupsError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/suministros/{suministro_id}", response_model=schemas.ErpSuministroOut)

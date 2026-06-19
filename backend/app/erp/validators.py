@@ -204,3 +204,45 @@ def validar_telefono_es(valor, solo_movil=False) -> tuple[bool, str]:
         if limpio[0] not in ("6", "7", "8", "9"):
             return False, "Telefono invalido (debe empezar por 6, 7, 8 o 9)"
     return True, ""
+
+
+def normalizar_cups(v):
+    """Forma canonica del CUPS para guardar: mayusculas, sin guiones ni espacios. None si vacio."""
+    if v is None:
+        return None
+    n = _norm(v)
+    return n or None
+
+
+def validar_geolocalizacion(utm_x=None, utm_y=None, utm_huso=None, latitud=None, longitud=None) -> tuple[bool, str]:
+    """Valida rangos de geolocalizacion. Solo campos con valor (todos opcionales).
+
+    - latitud: -90..90 ; longitud: -180..180
+    - huso UTM: 28..31 (Espana: peninsula + Canarias)
+    - coherencia X/Y: si viene una de utm_x/utm_y, debe venir la otra
+    """
+    def _num(v):
+        if v is None or v == "":
+            return None, False
+        try:
+            return float(v), False
+        except (TypeError, ValueError):
+            return None, True
+
+    lat, e_lat = _num(latitud)
+    lon, e_lon = _num(longitud)
+    x, e_x = _num(utm_x)
+    y, e_y = _num(utm_y)
+    huso, e_huso = _num(utm_huso)
+
+    if e_lat or e_lon or e_x or e_y or e_huso:
+        return False, "Geolocalizacion: valor numerico invalido"
+    if lat is not None and not (-90.0 <= lat <= 90.0):
+        return False, "Latitud fuera de rango (-90 a 90)"
+    if lon is not None and not (-180.0 <= lon <= 180.0):
+        return False, "Longitud fuera de rango (-180 a 180)"
+    if huso is not None and not (28 <= huso <= 31):
+        return False, "Huso UTM fuera de rango para Espana (28 a 31)"
+    if (x is None) != (y is None):
+        return False, "Coordenadas UTM incompletas: indique X e Y juntas"
+    return True, ""

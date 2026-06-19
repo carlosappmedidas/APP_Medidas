@@ -329,6 +329,17 @@ def crear_suministro(
             f"Ya existe un suministro con CUPS {payload.cups} en esta empresa"
         )
 
+    # Códigos de dirección contra catálogo CNMC (bloqueante, solo si traen valor).
+    # dir_piso/dir_puerta NO se validan: sus catálogos no son exhaustivos.
+    from app.erp.validators import validar_codigos_cnmc
+    ok, msg = validar_codigos_cnmc(
+        db,
+        dir_tipo_via=payload.dir_tipo_via,
+        dir_tipo_aclarador=payload.dir_tipo_aclarador,
+    )
+    if not ok:
+        raise ValueError(msg)
+
     ahora = _ahora_madrid_naive()
     s = ErpSuministro(
         tenant_id=user.tenant_id,
@@ -378,6 +389,17 @@ def actualizar_suministro(
             raise ValidacionError(
                 "CUPS inválido: las 2 letras de control no corresponden a los 16 dígitos."
             )
+
+    # Códigos de dirección contra catálogo CNMC (solo los que se envían en este update)
+    if any(k in datos for k in ("dir_tipo_via", "dir_tipo_aclarador")):
+        from app.erp.validators import validar_codigos_cnmc
+        ok, msg = validar_codigos_cnmc(
+            db,
+            dir_tipo_via=datos.get("dir_tipo_via"),
+            dir_tipo_aclarador=datos.get("dir_tipo_aclarador"),
+        )
+        if not ok:
+            raise ValidacionError(msg)
 
     for campo, valor in datos.items():
         setattr(s, campo, valor)
