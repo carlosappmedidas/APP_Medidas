@@ -129,11 +129,41 @@ def obtener_titular(db: Session, user: User, titular_id: int) -> ErpTitular:
     return _cargar_titular_con_acceso(db, user, titular_id)
 
 
+class DuplicateIdentificadorError(ValueError):
+    """Identificador ya existente para esa empresa (mismo NIF/CIF/NIE)."""
+
+
 def crear_titular(
     db: Session, user: User, empresa_id: int, payload: ErpTitularCreate
 ) -> ErpTitular:
     """Crea un titular en la empresa indicada. Autocompone `nombre`."""
     assert_empresa_access(db, user, empresa_id)
+
+    # Identificador único por empresa (el schema ya lo ha normalizado a forma canónica)
+    if payload.identificador:
+        existe = (
+            db.query(ErpTitular)
+            .filter(
+                ErpTitular.empresa_id == empresa_id,
+                ErpTitular.identificador == payload.identificador,
+            )
+            .first()
+        )
+        if existe is not None:
+            raise DuplicateIdentificadorError(
+                f"Ya existe un titular con el documento {payload.identificador} en esta empresa"
+            )
+
+    # Códigos de dirección contra catálogo CNMC (bloqueante, solo si traen valor).
+    # dir_piso/dir_puerta NO se validan: sus catálogos no son exhaustivos (evita falsos rechazos).
+    from app.erp.validators import validar_codigos_cnmc
+    ok, msg = validar_codigos_cnmc(
+        db,
+        dir_tipo_via=payload.dir_tipo_via,
+        dir_tipo_aclarador=payload.dir_tipo_aclarador,
+    )
+    if not ok:
+        raise ValueError(msg)
 
     now = _ahora_madrid_naive()
     data = payload.model_dump()
@@ -183,6 +213,18 @@ def actualizar_titular(
         ok, msg = validar_documento(
             data.get("tipo_identificador", titular.tipo_identificador),
             data.get("identificador", titular.identificador),
+        )
+        if not ok:
+            raise ValidacionError(msg)
+
+    # Códigos de dirección contra catálogo CNMC (solo los que se envían en este update).
+    # dir_piso/dir_puerta NO se validan: sus catálogos no son exhaustivos (evita falsos rechazos).
+    if any(k in data for k in ("dir_tipo_via", "dir_tipo_aclarador")):
+        from app.erp.validators import validar_codigos_cnmc
+        ok, msg = validar_codigos_cnmc(
+            db,
+            dir_tipo_via=data.get("dir_tipo_via"),
+            dir_tipo_aclarador=data.get("dir_tipo_aclarador"),
         )
         if not ok:
             raise ValidacionError(msg)

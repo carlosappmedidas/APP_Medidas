@@ -46,8 +46,8 @@ class ErpTitular(TimestampMixin, Base):
 
     # --- Identificación (normativa ATR · bloque Cliente) ---
     tipo_persona       = Column(String(20), nullable=False, default="juridica")  # "fisica" | "juridica"
-    tipo_identificador = Column(String(2), nullable=True)   # SIPS idTipoTitular X(2) · TABLA_6
-    identificador      = Column(String(14), nullable=True, index=True)  # SIPS idTitular X(14)
+    tipo_identificador = Column(String(2), nullable=False)   # SIPS idTipoTitular X(2) · TABLA_6
+    identificador      = Column(String(14), nullable=False, index=True)  # SIPS idTitular X(14)
 
     # Nombre desglosado según normativa (longitudes SIPS)
     nombre_de_pila   = Column(String(30), nullable=True)    # SIPS nombreTitular X(30)

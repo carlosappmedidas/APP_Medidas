@@ -24,6 +24,8 @@ from app.erp.normativa_atr import (
 from app.erp.validators import (
     validar_documento, validar_cups_control,
     validar_formatos_titular, validar_formatos_suministro,
+    validar_telefono_es,
+    normalizar_identificador,
 )
 
 # CUPS: ES + 16 dígitos + 2 letras de control (+ 2 opcional de punto frontera)
@@ -91,10 +93,31 @@ class ErpTitularCreate(ErpTitularBase):
 
     @model_validator(mode="after")
     def _validar_titular(self):
+        # Identificador obligatorio (tipo + número) y normalizado a forma canónica
+        if not self.tipo_identificador:
+            raise ValueError("El tipo de documento es obligatorio")
+        self.identificador = normalizar_identificador(self.identificador)
+        if not self.identificador:
+            raise ValueError("El número de documento es obligatorio")
         ok, msg = validar_documento(self.tipo_identificador, self.identificador)
         if not ok:
             raise ValueError(msg)
+        # Nombre obligatorio según tipo de persona
+        if self.tipo_persona == "fisica":
+            if not (self.nombre_de_pila and self.nombre_de_pila.strip()):
+                raise ValueError("El nombre es obligatorio para persona física")
+            if not (self.primer_apellido and self.primer_apellido.strip()):
+                raise ValueError("El primer apellido es obligatorio para persona física")
+        else:
+            if not (self.razon_social and self.razon_social.strip()):
+                raise ValueError("La razón social es obligatoria para persona jurídica")
         ok, msg = validar_formatos_titular(self.dir_cp, self.email)
+        if not ok:
+            raise ValueError(msg)
+        ok, msg = validar_telefono_es(self.telefono)
+        if not ok:
+            raise ValueError(msg)
+        ok, msg = validar_telefono_es(self.movil, solo_movil=True)
         if not ok:
             raise ValueError(msg)
         return self
@@ -139,7 +162,16 @@ class ErpTitularUpdate(BaseModel):
     def _validar_titular(self):
         # Documento: solo en CREATE (y en el servicio si cambia);
         # no se revalida aquí para no bloquear la edición/reactivación de datos heredados.
+        # Pero si llega un identificador, se normaliza a forma canónica.
+        if self.identificador is not None:
+            self.identificador = normalizar_identificador(self.identificador)
         ok, msg = validar_formatos_titular(self.dir_cp, self.email)
+        if not ok:
+            raise ValueError(msg)
+        ok, msg = validar_telefono_es(self.telefono)
+        if not ok:
+            raise ValueError(msg)
+        ok, msg = validar_telefono_es(self.movil, solo_movil=True)
         if not ok:
             raise ValueError(msg)
         return self

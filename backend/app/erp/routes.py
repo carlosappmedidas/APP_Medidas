@@ -50,7 +50,12 @@ def crear_titular(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return services.crear_titular(db, user, empresa_id, payload)
+    try:
+        return services.crear_titular(db, user, empresa_id, payload)
+    except services.DuplicateIdentificadorError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/titulares/{titular_id}", response_model=schemas.ErpTitularOut)

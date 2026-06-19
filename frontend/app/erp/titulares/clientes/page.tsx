@@ -240,6 +240,35 @@ export default function ErpTitularesPage() {
   const abrirEditar = (t: Titular) => { setForm({ ...EMPTY, ...t }); setPanelOpen(true); };
   const cerrar = () => { if (!saving) setPanelOpen(false); };
 
+  // Validación ligera del documento en vivo (solo aviso visual; el backend es la fuente de verdad)
+  const _LET = "TRWAGMYFPDXBNJZSQVHLCKE";
+  const normDoc = (v: string) => (v || "").trim().toUpperCase().replace(/[-\s]/g, "");
+  const docCheck = (tipo: string, idRaw: string): string | null => {
+    const v = normDoc(idRaw);
+    if (!tipo || !v) return null;
+    if (tipo === "DN") {
+      if (!/^\d{8}[A-Z]$/.test(v)) return "DNI: 8 dígitos + letra";
+      return _LET[parseInt(v.slice(0, 8), 10) % 23] === v[8] ? null : "Letra de control del DNI incorrecta";
+    }
+    if (tipo === "NE") {
+      if (!/^[XYZ]\d{7}[A-Z]$/.test(v)) return "NIE: X/Y/Z + 7 dígitos + letra";
+      const num = ({ X: "0", Y: "1", Z: "2" } as Record<string, string>)[v[0]] + v.slice(1, 8);
+      return _LET[parseInt(num, 10) % 23] === v[8] ? null : "Letra de control del NIE incorrecta";
+    }
+    if (tipo === "CI") {
+      if (!/^[A-Z]\d{7}[0-9A-J]$/.test(v)) return "CIF: letra + 7 dígitos + control";
+      return null;
+    }
+    if (tipo === "NI") {
+      const okNif = /^\d{8}[A-Z]$/.test(v) && _LET[parseInt(v.slice(0, 8), 10) % 23] === v[8];
+      const okNie = /^[XYZ]\d{7}[A-Z]$/.test(v);
+      const okCif = /^[A-Z]\d{7}[0-9A-J]$/.test(v);
+      return okNif || okNie || okCif ? null : "NIF: no parece un DNI, NIE ni CIF válido";
+    }
+    return null; // OT: sin validación
+  };
+  const docError = docCheck(form.tipo_identificador ?? "", form.identificador ?? "");
+
   // Validación de nombre según normativa
   const nombreOk =
     form.tipo_persona === "fisica"
@@ -382,7 +411,12 @@ export default function ErpTitularesPage() {
               ))}
             </select>
           </div>
-          <TextField label="Identificador (nº) *" span value={form.identificador ?? ""} onChange={(v) => setForm({ ...form, identificador: v })} />
+          <div style={{ gridColumn: "1 / -1" }}>
+            <TextField label="Identificador (nº) *" span value={form.identificador ?? ""} onChange={(v) => setForm({ ...form, identificador: v })} />
+            {docError && (
+              <div style={{ color: "#F0999B", fontSize: 12, marginTop: 4 }}>{docError}</div>
+            )}
+          </div>
 
           {form.tipo_persona === "fisica" ? (
             <>
@@ -405,8 +439,7 @@ export default function ErpTitularesPage() {
           <ComboField label="Puerta" value={form.dir_puerta ?? ""} options={catalogos.puerta} maxLength={3} onChange={(v) => setForm({ ...form, dir_puerta: v })} />
           <SelectField label="Tipo de aclarador" value={form.dir_tipo_aclarador ?? ""} options={catalogos.aclarador_finca} onChange={(v) => setForm({ ...form, dir_tipo_aclarador: v })} />
           <TextField label="Aclarador" value={form.dir_aclarador ?? ""} maxLength={40} onChange={(v) => setForm({ ...form, dir_aclarador: v })} />
-          <TextField label="C.P." value={form.dir_cp ?? ""} maxLength={10} onChange={(v) => setForm({ ...form, dir_cp: v })} />
-          <TextField label="Municipio" value={form.dir_municipio ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_municipio: v })} />
+          <TextField label="C.P." value={form.dir_cp ?? ""} maxLength={5} onChange={(v) => setForm({ ...form, dir_cp: v })} />          <TextField label="Municipio" value={form.dir_municipio ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_municipio: v })} />
           <TextField label="Provincia" value={form.dir_provincia ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_provincia: v })} />
           <TextField label="País" value={form.dir_pais ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_pais: v })} />
         </SectionCard>

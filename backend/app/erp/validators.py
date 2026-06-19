@@ -22,6 +22,14 @@ def _norm(v: str) -> str:
     return (v or "").strip().upper().replace("-", "").replace(" ", "")
 
 
+def normalizar_identificador(v):
+    """Forma canónica del documento para guardar/buscar: mayúsculas, sin guiones ni espacios. None si vacío."""
+    if v is None:
+        return None
+    n = _norm(v)
+    return n or None
+
+
 def validar_nif(v: str) -> bool:
     """DNI/NIF persona física: 8 dígitos + letra de control (mod 23)."""
     v = _norm(v)
@@ -136,4 +144,63 @@ def validar_formatos_suministro(dir_cp, municipio_codigo_ine, ref_catastral) -> 
         return False, "Código INE de municipio inválido (5 dígitos)"
     if ref_catastral and not validar_ref_catastral(ref_catastral):
         return False, "Referencia catastral inválida (20 caracteres alfanuméricos)"
+    return True, ""
+
+
+def validar_codigos_cnmc(db, dir_tipo_via=None, dir_piso=None, dir_puerta=None, dir_tipo_aclarador=None) -> tuple[bool, str]:
+    """Valida que los codigos de direccion existan y esten activos en su catalogo CNMC.
+
+    Bloqueante: solo comprueba los campos que traen valor. Devuelve (False, msg) al primer fallo.
+    Import local de los modelos para evitar import circular (validators -> models).
+    """
+    from app.erp.models import (
+        ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
+    )
+
+    comprobaciones = [
+        (dir_tipo_via, ErpCnmcTipoVia, "tipo de via"),
+        (dir_piso, ErpCnmcPiso, "piso"),
+        (dir_puerta, ErpCnmcPuerta, "puerta"),
+        (dir_tipo_aclarador, ErpCnmcAclaradorFinca, "tipo de aclarador"),
+    ]
+    for valor, modelo, etiqueta in comprobaciones:
+        cod = (valor or "").strip()
+        if not cod:
+            continue
+        fila = db.query(modelo).filter(modelo.codigo == cod).first()
+        if fila is None:
+            return False, f"El codigo de {etiqueta} '{cod}' no existe en el catalogo CNMC"
+        if not fila.activo:
+            return False, f"El codigo de {etiqueta} '{cod}' esta dado de baja en el catalogo CNMC"
+    return True, ""
+
+
+def validar_telefono_es(valor, solo_movil=False) -> tuple[bool, str]:
+    """Valida un telefono espanol. Solo si trae valor (campos opcionales).
+
+    Acepta prefijo +34 / 0034 / 34 opcional y 9 digitos.
+    - telefono general: empieza por 6, 7, 8 o 9.
+    - movil (solo_movil=True): empieza por 6 o 7.
+    Ignora espacios, guiones y parentesis.
+    """
+    if valor is None:
+        return True, ""
+    v = str(valor).strip()
+    if not v:
+        return True, ""
+    limpio = v.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if limpio.startswith("+34"):
+        limpio = limpio[3:]
+    elif limpio.startswith("0034"):
+        limpio = limpio[4:]
+    elif limpio.startswith("34") and len(limpio) == 11:
+        limpio = limpio[2:]
+    if not limpio.isdigit() or len(limpio) != 9:
+        return False, "Telefono invalido (9 digitos, admite prefijo +34)"
+    if solo_movil:
+        if limpio[0] not in ("6", "7"):
+            return False, "Movil invalido (debe empezar por 6 o 7)"
+    else:
+        if limpio[0] not in ("6", "7", "8", "9"):
+            return False, "Telefono invalido (debe empezar por 6, 7, 8 o 9)"
     return True, ""

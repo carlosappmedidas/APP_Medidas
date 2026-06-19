@@ -12,16 +12,13 @@ from typing import Literal, get_args
 # TABLA_6 — Tipos de documento identificativo del cliente (bloque Cliente ATR)
 # Ref.: formatos de intercambio ATR CNMC (Resolución 16-may-2024); gestionatr TABLA_6.
 # ---------------------------------------------------------------------------
-TipoIdentificador = Literal["CI", "CT", "DN", "NI", "NV", "OT", "PS", "NE"]
+TipoIdentificador = Literal["CI", "DN", "NI", "OT", "NE"]
 
 TIPO_IDENTIFICADOR_LABEL: dict[str, str] = {
     "CI": "CIF",
-    "CT": "Carta de trabajo",
     "DN": "DNI",
     "NI": "NIF",
-    "NV": "N.I.V.A",
     "OT": "Otro",
-    "PS": "Pasaporte",
     "NE": "NIE",
 }
 
