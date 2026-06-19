@@ -12,6 +12,20 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: "Bearer " + t } : {};
 }
 
+async function descargarPlantilla(entidad: string): Promise<void> {
+  const r = await fetch(`${API_BASE_URL}/erp/migraciones/plantilla/${entidad}`, { headers: authHeaders() });
+  if (!r.ok) { alert("No se pudo descargar la plantilla."); return; }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `plantilla_${entidad}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ---------------------------------------------------------------------------
 // Tipos
 // ---------------------------------------------------------------------------
@@ -172,8 +186,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
 export default function CatalogosPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
-  const [tab, setTab] = useState<"tarifas" | "comercializadoras" | "tablas">("tarifas");
-
+  const [tab, setTab] = useState<"tarifas" | "comercializadoras" | "tablas" | "migraciones">("tarifas");
   // Tarifas
   const [tarifas, setTarifas] = useState<Tarifa[]>([]);
   const [loadingTar, setLoadingTar] = useState(false);
@@ -400,10 +413,42 @@ export default function CatalogosPage() {
         <button style={tabBtn(tab === "tarifas")} onClick={() => setTab("tarifas")}>Tarifas</button>
         <button style={tabBtn(tab === "comercializadoras")} onClick={() => setTab("comercializadoras")}>Comercializadoras</button>
         <button style={tabBtn(tab === "tablas")} onClick={() => setTab("tablas")}>Tablas</button>
+        <button style={tabBtn(tab === "migraciones")} onClick={() => setTab("migraciones")}>Migraciones</button>
       </div>
 
-      {tab === "tablas" ? (
-        loadingTablas ? (
+      {tab === "migraciones" ? (
+        <div style={{ maxWidth: 760 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 6px" }}>Migración de una empresa</h3>
+          <p style={{ color: "rgba(241,239,232,0.6)", fontSize: 13, lineHeight: 1.6, margin: "0 0 18px" }}>
+            Para dar de alta una distribuidora nueva, carga su maestro completo con estas plantillas Excel.
+            Cada plantilla incluye una hoja <b>Instrucciones</b> que explica cómo rellenarla.
+          </p>
+
+          <div style={{ border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16, marginBottom: 18 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Pasos</div>
+            <ol style={{ color: "rgba(241,239,232,0.7)", fontSize: 13, lineHeight: 1.7, margin: 0, paddingLeft: 18 }}>
+              <li>Descarga las cuatro plantillas y rellénalas (la fila 2 es un ejemplo: bórrala o sobreescríbela).</li>
+              <li>Respeta el <b>orden de carga</b>: 1) Titulares y Comercializadoras de empresa · 2) Suministros · 3) Contratos.</li>
+              <li>Las columnas en <b>azul</b> son enlaces por clave natural (NIF/CIF, CUPS, código REE…): deben existir ya cuando cargues. Las <b>amarillas</b> son automáticas, no las rellenes.</li>
+              <li>Sube cada fichero (próximamente en esta misma pestaña). La migración cargará lo correcto y te devolverá un Excel con el resumen y el detalle de cualquier fila que falle.</li>
+            </ol>
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Descargar plantillas</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {[
+              ["titulares", "Titulares"],
+              ["comercializadoras_empresa", "Comercializadoras de empresa"],
+              ["suministros", "Suministros"],
+              ["contratos", "Contratos"],
+            ].map(([ent, label]) => (
+              <button key={ent} onClick={() => descargarPlantilla(ent)} style={tabBtn(false)}>
+                ⬇ {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : tab === "tablas" ? (        loadingTablas ? (
           <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>Cargando…</div>
         ) : tablas.length === 0 ? (
           <div style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, padding: "24px 0" }}>No hay tablas registradas.</div>

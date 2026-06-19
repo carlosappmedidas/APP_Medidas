@@ -15,7 +15,10 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.erp import schemas, services, services_contrato
+from app.erp.migraciones import plantillas as mig_plantillas
 from app.tenants.models import User
+
+from fastapi import Response
 
 router = APIRouter(prefix="/erp", tags=["erp"])
 
@@ -434,3 +437,27 @@ def obtener_version_contrato_endpoint(
         return services_contrato.obtener_version(db, user, contrato_id, version_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Migraciones (E-12): descarga de plantillas Excel
+# ---------------------------------------------------------------------------
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/migraciones/plantilla/{entidad}")
+def descargar_plantilla_migracion(
+    entidad: str,
+    user: User = Depends(get_current_user),
+):
+    """Descarga la plantilla Excel de migración de la entidad indicada."""
+    try:
+        contenido = mig_plantillas.generar_plantilla(entidad)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    filename = f"plantilla_{entidad}.xlsx"
+    return Response(
+        content=contenido,
+        media_type=_XLSX_MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
