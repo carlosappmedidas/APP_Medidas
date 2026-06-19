@@ -33,6 +33,7 @@ from app.erp.schemas import (
     ErpContratoCreate, ErpContratoUpdate, ErpContratoOut, ErpContratoPotenciaOut,
     ErpContratoVersionListItem, ErpContratoVersionOut,
 )
+from app.erp.normativa_atr import tipo_punto_medida_rpum
 from app.tenants.models import User
 
 
@@ -43,6 +44,11 @@ def _ahora_madrid_naive() -> datetime:
 # --- Errores de validación específicos ---
 class ContratoValidacionError(ValueError):
     """Datos del contrato inválidos (periodos, FKs)."""
+    pass
+
+
+class ContratoNumeroDuplicadoError(ValueError):
+    """Ya existe un contrato con ese numero en la empresa (unique)."""
     pass
 
 
@@ -379,6 +385,20 @@ def crear_contrato(
     data = payload.model_dump()
     potencias = data.pop("potencias", []) or []
 
+    # numero_contrato único por empresa (pre-check + UQ como red de seguridad)
+    existe = (
+        db.query(ErpContrato)
+        .filter(
+            ErpContrato.empresa_id == empresa_id,
+            ErpContrato.numero_contrato == data["numero_contrato"],
+        )
+        .first()
+    )
+    if existe is not None:
+        raise ContratoNumeroDuplicadoError(
+            f"Ya existe un contrato con número {data['numero_contrato']} en esta empresa"
+        )
+
     _validar_fks(
         db, empresa_id,
         data["titular_id"], data.get("pagador_id"), data["suministro_id"],
@@ -389,6 +409,10 @@ def crear_contrato(
     if data.get("estado", "activo") == "activo":
         _validar_potencias_completas(db, data["tarifa_id"], potencias)
         _validar_suministro_unico_activo(db, empresa_id, data["suministro_id"])
+
+    # tipo_punto_medida se calcula automaticamente (RPUM) desde la potencia maxima contratada
+    p_max = max((p["potencia_kw"] for p in potencias), default=None)
+    data["tipo_punto_medida"] = tipo_punto_medida_rpum(p_max)
 
     ahora = _ahora_madrid_naive()
     c = ErpContrato(
@@ -429,6 +453,23 @@ def actualizar_contrato(
     data = payload.model_dump(exclude_unset=True)
     potencias = data.pop("potencias", None)  # None = no tocar; lista = reemplazar
 
+    # numero_contrato único por empresa (solo si cambia)
+    nuevo_numero = data.get("numero_contrato")
+    if nuevo_numero is not None and nuevo_numero != c.numero_contrato:
+        existe = (
+            db.query(ErpContrato)
+            .filter(
+                ErpContrato.empresa_id == c.empresa_id,
+                ErpContrato.numero_contrato == nuevo_numero,
+                ErpContrato.id != c.id,
+            )
+            .first()
+        )
+        if existe is not None:
+            raise ContratoNumeroDuplicadoError(
+                f"Ya existe un contrato con número {nuevo_numero} en esta empresa"
+            )
+
     eff_titular = data.get("titular_id", c.titular_id)
     eff_pagador = data.get("pagador_id", c.pagador_id)
     eff_suministro = data.get("suministro_id", c.suministro_id)
@@ -447,6 +488,17 @@ def actualizar_contrato(
     if potencias is not None:
         _validar_periodos_tarifa(db, eff_tarifa, potencias)
         _validar_potencias_crecientes(potencias)
+
+    # tipo_punto_medida automatico (RPUM): recalcular desde la potencia maxima efectiva
+    if potencias is not None:
+        pots_para_tipo = potencias
+    else:
+        pots_para_tipo = [
+            {"periodo": p.periodo, "potencia_kw": p.potencia_kw}
+            for p in db.query(ErpContratoPotencia).filter(ErpContratoPotencia.contrato_id == c.id).all()
+        ]
+    p_max = max((p["potencia_kw"] for p in pots_para_tipo), default=None)
+    data["tipo_punto_medida"] = tipo_punto_medida_rpum(p_max)
 
     for campo, valor in data.items():
         setattr(c, campo, valor)

@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.erp.normativa_atr import (
     TipoIdentificador,                 # TABLA_6 (8 valores)
-    validar_enums_contrato,            # tipo_contrato_atr / autoconsumo_tipo / modo_control_potencia
+    validar_enums_contrato,            # tipo_contrato_atr / modo_control_potencia
 )
 from app.erp.validators import (
     validar_documento, validar_cups_control,
@@ -464,6 +464,15 @@ class ErpContratoPotenciaIn(BaseModel):
             raise ValueError("periodo debe ser P1…P6")
         return v
 
+    @field_validator("potencia_kw")
+    @classmethod
+    def _escalon_ok(cls, v):
+        # RD 88/2026 art. 34.8: contrataciones hasta 15 kW en multiplos de 0,1 kW.
+        # Por encima de 15 kW aplican otros escalones (no se valida aqui todavia).
+        if v is not None and v <= 15 and abs(v * 10 - round(v * 10)) > 1e-6:
+            raise ValueError("La potencia hasta 15 kW debe ir en múltiplos de 0,1 kW (RD 88/2026 art. 34.8)")
+        return v
+
 
 class ErpContratoPotenciaOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -502,9 +511,8 @@ class ErpContratoBase(BaseModel):
     agree_tensio: Optional[date] = None
     agree_tipus: Optional[date] = None
     # Régimen regulado
-    autoconsumo_tipo: Optional[str] = None
     es_autoconsumo: bool = False
-    potencia_generacion_kw: Optional[float] = None
+
     bono_social: bool = False
     vivienda_habitual: Optional[bool] = None
     tipo_subseccion: Optional[str] = None
@@ -533,7 +541,7 @@ class ErpContratoCreate(ErpContratoBase):
     @model_validator(mode="after")
     def _enums_ok(self):
         ok, msg = validar_enums_contrato(
-            self.tipo_contrato_atr, self.autoconsumo_tipo, self.modo_control_potencia
+            self.tipo_contrato_atr, self.modo_control_potencia
         )
         if not ok:
             raise ValueError(msg)
@@ -569,10 +577,7 @@ class ErpContratoUpdate(BaseModel):
     agree_dh: Optional[date] = None
     agree_tensio: Optional[date] = None
     agree_tipus: Optional[date] = None
-
-    autoconsumo_tipo: Optional[str] = None
     es_autoconsumo: Optional[bool] = None
-    potencia_generacion_kw: Optional[float] = None
     bono_social: Optional[bool] = None
     vivienda_habitual: Optional[bool] = None
     tipo_subseccion: Optional[str] = None
@@ -598,7 +603,7 @@ class ErpContratoUpdate(BaseModel):
     @model_validator(mode="after")
     def _enums_ok(self):
         ok, msg = validar_enums_contrato(
-            self.tipo_contrato_atr, self.autoconsumo_tipo, self.modo_control_potencia
+            self.tipo_contrato_atr, self.modo_control_potencia
         )
         if not ok:
             raise ValueError(msg)

@@ -337,10 +337,8 @@ class ErpContrato(TimestampMixin, Base):
     agree_tensio = Column(Date, nullable=True)
     agree_tipus  = Column(Date, nullable=True)
 
-    # --- Régimen regulado ---
-    autoconsumo_tipo                  = Column(String(40), nullable=True)   # Ley 24/2013 art.9 + RD 244/2019 art.4 (valores enum hasta 30 chars)
-    es_autoconsumo                    = Column(Boolean, nullable=False, default=False)
-    potencia_generacion_kw            = Column(Float, nullable=True)
+     # --- Régimen regulado ---
+    es_autoconsumo                    = Column(Boolean, nullable=False, default=False)   # detalle (tipo, generación) vivirá en el módulo Autoconsumo
     bono_social                       = Column(Boolean, nullable=False, default=False)   # RD 897/2017
     vivienda_habitual                 = Column(Boolean, nullable=True)   # check vivienda habitual (movido desde titular)
     tipo_subseccion                   = Column(String(10), nullable=True)
@@ -361,6 +359,10 @@ class ErpContrato(TimestampMixin, Base):
     cnae   = Column(String(10), nullable=True)   # CNAE-2009 (actividad económica; paridad GISCE polissa.cnae)
     notas  = Column(Text, nullable=True)
     activo = Column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "numero_contrato", name="uq_erp_contrato_empresa_numero"),
+    )
 
 
 class ErpContratoPotencia(TimestampMixin, Base):

@@ -648,14 +648,7 @@ export default function ContratosPage() {
               <TextField label="Tensión normalizada" disabled={ver} value={form.tension_normalizada} onChange={(v) => setForm({ ...form, tension_normalizada: v })} />
               <div>
                 <label style={labelStyle}>Tipo punto de medida</label>
-                <select style={inputStyle} disabled={ver} value={form.tipo_punto_medida} onChange={(e) => setForm({ ...form, tipo_punto_medida: e.target.value })}>
-                  <option value="" style={optDark}>— sin especificar —</option>
-                  <option value="1" style={optDark}>1</option>
-                  <option value="2" style={optDark}>2</option>
-                  <option value="3" style={optDark}>3</option>
-                  <option value="4" style={optDark}>4</option>
-                  <option value="5" style={optDark}>5</option>
-                </select>
+                <input style={{ ...inputStyle, opacity: 0.7 }} disabled value={form.tipo_punto_medida || "— se calcula al guardar (según potencia) —"} readOnly />
               </div>
               <div />
               <BoolField label="Autoconsumo" disabled={ver} checked={form.es_autoconsumo} onChange={(v) => setForm({ ...form, es_autoconsumo: v })} />

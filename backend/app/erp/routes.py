@@ -351,6 +351,8 @@ def crear_contrato_endpoint(
 ):
     try:
         return services_contrato.crear_contrato(db, user, empresa_id, payload)
+    except services_contrato.ContratoNumeroDuplicadoError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except services_contrato.ContratoSuministroActivoError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except services_contrato.ContratoValidacionError as e:
@@ -378,6 +380,8 @@ def actualizar_contrato_endpoint(
 ):
     try:
         return services_contrato.actualizar_contrato(db, user, contrato_id, payload)
+    except services_contrato.ContratoNumeroDuplicadoError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except services_contrato.ContratoSuministroActivoError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except services_contrato.ContratoValidacionError as e:
