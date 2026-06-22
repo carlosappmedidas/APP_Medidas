@@ -462,3 +462,25 @@ class ErpContratoVersion(TimestampMixin, Base):
     )
 
 
+
+
+class ErpMigracion(TimestampMixin, Base):
+    """
+    Estado de la migración (carga masiva inicial) de una empresa.
+
+    Una migración viva por empresa (UQ en empresa_id). Mientras estado='en_curso',
+    el importer ACTUALIZA los registros existentes con los campos no vacíos del Excel
+    (corrección de carga, sin versionar). Al pasar a 'cerrada', el importer vuelve al
+    comportamiento insert-only (duplicado = omitido) y los cambios se hacen por pantalla.
+    """
+    __tablename__ = "erp_migracion"
+
+    id         = Column(Integer, primary_key=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, unique=True, index=True)
+
+    estado            = Column(String(20), nullable=False, default="en_curso")  # "en_curso" | "cerrada"
+    fecha_inicio      = Column(Date, nullable=True)
+    fecha_cierre      = Column(Date, nullable=True)
+    usuario_inicio_id = Column(Integer, nullable=True)  # auditoría (sin FK, como resto del ERP)
+    usuario_cierre_id = Column(Integer, nullable=True)  # auditoría (sin FK, como resto del ERP)

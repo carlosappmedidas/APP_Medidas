@@ -8,8 +8,9 @@ comparten exactamente las mismas reglas. Insert-only: si la clave natural ya
 existe, la fila se cuenta como "omitida". Cada fila es independiente (los
 servicios hacen commit por fila); un fallo nunca arrastra a las demás.
 
-Resolución de claves naturales (NIF/CUPS/REE/código → id) se hace por entidad;
-titulares no tiene enlaces, así que es el caso base.
+Corrección de migración (E-12 fase corrección): si la empresa tiene una
+migración en estado 'en_curso', en vez de OMITIR un duplicado se ACTUALIZAN sus
+campos no vacíos (sin versionar en contratos). Lo controla `correccion`.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.permissions import assert_empresa_access
 from app.erp import schemas, services, services_contrato
+from app.erp.migraciones import estado as mig_estado
 from app.erp.migraciones.lectura import leer_excel
 from app.tenants.models import User
 
@@ -40,6 +42,7 @@ class ResultadoImport:
     hoja: str
     total: int = 0
     creadas: int = 0
+    actualizadas: int = 0
     omitidas: int = 0
     errores: list[ErrorFila] = field(default_factory=list)
     errores_fichero: list[str] = field(default_factory=list)
@@ -50,6 +53,7 @@ class ResultadoImport:
             "hoja": self.hoja,
             "total": self.total,
             "creadas": self.creadas,
+            "actualizadas": self.actualizadas,
             "omitidas": self.omitidas,
             "fallidas": len(self.errores),
             "errores_fichero": self.errores_fichero,
@@ -131,7 +135,7 @@ def _resolver_tarifa(db: Session, codigo):
 
 def _resolver_comercializadora_empresa(db: Session, empresa_id: int, codigo_ree):
     """REE → comercializadora global → relación de ESTA empresa (doble salto)."""
-    com_id = _resolver_comercializadora_global(db, codigo_ree)  # puede lanzar _EnlaceNoResuelto
+    com_id = _resolver_comercializadora_global(db, codigo_ree)
     rel = (db.query(services.ErpComercializadoraEmpresa)
            .filter(services.ErpComercializadoraEmpresa.empresa_id == empresa_id,
                    services.ErpComercializadoraEmpresa.comercializadora_id == com_id)
@@ -143,15 +147,55 @@ def _resolver_comercializadora_empresa(db: Session, empresa_id: int, codigo_ree)
 
 
 # ---------------------------------------------------------------------------
+# Corrección de migración (estado='en_curso'): actualizar campos no vacíos
+# ---------------------------------------------------------------------------
+def _update_parcial(db, user, entidad: str, registro_id: int, datos: dict, *, versionar: bool = True):
+    if entidad == "titulares":
+        services.actualizar_titular(db, user, registro_id, schemas.ErpTitularUpdate(**datos))
+    elif entidad == "comercializadoras_empresa":
+        services.actualizar_comercializadora_empresa(db, user, registro_id, schemas.ErpComercializadoraEmpresaUpdate(**datos))
+    elif entidad == "suministros":
+        services.actualizar_suministro(db, user, registro_id, schemas.ErpSuministroUpdate(**datos))
+    elif entidad == "contratos":
+        services_contrato.actualizar_contrato(db, user, registro_id, schemas.ErpContratoUpdate(**datos), versionar=versionar)
+
+
+def _existente_titular(db, empresa_id, identificador):
+    return (db.query(services.ErpTitular)
+            .filter(services.ErpTitular.empresa_id == empresa_id,
+                    services.ErpTitular.identificador == str(identificador).strip())
+            .first())
+
+
+def _existente_suministro(db, empresa_id, cups):
+    return (db.query(services.ErpSuministro)
+            .filter(services.ErpSuministro.empresa_id == empresa_id,
+                    services.ErpSuministro.cups == str(cups).strip().upper())
+            .first())
+
+
+def _existente_com_empresa(db, empresa_id, comercializadora_id):
+    return (db.query(services.ErpComercializadoraEmpresa)
+            .filter(services.ErpComercializadoraEmpresa.empresa_id == empresa_id,
+                    services.ErpComercializadoraEmpresa.comercializadora_id == comercializadora_id)
+            .first())
+
+
+def _existente_contrato(db, empresa_id, numero_contrato):
+    return (db.query(services_contrato.ErpContrato)
+            .filter(services_contrato.ErpContrato.empresa_id == empresa_id,
+                    services_contrato.ErpContrato.numero_contrato == str(numero_contrato).strip())
+            .first())
+
+
+# ---------------------------------------------------------------------------
 # Handler: TITULARES (sin enlaces a otras entidades)
 # ---------------------------------------------------------------------------
-def _importar_titulares(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport) -> None:
+def _importar_titulares(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport, correccion: bool = False) -> None:
     for fila in filas:
         res.total += 1
-        # quitar celdas vacías → que los campos opcionales/por-defecto usen su default
         datos = {k: v for k, v in fila.valores.items() if v is not None}
 
-        # 1) Validación de formato con el MISMO schema de pantalla
         try:
             payload = schemas.ErpTitularCreate(**datos)
         except ValidationError as e:
@@ -161,13 +205,23 @@ def _importar_titulares(db: Session, user: User, empresa_id: int, filas, res: Re
                                          err.get("msg", "valor inválido")))
             continue
 
-        # 2) Creación vía el MISMO servicio (insert-only)
         try:
             services.crear_titular(db, user, empresa_id, payload)
             res.creadas += 1
         except services.DuplicateIdentificadorError:
-            res.omitidas += 1
-        except ValueError as e:  # validar_codigos_cnmc u otras reglas de negocio
+            if correccion:
+                existente = _existente_titular(db, empresa_id, payload.identificador)
+                if existente is not None:
+                    try:
+                        _update_parcial(db, user, "titulares", existente.id, datos)
+                        res.actualizadas += 1
+                    except (services.ValidacionError, ValueError) as e:
+                        res.errores.append(ErrorFila(fila.fila_excel, "identificador", payload.identificador, str(e)))
+                else:
+                    res.omitidas += 1
+            else:
+                res.omitidas += 1
+        except ValueError as e:
             res.errores.append(ErrorFila(fila.fila_excel, "identificador", payload.identificador, str(e)))
         except IntegrityError as e:
             db.rollback()
@@ -178,12 +232,11 @@ def _importar_titulares(db: Session, user: User, empresa_id: int, filas, res: Re
 # ---------------------------------------------------------------------------
 # Handler: COMERCIALIZADORAS DE EMPRESA (1 enlace: codigo_ree → comercializadora global)
 # ---------------------------------------------------------------------------
-def _importar_comercializadoras_empresa(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport) -> None:
+def _importar_comercializadoras_empresa(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport, correccion: bool = False) -> None:
     for fila in filas:
         res.total += 1
         datos = {k: v for k, v in fila.valores.items() if v is not None}
 
-        # 1) Resolver la clave natural de enlace (codigo_ree → comercializadora_id)
         try:
             com_id = _resolver_comercializadora_global(db, datos.pop("comercializadora_codigo_ree", None))
         except _EnlaceNoResuelto as e:
@@ -191,7 +244,6 @@ def _importar_comercializadoras_empresa(db: Session, user: User, empresa_id: int
             continue
         datos["comercializadora_id"] = com_id
 
-        # 2) Validación de formato con el schema de pantalla
         try:
             payload = schemas.ErpComercializadoraEmpresaCreate(**datos)
         except ValidationError as e:
@@ -201,12 +253,22 @@ def _importar_comercializadoras_empresa(db: Session, user: User, empresa_id: int
                                          err.get("msg", "valor inválido")))
             continue
 
-        # 3) Creación vía el MISMO servicio (insert-only)
         try:
             services.crear_comercializadora_empresa(db, user, empresa_id, payload)
             res.creadas += 1
         except services.DuplicateComercializadoraEmpresaError:
-            res.omitidas += 1
+            if correccion:
+                existente = _existente_com_empresa(db, empresa_id, com_id)
+                if existente is not None:
+                    try:
+                        _update_parcial(db, user, "comercializadoras_empresa", existente.id, datos)
+                        res.actualizadas += 1
+                    except ValueError as e:
+                        res.errores.append(ErrorFila(fila.fila_excel, "comercializadora_codigo_ree", com_id, str(e)))
+                else:
+                    res.omitidas += 1
+            else:
+                res.omitidas += 1
         except ValueError as e:
             res.errores.append(ErrorFila(fila.fila_excel, "comercializadora_codigo_ree", com_id, str(e)))
         except IntegrityError as e:
@@ -218,12 +280,11 @@ def _importar_comercializadoras_empresa(db: Session, user: User, empresa_id: int
 # ---------------------------------------------------------------------------
 # Handler: SUMINISTROS (sin enlaces; titular_id vive en el contrato, no aquí)
 # ---------------------------------------------------------------------------
-def _importar_suministros(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport) -> None:
+def _importar_suministros(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport, correccion: bool = False) -> None:
     for fila in filas:
         res.total += 1
         datos = {k: v for k, v in fila.valores.items() if v is not None}
 
-        # 1) Validación de formato con el MISMO schema de pantalla
         try:
             payload = schemas.ErpSuministroCreate(**datos)
         except ValidationError as e:
@@ -233,13 +294,23 @@ def _importar_suministros(db: Session, user: User, empresa_id: int, filas, res: 
                                          err.get("msg", "valor inválido")))
             continue
 
-        # 2) Creación vía el MISMO servicio (insert-only por CUPS)
         try:
             services.crear_suministro(db, user, empresa_id, payload)
             res.creadas += 1
         except services.DuplicateCupsError:
-            res.omitidas += 1
-        except ValueError as e:  # validar_codigos_cnmc / geolocalización u otras reglas
+            if correccion:
+                existente = _existente_suministro(db, empresa_id, payload.cups)
+                if existente is not None:
+                    try:
+                        _update_parcial(db, user, "suministros", existente.id, datos)
+                        res.actualizadas += 1
+                    except (services.ValidacionError, ValueError) as e:
+                        res.errores.append(ErrorFila(fila.fila_excel, "cups", payload.cups, str(e)))
+                else:
+                    res.omitidas += 1
+            else:
+                res.omitidas += 1
+        except ValueError as e:
             res.errores.append(ErrorFila(fila.fila_excel, "cups", payload.cups, str(e)))
         except IntegrityError as e:
             db.rollback()
@@ -250,25 +321,23 @@ def _importar_suministros(db: Session, user: User, empresa_id: int, filas, res: 
 # ---------------------------------------------------------------------------
 # Handler: CONTRATOS (4 enlaces + potencias P1-P6)
 # ---------------------------------------------------------------------------
-def _importar_contratos(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport) -> None:
+def _importar_contratos(db: Session, user: User, empresa_id: int, filas, res: ResultadoImport, correccion: bool = False) -> None:
     for fila in filas:
         res.total += 1
         datos = {k: v for k, v in fila.valores.items() if v is not None}
 
-        # extraer columnas de enlace y potencias (no van directas al schema)
         titular_ident = datos.pop("titular_identificador", None)
         pagador_ident = datos.pop("pagador_identificador", None)
         suministro_cups = datos.pop("suministro_cups", None)
         com_ree = datos.pop("comercializadora_codigo_ree", None)
         tarifa_cod = datos.pop("tarifa_codigo", None)
-        datos.pop("tipo_punto_medida", None)  # derivado: lo calcula el backend, nunca de la plantilla
+        datos.pop("tipo_punto_medida", None)
         pots = []
         for periodo in ("P1", "P2", "P3", "P4", "P5", "P6"):
             val = datos.pop(periodo, None)
             if val is not None:
                 pots.append({"periodo": periodo, "potencia_kw": val})
 
-        # 1) resolver claves naturales (obligatorias + opcionales)
         try:
             datos["titular_id"] = _resolver_titular(db, empresa_id, titular_ident, "titular_identificador")
             datos["suministro_id"] = _resolver_suministro(db, empresa_id, suministro_cups)
@@ -283,7 +352,6 @@ def _importar_contratos(db: Session, user: User, empresa_id: int, filas, res: Re
 
         datos["potencias"] = pots
 
-        # 2) validación con el schema de pantalla
         try:
             payload = schemas.ErpContratoCreate(**datos)
         except ValidationError as e:
@@ -293,12 +361,25 @@ def _importar_contratos(db: Session, user: User, empresa_id: int, filas, res: Re
                                          err.get("msg", "valor inválido")))
             continue
 
-        # 3) creación vía el MISMO servicio (insert-only por numero_contrato)
         try:
             services_contrato.crear_contrato(db, user, empresa_id, payload)
             res.creadas += 1
         except services_contrato.ContratoNumeroDuplicadoError:
-            res.omitidas += 1
+            if correccion:
+                existente = _existente_contrato(db, empresa_id, payload.numero_contrato)
+                if existente is not None:
+                    upd = dict(datos)
+                    upd["potencias"] = pots
+                    try:
+                        _update_parcial(db, user, "contratos", existente.id, upd, versionar=False)
+                        res.actualizadas += 1
+                    except (services_contrato.ContratoValidacionError,
+                            services_contrato.ContratoSuministroActivoError, ValueError) as e:
+                        res.errores.append(ErrorFila(fila.fila_excel, "numero_contrato", payload.numero_contrato, str(e)))
+                else:
+                    res.omitidas += 1
+            else:
+                res.omitidas += 1
         except (services_contrato.ContratoValidacionError,
                 services_contrato.ContratoSuministroActivoError, ValueError) as e:
             res.errores.append(ErrorFila(fila.fila_excel, "numero_contrato", payload.numero_contrato, str(e)))
@@ -318,7 +399,7 @@ _HANDLERS = {
 
 def importar(db: Session, user: User, empresa_id: int, entidad: str, contenido: bytes) -> ResultadoImport:
     """Importa el .xlsx (bytes) de `entidad` a `empresa_id`. Valida acceso antes de nada."""
-    assert_empresa_access(db, user, empresa_id)  # 403 si el usuario no tiene acceso a la empresa
+    assert_empresa_access(db, user, empresa_id)
 
     lect = leer_excel(contenido)
     res = ResultadoImport(entidad=entidad, hoja=lect.hoja)
@@ -331,5 +412,6 @@ def importar(db: Session, user: User, empresa_id: int, entidad: str, contenido: 
         res.errores_fichero.append(f"Entidad no soportada todavía en el importador: {entidad}")
         return res
 
-    handler(db, user, empresa_id, lect.filas, res)
+    correccion = mig_estado.en_correccion(db, empresa_id)
+    handler(db, user, empresa_id, lect.filas, res, correccion)
     return res

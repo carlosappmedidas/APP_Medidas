@@ -14,10 +14,12 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.db import get_db
+from app.core.permissions import assert_empresa_access
 from app.erp import schemas, services, services_contrato
 from app.erp.migraciones import plantillas as mig_plantillas
 from app.erp.migraciones import importer as mig_importer
 from app.erp.migraciones import informe as mig_informe
+from app.erp.migraciones import estado as mig_estado
 from app.tenants.models import User
 
 from fastapi import Response, UploadFile, File, Body
@@ -492,3 +494,34 @@ def descargar_informe_migracion(
         media_type=_XLSX_MEDIA,
         headers={"Content-Disposition": 'attachment; filename="informe_migracion.xlsx"'},
     )
+
+
+@router.get("/migraciones/estado")
+def estado_migracion(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Estado de la migración de la empresa: sin_iniciar | en_curso | cerrada."""
+    assert_empresa_access(db, user, empresa_id)
+    return mig_estado.as_dict(mig_estado.obtener(db, empresa_id))
+
+
+@router.post("/migraciones/estado/iniciar")
+def iniciar_migracion(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Abre la ventana de corrección (reenviar Excel actualiza campos no vacíos)."""
+    return mig_estado.as_dict(mig_estado.iniciar(db, user, empresa_id))
+
+
+@router.post("/migraciones/estado/cerrar")
+def cerrar_migracion(
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Cierra la ventana de corrección (reenviar vuelve a omitir duplicados)."""
+    return mig_estado.as_dict(mig_estado.cerrar(db, user, empresa_id))

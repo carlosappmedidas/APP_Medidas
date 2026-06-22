@@ -446,7 +446,8 @@ def crear_contrato(
 
 
 def actualizar_contrato(
-    db: Session, user: User, contrato_id: int, payload: ErpContratoUpdate
+    db: Session, user: User, contrato_id: int, payload: ErpContratoUpdate,
+    versionar: bool = True,
 ) -> ErpContratoOut:
     c = _cargar_contrato_con_acceso(db, user, contrato_id)
     snap_antes = _componer_snapshot(db, c)   # foto ANTES de tocar nada (para el diff)
@@ -515,10 +516,11 @@ def actualizar_contrato(
             ))
 
     # Histórico: si hubo cambios reales, se cierra la versión activa y se crea vN+1 (M1).
+    # En corrección de migración (versionar=False) NO se versiona: es corrección de carga.
     db.flush()  # potencias nuevas consultables para la foto
     snap_despues = _componer_snapshot(db, c)
     diff = _calcular_diff(snap_antes, snap_despues)
-    if diff:
+    if versionar and diff:
         ahora_v = _ahora_madrid_naive()
         hoy = ahora_v.date()
         ultima_v = (
