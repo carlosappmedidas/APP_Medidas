@@ -17,9 +17,11 @@ from app.core.db import get_db
 from app.erp import schemas, services, services_contrato
 from app.erp.migraciones import plantillas as mig_plantillas
 from app.erp.migraciones import importer as mig_importer
+from app.erp.migraciones import informe as mig_informe
 from app.tenants.models import User
 
-from fastapi import Response, UploadFile, File
+from fastapi import Response, UploadFile, File, Body
+
 
 router = APIRouter(prefix="/erp", tags=["erp"])
 
@@ -476,3 +478,17 @@ def importar_migracion(
     contenido = file.file.read()
     resultado = mig_importer.importar(db, user, empresa_id, entidad, contenido)
     return resultado.as_dict()
+
+
+@router.post("/migraciones/informe")
+def descargar_informe_migracion(
+    payload: dict | list = Body(...),
+    user: User = Depends(get_current_user),
+):
+    """Convierte el resultado de una importación (JSON) en un Excel de informe descargable."""
+    contenido = mig_informe.generar_informe(payload)
+    return Response(
+        content=contenido,
+        media_type=_XLSX_MEDIA,
+        headers={"Content-Disposition": 'attachment; filename="informe_migracion.xlsx"'},
+    )
