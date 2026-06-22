@@ -194,6 +194,7 @@ export default function CatalogosPage() {
   const [empresaNombreMig, setEmpresaNombreMig] = useState<string>("");
   const [migResultados, setMigResultados] = useState<Record<string, unknown>[]>([]);
   const [migConfirmar, setMigConfirmar] = useState<{ entidad: string; label: string; file: File } | null>(null);
+  const [migEstado, setMigEstado] = useState<string>("sin_iniciar");  // sin_iniciar | en_curso | cerrada
   const [migSubiendo, setMigSubiendo] = useState<string | null>(null);
   // Tarifas
   const [tarifas, setTarifas] = useState<Tarifa[]>([]);
@@ -274,6 +275,8 @@ export default function CatalogosPage() {
     })();
     return () => { vivo = false; };
   }, [authChecked, empresaIdMig]);
+
+
 
   useEffect(() => {
     if (!authChecked || tab !== "tarifas") return;
@@ -386,6 +389,30 @@ export default function CatalogosPage() {
     }
   };
 
+  const cargarEstadoMig = useCallback(async () => {
+    if (empresaIdMig == null) { setMigEstado("sin_iniciar"); return; }
+    try {
+      const r = await fetch(`${API_BASE_URL}/erp/migraciones/estado?empresa_id=${empresaIdMig}`, { headers: authHeaders() });
+      const d = r.ok ? await r.json() : null;
+      setMigEstado(d?.estado ?? "sin_iniciar");
+    } catch { setMigEstado("sin_iniciar"); }
+  }, [empresaIdMig]);
+
+  const cambiarEstadoMig = async (accion: "iniciar" | "cerrar") => {
+    if (empresaIdMig == null) return;
+    try {
+      const r = await fetch(`${API_BASE_URL}/erp/migraciones/estado/${accion}?empresa_id=${empresaIdMig}`, {
+        method: "POST", headers: authHeaders(),
+      });
+      if (r.ok) { const d = await r.json(); setMigEstado(d?.estado ?? migEstado); }
+    } catch { /* */ }
+  };
+
+  useEffect(() => {
+    if (!authChecked || tab !== "migraciones") return;
+    cargarEstadoMig();
+  }, [authChecked, tab, empresaIdMig, cargarEstadoMig]);
+
   if (!authChecked) return null;
 
   const periodosTxt = (t: Tarifa, tipo: string) =>
@@ -488,7 +515,31 @@ export default function CatalogosPage() {
 
       {tab === "migraciones" ? (
         <div style={{ maxWidth: 760 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 6px" }}>Migración de una empresa</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 6px", flexWrap: "wrap" }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Migración de una empresa</h3>
+            {empresaIdMig != null && (
+              <>
+                <span style={
+                  migEstado === "en_curso"
+                    ? { fontSize: 12, padding: "2px 9px", borderRadius: 6, background: "rgba(224,201,123,0.18)", color: "#E0C97B" }
+                    : migEstado === "cerrada"
+                    ? { fontSize: 12, padding: "2px 9px", borderRadius: 6, background: "rgba(123,224,163,0.15)", color: "#7BE0A3" }
+                    : { fontSize: 12, padding: "2px 9px", borderRadius: 6, background: "rgba(255,255,255,0.06)", color: "rgba(241,239,232,0.55)" }
+                }>
+                  {migEstado === "en_curso" ? "Corrección en curso" : migEstado === "cerrada" ? "Migración cerrada" : "Sin iniciar"}
+                </span>
+                {migEstado === "en_curso" ? (
+                  <button onClick={async () => { await cambiarEstadoMig("cerrar"); }} style={{ ...btnGhost, marginLeft: "auto" }}>
+                    Cerrar migración
+                  </button>
+                ) : (
+                  <button onClick={async () => { await cambiarEstadoMig("iniciar"); }} style={{ ...btnGhost, marginLeft: "auto" }}>
+                    Iniciar corrección
+                  </button>
+                )}
+              </>
+            )}
+          </div>
           <p style={{ color: "rgba(241,239,232,0.6)", fontSize: 13, lineHeight: 1.6, margin: "0 0 18px" }}>
             Para dar de alta una distribuidora nueva, carga su maestro completo con estas plantillas Excel.
             Cada plantilla incluye una hoja <b>Instrucciones</b> que explica cómo rellenarla.
@@ -531,6 +582,12 @@ export default function CatalogosPage() {
                 Vas a migrar a la empresa: <b>{empresaNombreMig || `empresa ${empresaIdMig}`}</b>
               </div>
 
+              {migEstado === "en_curso" && (
+                <div style={{ background: "rgba(224,201,123,0.1)", border: "0.5px solid rgba(224,201,123,0.4)", color: "#E0C97B", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                  <b>Modo corrección activo.</b> Reenviar un fichero <b>actualizará</b> los registros que ya existan (campos no vacíos), en vez de omitirlos. Cierra la migración cuando termines.
+                </div>
+              )}
+
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {[
                   ["titulares", "1 · Titulares"],
@@ -567,13 +624,13 @@ export default function CatalogosPage() {
                 <button onClick={descargarInforme} style={{ ...btnGhost, marginLeft: "auto" }}>⬇ Descargar informe</button>
               </div>
               {migResultados.map((res) => {
-                const r = res as { entidad: string; total: number; creadas: number; omitidas: number; fallidas: number; errores: { fila: number; columna: string | null; valor: unknown; motivo: string }[] };
-                return (
+                const r = res as { entidad: string; total: number; creadas: number; actualizadas: number; omitidas: number; fallidas: number; errores: { fila: number; columna: string | null; valor: unknown; motivo: string }[] };                return (
                   <div key={r.entidad} style={{ border: "0.5px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>
                     <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{r.entidad}</span>
                       <span style={{ fontSize: 12, color: "rgba(241,239,232,0.6)" }}>Total: {r.total}</span>
                       <span style={{ fontSize: 12, color: "#7BE0A3" }}>Creadas: {r.creadas}</span>
+                      <span style={{ fontSize: 12, color: "#85B7EB" }}>Actualizadas: {r.actualizadas}</span>
                       <span style={{ fontSize: 12, color: "#E0C97B" }}>Omitidas: {r.omitidas}</span>
                       <span style={{ fontSize: 12, color: "#F0999B" }}>Fallidas: {r.fallidas}</span>
                     </div>

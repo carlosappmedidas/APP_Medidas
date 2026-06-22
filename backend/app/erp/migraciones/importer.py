@@ -213,7 +213,7 @@ def _importar_titulares(db: Session, user: User, empresa_id: int, filas, res: Re
                 existente = _existente_titular(db, empresa_id, payload.identificador)
                 if existente is not None:
                     try:
-                        _update_parcial(db, user, "titulares", existente.id, datos)
+                        _update_parcial(db, user, "titulares", existente.id, datos)  # type: ignore[arg-type]
                         res.actualizadas += 1
                     except (services.ValidacionError, ValueError) as e:
                         res.errores.append(ErrorFila(fila.fila_excel, "identificador", payload.identificador, str(e)))
@@ -261,7 +261,7 @@ def _importar_comercializadoras_empresa(db: Session, user: User, empresa_id: int
                 existente = _existente_com_empresa(db, empresa_id, com_id)
                 if existente is not None:
                     try:
-                        _update_parcial(db, user, "comercializadoras_empresa", existente.id, datos)
+                        _update_parcial(db, user, "comercializadoras_empresa", existente.id, datos)  # type: ignore[arg-type]
                         res.actualizadas += 1
                     except ValueError as e:
                         res.errores.append(ErrorFila(fila.fila_excel, "comercializadora_codigo_ree", com_id, str(e)))
@@ -302,7 +302,7 @@ def _importar_suministros(db: Session, user: User, empresa_id: int, filas, res: 
                 existente = _existente_suministro(db, empresa_id, payload.cups)
                 if existente is not None:
                     try:
-                        _update_parcial(db, user, "suministros", existente.id, datos)
+                        _update_parcial(db, user, "suministros", existente.id, datos)  # type: ignore[arg-type]
                         res.actualizadas += 1
                     except (services.ValidacionError, ValueError) as e:
                         res.errores.append(ErrorFila(fila.fila_excel, "cups", payload.cups, str(e)))
@@ -371,7 +371,7 @@ def _importar_contratos(db: Session, user: User, empresa_id: int, filas, res: Re
                     upd = dict(datos)
                     upd["potencias"] = pots
                     try:
-                        _update_parcial(db, user, "contratos", existente.id, upd, versionar=False)
+                        _update_parcial(db, user, "contratos", existente.id, upd, versionar=False)  # type: ignore[arg-type]
                         res.actualizadas += 1
                     except (services_contrato.ContratoValidacionError,
                             services_contrato.ContratoSuministroActivoError, ValueError) as e:
