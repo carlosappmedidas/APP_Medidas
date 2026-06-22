@@ -16,9 +16,10 @@ from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.erp import schemas, services, services_contrato
 from app.erp.migraciones import plantillas as mig_plantillas
+from app.erp.migraciones import importer as mig_importer
 from app.tenants.models import User
 
-from fastapi import Response
+from fastapi import Response, UploadFile, File
 
 router = APIRouter(prefix="/erp", tags=["erp"])
 
@@ -461,3 +462,17 @@ def descargar_plantilla_migracion(
         media_type=_XLSX_MEDIA,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/migraciones/importar/{entidad}")
+def importar_migracion(
+    entidad: str,
+    empresa_id: int = Query(..., description="Empresa destino de la migración"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Importa un Excel de migración (insert-only) a la empresa indicada. Devuelve resumen + errores."""
+    contenido = file.file.read()
+    resultado = mig_importer.importar(db, user, empresa_id, entidad, contenido)
+    return resultado.as_dict()
