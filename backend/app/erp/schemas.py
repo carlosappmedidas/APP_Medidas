@@ -791,8 +791,36 @@ class ErpEquipoMedidaBase(BaseModel):
     activo: bool = True
 
 
-class ErpEquipoMedidaCreate(ErpEquipoMedidaBase):
-    pass
+class ErpEquipoMedidaCreate(BaseModel):
+    # --- Datos del equipo (no se fija suministro_id ni estado en el alta) ---
+    numero_serie: str = Field(..., max_length=40)
+    tipo_equipo: str = Field(default="contador", max_length=20)
+    fabricante: Optional[str] = Field(default=None, max_length=120)
+    modelo: Optional[str] = Field(default=None, max_length=120)
+    version_firmware: Optional[str] = Field(default=None, max_length=60)
+    anio_fabricacion: Optional[int] = None
+
+    tipo_telegestion: Optional[str] = Field(default=None, max_length=2)
+    propiedad: Optional[str] = Field(default=None, max_length=2)
+    propiedad_icp: Optional[str] = Field(default=None, max_length=2)
+    modo_control_potencia: Optional[str] = Field(default=None, max_length=20)
+
+    fecha_verificacion: Optional[date] = None
+    fecha_caducidad_verificacion: Optional[date] = None
+
+    notas: Optional[str] = None
+    activo: bool = True
+
+    # --- Entrada en almacen al crear (Opcion A) ---
+    recibir_en_almacen: bool = True
+    alm_ubicacion: Optional[str] = Field(default=None, max_length=160)
+    alm_lote_compra: Optional[str] = Field(default=None, max_length=120)
+    alm_albaran_proveedor: Optional[str] = Field(default=None, max_length=120)
+    alm_proveedor: Optional[str] = Field(default=None, max_length=160)
+    alm_estado_equipo: str = Field(default="nuevo", max_length=30)
+    alm_fecha_garantia: Optional[date] = None
+    alm_fecha_entrada: Optional[date] = None
+    alm_notas: Optional[str] = None
 
 
 class ErpEquipoMedidaUpdate(BaseModel):

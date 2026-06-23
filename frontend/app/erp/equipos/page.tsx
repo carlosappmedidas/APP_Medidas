@@ -46,6 +46,15 @@ interface Form {
   fecha_caducidad_verificacion: string;
   estado: string;
   suministro_id: string;
+  recibir_en_almacen: boolean;
+  alm_ubicacion: string;
+  alm_lote_compra: string;
+  alm_albaran_proveedor: string;
+  alm_proveedor: string;
+  alm_estado_equipo: string;
+  alm_fecha_garantia: string;
+  alm_fecha_entrada: string;
+  alm_notas: string;
   baja_fecha: string;
   baja_motivo: string;
   notas: string;
@@ -58,6 +67,10 @@ const EMPTY: Form = {
   tipo_telegestion: "", propiedad: "", propiedad_icp: "", modo_control_potencia: "",
   fecha_verificacion: "", fecha_caducidad_verificacion: "",
   estado: "en_almacen", suministro_id: "",
+  recibir_en_almacen: true,
+  alm_ubicacion: "", alm_lote_compra: "", alm_albaran_proveedor: "",
+  alm_proveedor: "", alm_estado_equipo: "nuevo", alm_fecha_garantia: "",
+  alm_fecha_entrada: "", alm_notas: "",
   baja_fecha: "", baja_motivo: "",
   notas: "", activo: true,
 };
@@ -364,6 +377,7 @@ export default function EquiposPage() {
       if (!r.ok) return;
       const s = await r.json();
       setForm({
+        ...EMPTY,
         numero_serie: s.numero_serie ?? "",
         tipo_equipo: s.tipo_equipo ?? "contador",
         fabricante: s.fabricante ?? "",
@@ -537,7 +551,9 @@ export default function EquiposPage() {
   function buildPayload(): Record<string, unknown> {
     const num = (v: string) => (v.trim() === "" ? null : Number(v));
     const txt = (v: string) => (v.trim() === "" ? null : v.trim());
-    return {
+
+    // Campos comunes del equipo
+    const base: Record<string, unknown> = {
       numero_serie: form.numero_serie.trim(),
       tipo_equipo: form.tipo_equipo || "contador",
       fabricante: txt(form.fabricante),
@@ -550,12 +566,33 @@ export default function EquiposPage() {
       modo_control_potencia: txt(form.modo_control_potencia),
       fecha_verificacion: txt(form.fecha_verificacion),
       fecha_caducidad_verificacion: txt(form.fecha_caducidad_verificacion),
-      estado: form.estado || "en_almacen",
-      suministro_id: num(form.suministro_id),
-      baja_fecha: txt(form.baja_fecha),
-      baja_motivo: txt(form.baja_motivo),
       notas: txt(form.notas),
       activo: form.activo,
+    };
+
+    if (editingId == null) {
+      // ALTA: no se fija suministro_id ni estado (eso lo hace Instalar / el backend).
+      // Se incluye la entrada en almacen (Opcion A).
+      return {
+        ...base,
+        recibir_en_almacen: form.recibir_en_almacen,
+        alm_ubicacion: txt(form.alm_ubicacion),
+        alm_lote_compra: txt(form.alm_lote_compra),
+        alm_albaran_proveedor: txt(form.alm_albaran_proveedor),
+        alm_proveedor: txt(form.alm_proveedor),
+        alm_estado_equipo: form.alm_estado_equipo || "nuevo",
+        alm_fecha_garantia: txt(form.alm_fecha_garantia),
+        alm_fecha_entrada: txt(form.alm_fecha_entrada),
+        alm_notas: txt(form.alm_notas),
+      };
+    }
+
+    // EDICION: mantiene estado y campos de baja (no toca suministro_id: derivado por Instalar)
+    return {
+      ...base,
+      estado: form.estado || "en_almacen",
+      baja_fecha: txt(form.baja_fecha),
+      baja_motivo: txt(form.baja_motivo),
     };
   }
 
@@ -693,10 +730,39 @@ export default function EquiposPage() {
           <TextField label="Caducidad verificación" type="date" value={form.fecha_caducidad_verificacion} onChange={(v) => set("fecha_caducidad_verificacion", v)} />
         </SectionCard>
 
-        <SectionCard title="Ubicación / estado">
-          <SelectField label="Estado" value={form.estado} onChange={(v) => set("estado", v)} options={ESTADO_OPCIONES} />
-          <TextField label="Suministro ID (CUPS)" type="number" value={form.suministro_id} onChange={(v) => set("suministro_id", v)} />
-        </SectionCard>
+        {editingId != null && (
+          <SectionCard title="Ubicación / estado">
+            <SelectField label="Estado" value={form.estado} onChange={(v) => set("estado", v)} options={ESTADO_OPCIONES} />
+          </SectionCard>
+        )}
+
+        {editingId == null && (
+          <SectionCard title="Almacén / entrada en stock">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(241,239,232,0.8)", gridColumn: "1 / -1", marginBottom: 4 }}>
+              <input type="checkbox" checked={form.recibir_en_almacen}
+                onChange={(e) => set("recibir_en_almacen", e.target.checked)} />
+              Recibir en almacén al crear (recomendado para equipos nuevos)
+            </label>
+            {form.recibir_en_almacen && (
+              <>
+                <TextField label="Ubicación" value={form.alm_ubicacion} onChange={(v) => set("alm_ubicacion", v)} />
+                <SelectField label="Estado en almacén" value={form.alm_estado_equipo} onChange={(v) => set("alm_estado_equipo", v)}
+                  options={[
+                    { codigo: "nuevo", descripcion: "Nuevo" },
+                    { codigo: "reacondicionado", descripcion: "Reacondicionado" },
+                    { codigo: "averiado-pendiente", descripcion: "Averiado (pendiente)" },
+                    { codigo: "para-desguace", descripcion: "Para desguace" },
+                  ]} />
+                <TextField label="Lote de compra" value={form.alm_lote_compra} onChange={(v) => set("alm_lote_compra", v)} />
+                <TextField label="Albarán proveedor" value={form.alm_albaran_proveedor} onChange={(v) => set("alm_albaran_proveedor", v)} />
+                <TextField label="Proveedor" value={form.alm_proveedor} onChange={(v) => set("alm_proveedor", v)} />
+                <TextField label="Fecha entrada" type="date" value={form.alm_fecha_entrada} onChange={(v) => set("alm_fecha_entrada", v)} />
+                <TextField label="Fecha garantía" type="date" value={form.alm_fecha_garantia} onChange={(v) => set("alm_fecha_garantia", v)} />
+                <TextField label="Notas almacén" span value={form.alm_notas} onChange={(v) => set("alm_notas", v)} />
+              </>
+            )}
+          </SectionCard>
+        )}
 
         {editingId != null && (
           <SectionCard title="Contrato asociado (derivado vía CUPS · solo lectura)">

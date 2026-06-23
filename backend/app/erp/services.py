@@ -932,21 +932,55 @@ def crear_equipo(
         )
 
     ahora = _ahora_madrid_naive()
+
+    # Separa los campos del equipo de los de almacen (alm_* + recibir_en_almacen)
+    datos = payload.model_dump()
+    recibir = datos.pop("recibir_en_almacen", False)
+    alm = {
+        "ubicacion": datos.pop("alm_ubicacion", None),
+        "lote_compra": datos.pop("alm_lote_compra", None),
+        "albaran_proveedor": datos.pop("alm_albaran_proveedor", None),
+        "proveedor": datos.pop("alm_proveedor", None),
+        "estado_equipo_en_almacen": datos.pop("alm_estado_equipo", None) or "nuevo",
+        "fecha_garantia": datos.pop("alm_fecha_garantia", None),
+        "fecha_entrada": datos.pop("alm_fecha_entrada", None),
+        "notas": datos.pop("alm_notas", None),
+    }
+
+    # El equipo nace en almacen, sin CUPS: el vinculo se fija solo al Instalar
     eq = ErpEquipoMedida(
         tenant_id=user.tenant_id,
         empresa_id=empresa_id,
+        estado="en_almacen",
+        suministro_id=None,
         created_at=ahora,
         updated_at=ahora,
-        **payload.model_dump(),
+        **datos,
     )
     db.add(eq)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise DuplicateNumeroSerieError(
             f"Ya existe un equipo con numero de serie {payload.numero_serie} en esta empresa"
         )
+
+    # Opcion A: si se recibe en almacen al crear, abre la fila erp_almacen
+    if recibir:
+        alm_row = ErpAlmacen(
+            tenant_id=user.tenant_id,
+            empresa_id=empresa_id,
+            equipo_id=eq.id,
+            fecha_salida=None,
+            activo=True,
+            created_at=ahora,
+            updated_at=ahora,
+            **alm,
+        )
+        db.add(alm_row)
+
+    db.commit()
     db.refresh(eq)
     return _equipo_out(db, eq)
 
