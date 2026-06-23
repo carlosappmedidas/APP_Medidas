@@ -1106,6 +1106,7 @@ def instalar_equipo(
         equipo_id=eq.id,
         suministro_id=payload.suministro_id,
         tipo_movimiento=payload.tipo_movimiento or "instalacion",
+        tipo_uso=payload.tipo_uso,
         equipo_sustituido_id=payload.equipo_sustituido_id,
         fecha_alta=payload.fecha,
         fecha_baja=None,

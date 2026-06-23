@@ -898,6 +898,7 @@ class ErpInstalacionOut(BaseModel):
     equipo_id: int
     suministro_id: int
     tipo_movimiento: str
+    tipo_uso: Optional[str] = None
     equipo_sustituido_id: Optional[int] = None
     fecha_alta: Optional[date] = None
     fecha_baja: Optional[date] = None
@@ -925,6 +926,7 @@ class InstalarEquipoPayload(BaseModel):
     precintos: Optional[str] = None
     motivo: Optional[str] = None
     tipo_movimiento: str = Field(default="instalacion", max_length=20)
+    tipo_uso: Optional[str] = Field(default=None, max_length=20)
     equipo_sustituido_id: Optional[int] = None
     notas: Optional[str] = None
 

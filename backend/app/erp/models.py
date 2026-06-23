@@ -615,6 +615,7 @@ class ErpInstalacion(TimestampMixin, Base):
     suministro_id = Column(Integer, ForeignKey("erp_suministro.id"), nullable=False, index=True)
 
     tipo_movimiento = Column(String(20), nullable=False, default="instalacion", server_default="instalacion")
+    tipo_uso        = Column(String(20), nullable=True)   # consumo / generacion / supervisor (de la instalacion)
 
     equipo_sustituido_id = Column(Integer, ForeignKey("erp_equipo_medida.id"), nullable=True)
 

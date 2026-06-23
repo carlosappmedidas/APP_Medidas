@@ -150,10 +150,11 @@ interface MovForm {
   precintos: string;
   motivo: string;
   estado_destino: string;
+  tipo_uso: string;
 }
 const EMPTY_MOV: MovForm = {
   suministro_id: "", fecha: "", lectura: "", tecnico: "",
-  precintos: "", motivo: "", estado_destino: "en_almacen",
+  precintos: "", motivo: "", estado_destino: "en_almacen", tipo_uso: "",
 };
 
 const TIPO_EQUIPO_OPCIONES: Opcion[] = [
@@ -520,6 +521,7 @@ export default function EquiposPage() {
         url = `${API_BASE_URL}/erp/equipos/${editingId}/instalar`;
         body = {
           suministro_id: Number(movForm.suministro_id),
+          tipo_uso: movForm.tipo_uso === "" ? null : movForm.tipo_uso,
           fecha: txt(movForm.fecha), lectura: num(movForm.lectura),
           tecnico: txt(movForm.tecnico), precintos: txt(movForm.precintos),
           motivo: txt(movForm.motivo),
@@ -959,6 +961,16 @@ export default function EquiposPage() {
                       <label style={labelStyle}>Técnico</label>
                       <input style={inputStyle} value={movForm.tecnico}
                         onChange={(e) => setMovForm({ ...movForm, tecnico: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Tipo de uso</label>
+                      <select style={inputStyle} value={movForm.tipo_uso}
+                        onChange={(e) => setMovForm({ ...movForm, tipo_uso: e.target.value })}>
+                        <option value="" style={{ background: "#16181D" }}>—</option>
+                        <option value="consumo" style={{ background: "#16181D" }}>Consumo</option>
+                        <option value="generacion" style={{ background: "#16181D" }}>Generación</option>
+                        <option value="supervisor" style={{ background: "#16181D" }}>Supervisor</option>
+                      </select>
                     </div>
                     <div>
                       <label style={labelStyle}>Precintos</label>

@@ -59,6 +59,7 @@ export default function ErpEquipoContrato({
   const [sel, setSel] = useState<string>("");
   const [fecha, setFecha] = useState<string>("");
   const [lectura, setLectura] = useState<string>("");
+  const [tipoUso, setTipoUso] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -125,6 +126,7 @@ export default function ErpEquipoContrato({
         suministro_id: suministroId,
         fecha: fecha.trim() === "" ? null : fecha.trim(),
         lectura: lectura.trim() === "" ? null : Number(lectura),
+        tipo_uso: tipoUso === "" ? null : tipoUso,
         motivo: "Asignado desde el contrato",
       };
       const r = await fetch(`${API_BASE_URL}/erp/equipos/${sel}/instalar`, {
@@ -138,6 +140,7 @@ export default function ErpEquipoContrato({
       }
       setSel("");
       setLectura("");
+      setTipoUso("");
       setFiltro("");
       cargar();
     } catch {
@@ -203,6 +206,15 @@ export default function ErpEquipoContrato({
                       {e.numero_serie}{e.fabricante ? ` · ${e.fabricante}` : ""}{e.modelo ? ` ${e.modelo}` : ""}
                     </option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Tipo de uso</label>
+                <select style={inputStyle} value={tipoUso} onChange={(e) => setTipoUso(e.target.value)}>
+                  <option value="" style={{ background: "#16181D" }}>—</option>
+                  <option value="consumo" style={{ background: "#16181D" }}>Consumo</option>
+                  <option value="generacion" style={{ background: "#16181D" }}>Generación</option>
+                  <option value="supervisor" style={{ background: "#16181D" }}>Supervisor</option>
                 </select>
               </div>
               <div>
