@@ -33,6 +33,7 @@ from app.erp.models import (
     ErpEquipoMedida, ErpContrato,
     ErpCnmcPropiedadAparato, ErpCnmcTelegestion, ErpCnmcTipoPuntoMedida,
     ErpInstalacion,
+    ErpAlmacen,
 )
 from app.erp.schemas import (
     ErpTitularCreate, ErpTitularUpdate,
@@ -42,6 +43,7 @@ from app.erp.schemas import (
     ErpComercializadoraEmpresaCreate, ErpComercializadoraEmpresaUpdate, ErpComercializadoraEmpresaOut,
     ErpEquipoMedidaCreate, ErpEquipoMedidaUpdate, ErpEquipoMedidaOut,
     ErpInstalacionOut, InstalarEquipoPayload, RetirarEquipoPayload,
+    ErpAlmacenOut, RecibirAlmacenPayload,
 )
 from app.tenants.models import User
 
@@ -1087,6 +1089,9 @@ def instalar_equipo(
     db.add(ins)
     db.flush()  # asegura el INSERT antes de sincronizar la foto del equipo
 
+    # E-7c: al instalar, el equipo sale del almacen (cierra fila vigente si existe)
+    _cerrar_almacen_vigente(db, eq.id, payload.fecha, ahora)
+
     # Sincroniza la foto rapida del equipo
     eq.estado = "instalado"
     eq.suministro_id = payload.suministro_id
@@ -1126,6 +1131,120 @@ def retirar_equipo(
     eq.suministro_id = None
     eq.updated_at = ahora
 
+    # E-7c: si vuelve al stock util, abre una fila de almacen nueva
+    if destino == "en_almacen":
+        _abrir_almacen(db, eq, ahora, fecha=payload.fecha, estado_equipo="reacondicionado")
+
     db.commit()
     db.refresh(ins)
     return _instalacion_out(db, ins)
+
+
+# ===========================================================================
+# Modulo 2 - Almacen (E-7c): recibir / listar + helpers de sincronizacion
+# ===========================================================================
+def _almacen_out(db: Session, alm: "ErpAlmacen") -> "ErpAlmacenOut":
+    """Out con el derivado equipo_numero_serie."""
+    out = ErpAlmacenOut.model_validate(alm)
+    eq = db.query(ErpEquipoMedida).filter(ErpEquipoMedida.id == alm.equipo_id).first()
+    if eq is not None:
+        out.equipo_numero_serie = eq.numero_serie
+    return out
+
+
+def _almacen_vigente(db: Session, equipo_id: int) -> "Optional[ErpAlmacen]":
+    """Fila de almacen sin cerrar (fecha_salida IS NULL) del equipo, si existe."""
+    return (
+        db.query(ErpAlmacen)
+        .filter(ErpAlmacen.equipo_id == equipo_id, ErpAlmacen.fecha_salida.is_(None))
+        .order_by(ErpAlmacen.id.desc())
+        .first()
+    )
+
+
+def _cerrar_almacen_vigente(db: Session, equipo_id: int, fecha, ahora) -> None:
+    """Cierra la fila de almacen vigente (si la hay) poniendo fecha_salida.
+
+    Defensivo: si el equipo no tenia fila de almacen, no hace nada.
+    No hace commit; lo hace la accion que lo invoca.
+    """
+    alm = _almacen_vigente(db, equipo_id)
+    if alm is not None:
+        alm.fecha_salida = fecha
+        alm.updated_at = ahora
+
+
+def _abrir_almacen(db: Session, eq: "ErpEquipoMedida", ahora, fecha=None,
+                   estado_equipo: str = "reacondicionado") -> None:
+    """Abre una fila de almacen nueva para un equipo que vuelve al stock.
+
+    No hace commit; lo hace la accion que lo invoca.
+    """
+    alm = ErpAlmacen(
+        tenant_id=eq.tenant_id,
+        empresa_id=eq.empresa_id,
+        equipo_id=eq.id,
+        estado_equipo_en_almacen=estado_equipo,
+        fecha_entrada=fecha,
+        fecha_salida=None,
+        activo=True,
+        created_at=ahora,
+        updated_at=ahora,
+    )
+    db.add(alm)
+
+
+def listar_almacen(db: Session, user: User, equipo_id: int) -> "list[ErpAlmacenOut]":
+    """Historico de estancias en almacen de un equipo (mas reciente primero)."""
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+    filas = (
+        db.query(ErpAlmacen)
+        .filter(ErpAlmacen.equipo_id == eq.id)
+        .order_by(ErpAlmacen.fecha_entrada.desc().nullslast(), ErpAlmacen.id.desc())
+        .all()
+    )
+    return [_almacen_out(db, f) for f in filas]
+
+
+def recibir_en_almacen(
+    db: Session, user: User, equipo_id: int, payload: "RecibirAlmacenPayload"
+) -> "ErpAlmacenOut":
+    """Recibe un equipo en almacen: crea fila erp_almacen + equipo estado=en_almacen.
+
+    No permite recibir si el equipo esta instalado (tiene instalacion vigente).
+    """
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+
+    if _instalacion_vigente(db, eq.id) is not None:
+        raise InstalacionError("El equipo esta instalado; retiralo antes de recibirlo en almacen")
+    if _almacen_vigente(db, eq.id) is not None:
+        raise InstalacionError("El equipo ya tiene una estancia de almacen vigente")
+
+    ahora = _ahora_madrid_naive()
+    alm = ErpAlmacen(
+        tenant_id=user.tenant_id,
+        empresa_id=eq.empresa_id,
+        equipo_id=eq.id,
+        ubicacion=payload.ubicacion,
+        lote_compra=payload.lote_compra,
+        albaran_proveedor=payload.albaran_proveedor,
+        proveedor=payload.proveedor,
+        estado_equipo_en_almacen=payload.estado_equipo_en_almacen or "nuevo",
+        fecha_garantia=payload.fecha_garantia,
+        fecha_entrada=payload.fecha_entrada,
+        fecha_salida=None,
+        notas=payload.notas,
+        activo=True,
+        created_at=ahora,
+        updated_at=ahora,
+    )
+    db.add(alm)
+    db.flush()
+
+    eq.estado = "en_almacen"
+    eq.suministro_id = None
+    eq.updated_at = ahora
+
+    db.commit()
+    db.refresh(alm)
+    return _almacen_out(db, alm)

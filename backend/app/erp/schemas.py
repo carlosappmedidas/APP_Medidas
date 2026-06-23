@@ -885,3 +885,37 @@ class RetirarEquipoPayload(BaseModel):
     lectura: Optional[float] = None
     motivo: Optional[str] = None
     estado_destino: str = Field(default="en_almacen", max_length=20)  # en_almacen|averiado|retirado
+
+
+class ErpAlmacenOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    empresa_id: int
+    equipo_id: int
+    ubicacion: Optional[str] = None
+    lote_compra: Optional[str] = None
+    albaran_proveedor: Optional[str] = None
+    proveedor: Optional[str] = None
+    estado_equipo_en_almacen: str
+    fecha_garantia: Optional[date] = None
+    fecha_entrada: Optional[date] = None
+    fecha_salida: Optional[date] = None
+    notas: Optional[str] = None
+    activo: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    # Derivado (lo rellena services.py)
+    equipo_numero_serie: Optional[str] = None
+
+
+class RecibirAlmacenPayload(BaseModel):
+    ubicacion: Optional[str] = Field(default=None, max_length=160)
+    lote_compra: Optional[str] = Field(default=None, max_length=120)
+    albaran_proveedor: Optional[str] = Field(default=None, max_length=120)
+    proveedor: Optional[str] = Field(default=None, max_length=160)
+    estado_equipo_en_almacen: str = Field(default="nuevo", max_length=30)
+    fecha_garantia: Optional[date] = None
+    fecha_entrada: Optional[date] = None
+    notas: Optional[str] = None

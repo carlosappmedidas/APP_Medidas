@@ -623,3 +623,39 @@ class ErpInstalacion(TimestampMixin, Base):
 
     notas  = Column(Text, nullable=True)
     activo = Column(Boolean, nullable=False, default=True)
+
+
+# ---------------------------------------------------------------------------
+# Modulo 2 - ErpAlmacen (stock no instalado, E-7c)
+# ---------------------------------------------------------------------------
+class ErpAlmacen(TimestampMixin, Base):
+    """Stock no instalado: donde y en que lote esta fisicamente un equipo.
+
+    Una fila por estancia del equipo en almacen. La fila VIGENTE
+    (fecha_salida IS NULL) es la ubicacion actual; debe haber como mucho una
+    por equipo. Sincronizada por acciones:
+      - recibir_en_almacen: abre fila (fecha_entrada) + equipo estado=en_almacen
+      - instalar_equipo (E-7b): cierra fila vigente (fecha_salida)
+      - retirar_equipo a en_almacen (E-7b): abre fila nueva
+    """
+    __tablename__ = "erp_almacen"
+
+    id         = Column(Integer, primary_key=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    equipo_id = Column(Integer, ForeignKey("erp_equipo_medida.id"), nullable=False, index=True)
+
+    ubicacion         = Column(String(160), nullable=True)
+    lote_compra       = Column(String(120), nullable=True)
+    albaran_proveedor = Column(String(120), nullable=True)
+    proveedor         = Column(String(160), nullable=True)
+
+    estado_equipo_en_almacen = Column(String(30), nullable=False, default="nuevo", server_default="nuevo")
+
+    fecha_garantia = Column(Date, nullable=True)
+    fecha_entrada  = Column(Date, nullable=True)
+    fecha_salida   = Column(Date, nullable=True)
+
+    notas  = Column(Text, nullable=True)
+    activo = Column(Boolean, nullable=False, default=True)

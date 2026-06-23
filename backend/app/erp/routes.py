@@ -641,3 +641,33 @@ def retirar_equipo_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Modulo 2 - Almacen (E-7c): recibir en almacen / historial de almacen
+# ---------------------------------------------------------------------------
+@router.get("/equipos/{equipo_id}/almacen", response_model=list[schemas.ErpAlmacenOut])
+def listar_almacen_endpoint(
+    equipo_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.listar_almacen(db, user, equipo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post("/equipos/{equipo_id}/almacen", response_model=schemas.ErpAlmacenOut, status_code=status.HTTP_201_CREATED)
+def recibir_en_almacen_endpoint(
+    equipo_id: int,
+    payload: schemas.RecibirAlmacenPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.recibir_en_almacen(db, user, equipo_id, payload)
+    except services.InstalacionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

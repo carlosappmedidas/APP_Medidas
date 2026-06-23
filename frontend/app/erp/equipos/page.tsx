@@ -90,6 +90,36 @@ interface Instalacion {
   motivo: string | null;
   motivo_baja: string | null;
 }
+
+// E-7c: estancias en almacen
+interface Almacen {
+  id: number;
+  ubicacion: string | null;
+  lote_compra: string | null;
+  albaran_proveedor: string | null;
+  proveedor: string | null;
+  estado_equipo_en_almacen: string;
+  fecha_garantia: string | null;
+  fecha_entrada: string | null;
+  fecha_salida: string | null;
+  notas: string | null;
+  equipo_numero_serie: string | null;
+}
+
+interface RecibirForm {
+  ubicacion: string;
+  lote_compra: string;
+  albaran_proveedor: string;
+  proveedor: string;
+  estado_equipo_en_almacen: string;
+  fecha_garantia: string;
+  fecha_entrada: string;
+  notas: string;
+}
+const EMPTY_RECIBIR: RecibirForm = {
+  ubicacion: "", lote_compra: "", albaran_proveedor: "", proveedor: "",
+  estado_equipo_en_almacen: "nuevo", fecha_garantia: "", fecha_entrada: "", notas: "",
+};
 interface OptSuministro { id: number; cups: string; }
 
 interface MovForm {
@@ -262,6 +292,12 @@ export default function EquiposPage() {
 
   // E-7b: historial de movimientos + modal instalar/retirar
   const [historial, setHistorial] = useState<Instalacion[]>([]);
+  // E-7c: historial de almacen + modal recibir
+  const [almacen, setAlmacen] = useState<Almacen[]>([]);
+  const [recibirOpen, setRecibirOpen] = useState(false);
+  const [recibirForm, setRecibirForm] = useState<RecibirForm>(EMPTY_RECIBIR);
+  const [recibirSaving, setRecibirSaving] = useState(false);
+  const [recibirError, setRecibirError] = useState<string | null>(null);
   const [sumOpts, setSumOpts] = useState<OptSuministro[]>([]);
   const [modal, setModal] = useState<null | "instalar" | "retirar">(null);
   const [movForm, setMovForm] = useState<MovForm>(EMPTY_MOV);
@@ -358,6 +394,7 @@ export default function EquiposPage() {
       setEditingId(id);
       setPanelOpen(true);
       cargarHistorial(id);
+      cargarAlmacen(id);
     } catch {
       /* noop */
     }
@@ -372,6 +409,57 @@ export default function EquiposPage() {
       setHistorial([]);
     }
   }, []);
+
+  const cargarAlmacen = useCallback(async (id: number) => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/erp/equipos/${id}/almacen`, { headers: authHeaders() });
+      const data: unknown = r.ok ? await r.json() : [];
+      setAlmacen(Array.isArray(data) ? (data as Almacen[]) : []);
+    } catch {
+      setAlmacen([]);
+    }
+  }, []);
+
+  function abrirRecibir() {
+    setRecibirForm({ ...EMPTY_RECIBIR, fecha_entrada: new Date().toISOString().slice(0, 10) });
+    setRecibirError(null);
+    setRecibirOpen(true);
+  }
+
+  async function guardarRecibir() {
+    if (editingId == null) return;
+    setRecibirSaving(true);
+    setRecibirError(null);
+    try {
+      const txt = (v: string) => (v.trim() === "" ? null : v.trim());
+      const body: Record<string, unknown> = {
+        ubicacion: txt(recibirForm.ubicacion),
+        lote_compra: txt(recibirForm.lote_compra),
+        albaran_proveedor: txt(recibirForm.albaran_proveedor),
+        proveedor: txt(recibirForm.proveedor),
+        estado_equipo_en_almacen: recibirForm.estado_equipo_en_almacen || "nuevo",
+        fecha_garantia: txt(recibirForm.fecha_garantia),
+        fecha_entrada: txt(recibirForm.fecha_entrada),
+        notas: txt(recibirForm.notas),
+      };
+      const r = await fetch(`${API_BASE_URL}/erp/equipos/${editingId}/almacen`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        setRecibirError(await readApiError(r, "No se pudo recibir en almacén."));
+        return;
+      }
+      setRecibirOpen(false);
+      abrirFicha(editingId);
+      cargar();
+    } catch {
+      setRecibirError("Error de conexión.");
+    } finally {
+      setRecibirSaving(false);
+    }
+  }
 
   async function cargarSuministrosAlmacen() {
     if (empresaId == null) return;
@@ -442,6 +530,8 @@ export default function EquiposPage() {
     setEditingId(null);
     setErrorMsg(null);
     setHistorial([]);
+    setAlmacen([]);
+    setRecibirOpen(false);
   }
 
   function buildPayload(): Record<string, unknown> {
@@ -669,6 +759,51 @@ export default function EquiposPage() {
           </div>
         )}
 
+        {editingId != null && (
+          <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={cardTitleStyle}>Almacén / stock</div>
+              <button type="button" onClick={abrirRecibir}
+                disabled={form.estado !== "en_almacen" || almacen.some((a) => a.fecha_salida == null)}
+                style={{ ...btnGhost,
+                  opacity: form.estado !== "en_almacen" || almacen.some((a) => a.fecha_salida == null) ? 0.4 : 1,
+                  cursor: form.estado !== "en_almacen" || almacen.some((a) => a.fecha_salida == null) ? "default" : "pointer" }}>
+                + Recibir en almacén
+              </button>
+            </div>
+            {almacen.length === 0 ? (
+              <p style={{ color: "rgba(241,239,232,0.5)", fontSize: 13, margin: 0 }}>Sin estancias en almacén registradas.</p>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ color: "rgba(241,239,232,0.5)", textAlign: "left" }}>
+                    <th style={{ padding: "6px 8px" }}>Entrada</th>
+                    <th style={{ padding: "6px 8px" }}>Salida</th>
+                    <th style={{ padding: "6px 8px" }}>Estado</th>
+                    <th style={{ padding: "6px 8px" }}>Ubicación</th>
+                    <th style={{ padding: "6px 8px" }}>Lote</th>
+                    <th style={{ padding: "6px 8px" }}>Proveedor</th>
+                    <th style={{ padding: "6px 8px" }}>Garantía</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {almacen.map((a) => (
+                    <tr key={a.id} style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)" }}>
+                      <td style={{ padding: "6px 8px" }}>{a.fecha_entrada ?? "—"}</td>
+                      <td style={{ padding: "6px 8px" }}>{a.fecha_salida ?? <span style={{ color: "#7BE0A3" }}>en almacén</span>}</td>
+                      <td style={{ padding: "6px 8px" }}>{a.estado_equipo_en_almacen}</td>
+                      <td style={{ padding: "6px 8px" }}>{a.ubicacion ?? "—"}</td>
+                      <td style={{ padding: "6px 8px" }}>{a.lote_compra ?? "—"}</td>
+                      <td style={{ padding: "6px 8px" }}>{a.proveedor ?? "—"}</td>
+                      <td style={{ padding: "6px 8px" }}>{a.fecha_garantia ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
         <SectionCard title="Baja del parque / notas">
           <TextField label="Fecha baja" type="date" value={form.baja_fecha} onChange={(v) => set("baja_fecha", v)} />
           <TextField label="Motivo baja" span value={form.baja_motivo} onChange={(v) => set("baja_motivo", v)} />
@@ -750,6 +885,78 @@ export default function EquiposPage() {
                 <button onClick={guardarMov} disabled={movSaving}
                   style={{ ...btnPrimary, cursor: movSaving ? "default" : "pointer", opacity: movSaving ? 0.5 : 1 }}>
                   {movSaving ? "Guardando…" : (modal === "instalar" ? "Instalar" : "Retirar")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {recibirOpen && (
+          <div onClick={() => !recibirSaving && setRecibirOpen(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }}>
+            <div onClick={(e) => e.stopPropagation()}
+              style={{ background: "#16181D", border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 12, width: "min(520px, 100%)", maxHeight: "86vh", overflow: "auto", padding: 20 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 14px" }}>Recibir equipo en almacén</h2>
+
+              {recibirError && (
+                <div style={{ background: "rgba(240,153,155,0.1)", border: "0.5px solid rgba(240,153,155,0.4)", color: "#F0999B", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+                  {recibirError}
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Ubicación</label>
+                  <input style={inputStyle} value={recibirForm.ubicacion}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, ubicacion: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Estado en almacén</label>
+                  <select style={inputStyle} value={recibirForm.estado_equipo_en_almacen}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, estado_equipo_en_almacen: e.target.value })}>
+                    <option value="nuevo" style={{ background: "#16181D" }}>Nuevo</option>
+                    <option value="reacondicionado" style={{ background: "#16181D" }}>Reacondicionado</option>
+                    <option value="averiado-pendiente" style={{ background: "#16181D" }}>Averiado (pendiente)</option>
+                    <option value="para-desguace" style={{ background: "#16181D" }}>Para desguace</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Lote de compra</label>
+                  <input style={inputStyle} value={recibirForm.lote_compra}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, lote_compra: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Albarán proveedor</label>
+                  <input style={inputStyle} value={recibirForm.albaran_proveedor}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, albaran_proveedor: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Proveedor</label>
+                  <input style={inputStyle} value={recibirForm.proveedor}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, proveedor: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Fecha entrada</label>
+                  <input type="date" style={inputStyle} value={recibirForm.fecha_entrada}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, fecha_entrada: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Fecha garantía</label>
+                  <input type="date" style={inputStyle} value={recibirForm.fecha_garantia}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, fecha_garantia: e.target.value })} />
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>Notas</label>
+                  <input style={inputStyle} value={recibirForm.notas}
+                    onChange={(e) => setRecibirForm({ ...recibirForm, notas: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+                <button onClick={() => setRecibirOpen(false)} disabled={recibirSaving} style={btnGhost}>Cancelar</button>
+                <button onClick={guardarRecibir} disabled={recibirSaving}
+                  style={{ ...btnPrimary, cursor: recibirSaving ? "default" : "pointer", opacity: recibirSaving ? 0.5 : 1 }}>
+                  {recibirSaving ? "Guardando…" : "Recibir"}
                 </button>
               </div>
             </div>
