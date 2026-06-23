@@ -566,6 +566,13 @@ class ErpEquipoMedida(TimestampMixin, Base):
     propiedad_icp    = Column(String(2), nullable=True)   # CNMC Tabla 32 (propiedad del ICP)
     modo_control_potencia = Column(String(20), nullable=True)  # ICP / maximetro
 
+    # E-7d: campos extra del equipo (giro, alquiler, precinto)
+    giro_digitos     = Column(Integer, nullable=True)
+    alquiler         = Column(Boolean, nullable=True)
+    tipo_alquiler    = Column(String(120), nullable=True)
+    numero_precinto  = Column(String(60), nullable=True)
+    fecha_precintado = Column(Date, nullable=True)
+
     # Verificacion metrologica (RD 1110/2007 art.17 + RD 889/2006)
     fecha_verificacion            = Column(Date, nullable=True)
     fecha_caducidad_verificacion  = Column(Date, nullable=True)

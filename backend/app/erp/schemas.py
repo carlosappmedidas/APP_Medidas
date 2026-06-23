@@ -778,6 +778,13 @@ class ErpEquipoMedidaBase(BaseModel):
     propiedad_icp: Optional[str] = Field(default=None, max_length=2)          # CNMC Tabla 32
     modo_control_potencia: Optional[str] = Field(default=None, max_length=20)
 
+    # E-7d: campos extra del equipo
+    giro_digitos: Optional[int] = None
+    alquiler: Optional[bool] = None
+    tipo_alquiler: Optional[str] = Field(default=None, max_length=120)
+    numero_precinto: Optional[str] = Field(default=None, max_length=60)
+    fecha_precintado: Optional[date] = None
+
     fecha_verificacion: Optional[date] = None
     fecha_caducidad_verificacion: Optional[date] = None
 
@@ -804,6 +811,13 @@ class ErpEquipoMedidaCreate(BaseModel):
     propiedad: Optional[str] = Field(default=None, max_length=2)
     propiedad_icp: Optional[str] = Field(default=None, max_length=2)
     modo_control_potencia: Optional[str] = Field(default=None, max_length=20)
+
+    # E-7d: campos extra del equipo
+    giro_digitos: Optional[int] = None
+    alquiler: Optional[bool] = None
+    tipo_alquiler: Optional[str] = Field(default=None, max_length=120)
+    numero_precinto: Optional[str] = Field(default=None, max_length=60)
+    fecha_precintado: Optional[date] = None
 
     fecha_verificacion: Optional[date] = None
     fecha_caducidad_verificacion: Optional[date] = None
@@ -835,6 +849,13 @@ class ErpEquipoMedidaUpdate(BaseModel):
     propiedad: Optional[str] = Field(default=None, max_length=2)
     propiedad_icp: Optional[str] = Field(default=None, max_length=2)
     modo_control_potencia: Optional[str] = Field(default=None, max_length=20)
+
+    # E-7d: campos extra del equipo
+    giro_digitos: Optional[int] = None
+    alquiler: Optional[bool] = None
+    tipo_alquiler: Optional[str] = Field(default=None, max_length=120)
+    numero_precinto: Optional[str] = Field(default=None, max_length=60)
+    fecha_precintado: Optional[date] = None
 
     fecha_verificacion: Optional[date] = None
     fecha_caducidad_verificacion: Optional[date] = None

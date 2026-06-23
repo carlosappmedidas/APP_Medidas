@@ -46,6 +46,11 @@ interface Form {
   fecha_caducidad_verificacion: string;
   estado: string;
   suministro_id: string;
+  giro_digitos: string;
+  alquiler: boolean;
+  tipo_alquiler: string;
+  numero_precinto: string;
+  fecha_precintado: string;
   recibir_en_almacen: boolean;
   alm_ubicacion: string;
   alm_lote_compra: string;
@@ -67,6 +72,8 @@ const EMPTY: Form = {
   tipo_telegestion: "", propiedad: "", propiedad_icp: "", modo_control_potencia: "",
   fecha_verificacion: "", fecha_caducidad_verificacion: "",
   estado: "en_almacen", suministro_id: "",
+  giro_digitos: "", alquiler: false, tipo_alquiler: "",
+  numero_precinto: "", fecha_precintado: "",
   recibir_en_almacen: true,
   alm_ubicacion: "", alm_lote_compra: "", alm_albaran_proveedor: "",
   alm_proveedor: "", alm_estado_equipo: "nuevo", alm_fecha_garantia: "",
@@ -392,6 +399,11 @@ export default function EquiposPage() {
         fecha_caducidad_verificacion: s.fecha_caducidad_verificacion ?? "",
         estado: s.estado ?? "en_almacen",
         suministro_id: s.suministro_id != null ? String(s.suministro_id) : "",
+        giro_digitos: s.giro_digitos != null ? String(s.giro_digitos) : "",
+        alquiler: !!s.alquiler,
+        tipo_alquiler: s.tipo_alquiler ?? "",
+        numero_precinto: s.numero_precinto ?? "",
+        fecha_precintado: s.fecha_precintado ?? "",
         baja_fecha: s.baja_fecha ?? "",
         baja_motivo: s.baja_motivo ?? "",
         notas: s.notas ?? "",
@@ -566,6 +578,11 @@ export default function EquiposPage() {
       modo_control_potencia: txt(form.modo_control_potencia),
       fecha_verificacion: txt(form.fecha_verificacion),
       fecha_caducidad_verificacion: txt(form.fecha_caducidad_verificacion),
+      giro_digitos: num(form.giro_digitos),
+      alquiler: form.alquiler,
+      tipo_alquiler: txt(form.tipo_alquiler),
+      numero_precinto: txt(form.numero_precinto),
+      fecha_precintado: txt(form.fecha_precintado),
       notas: txt(form.notas),
       activo: form.activo,
     };
@@ -728,6 +745,17 @@ export default function EquiposPage() {
         <SectionCard title="Verificación metrológica">
           <TextField label="Fecha verificación" type="date" value={form.fecha_verificacion} onChange={(v) => set("fecha_verificacion", v)} />
           <TextField label="Caducidad verificación" type="date" value={form.fecha_caducidad_verificacion} onChange={(v) => set("fecha_caducidad_verificacion", v)} />
+        </SectionCard>
+
+        <SectionCard title="Contador / alquiler / precinto">
+          <TextField label="Giro (dígitos totalizador)" type="number" value={form.giro_digitos} onChange={(v) => set("giro_digitos", v)} />
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(241,239,232,0.8)" }}>
+            <input type="checkbox" checked={form.alquiler} onChange={(e) => set("alquiler", e.target.checked)} />
+            Alquiler
+          </label>
+          <TextField label="Tipo de alquiler" value={form.tipo_alquiler} onChange={(v) => set("tipo_alquiler", v)} />
+          <TextField label="Nº precinto" value={form.numero_precinto} onChange={(v) => set("numero_precinto", v)} />
+          <TextField label="Fecha precintado" type="date" value={form.fecha_precintado} onChange={(v) => set("fecha_precintado", v)} />
         </SectionCard>
 
         {editingId != null && (
