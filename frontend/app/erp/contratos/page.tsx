@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL, readApiError } from "../../apiConfig";
 import { useErpEmpresaId } from "../components/ErpEmpresaSelector";
+import ErpEquipoContrato from "../components/ErpEquipoContrato";
 
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 function authHeaders(): Record<string, string> {
@@ -643,7 +644,11 @@ export default function ContratosPage() {
           <TextField label="CNAE" disabled={ver} value={form.cnae} onChange={(v) => setForm({ ...form, cnae: v })} />
         </SectionCard>
 
-        {/* T3 — Datos técnicos (2 columnas de campos + Potencias a la derecha) */}
+                {original && form.suministro_id !== "" && (
+          <ErpEquipoContrato empresaId={empresaId} suministroId={Number(form.suministro_id)} />
+        )}
+
+{/* T3 — Datos técnicos (2 columnas de campos + Potencias a la derecha) */}
         <div style={cardStyle}>
           <div style={cardTitleStyle}>Datos técnicos</div>
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 18, alignItems: "start" }}>
