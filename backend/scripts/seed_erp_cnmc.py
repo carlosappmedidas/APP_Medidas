@@ -28,6 +28,7 @@ if str(BACKEND_DIR) not in sys.path:
 from app.core.config import get_settings  # noqa: E402
 from app.erp.models import (  # noqa: E402
     ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
+    ErpCnmcTipoPuntoMedida, ErpCnmcPropiedadAparato, ErpCnmcTelegestion,
 )
 
 # (codigo, descripcion) en ORDEN oficial de la tabla CNMC
@@ -155,11 +156,42 @@ ACLARADOR = [
     ("SN", "S/N"),
 ]
 
+
+# --- Modulo 2: catalogos CNMC del equipo de medida ---
+
+# Tabla 30 (CNMC) - SOLO REFERENCIA: el tipo de punto de medida se calcula por
+# potencia (tipo_punto_medida_rpum en normativa_atr.py), NO se asigna desde aqui.
+TIPO_PUNTO_MEDIDA = [
+    ("01", "Punto de medida tipo 1"),
+    ("02", "Punto de medida tipo 2"),
+    ("03", "Punto de medida tipo 3"),
+    ("04", "Punto de medida tipo 4"),
+    ("05", "Punto de medida tipo 5"),
+]
+
+# Tabla 32 (CNMC) - propiedad del aparato (contador e ICP)
+PROPIEDAD_APARATO = [
+    ("1", "Distribuidor"),
+    ("2", "Cliente"),
+    ("3", "Comercializador"),
+    ("4", "Otros"),
+]
+
+# Tabla 111 (CNMC) - tipo de telegestion
+TELEGESTION = [
+    ("01", "Telegestion operativa con curva de carga horaria"),
+    ("02", "Telegestion operativa sin curva de carga horaria"),
+    ("03", "Sin telegestion"),
+]
+
 CATALOGOS = [
     ("erp_cnmc_tipo_via", ErpCnmcTipoVia, TIPO_VIA),
     ("erp_cnmc_piso", ErpCnmcPiso, PISO),
     ("erp_cnmc_puerta", ErpCnmcPuerta, PUERTA),
     ("erp_cnmc_aclarador_finca", ErpCnmcAclaradorFinca, ACLARADOR),
+    ("erp_cnmc_tipo_punto_medida", ErpCnmcTipoPuntoMedida, TIPO_PUNTO_MEDIDA),
+    ("erp_cnmc_propiedad_aparato", ErpCnmcPropiedadAparato, PROPIEDAD_APARATO),
+    ("erp_cnmc_telegestion", ErpCnmcTelegestion, TELEGESTION),
 ]
 
 

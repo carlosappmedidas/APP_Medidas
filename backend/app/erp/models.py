@@ -295,6 +295,53 @@ class ErpCnmcAclaradorFinca(TimestampMixin, Base):
     orden       = Column(Integer, nullable=True)
     activo      = Column(Boolean, nullable=False, default=True)
     fecha_baja  = Column(Date, nullable=True)
+
+
+class ErpCnmcTipoPuntoMedida(TimestampMixin, Base):
+    """Catálogo CNMC — Tabla 30 «Tipo de punto de medida» (formato X(2)).
+
+    SOLO REFERENCIA: el tipo de punto de medida se calcula por la potencia
+    contratada (tipo_punto_medida_rpum en normativa_atr.py), no se asigna
+    eligiendo de esta tabla. Sirve para consulta del significado de cada código.
+    """
+    __tablename__ = "erp_cnmc_tipo_punto_medida"
+
+    id          = Column(Integer, primary_key=True)
+    codigo      = Column(String(2), nullable=False, unique=True, index=True)   # 01-05
+    descripcion = Column(String(120), nullable=False)                          # Punto de medida tipo 1…
+    orden       = Column(Integer, nullable=True)
+    activo      = Column(Boolean, nullable=False, default=True)
+    fecha_baja  = Column(Date, nullable=True)
+
+
+class ErpCnmcPropiedadAparato(TimestampMixin, Base):
+    """Catálogo CNMC — Tabla 32 «Tipo de propiedad del aparato» (formato X(2)).
+
+    Usada por el equipo de medida: propiedad del contador y propiedad del ICP.
+    """
+    __tablename__ = "erp_cnmc_propiedad_aparato"
+
+    id          = Column(Integer, primary_key=True)
+    codigo      = Column(String(2), nullable=False, unique=True, index=True)   # 1-4
+    descripcion = Column(String(120), nullable=False)                          # Distribuidor, Cliente…
+    orden       = Column(Integer, nullable=True)
+    activo      = Column(Boolean, nullable=False, default=True)
+    fecha_baja  = Column(Date, nullable=True)
+
+
+class ErpCnmcTelegestion(TimestampMixin, Base):
+    """Catálogo CNMC — Tabla 111 «Tipo de telegestión» (formato X(2)).
+
+    Usada por el equipo de medida: con CCH / sin CCH / sin telegestión.
+    """
+    __tablename__ = "erp_cnmc_telegestion"
+
+    id          = Column(Integer, primary_key=True)
+    codigo      = Column(String(2), nullable=False, unique=True, index=True)   # 01-03
+    descripcion = Column(String(120), nullable=False)                          # Telegestión operativa con CCH…
+    orden       = Column(Integer, nullable=True)
+    activo      = Column(Boolean, nullable=False, default=True)
+    fecha_baja  = Column(Date, nullable=True)
 # El contrato enlaza por FK a titular/suministro/tarifa/comercializadora y NO
 # duplica los datos del CUPS (se leen por join). Un suministro puede tener N
 # contratos en el tiempo, con uno activo a la vez. Campo->norma en §6ter.3.

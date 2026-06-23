@@ -184,6 +184,22 @@ function SectionCard({ title, children }: { title: string; children: React.React
 // ---------------------------------------------------------------------------
 // Página
 // ---------------------------------------------------------------------------
+// Colores y etiquetas por modulo para la pestana Tablas (Propuesta A)
+function moduloColor(modulo: string): { barra: string; fondo: string; texto: string } {
+  if (modulo.startsWith("Modulo 2")) return { barra: "#1D9E75", fondo: "rgba(29,158,117,0.18)", texto: "#5DCAA5" };
+  if (modulo.startsWith("Modulo 3")) return { barra: "#BA7517", fondo: "rgba(186,117,23,0.18)", texto: "#EF9F27" };
+  return { barra: "#7F77DD", fondo: "rgba(127,119,221,0.18)", texto: "#AFA9EC" };
+}
+function moduloBadge(modulo: string): string {
+  const m = modulo.match(/Modulo\\s+(\\d+)/);
+  return m ? `Modulo ${m[1]}` : modulo;
+}
+function moduloNombre(modulo: string): string {
+  const i = modulo.indexOf(" - ");
+  return i >= 0 ? modulo.slice(i + 3) : modulo;
+}
+
+
 export default function CatalogosPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
@@ -688,8 +704,21 @@ export default function CatalogosPage() {
         ) : (
           <div>
             {Array.from(new Set(tablas.map((t) => t.modulo))).map((modulo) => (
-              <div key={modulo} style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>{modulo}</div>
+              <div key={modulo} style={{ marginBottom: 24 }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  borderLeft: `3px solid ${moduloColor(modulo).barra}`,
+                  paddingLeft: 12, marginBottom: 14,
+                }}>
+                  <span style={{
+                    fontSize: 12, padding: "3px 10px", borderRadius: 6,
+                    background: moduloColor(modulo).fondo, color: moduloColor(modulo).texto,
+                  }}>{moduloBadge(modulo)}</span>
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>{moduloNombre(modulo)}</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, color: "rgba(241,239,232,0.4)" }}>
+                    {tablas.filter((t) => t.modulo === modulo).length} tablas
+                  </span>
+                </div>
                 {Array.from(new Set(tablas.filter((t) => t.modulo === modulo).map((t) => t.seccion))).map((seccion) => (
                   <div key={seccion} style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", color: "rgba(241,239,232,0.4)", margin: "0 0 6px 2px" }}>{seccion}</div>

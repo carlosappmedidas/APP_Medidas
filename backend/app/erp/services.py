@@ -757,6 +757,7 @@ def listar_tablas_catalogo(db: Session) -> list[dict]:
     from app.erp.tablas_catalogo import REGISTRO_TABLAS
     from app.erp.models import (
         ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
+        ErpCnmcTipoPuntoMedida, ErpCnmcPropiedadAparato, ErpCnmcTelegestion,
     )
 
     modelos_bd = {
@@ -764,6 +765,9 @@ def listar_tablas_catalogo(db: Session) -> list[dict]:
         "ErpCnmcPiso": ErpCnmcPiso,
         "ErpCnmcPuerta": ErpCnmcPuerta,
         "ErpCnmcAclaradorFinca": ErpCnmcAclaradorFinca,
+        "ErpCnmcTipoPuntoMedida": ErpCnmcTipoPuntoMedida,
+        "ErpCnmcPropiedadAparato": ErpCnmcPropiedadAparato,
+        "ErpCnmcTelegestion": ErpCnmcTelegestion,
     }
 
     salida = []
