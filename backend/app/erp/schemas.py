@@ -650,6 +650,9 @@ class ErpCnmcCatalogosOut(BaseModel):
     piso: list[ErpCnmcCodigoOut] = []
     puerta: list[ErpCnmcCodigoOut] = []
     aclarador_finca: list[ErpCnmcCodigoOut] = []
+    propiedad_aparato: list[ErpCnmcCodigoOut] = []
+    telegestion: list[ErpCnmcCodigoOut] = []
+    tipo_punto_medida: list[ErpCnmcCodigoOut] = []
 
     # ---------------------------------------------------------------------------
 # Comercializadora por empresa (relación distribuidora ↔ comercializadora)
@@ -757,3 +760,128 @@ class ErpContratoVersionOut(BaseModel):
     cambios: Optional[list[CambioDetectado]] = None
     created_at: datetime
     updated_at: datetime
+
+
+# ===========================================================================
+# Modulo 2 — Equipo de medida (E-7a)
+# ===========================================================================
+class ErpEquipoMedidaBase(BaseModel):
+    numero_serie: str = Field(..., max_length=40)
+    tipo_equipo: str = Field(default="contador", max_length=20)
+    fabricante: Optional[str] = Field(default=None, max_length=120)
+    modelo: Optional[str] = Field(default=None, max_length=120)
+    version_firmware: Optional[str] = Field(default=None, max_length=60)
+    anio_fabricacion: Optional[int] = None
+
+    tipo_telegestion: Optional[str] = Field(default=None, max_length=2)       # CNMC Tabla 111
+    propiedad: Optional[str] = Field(default=None, max_length=2)              # CNMC Tabla 32
+    propiedad_icp: Optional[str] = Field(default=None, max_length=2)          # CNMC Tabla 32
+    modo_control_potencia: Optional[str] = Field(default=None, max_length=20)
+
+    fecha_verificacion: Optional[date] = None
+    fecha_caducidad_verificacion: Optional[date] = None
+
+    estado: str = Field(default="en_almacen", max_length=20)
+    suministro_id: Optional[int] = None
+
+    baja_fecha: Optional[date] = None
+    baja_motivo: Optional[str] = None
+
+    notas: Optional[str] = None
+    activo: bool = True
+
+
+class ErpEquipoMedidaCreate(ErpEquipoMedidaBase):
+    pass
+
+
+class ErpEquipoMedidaUpdate(BaseModel):
+    numero_serie: Optional[str] = Field(default=None, max_length=40)
+    tipo_equipo: Optional[str] = Field(default=None, max_length=20)
+    fabricante: Optional[str] = Field(default=None, max_length=120)
+    modelo: Optional[str] = Field(default=None, max_length=120)
+    version_firmware: Optional[str] = Field(default=None, max_length=60)
+    anio_fabricacion: Optional[int] = None
+
+    tipo_telegestion: Optional[str] = Field(default=None, max_length=2)
+    propiedad: Optional[str] = Field(default=None, max_length=2)
+    propiedad_icp: Optional[str] = Field(default=None, max_length=2)
+    modo_control_potencia: Optional[str] = Field(default=None, max_length=20)
+
+    fecha_verificacion: Optional[date] = None
+    fecha_caducidad_verificacion: Optional[date] = None
+
+    estado: Optional[str] = Field(default=None, max_length=20)
+    suministro_id: Optional[int] = None
+
+    baja_fecha: Optional[date] = None
+    baja_motivo: Optional[str] = None
+
+    notas: Optional[str] = None
+    activo: Optional[bool] = None
+
+
+class ErpEquipoMedidaOut(ErpEquipoMedidaBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    empresa_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    # Derivados via CUPS (no son columnas; los rellena services.py)
+    cups: Optional[str] = None                    # del suministro
+    contrato_numero: Optional[str] = None          # del contrato activo del CUPS
+    contrato_titular: Optional[str] = None         # titular del contrato activo
+    contrato_tarifa: Optional[str] = None          # tarifa del contrato activo
+    contrato_comercializadora: Optional[str] = None
+    tipo_punto_medida: Optional[str] = None        # del contrato (RPUM, por potencia)
+
+
+# ===========================================================================
+# Modulo 2 - Instalacion (E-7b): historico + payloads de acciones
+# ===========================================================================
+class ErpInstalacionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    empresa_id: int
+    equipo_id: int
+    suministro_id: int
+    tipo_movimiento: str
+    equipo_sustituido_id: Optional[int] = None
+    fecha_alta: Optional[date] = None
+    fecha_baja: Optional[date] = None
+    lectura_instalacion: Optional[float] = None
+    lectura_retirada: Optional[float] = None
+    tecnico: Optional[str] = None
+    precintos: Optional[str] = None
+    motivo: Optional[str] = None
+    motivo_baja: Optional[str] = None
+    notas: Optional[str] = None
+    activo: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    # Derivados (los rellena services.py para mostrar en el historico)
+    cups: Optional[str] = None                 # del suministro
+    equipo_numero_serie: Optional[str] = None  # del equipo
+
+
+class InstalarEquipoPayload(BaseModel):
+    suministro_id: int
+    fecha: Optional[date] = None
+    lectura: Optional[float] = None
+    tecnico: Optional[str] = Field(default=None, max_length=120)
+    precintos: Optional[str] = None
+    motivo: Optional[str] = None
+    tipo_movimiento: str = Field(default="instalacion", max_length=20)
+    equipo_sustituido_id: Optional[int] = None
+    notas: Optional[str] = None
+
+
+class RetirarEquipoPayload(BaseModel):
+    fecha: Optional[date] = None
+    lectura: Optional[float] = None
+    motivo: Optional[str] = None
+    estado_destino: str = Field(default="en_almacen", max_length=20)  # en_almacen|averiado|retirado

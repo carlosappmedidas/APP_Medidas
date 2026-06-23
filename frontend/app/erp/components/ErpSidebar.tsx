@@ -16,6 +16,7 @@ const ITEMS: MenuItem[] = [
   { href: "/erp",             label: "Inicio",      icon: "🏠" },
   { href: "/erp/titulares",   label: "Titulares",   icon: "👤" },
   { href: "/erp/suministros", label: "Suministros", icon: "🔌" },
+  { href: "/erp/equipos",     label: "Equipos",     icon: "📟" },
   { href: "/erp/contratos",   label: "Contratos",   icon: "📄" },
   { href: "/erp/catalogos",   label: "Catálogos",   icon: "📚" },
 ];

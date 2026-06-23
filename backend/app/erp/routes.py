@@ -525,3 +525,119 @@ def cerrar_migracion(
 ):
     """Cierra la ventana de corrección (reenviar vuelve a omitir duplicados)."""
     return mig_estado.as_dict(mig_estado.cerrar(db, user, empresa_id))
+
+
+# ---------------------------------------------------------------------------
+# Modulo 2 — Equipos de medida (E-7a)
+# ---------------------------------------------------------------------------
+@router.get("/equipos", response_model=list[schemas.ErpEquipoMedidaOut])
+def listar_equipos_endpoint(
+    empresa_id: int = Query(...),
+    search: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    solo_activos: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return services.listar_equipos(
+        db, user, empresa_id, search=search, estado=estado, solo_activos=solo_activos
+    )
+
+
+@router.post("/equipos", response_model=schemas.ErpEquipoMedidaOut, status_code=status.HTTP_201_CREATED)
+def crear_equipo_endpoint(
+    payload: schemas.ErpEquipoMedidaCreate,
+    empresa_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.crear_equipo(db, user, empresa_id, payload)
+    except services.DuplicateNumeroSerieError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/equipos/{equipo_id}", response_model=schemas.ErpEquipoMedidaOut)
+def obtener_equipo_endpoint(
+    equipo_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.obtener_equipo(db, user, equipo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.put("/equipos/{equipo_id}", response_model=schemas.ErpEquipoMedidaOut)
+def actualizar_equipo_endpoint(
+    equipo_id: int,
+    payload: schemas.ErpEquipoMedidaUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.actualizar_equipo(db, user, equipo_id, payload)
+    except services.DuplicateNumeroSerieError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.delete("/equipos/{equipo_id}", response_model=schemas.ErpEquipoMedidaOut)
+def desactivar_equipo_endpoint(
+    equipo_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.desactivar_equipo(db, user, equipo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Modulo 2 - Instalaciones (E-7b): instalar / retirar / historico
+# ---------------------------------------------------------------------------
+@router.get("/equipos/{equipo_id}/instalaciones", response_model=list[schemas.ErpInstalacionOut])
+def listar_instalaciones_endpoint(
+    equipo_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.listar_instalaciones(db, user, equipo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post("/equipos/{equipo_id}/instalar", response_model=schemas.ErpInstalacionOut, status_code=status.HTTP_201_CREATED)
+def instalar_equipo_endpoint(
+    equipo_id: int,
+    payload: schemas.InstalarEquipoPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.instalar_equipo(db, user, equipo_id, payload)
+    except services.InstalacionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post("/equipos/{equipo_id}/retirar", response_model=schemas.ErpInstalacionOut)
+def retirar_equipo_endpoint(
+    equipo_id: int,
+    payload: schemas.RetirarEquipoPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return services.retirar_equipo(db, user, equipo_id, payload)
+    except services.InstalacionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

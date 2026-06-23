@@ -531,3 +531,95 @@ class ErpMigracion(TimestampMixin, Base):
     fecha_cierre      = Column(Date, nullable=True)
     usuario_inicio_id = Column(Integer, nullable=True)  # auditoría (sin FK, como resto del ERP)
     usuario_cierre_id = Column(Integer, nullable=True)  # auditoría (sin FK, como resto del ERP)
+
+
+# ---------------------------------------------------------------------------
+# Modulo 2 — ErpEquipoMedida (el contador/aparato fisico)
+# ---------------------------------------------------------------------------
+class ErpEquipoMedida(TimestampMixin, Base):
+    """Equipo de medida (contador). Inventario maestro: que aparato hay y donde.
+
+    Enlaza con el SUMINISTRO (CUPS), no con el contrato: el aparato esta pegado
+    al punto fisico; los contratos van y vienen sobre el CUPS. El contrato
+    asociado (titular/tarifa/comercializadora) se DERIVA via CUPS, no se guarda.
+    Foto rapida PROPIA (estado + suministro_id); historico completo en
+    erp_instalacion (E-7b). Lecturas operativas (icp_activo, intensidad_icp)
+    se DIFIEREN al STG (las reporta el contador por telegestion).
+    """
+    __tablename__ = "erp_equipo_medida"
+
+    id         = Column(Integer, primary_key=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    # Identificacion del aparato
+    numero_serie     = Column(String(40), nullable=False, index=True)
+    tipo_equipo      = Column(String(20), nullable=False, default="contador", server_default="contador")  # contador/concentrador/modem/regletas
+    fabricante       = Column(String(120), nullable=True)
+    modelo           = Column(String(120), nullable=True)
+    version_firmware = Column(String(60), nullable=True)
+    anio_fabricacion = Column(Integer, nullable=True)
+
+    # Regulatorio (catalogos CNMC)
+    tipo_telegestion = Column(String(2), nullable=True)   # CNMC Tabla 111
+    propiedad        = Column(String(2), nullable=True)   # CNMC Tabla 32 (propiedad del contador)
+    propiedad_icp    = Column(String(2), nullable=True)   # CNMC Tabla 32 (propiedad del ICP)
+    modo_control_potencia = Column(String(20), nullable=True)  # ICP / maximetro
+
+    # Verificacion metrologica (RD 1110/2007 art.17 + RD 889/2006)
+    fecha_verificacion            = Column(Date, nullable=True)
+    fecha_caducidad_verificacion  = Column(Date, nullable=True)
+
+    # Foto rapida (PROPIO): estado y CUPS actual
+    estado        = Column(String(20), nullable=False, default="en_almacen", server_default="en_almacen")  # en_almacen/instalado/retirado/averiado
+    suministro_id = Column(Integer, ForeignKey("erp_suministro.id"), nullable=True, index=True)
+
+    # Baja definitiva del parque (distinto de estado=retirado)
+    baja_fecha  = Column(Date, nullable=True)
+    baja_motivo = Column(Text, nullable=True)
+
+    notas  = Column(Text, nullable=True)
+    activo = Column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "numero_serie", name="uq_equipo_empresa_numserie"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Modulo 2 - ErpInstalacion (historico de movimientos contador<->CUPS, E-7b)
+# ---------------------------------------------------------------------------
+class ErpInstalacion(TimestampMixin, Base):
+    """Historico de que contador estuvo en que CUPS y cuando.
+
+    Una fila por movimiento (instalacion/sustitucion/retirada/verificacion).
+    La fila VIGENTE (fecha_baja IS NULL) es la instalacion actual del equipo;
+    debe haber como mucho una por equipo. La foto rapida del equipo
+    (erp_equipo_medida.estado/suministro_id) es el espejo de la fila vigente:
+    ambas las escribe la misma accion (instalar_equipo / retirar_equipo).
+    """
+    __tablename__ = "erp_instalacion"
+
+    id         = Column(Integer, primary_key=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=False, index=True)
+
+    equipo_id     = Column(Integer, ForeignKey("erp_equipo_medida.id"), nullable=False, index=True)
+    suministro_id = Column(Integer, ForeignKey("erp_suministro.id"), nullable=False, index=True)
+
+    tipo_movimiento = Column(String(20), nullable=False, default="instalacion", server_default="instalacion")
+
+    equipo_sustituido_id = Column(Integer, ForeignKey("erp_equipo_medida.id"), nullable=True)
+
+    fecha_alta          = Column(Date, nullable=True)
+    fecha_baja          = Column(Date, nullable=True)
+    lectura_instalacion = Column(Float, nullable=True)
+    lectura_retirada    = Column(Float, nullable=True)
+
+    tecnico     = Column(String(120), nullable=True)
+    precintos   = Column(Text, nullable=True)
+    motivo      = Column(Text, nullable=True)
+    motivo_baja = Column(Text, nullable=True)
+
+    notas  = Column(Text, nullable=True)
+    activo = Column(Boolean, nullable=False, default=True)

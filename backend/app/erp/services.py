@@ -30,6 +30,9 @@ from app.erp.models import (
     ErpTarifa, ErpTarifaPeriodo, ErpComercializadora,
     ErpCnmcTipoVia, ErpCnmcPiso, ErpCnmcPuerta, ErpCnmcAclaradorFinca,
     ErpComercializadoraEmpresa,
+    ErpEquipoMedida, ErpContrato,
+    ErpCnmcPropiedadAparato, ErpCnmcTelegestion, ErpCnmcTipoPuntoMedida,
+    ErpInstalacion,
 )
 from app.erp.schemas import (
     ErpTitularCreate, ErpTitularUpdate,
@@ -37,6 +40,8 @@ from app.erp.schemas import (
     ErpTarifaOut, ErpTarifaPeriodoOut,
     ErpComercializadoraCreate, ErpComercializadoraUpdate,
     ErpComercializadoraEmpresaCreate, ErpComercializadoraEmpresaUpdate, ErpComercializadoraEmpresaOut,
+    ErpEquipoMedidaCreate, ErpEquipoMedidaUpdate, ErpEquipoMedidaOut,
+    ErpInstalacionOut, InstalarEquipoPayload, RetirarEquipoPayload,
 )
 from app.tenants.models import User
 
@@ -603,6 +608,9 @@ def listar_cnmc_catalogos(db: Session) -> dict:
         "piso": _vivos(ErpCnmcPiso),
         "puerta": _vivos(ErpCnmcPuerta),
         "aclarador_finca": _vivos(ErpCnmcAclaradorFinca),
+        "propiedad_aparato": _vivos(ErpCnmcPropiedadAparato),
+        "telegestion": _vivos(ErpCnmcTelegestion),
+        "tipo_punto_medida": _vivos(ErpCnmcTipoPuntoMedida),
     }
 
 # ===========================================================================
@@ -800,3 +808,324 @@ def listar_tablas_catalogo(db: Session) -> list[dict]:
             "valores": valores,
         })
     return salida
+
+
+# ===========================================================================
+# Modulo 2 — Equipo de medida (E-7a): CRUD + derivados via CUPS
+# ===========================================================================
+class DuplicateNumeroSerieError(ValueError):
+    """numero_serie ya existente para esa empresa (UQ empresa_id+numero_serie)."""
+    pass
+
+
+def _equipo_out(db: Session, eq) -> "ErpEquipoMedidaOut":
+    """Construye el Out con los derivados via CUPS -> contrato activo.
+
+    PROPIO: columnas del equipo. DERIVADO (no se guarda): cups (del suministro)
+    y, del contrato ACTIVO de ese CUPS, numero/titular/tarifa/comercializadora y
+    tipo_punto_medida. Si el equipo no esta instalado o el CUPS no tiene contrato
+    activo, los derivados quedan a None.
+    """
+    out = ErpEquipoMedidaOut.model_validate(eq)
+    if eq.suministro_id is None:
+        return out
+
+    sum_ = db.query(ErpSuministro).filter(ErpSuministro.id == eq.suministro_id).first()
+    if sum_ is not None:
+        out.cups = sum_.cups
+
+    contrato = (
+        db.query(ErpContrato)
+        .filter(
+            ErpContrato.suministro_id == eq.suministro_id,
+            ErpContrato.estado == "activo",
+        )
+        .order_by(ErpContrato.id.desc())
+        .first()
+    )
+    if contrato is not None:
+        out.contrato_numero = contrato.numero_contrato
+        out.tipo_punto_medida = (
+            str(contrato.tipo_punto_medida) if contrato.tipo_punto_medida is not None else None
+        )
+        tit = db.query(ErpTitular).filter(ErpTitular.id == contrato.titular_id).first()
+        if tit is not None:
+            out.contrato_titular = tit.nombre
+        tar = db.query(ErpTarifa).filter(ErpTarifa.id == contrato.tarifa_id).first()
+        if tar is not None:
+            out.contrato_tarifa = tar.codigo
+        if contrato.comercializadora_empresa_id is not None:
+            rel = (
+                db.query(ErpComercializadoraEmpresa)
+                .filter(ErpComercializadoraEmpresa.id == contrato.comercializadora_empresa_id)
+                .first()
+            )
+            if rel is not None:
+                com = (
+                    db.query(ErpComercializadora)
+                    .filter(ErpComercializadora.id == rel.comercializadora_id)
+                    .first()
+                )
+                if com is not None:
+                    out.contrato_comercializadora = com.nombre
+    return out
+
+
+def _cargar_equipo_con_acceso(db: Session, user: User, equipo_id: int):
+    eq = db.query(ErpEquipoMedida).filter(ErpEquipoMedida.id == equipo_id).first()
+    if eq is None:
+        raise ValueError(f"Equipo de medida {equipo_id} no encontrado")
+    assert_empresa_access(db, user, eq.empresa_id)
+    return eq
+
+
+def listar_equipos(
+    db: Session,
+    user: User,
+    empresa_id: int,
+    search: str | None = None,
+    estado: str | None = None,
+    solo_activos: bool = False,
+):
+    assert_empresa_access(db, user, empresa_id)
+    q = db.query(ErpEquipoMedida).filter(ErpEquipoMedida.empresa_id == empresa_id)
+    if solo_activos:
+        q = q.filter(ErpEquipoMedida.activo.is_(True))
+    if estado and estado.strip():
+        q = q.filter(ErpEquipoMedida.estado == estado.strip())
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                ErpEquipoMedida.numero_serie.ilike(like),
+                ErpEquipoMedida.fabricante.ilike(like),
+                ErpEquipoMedida.modelo.ilike(like),
+            )
+        )
+    equipos = q.order_by(ErpEquipoMedida.numero_serie).all()
+    return [_equipo_out(db, eq) for eq in equipos]
+
+
+def obtener_equipo(db: Session, user: User, equipo_id: int) -> "ErpEquipoMedidaOut":
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+    return _equipo_out(db, eq)
+
+
+def crear_equipo(
+    db: Session, user: User, empresa_id: int, payload: "ErpEquipoMedidaCreate"
+) -> "ErpEquipoMedidaOut":
+    assert_empresa_access(db, user, empresa_id)
+
+    existe = (
+        db.query(ErpEquipoMedida)
+        .filter(
+            ErpEquipoMedida.empresa_id == empresa_id,
+            ErpEquipoMedida.numero_serie == payload.numero_serie,
+        )
+        .first()
+    )
+    if existe is not None:
+        raise DuplicateNumeroSerieError(
+            f"Ya existe un equipo con numero de serie {payload.numero_serie} en esta empresa"
+        )
+
+    ahora = _ahora_madrid_naive()
+    eq = ErpEquipoMedida(
+        tenant_id=user.tenant_id,
+        empresa_id=empresa_id,
+        created_at=ahora,
+        updated_at=ahora,
+        **payload.model_dump(),
+    )
+    db.add(eq)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateNumeroSerieError(
+            f"Ya existe un equipo con numero de serie {payload.numero_serie} en esta empresa"
+        )
+    db.refresh(eq)
+    return _equipo_out(db, eq)
+
+
+def actualizar_equipo(
+    db: Session, user: User, equipo_id: int, payload: "ErpEquipoMedidaUpdate"
+) -> "ErpEquipoMedidaOut":
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+    datos = payload.model_dump(exclude_unset=True)
+
+    nuevo_ns = datos.get("numero_serie")
+    if nuevo_ns is not None and nuevo_ns != eq.numero_serie:
+        existe = (
+            db.query(ErpEquipoMedida)
+            .filter(
+                ErpEquipoMedida.empresa_id == eq.empresa_id,
+                ErpEquipoMedida.numero_serie == nuevo_ns,
+                ErpEquipoMedida.id != eq.id,
+            )
+            .first()
+        )
+        if existe is not None:
+            raise DuplicateNumeroSerieError(
+                f"Ya existe un equipo con numero de serie {nuevo_ns} en esta empresa"
+            )
+
+    for campo, valor in datos.items():
+        setattr(eq, campo, valor)
+    eq.updated_at = _ahora_madrid_naive()
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateNumeroSerieError(
+            f"Ya existe un equipo con numero de serie {nuevo_ns} en esta empresa"
+        )
+    db.refresh(eq)
+    return _equipo_out(db, eq)
+
+
+def desactivar_equipo(db: Session, user: User, equipo_id: int) -> "ErpEquipoMedidaOut":
+    """Baja logica (activo=False)."""
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+    eq.activo = False
+    eq.updated_at = _ahora_madrid_naive()
+    db.commit()
+    db.refresh(eq)
+    return _equipo_out(db, eq)
+
+
+# ===========================================================================
+# Modulo 2 - Instalaciones (E-7b): acciones instalar / retirar + historico
+# ===========================================================================
+class InstalacionError(ValueError):
+    """Error de negocio en una accion de instalacion/retirada."""
+    pass
+
+
+def _instalacion_out(db: Session, ins: "ErpInstalacion") -> "ErpInstalacionOut":
+    """Construye el Out con los derivados (cups del suministro, nº serie del equipo)."""
+    out = ErpInstalacionOut.model_validate(ins)
+    sum_ = db.query(ErpSuministro).filter(ErpSuministro.id == ins.suministro_id).first()
+    if sum_ is not None:
+        out.cups = sum_.cups
+    eq = db.query(ErpEquipoMedida).filter(ErpEquipoMedida.id == ins.equipo_id).first()
+    if eq is not None:
+        out.equipo_numero_serie = eq.numero_serie
+    return out
+
+
+def _instalacion_vigente(db: Session, equipo_id: int) -> "Optional[ErpInstalacion]":
+    """La fila de instalacion sin cerrar (fecha_baja IS NULL) del equipo, si existe."""
+    return (
+        db.query(ErpInstalacion)
+        .filter(ErpInstalacion.equipo_id == equipo_id, ErpInstalacion.fecha_baja.is_(None))
+        .order_by(ErpInstalacion.id.desc())
+        .first()
+    )
+
+
+def listar_instalaciones(db: Session, user: User, equipo_id: int) -> "list[ErpInstalacionOut]":
+    """Historico de movimientos de un equipo (mas reciente primero)."""
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+    filas = (
+        db.query(ErpInstalacion)
+        .filter(ErpInstalacion.equipo_id == eq.id)
+        .order_by(ErpInstalacion.fecha_alta.desc().nullslast(), ErpInstalacion.id.desc())
+        .all()
+    )
+    return [_instalacion_out(db, f) for f in filas]
+
+
+def instalar_equipo(
+    db: Session, user: User, equipo_id: int, payload: "InstalarEquipoPayload"
+) -> "ErpInstalacionOut":
+    """Instala un equipo en un CUPS: crea fila erp_instalacion + sincroniza foto del equipo.
+
+    Transaccional: la tabla historica y la foto rapida del equipo se escriben juntas.
+    """
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+
+    # El suministro debe existir y ser de la misma empresa que el equipo
+    sum_ = (
+        db.query(ErpSuministro)
+        .filter(ErpSuministro.id == payload.suministro_id)
+        .first()
+    )
+    if sum_ is None:
+        raise InstalacionError("El suministro indicado no existe")
+    assert_empresa_access(db, user, sum_.empresa_id)
+    if sum_.empresa_id != eq.empresa_id:
+        raise InstalacionError("El suministro y el equipo son de empresas distintas")
+
+    # No puede instalarse si ya tiene una instalacion vigente sin cerrar
+    if _instalacion_vigente(db, eq.id) is not None:
+        raise InstalacionError("El equipo ya tiene una instalacion vigente; retiralo antes de reinstalar")
+
+    ahora = _ahora_madrid_naive()
+    ins = ErpInstalacion(
+        tenant_id=user.tenant_id,
+        empresa_id=eq.empresa_id,
+        equipo_id=eq.id,
+        suministro_id=payload.suministro_id,
+        tipo_movimiento=payload.tipo_movimiento or "instalacion",
+        equipo_sustituido_id=payload.equipo_sustituido_id,
+        fecha_alta=payload.fecha,
+        fecha_baja=None,
+        lectura_instalacion=payload.lectura,
+        lectura_retirada=None,
+        tecnico=payload.tecnico,
+        precintos=payload.precintos,
+        motivo=payload.motivo,
+        motivo_baja=None,
+        notas=payload.notas,
+        activo=True,
+        created_at=ahora,
+        updated_at=ahora,
+    )
+    db.add(ins)
+    db.flush()  # asegura el INSERT antes de sincronizar la foto del equipo
+
+    # Sincroniza la foto rapida del equipo
+    eq.estado = "instalado"
+    eq.suministro_id = payload.suministro_id
+    eq.updated_at = ahora
+
+    db.commit()
+    db.refresh(ins)
+    return _instalacion_out(db, ins)
+
+
+def retirar_equipo(
+    db: Session, user: User, equipo_id: int, payload: "RetirarEquipoPayload"
+) -> "ErpInstalacionOut":
+    """Retira un equipo: cierra la instalacion vigente + pone el equipo al estado destino.
+
+    estado_destino: en_almacen | averiado | retirado (flexible).
+    """
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+
+    ins = _instalacion_vigente(db, eq.id)
+    if ins is None:
+        raise InstalacionError("El equipo no tiene ninguna instalacion vigente que retirar")
+
+    destino = payload.estado_destino or "en_almacen"
+    if destino not in ("en_almacen", "averiado", "retirado"):
+        raise InstalacionError("estado_destino invalido (en_almacen|averiado|retirado)")
+
+    ahora = _ahora_madrid_naive()
+    ins.fecha_baja = payload.fecha
+    ins.lectura_retirada = payload.lectura
+    ins.motivo_baja = payload.motivo
+    ins.updated_at = ahora
+    db.flush()
+
+    # Sincroniza la foto rapida del equipo
+    eq.estado = destino
+    eq.suministro_id = None
+    eq.updated_at = ahora
+
+    db.commit()
+    db.refresh(ins)
+    return _instalacion_out(db, ins)
