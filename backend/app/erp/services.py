@@ -944,9 +944,23 @@ def enlace_stg_equipo(db: Session, user: User, equipo_id: int) -> dict:
         # quitar prefijo de 3 letras (CIR0141406756 -> 0141406756)
         sin_prefijo = mid[3:] if len(mid) > 3 and mid[:3].isalpha() else mid
         if sin_prefijo == numero_serie:
-            return {"enlazado": True, "numero_serie": numero_serie, "meter_id": mid}
+            return {
+                "enlazado": True,
+                "numero_serie": numero_serie,
+                "meter_id": mid,
+                "estado_comunicacion": c.estado_comunicacion,
+                "ultimo_contacto": c.ultimo_contacto.isoformat() if c.ultimo_contacto else None,
+                "contador_activo": bool(c.activo),
+            }
 
-    return {"enlazado": False, "numero_serie": numero_serie, "meter_id": None}
+    return {
+        "enlazado": False,
+        "numero_serie": numero_serie,
+        "meter_id": None,
+        "estado_comunicacion": None,
+        "ultimo_contacto": None,
+        "contador_activo": None,
+    }
 
 
 def crear_equipo(

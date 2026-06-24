@@ -227,6 +227,13 @@ function estadoBadge(estado: string): React.CSSProperties {
   return { background: "rgba(255,255,255,0.06)", color: c, fontSize: 12, padding: "2px 9px", borderRadius: 6 };
 }
 
+function comColor(estado: string | null): string {
+  const map: Record<string, string> = {
+    ok: "#7BE0A3", warning: "#E8C96B", error: "#F0999B", desconocido: "rgba(241,239,232,0.5)",
+  };
+  return (estado && map[estado]) || "rgba(241,239,232,0.5)";
+}
+
 function TextField(props: {
   label: string; value: string; onChange: (v: string) => void;
   span?: boolean; type?: string; placeholder?: string; monospace?: boolean; maxLength?: number; disabled?: boolean;
@@ -325,7 +332,7 @@ export default function EquiposPage() {
   const [movForm, setMovForm] = useState<MovForm>(EMPTY_MOV);
   const [movSaving, setMovSaving] = useState(false);
   const [movError, setMovError] = useState<string | null>(null);
-  const [enlaceStg, setEnlaceStg] = useState<{ enlazado: boolean; meter_id: string | null } | null>(null);
+  const [enlaceStg, setEnlaceStg] = useState<{ enlazado: boolean; meter_id: string | null; estado_comunicacion: string | null; ultimo_contacto: string | null } | null>(null);
   const [enlaceCargando, setEnlaceCargando] = useState(false);
 
   useEffect(() => {
@@ -515,7 +522,7 @@ export default function EquiposPage() {
       const r = await fetch(`${API_BASE_URL}/erp/equipos/${editingId}/enlace-stg`, { headers: authHeaders() });
       if (r.ok) {
         const d = await r.json();
-        setEnlaceStg({ enlazado: !!d.enlazado, meter_id: d.meter_id ?? null });
+        setEnlaceStg({ enlazado: !!d.enlazado, meter_id: d.meter_id ?? null, estado_comunicacion: d.estado_comunicacion ?? null, ultimo_contacto: d.ultimo_contacto ?? null });
       }
     } finally {
       setEnlaceCargando(false);
@@ -845,12 +852,20 @@ export default function EquiposPage() {
               </button>
             </div>
             {enlaceStg != null && (
-              <p style={{ fontSize: 13, margin: "10px 0 0",
-                color: enlaceStg.enlazado ? "#7BE0A3" : "rgba(241,239,232,0.6)" }}>
-                {enlaceStg.enlazado
-                  ? `Visto en telegestión: Sí (${enlaceStg.meter_id})`
-                  : "Visto en telegestión: No"}
-              </p>
+              <div style={{ margin: "10px 0 0" }}>
+                <p style={{ fontSize: 13, margin: 0,
+                  color: enlaceStg.enlazado ? "#7BE0A3" : "rgba(241,239,232,0.6)" }}>
+                  {enlaceStg.enlazado
+                    ? `Visto en telegestión: Sí (${enlaceStg.meter_id})`
+                    : "Visto en telegestión: No"}
+                </p>
+                {enlaceStg.enlazado && (
+                  <p style={{ fontSize: 12.5, margin: "4px 0 0", color: "rgba(241,239,232,0.6)" }}>
+                    Comunicación: <span style={{ color: comColor(enlaceStg.estado_comunicacion) }}>{enlaceStg.estado_comunicacion ?? "—"}</span>
+                    {enlaceStg.ultimo_contacto ? ` · último contacto ${enlaceStg.ultimo_contacto.slice(0, 10)}` : ""}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}
