@@ -243,14 +243,16 @@ class ErpSuministroBase(BaseModel):
     notas: Optional[str] = None
     activo: bool = True
 
-    @field_validator("cups")
-    @classmethod
-    def _cups_ok(cls, v):
-        return _validar_cups(v)
+    # _cups_ok movido a Create (no revalidar formato en Base/Out)
 
 
 class ErpSuministroCreate(ErpSuministroBase):
     """Crear suministro. tenant_id/empresa_id los inyecta el backend."""
+
+    @field_validator("cups")
+    @classmethod
+    def _cups_ok(cls, v):
+        return _validar_cups(v)
 
     @model_validator(mode="after")
     def _validar_suministro(self):
