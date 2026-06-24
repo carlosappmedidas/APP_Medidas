@@ -148,8 +148,9 @@ function TextField(props: {
   placeholder?: string;
   monospace?: boolean;
   maxLength?: number;
+  disabled?: boolean;
 }) {
-  const { label, value, onChange, span, type = "text", placeholder, monospace, maxLength } = props;
+  const { label, value, onChange, span, type = "text", placeholder, monospace, maxLength, disabled } = props;
   const req = label.endsWith(" *");
   const base = req ? label.slice(0, -2) : label;
   return (
@@ -160,6 +161,7 @@ function TextField(props: {
         value={value}
         placeholder={placeholder}
         maxLength={maxLength}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         style={monospace ? { ...inputStyle, fontFamily: monoFont } : inputStyle}
       />
@@ -174,14 +176,15 @@ function SelectField(props: {
   onChange: (v: string) => void;
   options: Opcion[];
   span?: boolean;
+  disabled?: boolean;
 }) {
-  const { label, value, onChange, options, span } = props;
+  const { label, value, onChange, options, span, disabled } = props;
   const req = label.endsWith(" *");
   const base = req ? label.slice(0, -2) : label;
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{base}{req ? <span style={{ color: "#F0999B" }}> *</span> : null}</label>
-      <select style={inputStyle} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select style={inputStyle} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         <option value="" style={{ background: "#16181D" }}>—</option>
         {options.map((o) => (
           <option key={o.codigo} value={o.codigo} style={{ background: "#16181D" }}>
@@ -201,13 +204,14 @@ function ComboField(props: {
   options: Opcion[];
   maxLength?: number;
   span?: boolean;
+  disabled?: boolean;
 }) {
-  const { label, value, onChange, options, maxLength, span } = props;
+  const { label, value, onChange, options, maxLength, span, disabled } = props;
   const listId = `dl-sum-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{label}</label>
-      <input style={inputStyle} value={value} list={listId} maxLength={maxLength}
+      <input style={inputStyle} value={value} list={listId} maxLength={maxLength} disabled={disabled}
         onChange={(e) => onChange(e.target.value)} />
       <datalist id={listId}>
         {options.map((o) => (
@@ -218,10 +222,10 @@ function ComboField(props: {
   );
 }
 
-function Check(props: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function Check(props: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(241,239,232,0.8)" }}>
-      <input type="checkbox" checked={props.checked} onChange={(e) => props.onChange(e.target.checked)} />
+      <input type="checkbox" checked={props.checked} disabled={props.disabled} onChange={(e) => props.onChange(e.target.checked)} />
       {props.label}
     </label>
   );
@@ -251,6 +255,7 @@ export default function SuministrosPage() {
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [modo, setModo] = useState<"ver" | "editar">("editar");
   const [form, setForm] = useState<Form>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -308,11 +313,14 @@ export default function SuministrosPage() {
   function set<K extends keyof Form>(k: K, v: Form[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
+  const ver = modo === "ver";
+  const editar = () => { setErrorMsg(null); setModo("editar"); };
 
   function abrirNuevo() {
     setForm(EMPTY);
     setEditingId(null);
     setErrorMsg(null);
+    setModo("editar");
     setPanelOpen(true);
   }
 
@@ -366,11 +374,14 @@ export default function SuministrosPage() {
         activo: !!s.activo,
       });
       setEditingId(id);
+      setModo("ver");
       setPanelOpen(true);
     } catch {
       /* noop */
     }
   }
+
+  function cancelar() { if (saving) return; if (editingId != null) { abrirFicha(editingId); } else { setPanelOpen(false); setEditingId(null); } }
 
   function cerrar() {
     if (saving) return;
@@ -520,8 +531,8 @@ export default function SuministrosPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo"
-              onClick={() => set("activo", !form.activo)}
+            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo" disabled={ver}
+              onClick={() => { if (!ver) set("activo", !form.activo); }}
               style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: "rgba(241,239,232,0.75)", fontSize: 13, padding: 0 }}>
               {form.activo ? "Activo" : "Baja"}
               <span style={{ position: "relative", width: 38, height: 22, borderRadius: 999, background: form.activo ? "#7BE0A3" : "rgba(255,255,255,0.15)", transition: "background .15s" }}>
@@ -530,14 +541,23 @@ export default function SuministrosPage() {
             </button>
 
             <div style={{ display: "flex", gap: 10 }}>
-              {editingId != null ? (
-                <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
-              ) : null}
-              <button onClick={cerrar} disabled={saving} style={btnGhost}>Cancelar</button>
-              <button onClick={guardar} disabled={saving || !puedeGuardar}
-                style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
-                {saving ? "Guardando…" : "Guardar"}
-              </button>
+              {ver ? (
+                <>
+                  <button onClick={cerrar} disabled={saving} style={btnGhost}>Cerrar</button>
+                  <button onClick={editar} style={{ ...btnPrimary, cursor: "pointer" }}>Editar</button>
+                </>
+              ) : (
+                <>
+                  {editingId != null ? (
+                    <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
+                  ) : null}
+                  <button onClick={cancelar} disabled={saving} style={btnGhost}>Cancelar</button>
+                  <button onClick={guardar} disabled={saving || !puedeGuardar}
+                    style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
+                    {saving ? "Guardando…" : "Guardar"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -555,58 +575,58 @@ export default function SuministrosPage() {
         )}
 
         <SectionCard title="Identificación">
-          <TextField label="CUPS *" span value={form.cups} onChange={(v) => set("cups", v)} monospace />
-          <TextField label="Distribuidora" value={form.distribuidora} onChange={(v) => set("distribuidora", v)} />
-          <TextField label="Acometida" value={form.acometida} onChange={(v) => set("acometida", v)} />
-          <TextField label="Fecha alta" value={form.fecha_alta} onChange={(v) => set("fecha_alta", v)} type="date" />
-          <TextField label="Fecha baja" value={form.fecha_baja} onChange={(v) => set("fecha_baja", v)} type="date" />
+          <TextField disabled={ver} label="CUPS *" span value={form.cups} onChange={(v) => set("cups", v)} monospace />
+          <TextField disabled={ver} label="Distribuidora" value={form.distribuidora} onChange={(v) => set("distribuidora", v)} />
+          <TextField disabled={ver} label="Acometida" value={form.acometida} onChange={(v) => set("acometida", v)} />
+          <TextField disabled={ver} label="Fecha alta" value={form.fecha_alta} onChange={(v) => set("fecha_alta", v)} type="date" />
+          <TextField disabled={ver} label="Fecha baja" value={form.fecha_baja} onChange={(v) => set("fecha_baja", v)} type="date" />
         </SectionCard>
 
         <SectionCard title="Dirección del suministro">
-          <SelectField label="Tipo vía *" value={form.dir_tipo_via} options={catalogos.tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
-          <TextField label="Vía *" value={form.dir_via} maxLength={30} onChange={(v) => set("dir_via", v)} />
-          <TextField label="Número *" value={form.dir_numero} maxLength={5} placeholder="nº o SN" onChange={(v) => set("dir_numero", v)} />
-          <TextField label="Duplicador" value={form.dir_duplicador} maxLength={3} onChange={(v) => set("dir_duplicador", v)} />
-          <TextField label="Escalera" value={form.dir_escalera} maxLength={3} onChange={(v) => set("dir_escalera", v)} />
-          <ComboField label="Piso" value={form.dir_piso} options={catalogos.piso} maxLength={3} onChange={(v) => set("dir_piso", v)} />
-          <ComboField label="Puerta" value={form.dir_puerta} options={catalogos.puerta} maxLength={3} onChange={(v) => set("dir_puerta", v)} />
-          <SelectField label="Tipo de aclarador" value={form.dir_tipo_aclarador} options={catalogos.aclarador_finca} onChange={(v) => set("dir_tipo_aclarador", v)} />
-          <TextField label="Aclarador" value={form.dir_aclarador} maxLength={40} onChange={(v) => set("dir_aclarador", v)} />
-          <TextField label="C.P. *" value={form.dir_cp} maxLength={10} onChange={(v) => set("dir_cp", v)} />
-          <TextField label="Municipio *" value={form.dir_municipio} maxLength={120} onChange={(v) => set("dir_municipio", v)} />
-          <TextField label="Población *" value={form.dir_poblacion} maxLength={120} onChange={(v) => set("dir_poblacion", v)} />
-          <TextField label="Provincia *" value={form.dir_provincia} maxLength={120} onChange={(v) => set("dir_provincia", v)} />
-          <TextField label="País *" value={form.dir_pais} maxLength={120} onChange={(v) => set("dir_pais", v)} />
-          <TextField label="Código INE municipio *" value={form.municipio_codigo_ine} onChange={(v) => set("municipio_codigo_ine", v)} />
-          <TextField label="Ref. catastral" value={form.ref_catastral} onChange={(v) => set("ref_catastral", v)} />
-          <TextField label="Polígono" value={form.poligono} onChange={(v) => set("poligono", v)} />
-          <TextField label="Parcela" value={form.parcela} onChange={(v) => set("parcela", v)} />
+          <SelectField disabled={ver} label="Tipo vía *" value={form.dir_tipo_via} options={catalogos.tipo_via} onChange={(v) => set("dir_tipo_via", v)} />
+          <TextField disabled={ver} label="Vía *" value={form.dir_via} maxLength={30} onChange={(v) => set("dir_via", v)} />
+          <TextField disabled={ver} label="Número *" value={form.dir_numero} maxLength={5} placeholder="nº o SN" onChange={(v) => set("dir_numero", v)} />
+          <TextField disabled={ver} label="Duplicador" value={form.dir_duplicador} maxLength={3} onChange={(v) => set("dir_duplicador", v)} />
+          <TextField disabled={ver} label="Escalera" value={form.dir_escalera} maxLength={3} onChange={(v) => set("dir_escalera", v)} />
+          <ComboField disabled={ver} label="Piso" value={form.dir_piso} options={catalogos.piso} maxLength={3} onChange={(v) => set("dir_piso", v)} />
+          <ComboField disabled={ver} label="Puerta" value={form.dir_puerta} options={catalogos.puerta} maxLength={3} onChange={(v) => set("dir_puerta", v)} />
+          <SelectField disabled={ver} label="Tipo de aclarador" value={form.dir_tipo_aclarador} options={catalogos.aclarador_finca} onChange={(v) => set("dir_tipo_aclarador", v)} />
+          <TextField disabled={ver} label="Aclarador" value={form.dir_aclarador} maxLength={40} onChange={(v) => set("dir_aclarador", v)} />
+          <TextField disabled={ver} label="C.P. *" value={form.dir_cp} maxLength={10} onChange={(v) => set("dir_cp", v)} />
+          <TextField disabled={ver} label="Municipio *" value={form.dir_municipio} maxLength={120} onChange={(v) => set("dir_municipio", v)} />
+          <TextField disabled={ver} label="Población *" value={form.dir_poblacion} maxLength={120} onChange={(v) => set("dir_poblacion", v)} />
+          <TextField disabled={ver} label="Provincia *" value={form.dir_provincia} maxLength={120} onChange={(v) => set("dir_provincia", v)} />
+          <TextField disabled={ver} label="País *" value={form.dir_pais} maxLength={120} onChange={(v) => set("dir_pais", v)} />
+          <TextField disabled={ver} label="Código INE municipio *" value={form.municipio_codigo_ine} onChange={(v) => set("municipio_codigo_ine", v)} />
+          <TextField disabled={ver} label="Ref. catastral" value={form.ref_catastral} onChange={(v) => set("ref_catastral", v)} />
+          <TextField disabled={ver} label="Polígono" value={form.poligono} onChange={(v) => set("poligono", v)} />
+          <TextField disabled={ver} label="Parcela" value={form.parcela} onChange={(v) => set("parcela", v)} />
         </SectionCard>
 
         <SectionCard title="Geolocalización">
-          <TextField label="UTM X (ETRS89)" value={form.utm_x} onChange={(v) => set("utm_x", v)} type="number" />
-          <TextField label="UTM Y (ETRS89)" value={form.utm_y} onChange={(v) => set("utm_y", v)} type="number" />
-          <TextField label="UTM huso" value={form.utm_huso} onChange={(v) => set("utm_huso", v)} type="number" />
-          <TextField label="UTM banda" value={form.utm_banda} onChange={(v) => set("utm_banda", v)} />
-          <TextField label="Latitud" value={form.latitud} onChange={(v) => set("latitud", v)} type="number" />
-          <TextField label="Longitud" value={form.longitud} onChange={(v) => set("longitud", v)} type="number" />
+          <TextField disabled={ver} label="UTM X (ETRS89)" value={form.utm_x} onChange={(v) => set("utm_x", v)} type="number" />
+          <TextField disabled={ver} label="UTM Y (ETRS89)" value={form.utm_y} onChange={(v) => set("utm_y", v)} type="number" />
+          <TextField disabled={ver} label="UTM huso" value={form.utm_huso} onChange={(v) => set("utm_huso", v)} type="number" />
+          <TextField disabled={ver} label="UTM banda" value={form.utm_banda} onChange={(v) => set("utm_banda", v)} />
+          <TextField disabled={ver} label="Latitud" value={form.latitud} onChange={(v) => set("latitud", v)} type="number" />
+          <TextField disabled={ver} label="Longitud" value={form.longitud} onChange={(v) => set("longitud", v)} type="number" />
         </SectionCard>
 
         <SectionCard title="Trazabilidad de red">
-          <TextField label="Zona" value={form.zona} onChange={(v) => set("zona", v)} />
-          <TextField label="Orden" value={form.orden} onChange={(v) => set("orden", v)} />
-          <TextField label="Centro transformador" value={form.centro_transformador} onChange={(v) => set("centro_transformador", v)} />
-          <TextField label="Línea" value={form.linea} onChange={(v) => set("linea", v)} />
+          <TextField disabled={ver} label="Zona" value={form.zona} onChange={(v) => set("zona", v)} />
+          <TextField disabled={ver} label="Orden" value={form.orden} onChange={(v) => set("orden", v)} />
+          <TextField disabled={ver} label="Centro transformador" value={form.centro_transformador} onChange={(v) => set("centro_transformador", v)} />
+          <TextField disabled={ver} label="Línea" value={form.linea} onChange={(v) => set("linea", v)} />
         </SectionCard>
 
         <SectionCard title="Datos eléctricos">
-          <TextField label="Pot. máx. admisible CIE (kW) *" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
-          <TextField label="Potencia adscrita (kW) *" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
-          <TextField label="Potencia de convenio (kW)" value={form.potencia_convenio_kw} onChange={(v) => set("potencia_convenio_kw", v)} type="number" />
-          <TextField label="Criterio regulatorio" value={form.criterio_regulatorio} onChange={(v) => set("criterio_regulatorio", v)} />
-          <TextField label="Fecha vigencia adscrita" value={form.fecha_vigencia_adscrita} onChange={(v) => set("fecha_vigencia_adscrita", v)} type="date" />
+          <TextField disabled={ver} label="Pot. máx. admisible CIE (kW) *" value={form.pot_max_admisible_cie_kw} onChange={(v) => set("pot_max_admisible_cie_kw", v)} type="number" />
+          <TextField disabled={ver} label="Potencia adscrita (kW) *" value={form.potencia_adscrita_kw} onChange={(v) => set("potencia_adscrita_kw", v)} type="number" />
+          <TextField disabled={ver} label="Potencia de convenio (kW)" value={form.potencia_convenio_kw} onChange={(v) => set("potencia_convenio_kw", v)} type="number" />
+          <TextField disabled={ver} label="Criterio regulatorio" value={form.criterio_regulatorio} onChange={(v) => set("criterio_regulatorio", v)} />
+          <TextField disabled={ver} label="Fecha vigencia adscrita" value={form.fecha_vigencia_adscrita} onChange={(v) => set("fecha_vigencia_adscrita", v)} type="date" />
           <div style={{ gridColumn: "1 / -1" }}>
-            <Check label="Potencia adscrita bloqueada" checked={form.potencia_adscrita_bloqueada} onChange={(v) => set("potencia_adscrita_bloqueada", v)} />
+            <Check disabled={ver} label="Potencia adscrita bloqueada" checked={form.potencia_adscrita_bloqueada} onChange={(v) => set("potencia_adscrita_bloqueada", v)} />
           </div>
         </SectionCard>
 

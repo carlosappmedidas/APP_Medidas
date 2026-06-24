@@ -89,17 +89,17 @@ function badge(bg: string, color: string): React.CSSProperties {
 }
 
 function TextField({
-  label, value, onChange, span, placeholder, maxLength, type,
+  label, value, onChange, span, placeholder, maxLength, type, disabled,
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  span?: boolean; placeholder?: string; maxLength?: number; type?: string;
+  span?: boolean; placeholder?: string; maxLength?: number; type?: string; disabled?: boolean;
 }) {
   const req = label.endsWith(" *");
   const base = req ? label.slice(0, -2) : label;
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{base}{req ? <span style={{ color: "#F0999B" }}> *</span> : null}</label>
-      <input style={inputStyle} type={type} value={value} placeholder={placeholder} maxLength={maxLength}
+      <input style={inputStyle} type={type} value={value} placeholder={placeholder} maxLength={maxLength} disabled={disabled}
         onChange={(e) => onChange(e.target.value)} />
     </div>
   );
@@ -137,6 +137,8 @@ export default function ErpComercializadorasEmpresaPage() {
   const [soloActivas, setSoloActivas] = useState(false);
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [modo, setModo] = useState<"ver" | "editar">("editar");
+  const [original, setOriginal] = useState<ComEmpresa | null>(null);
   const [form, setForm] = useState<ComEmpresa>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [catalogo, setCatalogo] = useState<CatalogoCom[]>([]);
@@ -188,9 +190,14 @@ export default function ErpComercializadorasEmpresaPage() {
     return () => clearTimeout(t);
   }, [authChecked, cargar]);
 
-  const abrirNuevo = () => { setForm({ ...EMPTY }); setPanelOpen(true); };
-  const abrirEditar = (it: ComEmpresa) => { setForm({ ...EMPTY, ...it }); setPanelOpen(true); };
+  const abrirNuevo = () => { setForm({ ...EMPTY }); setOriginal(null); setModo("editar"); setPanelOpen(true); };
+  const abrirEditar = (it: ComEmpresa) => { setForm({ ...EMPTY, ...it }); setOriginal(it); setModo("ver"); setPanelOpen(true); };
   const cerrar = () => { if (!saving) setPanelOpen(false); };
+  const cancelar = () => {
+    if (saving) return;
+    if (original) { setForm({ ...EMPTY, ...original }); setModo("ver"); }
+    else { setPanelOpen(false); }
+  };
 
   // Al elegir comercializadora del catálogo, autocompletamos los derivados (display)
   const onSelectCatalogo = (idStr: string) => {
@@ -209,6 +216,8 @@ export default function ErpComercializadorasEmpresaPage() {
   };
 
   const esNuevo = form.id == null;
+  const ver = modo === "ver";
+  const editar = () => setModo("editar");
   const puedeGuardar = form.comercializadora_id != null;
 
   const guardar = async () => {
@@ -289,7 +298,7 @@ export default function ErpComercializadorasEmpresaPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo"
+            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo" disabled={ver}
               onClick={() => setForm({ ...form, activo: !form.activo })}
               style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: "rgba(241,239,232,0.75)", fontSize: 13, padding: 0 }}>
               {form.activo ? "Activa" : "Baja"}
@@ -299,14 +308,23 @@ export default function ErpComercializadorasEmpresaPage() {
             </button>
 
             <div style={{ display: "flex", gap: 10 }}>
-              {form.id ? (
-                <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
-              ) : null}
-              <button onClick={cerrar} disabled={saving} style={btnGhost}>Cancelar</button>
-              <button onClick={guardar} disabled={saving || !puedeGuardar}
+              {ver ? (
+                <>
+                  <button onClick={cerrar} disabled={saving} style={btnGhost}>Cerrar</button>
+                  <button onClick={editar} style={{ ...btnPrimary, cursor: "pointer" }}>Editar</button>
+                </>
+              ) : (
+                <>
+                  {form.id ? (
+                    <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
+                  ) : null}
+                  <button onClick={cancelar} disabled={saving} style={btnGhost}>Cancelar</button>
+                  <button onClick={guardar} disabled={saving || !puedeGuardar}
                 style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
                 {saving ? "Guardando…" : "Guardar"}
               </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -321,7 +339,7 @@ export default function ErpComercializadorasEmpresaPage() {
           {esNuevo ? (
             <div style={{ gridColumn: "1 / -1" }}>
               <label style={labelStyle}>Comercializadora<span style={{ color: "#F0999B" }}> *</span></label>
-              <select style={inputStyle} value={form.comercializadora_id ?? ""}
+              <select style={inputStyle} disabled={ver} value={form.comercializadora_id ?? ""}
                 onChange={(e) => onSelectCatalogo(e.target.value)}>
                 <option value="" style={{ background: "#16181D" }}>— Selecciona —</option>
                 {catalogo.map((c) => (
@@ -343,17 +361,17 @@ export default function ErpComercializadorasEmpresaPage() {
         </SectionCard>
 
         <SectionCard title="Relación con la distribuidora">
-          <TextField label="Dirección" span value={form.direccion ?? ""} maxLength={255}
+          <TextField disabled={ver} label="Dirección" span value={form.direccion ?? ""} maxLength={255}
             onChange={(v) => setForm({ ...form, direccion: v })} />
-          <TextField label="Tipo de pago" value={form.tipo_pago ?? ""} maxLength={120}
+          <TextField disabled={ver} label="Tipo de pago" value={form.tipo_pago ?? ""} maxLength={120}
             onChange={(v) => setForm({ ...form, tipo_pago: v })} />
-          <TextField label="Fecha de alta (ERP)" type="date" value={form.fecha_alta_erp ?? ""}
+          <TextField disabled={ver} label="Fecha de alta (ERP)" type="date" value={form.fecha_alta_erp ?? ""}
             onChange={(v) => setForm({ ...form, fecha_alta_erp: v })} />
-          <TextField label="Fecha de baja (ERP)" type="date" value={form.fecha_baja_erp ?? ""}
+          <TextField disabled={ver} label="Fecha de baja (ERP)" type="date" value={form.fecha_baja_erp ?? ""}
             onChange={(v) => setForm({ ...form, fecha_baja_erp: v })} />
           <div style={{ gridColumn: "1 / -1" }}>
             <label style={labelStyle}>Datos de acceso P0</label>
-            <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+            <textarea disabled={ver} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
               value={form.datos_acceso_p0 ?? ""}
               onChange={(e) => setForm({ ...form, datos_acceso_p0: e.target.value })} />
           </div>

@@ -105,10 +105,10 @@ function badge(bg: string, color: string): React.CSSProperties {
 }
 
 function TextField({
-  label, value, onChange, span, placeholder, maxLength,
+  label, value, onChange, span, placeholder, maxLength, disabled,
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  span?: boolean; placeholder?: string; maxLength?: number;
+  span?: boolean; placeholder?: string; maxLength?: number; disabled?: boolean;
 }) {
   // Asterisco rojo si la label termina en " *"
   const req = label.endsWith(" *");
@@ -116,7 +116,7 @@ function TextField({
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{base}{req ? <span style={{ color: "#F0999B" }}> *</span> : null}</label>
-      <input style={inputStyle} value={value} placeholder={placeholder} maxLength={maxLength}
+      <input style={inputStyle} value={value} placeholder={placeholder} maxLength={maxLength} disabled={disabled}
         onChange={(e) => onChange(e.target.value)} />
     </div>
   );
@@ -125,15 +125,15 @@ function TextField({
 type Opcion = { codigo: string; descripcion: string };
 
 function SelectField({
-  label, value, onChange, options, span,
+  label, value, onChange, options, span, disabled,
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  options: Opcion[]; span?: boolean;
+  options: Opcion[]; span?: boolean; disabled?: boolean;
 }) {
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{label}</label>
-      <select style={inputStyle} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select style={inputStyle} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         <option value="" style={{ background: "#16181D" }}>—</option>
         {options.map((o) => (
           <option key={o.codigo} value={o.codigo} style={{ background: "#16181D" }}>
@@ -146,16 +146,16 @@ function SelectField({
 }
 
 function ComboField({
-  label, value, onChange, options, maxLength, span,
+  label, value, onChange, options, maxLength, span, disabled,
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  options: Opcion[]; maxLength?: number; span?: boolean;
+  options: Opcion[]; maxLength?: number; span?: boolean; disabled?: boolean;
 }) {
   const listId = `dl-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{label}</label>
-      <input style={inputStyle} value={value} list={listId} maxLength={maxLength}
+      <input style={inputStyle} value={value} list={listId} maxLength={maxLength} disabled={disabled}
         onChange={(e) => onChange(e.target.value)} />
       <datalist id={listId}>
         {options.map((o) => (
@@ -186,6 +186,8 @@ export default function ErpTitularesPage() {
   const [soloActivos, setSoloActivos] = useState(false);
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [modo, setModo] = useState<"ver" | "editar">("editar");
+  const [original, setOriginal] = useState<Titular | null>(null);
   const [form, setForm] = useState<Titular>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [catalogos, setCatalogos] = useState<{ tipo_via: Opcion[]; piso: Opcion[]; puerta: Opcion[]; aclarador_finca: Opcion[] }>(
@@ -236,9 +238,14 @@ export default function ErpTitularesPage() {
     return () => clearTimeout(t);
   }, [authChecked, cargarTitulares]);
 
-  const abrirNuevo = () => { setForm({ ...EMPTY }); setPanelOpen(true); };
-  const abrirEditar = (t: Titular) => { setForm({ ...EMPTY, ...t }); setPanelOpen(true); };
+  const abrirNuevo = () => { setForm({ ...EMPTY }); setOriginal(null); setModo("editar"); setPanelOpen(true); };
+  const abrirEditar = (t: Titular) => { setForm({ ...EMPTY, ...t }); setOriginal(t); setModo("ver"); setPanelOpen(true); };
   const cerrar = () => { if (!saving) setPanelOpen(false); };
+  const cancelar = () => {
+    if (saving) return;
+    if (original) { setForm({ ...EMPTY, ...original }); setModo("ver"); }
+    else { setPanelOpen(false); }
+  };
 
   // Validación ligera del documento en vivo (solo aviso visual; el backend es la fuente de verdad)
   const _LET = "TRWAGMYFPDXBNJZSQVHLCKE";
@@ -276,6 +283,8 @@ export default function ErpTitularesPage() {
       : !!form.razon_social?.trim();
   // ATR (TiposComplejos.xsd, IdCliente): tipo de documento + identificador obligatorios
   const docOk = !!(form.tipo_identificador?.trim() && form.identificador?.trim());
+  const ver = modo === "ver";
+  const editar = () => setModo("editar");
   const puedeGuardar = nombreOk && docOk;
 
   const guardar = async () => {
@@ -365,8 +374,8 @@ export default function ErpTitularesPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo"
-              onClick={() => setForm({ ...form, activo: !form.activo })}
+            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo" disabled={ver}
+              onClick={() => { if (!ver) setForm({ ...form, activo: !form.activo }); }}
               style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: "rgba(241,239,232,0.75)", fontSize: 13, padding: 0 }}>
               {form.activo ? "Activo" : "Baja"}
               <span style={{ position: "relative", width: 38, height: 22, borderRadius: 999, background: form.activo ? "#7BE0A3" : "rgba(255,255,255,0.15)", transition: "background .15s" }}>
@@ -375,14 +384,23 @@ export default function ErpTitularesPage() {
             </button>
 
             <div style={{ display: "flex", gap: 10 }}>
-              {form.id ? (
-                <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
-              ) : null}
-              <button onClick={cerrar} disabled={saving} style={btnGhost}>Cancelar</button>
-              <button onClick={guardar} disabled={saving || !puedeGuardar}
-                style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
-                {saving ? "Guardando…" : "Guardar"}
-              </button>
+              {ver ? (
+                <>
+                  <button onClick={cerrar} disabled={saving} style={btnGhost}>Cerrar</button>
+                  <button onClick={editar} style={{ ...btnPrimary, cursor: "pointer" }}>Editar</button>
+                </>
+              ) : (
+                <>
+                  {form.id ? (
+                    <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
+                  ) : null}
+                  <button onClick={cancelar} disabled={saving} style={btnGhost}>Cancelar</button>
+                  <button onClick={guardar} disabled={saving || !puedeGuardar}
+                    style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
+                    {saving ? "Guardando…" : "Guardar"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -396,7 +414,7 @@ export default function ErpTitularesPage() {
         <SectionCard title="Identificación">
           <div>
             <label style={labelStyle}>Tipo persona</label>
-            <select style={inputStyle} value={form.tipo_persona}
+            <select style={inputStyle} disabled={ver} value={form.tipo_persona}
               onChange={(e) => setForm({ ...form, tipo_persona: e.target.value })}>
               <option value="juridica" style={{ background: "#16181D" }}>Jurídica</option>
               <option value="fisica" style={{ background: "#16181D" }}>Física</option>
@@ -404,7 +422,7 @@ export default function ErpTitularesPage() {
           </div>
           <div>
             <label style={labelStyle}>Tipo de documento<span style={{ color: "#F0999B" }}> *</span></label>
-            <select style={inputStyle} value={form.tipo_identificador ?? ""}
+            <select style={inputStyle} disabled={ver} value={form.tipo_identificador ?? ""}
               onChange={(e) => setForm({ ...form, tipo_identificador: e.target.value })}>
               {TIPO_DOC.map(([v, l]) => (
                 <option key={v} value={v} style={{ background: "#16181D" }}>{l}</option>
@@ -412,7 +430,7 @@ export default function ErpTitularesPage() {
             </select>
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <TextField label="Identificador (nº) *" span value={form.identificador ?? ""} onChange={(v) => setForm({ ...form, identificador: v })} />
+            <TextField disabled={ver} label="Identificador (nº) *" span value={form.identificador ?? ""} onChange={(v) => setForm({ ...form, identificador: v })} />
             {docError && (
               <div style={{ color: "#F0999B", fontSize: 12, marginTop: 4 }}>{docError}</div>
             )}
@@ -420,44 +438,44 @@ export default function ErpTitularesPage() {
 
           {form.tipo_persona === "fisica" ? (
             <>
-              <TextField label="Nombre *" value={form.nombre_de_pila ?? ""} onChange={(v) => setForm({ ...form, nombre_de_pila: v })} />
-              <TextField label="Primer apellido *" value={form.primer_apellido ?? ""} onChange={(v) => setForm({ ...form, primer_apellido: v })} />
-              <TextField label="Segundo apellido" span value={form.segundo_apellido ?? ""} onChange={(v) => setForm({ ...form, segundo_apellido: v })} />
+              <TextField disabled={ver} label="Nombre *" value={form.nombre_de_pila ?? ""} onChange={(v) => setForm({ ...form, nombre_de_pila: v })} />
+              <TextField disabled={ver} label="Primer apellido *" value={form.primer_apellido ?? ""} onChange={(v) => setForm({ ...form, primer_apellido: v })} />
+              <TextField disabled={ver} label="Segundo apellido" span value={form.segundo_apellido ?? ""} onChange={(v) => setForm({ ...form, segundo_apellido: v })} />
             </>
           ) : (
-            <TextField label="Razón social *" span value={form.razon_social ?? ""} onChange={(v) => setForm({ ...form, razon_social: v })} />
+            <TextField disabled={ver} label="Razón social *" span value={form.razon_social ?? ""} onChange={(v) => setForm({ ...form, razon_social: v })} />
           )}
         </SectionCard>
 
         <SectionCard title="Dirección fiscal">
-          <SelectField label="Tipo de vía" value={form.dir_tipo_via ?? ""} options={catalogos.tipo_via} onChange={(v) => setForm({ ...form, dir_tipo_via: v })} />
-          <TextField label="Vía" value={form.dir_via ?? ""} maxLength={30} onChange={(v) => setForm({ ...form, dir_via: v })} />
-          <TextField label="Número" value={form.dir_numero ?? ""} maxLength={5} onChange={(v) => setForm({ ...form, dir_numero: v })} />
-          <TextField label="Duplicador" value={form.dir_duplicador ?? ""} maxLength={3} onChange={(v) => setForm({ ...form, dir_duplicador: v })} />
-          <TextField label="Escalera" value={form.dir_escalera ?? ""} maxLength={3} onChange={(v) => setForm({ ...form, dir_escalera: v })} />
-          <ComboField label="Piso" value={form.dir_piso ?? ""} options={catalogos.piso} maxLength={3} onChange={(v) => setForm({ ...form, dir_piso: v })} />
-          <ComboField label="Puerta" value={form.dir_puerta ?? ""} options={catalogos.puerta} maxLength={3} onChange={(v) => setForm({ ...form, dir_puerta: v })} />
-          <SelectField label="Tipo de aclarador" value={form.dir_tipo_aclarador ?? ""} options={catalogos.aclarador_finca} onChange={(v) => setForm({ ...form, dir_tipo_aclarador: v })} />
-          <TextField label="Aclarador" value={form.dir_aclarador ?? ""} maxLength={40} onChange={(v) => setForm({ ...form, dir_aclarador: v })} />
-          <TextField label="C.P." value={form.dir_cp ?? ""} maxLength={5} onChange={(v) => setForm({ ...form, dir_cp: v })} />          <TextField label="Municipio" value={form.dir_municipio ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_municipio: v })} />
-          <TextField label="Provincia" value={form.dir_provincia ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_provincia: v })} />
-          <TextField label="País" value={form.dir_pais ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_pais: v })} />
+          <SelectField disabled={ver} label="Tipo de vía" value={form.dir_tipo_via ?? ""} options={catalogos.tipo_via} onChange={(v) => setForm({ ...form, dir_tipo_via: v })} />
+          <TextField disabled={ver} label="Vía" value={form.dir_via ?? ""} maxLength={30} onChange={(v) => setForm({ ...form, dir_via: v })} />
+          <TextField disabled={ver} label="Número" value={form.dir_numero ?? ""} maxLength={5} onChange={(v) => setForm({ ...form, dir_numero: v })} />
+          <TextField disabled={ver} label="Duplicador" value={form.dir_duplicador ?? ""} maxLength={3} onChange={(v) => setForm({ ...form, dir_duplicador: v })} />
+          <TextField disabled={ver} label="Escalera" value={form.dir_escalera ?? ""} maxLength={3} onChange={(v) => setForm({ ...form, dir_escalera: v })} />
+          <ComboField disabled={ver} label="Piso" value={form.dir_piso ?? ""} options={catalogos.piso} maxLength={3} onChange={(v) => setForm({ ...form, dir_piso: v })} />
+          <ComboField disabled={ver} label="Puerta" value={form.dir_puerta ?? ""} options={catalogos.puerta} maxLength={3} onChange={(v) => setForm({ ...form, dir_puerta: v })} />
+          <SelectField disabled={ver} label="Tipo de aclarador" value={form.dir_tipo_aclarador ?? ""} options={catalogos.aclarador_finca} onChange={(v) => setForm({ ...form, dir_tipo_aclarador: v })} />
+          <TextField disabled={ver} label="Aclarador" value={form.dir_aclarador ?? ""} maxLength={40} onChange={(v) => setForm({ ...form, dir_aclarador: v })} />
+          <TextField disabled={ver} label="C.P." value={form.dir_cp ?? ""} maxLength={5} onChange={(v) => setForm({ ...form, dir_cp: v })} />          <TextField disabled={ver} label="Municipio" value={form.dir_municipio ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_municipio: v })} />
+          <TextField disabled={ver} label="Provincia" value={form.dir_provincia ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_provincia: v })} />
+          <TextField disabled={ver} label="País" value={form.dir_pais ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, dir_pais: v })} />
         </SectionCard>
 
         <SectionCard title="Contacto">
           {form.tipo_persona === "juridica" && (
-            <TextField label="Persona de contacto" span value={form.persona_contacto ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, persona_contacto: v })} />
+            <TextField disabled={ver} label="Persona de contacto" span value={form.persona_contacto ?? ""} maxLength={120} onChange={(v) => setForm({ ...form, persona_contacto: v })} />
           )}
-          <TextField label="Teléfono" value={form.telefono ?? ""} onChange={(v) => setForm({ ...form, telefono: v })} />
-          <TextField label="Móvil" value={form.movil ?? ""} onChange={(v) => setForm({ ...form, movil: v })} />
-          <TextField label="Email" span value={form.email ?? ""} onChange={(v) => setForm({ ...form, email: v })} />
+          <TextField disabled={ver} label="Teléfono" value={form.telefono ?? ""} onChange={(v) => setForm({ ...form, telefono: v })} />
+          <TextField disabled={ver} label="Móvil" value={form.movil ?? ""} onChange={(v) => setForm({ ...form, movil: v })} />
+          <TextField disabled={ver} label="Email" span value={form.email ?? ""} onChange={(v) => setForm({ ...form, email: v })} />
         </SectionCard>
 
         <SectionCard title="Otros">
-          <TextField label="Código interno" value={form.codigo_interno ?? ""} onChange={(v) => setForm({ ...form, codigo_interno: v })} />
+          <TextField disabled={ver} label="Código interno" value={form.codigo_interno ?? ""} onChange={(v) => setForm({ ...form, codigo_interno: v })} />
           <div style={{ gridColumn: "1 / -1" }}>
             <label style={labelStyle}>Notas</label>
-            <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+            <textarea disabled={ver} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
               value={form.notas ?? ""} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
           </div>
         </SectionCard>

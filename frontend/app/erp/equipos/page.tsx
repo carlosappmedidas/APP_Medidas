@@ -229,15 +229,15 @@ function estadoBadge(estado: string): React.CSSProperties {
 
 function TextField(props: {
   label: string; value: string; onChange: (v: string) => void;
-  span?: boolean; type?: string; placeholder?: string; monospace?: boolean; maxLength?: number;
+  span?: boolean; type?: string; placeholder?: string; monospace?: boolean; maxLength?: number; disabled?: boolean;
 }) {
-  const { label, value, onChange, span, type = "text", placeholder, monospace, maxLength } = props;
+  const { label, value, onChange, span, type = "text", placeholder, monospace, maxLength, disabled } = props;
   const req = label.endsWith(" *");
   const base = req ? label.slice(0, -2) : label;
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{base}{req ? <span style={{ color: "#F0999B" }}> *</span> : null}</label>
-      <input type={type} value={value} placeholder={placeholder} maxLength={maxLength}
+      <input type={type} value={value} placeholder={placeholder} maxLength={maxLength} disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         style={monospace ? { ...inputStyle, fontFamily: monoFont } : inputStyle} />
     </div>
@@ -245,15 +245,15 @@ function TextField(props: {
 }
 
 function SelectField(props: {
-  label: string; value: string; onChange: (v: string) => void; options: Opcion[]; span?: boolean;
+  label: string; value: string; onChange: (v: string) => void; options: Opcion[]; span?: boolean; disabled?: boolean;
 }) {
-  const { label, value, onChange, options, span } = props;
+  const { label, value, onChange, options, span, disabled } = props;
   const req = label.endsWith(" *");
   const base = req ? label.slice(0, -2) : label;
   return (
     <div style={{ gridColumn: span ? "1 / -1" : undefined }}>
       <label style={labelStyle}>{base}{req ? <span style={{ color: "#F0999B" }}> *</span> : null}</label>
-      <select style={inputStyle} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select style={inputStyle} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         <option value="" style={{ background: "#16181D" }}>—</option>
         {options.map((o) => (
           <option key={o.codigo} value={o.codigo} style={{ background: "#16181D" }}>
@@ -303,6 +303,7 @@ export default function EquiposPage() {
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [modo, setModo] = useState<"ver" | "editar">("editar");
   const [form, setForm] = useState<Form>(EMPTY);
   const [deriv, setDeriv] = useState<Derivados>(EMPTY_DERIV);
   const [saving, setSaving] = useState(false);
@@ -369,12 +370,15 @@ export default function EquiposPage() {
   function set<K extends keyof Form>(k: K, v: Form[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
+  const ver = modo === "ver";
+  const editar = () => { setErrorMsg(null); setModo("editar"); };
 
   function abrirNuevo() {
     setForm(EMPTY);
     setDeriv(EMPTY_DERIV);
     setEditingId(null);
     setErrorMsg(null);
+    setModo("editar");
     setPanelOpen(true);
   }
 
@@ -419,6 +423,7 @@ export default function EquiposPage() {
         tipo_punto_medida: s.tipo_punto_medida ?? null,
       });
       setEditingId(id);
+      setModo("ver");
       setPanelOpen(true);
       cargarHistorial(id);
       cargarAlmacen(id);
@@ -552,6 +557,8 @@ export default function EquiposPage() {
       setMovSaving(false);
     }
   }
+
+  function cancelar() { if (saving) return; if (editingId != null) { abrirFicha(editingId); } else { setPanelOpen(false); setEditingId(null); } }
 
   function cerrar() {
     setPanelOpen(false);
@@ -694,7 +701,7 @@ export default function EquiposPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo"
+            <button type="button" role="switch" aria-checked={form.activo} aria-label="Activo" disabled={ver}
               onClick={() => set("activo", !form.activo)}
               style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: "rgba(241,239,232,0.75)", fontSize: 13, padding: 0 }}>
               {form.activo ? "Activo" : "Baja"}
@@ -707,11 +714,17 @@ export default function EquiposPage() {
               {editingId != null ? (
                 <button onClick={desactivar} disabled={saving} style={btnDanger}>Desactivar</button>
               ) : null}
-              <button onClick={cerrar} disabled={saving} style={btnGhost}>Cancelar</button>
-              <button onClick={guardar} disabled={saving || !puedeGuardar}
-                style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
-                {saving ? "Guardando…" : "Guardar"}
-              </button>
+              {ver ? (
+                <button onClick={editar} style={{ ...btnPrimary, cursor: "pointer" }}>Editar</button>
+              ) : (
+                <>
+                  <button onClick={cancelar} disabled={saving} style={btnGhost}>Cancelar</button>
+                  <button onClick={guardar} disabled={saving || !puedeGuardar}
+                    style={{ ...btnPrimary, cursor: saving || !puedeGuardar ? "default" : "pointer", opacity: saving || !puedeGuardar ? 0.5 : 1 }}>
+                    {saving ? "Guardando…" : "Guardar"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -729,40 +742,40 @@ export default function EquiposPage() {
         )}
 
         <SectionCard title="Identificación">
-          <TextField label="Número de serie *" value={form.numero_serie} onChange={(v) => set("numero_serie", v)} monospace />
-          <SelectField label="Tipo de equipo" value={form.tipo_equipo} onChange={(v) => set("tipo_equipo", v)} options={TIPO_EQUIPO_OPCIONES} />
-          <TextField label="Fabricante" value={form.fabricante} onChange={(v) => set("fabricante", v)} />
-          <TextField label="Modelo" value={form.modelo} onChange={(v) => set("modelo", v)} />
-          <TextField label="Versión firmware" value={form.version_firmware} onChange={(v) => set("version_firmware", v)} />
-          <TextField label="Año fabricación" type="number" value={form.anio_fabricacion} onChange={(v) => set("anio_fabricacion", v)} />
+          <TextField disabled={ver} label="Número de serie *" value={form.numero_serie} onChange={(v) => set("numero_serie", v)} monospace />
+          <SelectField disabled={ver} label="Tipo de equipo" value={form.tipo_equipo} onChange={(v) => set("tipo_equipo", v)} options={TIPO_EQUIPO_OPCIONES} />
+          <TextField disabled={ver} label="Fabricante" value={form.fabricante} onChange={(v) => set("fabricante", v)} />
+          <TextField disabled={ver} label="Modelo" value={form.modelo} onChange={(v) => set("modelo", v)} />
+          <TextField disabled={ver} label="Versión firmware" value={form.version_firmware} onChange={(v) => set("version_firmware", v)} />
+          <TextField disabled={ver} label="Año fabricación" type="number" value={form.anio_fabricacion} onChange={(v) => set("anio_fabricacion", v)} />
         </SectionCard>
 
         <SectionCard title="Regulatorio (CNMC)">
-          <SelectField label="Tipo de telegestión" value={form.tipo_telegestion} onChange={(v) => set("tipo_telegestion", v)} options={cat.telegestion} />
-          <SelectField label="Propiedad del contador" value={form.propiedad} onChange={(v) => set("propiedad", v)} options={cat.propiedad_aparato} />
-          <SelectField label="Propiedad del ICP" value={form.propiedad_icp} onChange={(v) => set("propiedad_icp", v)} options={cat.propiedad_aparato} />
-          <SelectField label="Modo control potencia" value={form.modo_control_potencia} onChange={(v) => set("modo_control_potencia", v)} options={MODO_CP_OPCIONES} />
+          <SelectField disabled={ver} label="Tipo de telegestión" value={form.tipo_telegestion} onChange={(v) => set("tipo_telegestion", v)} options={cat.telegestion} />
+          <SelectField disabled={ver} label="Propiedad del contador" value={form.propiedad} onChange={(v) => set("propiedad", v)} options={cat.propiedad_aparato} />
+          <SelectField disabled={ver} label="Propiedad del ICP" value={form.propiedad_icp} onChange={(v) => set("propiedad_icp", v)} options={cat.propiedad_aparato} />
+          <SelectField disabled={ver} label="Modo control potencia" value={form.modo_control_potencia} onChange={(v) => set("modo_control_potencia", v)} options={MODO_CP_OPCIONES} />
         </SectionCard>
 
         <SectionCard title="Verificación metrológica">
-          <TextField label="Fecha verificación" type="date" value={form.fecha_verificacion} onChange={(v) => set("fecha_verificacion", v)} />
-          <TextField label="Caducidad verificación" type="date" value={form.fecha_caducidad_verificacion} onChange={(v) => set("fecha_caducidad_verificacion", v)} />
+          <TextField disabled={ver} label="Fecha verificación" type="date" value={form.fecha_verificacion} onChange={(v) => set("fecha_verificacion", v)} />
+          <TextField disabled={ver} label="Caducidad verificación" type="date" value={form.fecha_caducidad_verificacion} onChange={(v) => set("fecha_caducidad_verificacion", v)} />
         </SectionCard>
 
         <SectionCard title="Contador / alquiler / precinto">
-          <TextField label="Giro (dígitos totalizador)" type="number" value={form.giro_digitos} onChange={(v) => set("giro_digitos", v)} />
+          <TextField disabled={ver} label="Giro (dígitos totalizador)" type="number" value={form.giro_digitos} onChange={(v) => set("giro_digitos", v)} />
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(241,239,232,0.8)" }}>
             <input type="checkbox" checked={form.alquiler} onChange={(e) => set("alquiler", e.target.checked)} />
             Alquiler
           </label>
-          <TextField label="Tipo de alquiler" value={form.tipo_alquiler} onChange={(v) => set("tipo_alquiler", v)} />
-          <TextField label="Nº precinto" value={form.numero_precinto} onChange={(v) => set("numero_precinto", v)} />
-          <TextField label="Fecha precintado" type="date" value={form.fecha_precintado} onChange={(v) => set("fecha_precintado", v)} />
+          <TextField disabled={ver} label="Tipo de alquiler" value={form.tipo_alquiler} onChange={(v) => set("tipo_alquiler", v)} />
+          <TextField disabled={ver} label="Nº precinto" value={form.numero_precinto} onChange={(v) => set("numero_precinto", v)} />
+          <TextField disabled={ver} label="Fecha precintado" type="date" value={form.fecha_precintado} onChange={(v) => set("fecha_precintado", v)} />
         </SectionCard>
 
         {editingId != null && (
           <SectionCard title="Ubicación / estado">
-            <SelectField label="Estado" value={form.estado} onChange={(v) => set("estado", v)} options={ESTADO_OPCIONES} />
+            <SelectField disabled={ver} label="Estado" value={form.estado} onChange={(v) => set("estado", v)} options={ESTADO_OPCIONES} />
           </SectionCard>
         )}
 
@@ -775,20 +788,20 @@ export default function EquiposPage() {
             </label>
             {form.recibir_en_almacen && (
               <>
-                <TextField label="Ubicación" value={form.alm_ubicacion} onChange={(v) => set("alm_ubicacion", v)} />
-                <SelectField label="Estado en almacén" value={form.alm_estado_equipo} onChange={(v) => set("alm_estado_equipo", v)}
+                <TextField disabled={ver} label="Ubicación" value={form.alm_ubicacion} onChange={(v) => set("alm_ubicacion", v)} />
+                <SelectField disabled={ver} label="Estado en almacén" value={form.alm_estado_equipo} onChange={(v) => set("alm_estado_equipo", v)}
                   options={[
                     { codigo: "nuevo", descripcion: "Nuevo" },
                     { codigo: "reacondicionado", descripcion: "Reacondicionado" },
                     { codigo: "averiado-pendiente", descripcion: "Averiado (pendiente)" },
                     { codigo: "para-desguace", descripcion: "Para desguace" },
                   ]} />
-                <TextField label="Lote de compra" value={form.alm_lote_compra} onChange={(v) => set("alm_lote_compra", v)} />
-                <TextField label="Albarán proveedor" value={form.alm_albaran_proveedor} onChange={(v) => set("alm_albaran_proveedor", v)} />
-                <TextField label="Proveedor" value={form.alm_proveedor} onChange={(v) => set("alm_proveedor", v)} />
-                <TextField label="Fecha entrada" type="date" value={form.alm_fecha_entrada} onChange={(v) => set("alm_fecha_entrada", v)} />
-                <TextField label="Fecha garantía" type="date" value={form.alm_fecha_garantia} onChange={(v) => set("alm_fecha_garantia", v)} />
-                <TextField label="Notas almacén" span value={form.alm_notas} onChange={(v) => set("alm_notas", v)} />
+                <TextField disabled={ver} label="Lote de compra" value={form.alm_lote_compra} onChange={(v) => set("alm_lote_compra", v)} />
+                <TextField disabled={ver} label="Albarán proveedor" value={form.alm_albaran_proveedor} onChange={(v) => set("alm_albaran_proveedor", v)} />
+                <TextField disabled={ver} label="Proveedor" value={form.alm_proveedor} onChange={(v) => set("alm_proveedor", v)} />
+                <TextField disabled={ver} label="Fecha entrada" type="date" value={form.alm_fecha_entrada} onChange={(v) => set("alm_fecha_entrada", v)} />
+                <TextField disabled={ver} label="Fecha garantía" type="date" value={form.alm_fecha_garantia} onChange={(v) => set("alm_fecha_garantia", v)} />
+                <TextField disabled={ver} label="Notas almacén" span value={form.alm_notas} onChange={(v) => set("alm_notas", v)} />
               </>
             )}
           </SectionCard>
@@ -901,9 +914,9 @@ export default function EquiposPage() {
         )}
 
         <SectionCard title="Baja del parque / notas">
-          <TextField label="Fecha baja" type="date" value={form.baja_fecha} onChange={(v) => set("baja_fecha", v)} />
-          <TextField label="Motivo baja" span value={form.baja_motivo} onChange={(v) => set("baja_motivo", v)} />
-          <TextField label="Notas" span value={form.notas} onChange={(v) => set("notas", v)} />
+          <TextField disabled={ver} label="Fecha baja" type="date" value={form.baja_fecha} onChange={(v) => set("baja_fecha", v)} />
+          <TextField disabled={ver} label="Motivo baja" span value={form.baja_motivo} onChange={(v) => set("baja_motivo", v)} />
+          <TextField disabled={ver} label="Notas" span value={form.notas} onChange={(v) => set("notas", v)} />
         </SectionCard>
 
         {modal && (
