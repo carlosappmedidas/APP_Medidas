@@ -571,6 +571,23 @@ def obtener_equipo_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
+@router.get("/equipos/{equipo_id}/enlace-stg")
+def enlace_stg_equipo_endpoint(
+    equipo_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Pieza 1: comprueba si el numero de serie del equipo aparece en el STG
+    (stg_contador), enlazando por numero de serie (meter_id sin prefijo).
+    Devuelve {"enlazado": bool, "numero_serie": str, "meter_id": str|None}.
+    """
+    try:
+        return services.enlace_stg_equipo(db, user, equipo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
 @router.put("/equipos/{equipo_id}", response_model=schemas.ErpEquipoMedidaOut)
 def actualizar_equipo_endpoint(
     equipo_id: int,

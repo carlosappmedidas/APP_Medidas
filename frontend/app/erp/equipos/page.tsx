@@ -325,6 +325,8 @@ export default function EquiposPage() {
   const [movForm, setMovForm] = useState<MovForm>(EMPTY_MOV);
   const [movSaving, setMovSaving] = useState(false);
   const [movError, setMovError] = useState<string | null>(null);
+  const [enlaceStg, setEnlaceStg] = useState<{ enlazado: boolean; meter_id: string | null } | null>(null);
+  const [enlaceCargando, setEnlaceCargando] = useState(false);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : null;
@@ -502,6 +504,21 @@ export default function EquiposPage() {
       setSumOpts(arr.map((s) => ({ id: s.id, cups: s.cups })));
     } catch {
       setSumOpts([]);
+    }
+  }
+
+    async function comprobarEnlaceStg() {
+    if (editingId == null) return;
+    setEnlaceCargando(true);
+    setEnlaceStg(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/erp/equipos/${editingId}/enlace-stg`, { headers: authHeaders() });
+      if (r.ok) {
+        const d = await r.json();
+        setEnlaceStg({ enlazado: !!d.enlazado, meter_id: d.meter_id ?? null });
+      }
+    } finally {
+      setEnlaceCargando(false);
     }
   }
 
@@ -816,6 +833,26 @@ export default function EquiposPage() {
             <ReadField label="Comercializadora" value={deriv.contrato_comercializadora} />
             <ReadField label="Tipo punto medida" value={deriv.tipo_punto_medida} />
           </SectionCard>
+        )}
+
+                {editingId != null && (
+          <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={cardTitleStyle}>Telegestión (STG)</div>
+              <button type="button" onClick={comprobarEnlaceStg} disabled={enlaceCargando}
+                style={{ ...btnGhost, cursor: enlaceCargando ? "default" : "pointer", opacity: enlaceCargando ? 0.5 : 1 }}>
+                {enlaceCargando ? "Comprobando…" : "Comprobar telegestión"}
+              </button>
+            </div>
+            {enlaceStg != null && (
+              <p style={{ fontSize: 13, margin: "10px 0 0",
+                color: enlaceStg.enlazado ? "#7BE0A3" : "rgba(241,239,232,0.6)" }}>
+                {enlaceStg.enlazado
+                  ? `Visto en telegestión: Sí (${enlaceStg.meter_id})`
+                  : "Visto en telegestión: No"}
+              </p>
+            )}
+          </div>
         )}
 
         {editingId != null && (

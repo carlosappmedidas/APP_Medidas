@@ -913,6 +913,42 @@ def obtener_equipo(db: Session, user: User, equipo_id: int) -> "ErpEquipoMedidaO
     return _equipo_out(db, eq)
 
 
+def enlace_stg_equipo(db: Session, user: User, equipo_id: int) -> dict:
+    """
+    Pieza 1 del enlace ERP<->STG (por numero de serie del contador).
+
+    Busca si el numero_serie de este equipo aparece en stg_contador.
+    El meter_id del STG lleva prefijo de fabricante (CIR/LGZ/ZIV/SAG/ITE);
+    el numero_serie del ERP va SIN prefijo. Para casar: se quitan las 3
+    primeras letras del meter_id y se compara con el numero_serie.
+
+    Devuelve: {"enlazado": bool, "numero_serie": str, "meter_id": str|None}
+    """
+    from app.stg.models import Contador  # import local para no acoplar modulos
+
+    eq = _cargar_equipo_con_acceso(db, user, equipo_id)
+    numero_serie = (eq.numero_serie or "").strip()
+
+    if not numero_serie:
+        return {"enlazado": False, "numero_serie": "", "meter_id": None}
+
+    # Candidatos del STG en la misma empresa. El meter_id sin sus 3 primeras
+    # letras debe coincidir con el numero_serie del equipo.
+    candidatos = (
+        db.query(Contador)
+        .filter(Contador.empresa_id == eq.empresa_id)
+        .all()
+    )
+    for c in candidatos:
+        mid = (c.meter_id or "").strip()
+        # quitar prefijo de 3 letras (CIR0141406756 -> 0141406756)
+        sin_prefijo = mid[3:] if len(mid) > 3 and mid[:3].isalpha() else mid
+        if sin_prefijo == numero_serie:
+            return {"enlazado": True, "numero_serie": numero_serie, "meter_id": mid}
+
+    return {"enlazado": False, "numero_serie": numero_serie, "meter_id": None}
+
+
 def crear_equipo(
     db: Session, user: User, empresa_id: int, payload: "ErpEquipoMedidaCreate"
 ) -> "ErpEquipoMedidaOut":
