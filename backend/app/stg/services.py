@@ -800,6 +800,80 @@ _FABRICANTES = {
     "ITR": "Itron",
 }
 
+def obtener_curva(
+    db: Session,
+    user: User,
+    empresa_id: int,
+    meter_id: str,
+    tipo_fichero: str = "S02",
+    fecha_desde: Optional[datetime] = None,
+    fecha_hasta: Optional[datetime] = None,
+    offset: int = 0,
+    limite: int = 200,
+) -> dict:
+    """
+    Devuelve la curva (S02 por defecto) de un contador, leyendo stg_medida.
+    Cada fila: timestamp + magnitudes del JSONB (ai, ae, r1..r4, status, season, bc).
+    Valor en kWh por tramo (no se transforma aquí).
+    Filtra por empresa (multi-tenant) + meter_id + tipo_fichero + rango de fechas.
+    """
+    from app.core.permissions import assert_empresa_access
+    assert_empresa_access(db, user, empresa_id)
+
+    q = (
+        db.query(Medida)
+        .filter(
+            Medida.empresa_id == empresa_id,
+            Medida.meter_id == meter_id,
+            Medida.tipo_fichero == tipo_fichero,
+        )
+    )
+    if fecha_desde is not None:
+        q = q.filter(Medida.timestamp_dato >= fecha_desde)
+    if fecha_hasta is not None:
+        q = q.filter(Medida.timestamp_dato <= fecha_hasta)
+
+    # Límites defensivos (mismo patrón que listar_contadores_detectados / eventos)
+    limite = max(1, min(int(limite), 2000))
+    offset = max(0, int(offset))
+
+    # Total filtrado (sin paginar), para que el frontend pinte la paginación
+    total = q.count()
+
+    # Página actual: orden estable por timestamp ascendente
+    filas_raw = (
+        q.order_by(Medida.timestamp_dato.asc())
+        .offset(offset)
+        .limit(limite)
+        .all()
+    )
+
+    filas = []
+    for m in filas_raw:
+        d = m.datos or {}
+        filas.append({
+            "timestamp": m.timestamp_dato.isoformat() if m.timestamp_dato else None,
+            "ai": d.get("ai"),
+            "ae": d.get("ae"),
+            "r1": d.get("r1"),
+            "r2": d.get("r2"),
+            "r3": d.get("r3"),
+            "r4": d.get("r4"),
+            "status": d.get("status"),
+            "season": d.get("season"),
+            "bc": d.get("bc"),
+        })
+
+    return {
+        "meter_id": meter_id,
+        "tipo_fichero": tipo_fichero,
+        "total": total,
+        "offset": offset,
+        "limite": limite,
+        "filas": filas,
+    }
+
+
 
 def _extraer_fabricante(meter_id: str) -> Optional[str]:
     """

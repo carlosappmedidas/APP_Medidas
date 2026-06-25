@@ -700,6 +700,37 @@ def listar_eventos_humanizados(
     )
 
 
+@router.get("/curva/{meter_id}")
+def obtener_curva_endpoint(
+    meter_id: str,
+    empresa_id: int = Query(..., description="ID de la empresa"),
+    tipo_fichero: str = Query("S02", description="Tipo de fichero de curva (S02 por defecto)"),
+    fecha_desde: Optional[datetime] = Query(None, description="Curva desde esta fecha (inclusive)"),
+    fecha_hasta: Optional[datetime] = Query(None, description="Curva hasta esta fecha (inclusive)"),
+    offset: int = Query(0, ge=0, description="Offset de paginación"),
+    limite: int = Query(200, ge=1, le=2000, description="Tamaño de página (def. 200, max 2000)"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Curva (S02 por defecto) de un contador, leída de stg_medida.
+    Cada fila: timestamp + magnitudes del JSONB (ai, ae, r1..r4, status, season, bc).
+    Valores en kWh por tramo (sin transformar). Filtra por empresa + meter_id + tipo + rango.
+    Paginación offset/limite (mismo patrón que /eventos y /contadores-detectados).
+    """
+    return services.obtener_curva(
+        db=db,
+        user=user,
+        empresa_id=empresa_id,
+        meter_id=meter_id,
+        tipo_fichero=tipo_fichero,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        offset=offset,
+        limite=limite,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Import Config — Paquete 8e-2a
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "../../apiConfig";
 import { useStgEmpresaId } from "../components/StgEmpresaSelector";
+import StgCurvaModal from "../components/StgCurvaModal";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -92,6 +93,13 @@ function StgEquiposMedidaPageInner() {
   const empresaId = useStgEmpresaId();
   const searchParams = useSearchParams();
 
+  // Evita hydration mismatch: en SSR localStorage no existe, así que el
+  // primer render del cliente debe coincidir con el del servidor.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Datos de la tabla
   const [data, setData] = useState<ContadoresListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,6 +110,9 @@ function StgEquiposMedidaPageInner() {
 
   // Paginación
   const [page, setPage] = useState(1);
+
+  // Curva: meter_id del contador cuyo modal está abierto (null = cerrado)
+  const [curvaMeterId, setCurvaMeterId] = useState<string | null>(null);
 
   // Filtros server-side
   // El filtro de concentrador se inicializa desde URL si viene como ?concentrador_id=X
@@ -196,6 +207,10 @@ function StgEquiposMedidaPageInner() {
         setLoading(false);
       });
   }, [empresaId, page, filtroConcentrador, filtroEstado, filtroFabricante, searchDebounced]);
+
+  if (!mounted) {
+    return null;
+  }
 
   if (!empresaId) {
     return <div style={{ color: "rgba(241,239,232,0.5)" }}>Selecciona una empresa.</div>;
@@ -471,6 +486,7 @@ function StgEquiposMedidaPageInner() {
                   <th style={thStyle}>Estado</th>
                   <th style={thStyle}>Activo</th>
                   <th style={thStyle}>Último contacto</th>
+                  <th style={thStyle}>Curva</th>
                 </tr>
               </thead>
               <tbody>
@@ -491,6 +507,24 @@ function StgEquiposMedidaPageInner() {
                     <td style={tdStyle}>{estadoBadge(c.estado_comunicacion)}</td>
                     <td style={tdStyle}>{c.activo ? "✅" : "❌"}</td>
                     <td style={tdStyle}>{formatDate(c.ultimo_contacto)}</td>
+                    <td style={tdStyle}>
+                      <button
+                        type="button"
+                        onClick={() => setCurvaMeterId(c.meter_id)}
+                        title="Ver curva de carga (S02) de este contador"
+                        style={{
+                          background: "rgba(175,169,236,0.15)",
+                          border: "0.5px solid rgba(175,169,236,0.4)",
+                          borderRadius: 6,
+                          padding: "3px 10px",
+                          color: "#AFA9EC",
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        📈 Ver curva
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -509,6 +543,15 @@ function StgEquiposMedidaPageInner() {
             totalEmpresa={stats?.total ?? 0}
           />
         </>
+      )}
+
+      {/* Modal de curva del contador seleccionado */}
+      {curvaMeterId && empresaId && (
+        <StgCurvaModal
+          empresaId={empresaId}
+          meterId={curvaMeterId}
+          onClose={() => setCurvaMeterId(null)}
+        />
       )}
     </div>
   );
