@@ -24,6 +24,13 @@ export default function StgDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Evita hydration mismatch: en SSR localStorage no existe, así que el
+  // primer render del cliente debe coincidir con el del servidor.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!empresaId) return;
     const token = localStorage.getItem("auth_token");
@@ -42,6 +49,10 @@ export default function StgDashboardPage() {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, [empresaId]);
+
+  if (!mounted) {
+    return null;
+  }
 
   if (!empresaId) {
     return (

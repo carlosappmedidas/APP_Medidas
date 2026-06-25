@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { API_BASE_URL, readApiError } from "../../apiConfig";
 import { useErpEmpresaId } from "../components/ErpEmpresaSelector";
+import StgCurvaModal from "../../stg/components/StgCurvaModal";
 
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
@@ -333,6 +334,7 @@ export default function EquiposPage() {
   const [movSaving, setMovSaving] = useState(false);
   const [movError, setMovError] = useState<string | null>(null);
   const [enlaceStg, setEnlaceStg] = useState<{ enlazado: boolean; meter_id: string | null; estado_comunicacion: string | null; ultimo_contacto: string | null } | null>(null);
+  const [curvaMeterId, setCurvaMeterId] = useState<string | null>(null);
   const [enlaceCargando, setEnlaceCargando] = useState(false);
 
   useEffect(() => {
@@ -865,6 +867,12 @@ export default function EquiposPage() {
                     {enlaceStg.ultimo_contacto ? ` · último contacto ${enlaceStg.ultimo_contacto.slice(0, 10)}` : ""}
                   </p>
                 )}
+                {enlaceStg.enlazado && enlaceStg.meter_id && (
+                  <button type="button" onClick={() => { console.log("VER CURVA click", enlaceStg.meter_id); setCurvaMeterId(enlaceStg.meter_id); }}
+                    style={{ ...btnGhost, cursor: "pointer", marginTop: 10 }}>
+                    📈 Ver curva
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -970,6 +978,14 @@ export default function EquiposPage() {
           <TextField disabled={ver} label="Motivo baja" span value={form.baja_motivo} onChange={(v) => set("baja_motivo", v)} />
           <TextField disabled={ver} label="Notas" span value={form.notas} onChange={(v) => set("notas", v)} />
         </SectionCard>
+
+        {curvaMeterId && empresaId != null && (
+          <StgCurvaModal
+            empresaId={empresaId}
+            meterId={curvaMeterId}
+            onClose={() => setCurvaMeterId(null)}
+          />
+        )}
 
         {modal && (
           <div onClick={() => !movSaving && setModal(null)}
