@@ -56,6 +56,16 @@ function fmtFecha(iso: string | null): string {
   }
 }
 
+// season cruda del S02: 'S' = Summer (horario de verano), 'W' = Winter
+// (horario de invierno). El valor sale del último carácter del campo Fh.
+function fmtSeason(s: string | null): string {
+  if (!s) return "—";
+  const v = s.toUpperCase();
+  if (v === "S") return "Verano";
+  if (v === "W") return "Invierno";
+  return s; // cualquier otro valor, crudo
+}
+
 export default function StgCurvaModal({ empresaId, meterId, onClose }: Props) {
   const [data, setData] = useState<CurvaResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -238,7 +248,7 @@ export default function StgCurvaModal({ empresaId, meterId, onClose }: Props) {
                           {f.status === null || f.status === undefined ? "—" : String(f.status)}
                         </span>
                       </td>
-                      <td style={tdStyle}>{f.season || "—"}</td>
+                      <td style={tdStyle}>{fmtSeason(f.season)}</td>
                     </tr>
                   ))}
                 </tbody>
