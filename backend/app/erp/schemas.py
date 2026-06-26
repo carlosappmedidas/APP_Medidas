@@ -777,7 +777,8 @@ class ErpEquipoMedidaBase(BaseModel):
 
     tipo_telegestion: Optional[str] = Field(default=None, max_length=2)       # CNMC Tabla 111
     propiedad: Optional[str] = Field(default=None, max_length=2)              # CNMC Tabla 32
-    propiedad_icp: Optional[str] = Field(default=None, max_length=2)          # CNMC Tabla 32
+    propiedad_icp: Optional[str] = Field(default=None, max_length=2)
+    codigo_fases: Optional[str] = Field(default=None, max_length=1)           # SIPS Tabla 111: M/T
     modo_control_potencia: Optional[str] = Field(default=None, max_length=20)
 
     # E-7d: campos extra del equipo

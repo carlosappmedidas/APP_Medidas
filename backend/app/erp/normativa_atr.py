@@ -69,6 +69,12 @@ MODO_CONTROL_POTENCIA_LABEL: dict[str, str] = {
     "maximetro": "Maxímetro",
 }
 
+# Código de fases del equipo de medida (SIPS CNMC Tabla 111, campo
+# codigoFasesEquipoMedida): "M" monofásico, "T" trifásico.
+CODIGO_FASES_LABEL: dict[str, str] = {
+    "M": "Monofásico",
+    "T": "Trifásico",
+}
 assert set(get_args(TipoContratoATR)) == set(TIPO_CONTRATO_ATR_LABEL)
 assert set(get_args(AutoconsumoTipo)) == set(AUTOCONSUMO_TIPO_LABEL)
 assert set(get_args(ModoControlPotencia)) == set(MODO_CONTROL_POTENCIA_LABEL)

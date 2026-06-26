@@ -42,6 +42,7 @@ interface Form {
   tipo_telegestion: string;
   propiedad: string;
   propiedad_icp: string;
+  codigo_fases: string;
   modo_control_potencia: string;
   fecha_verificacion: string;
   fecha_caducidad_verificacion: string;
@@ -70,7 +71,7 @@ interface Form {
 const EMPTY: Form = {
   numero_serie: "", tipo_equipo: "contador", fabricante: "", modelo: "",
   version_firmware: "", anio_fabricacion: "",
-  tipo_telegestion: "", propiedad: "", propiedad_icp: "", modo_control_potencia: "",
+  tipo_telegestion: "", propiedad: "", propiedad_icp: "", codigo_fases: "", modo_control_potencia: "",
   fecha_verificacion: "", fecha_caducidad_verificacion: "",
   estado: "en_almacen", suministro_id: "",
   giro_digitos: "", alquiler: false, tipo_alquiler: "",
@@ -173,6 +174,12 @@ const ESTADO_OPCIONES: Opcion[] = [
 const MODO_CP_OPCIONES: Opcion[] = [
   { codigo: "ICP", descripcion: "ICP" },
   { codigo: "maximetro", descripcion: "Maxímetro" },
+];
+
+// SIPS CNMC Tabla 111 (codigoFasesEquipoMedida): M=monofásico, T=trifásico
+const FASES_OPCIONES: Opcion[] = [
+  { codigo: "M", descripcion: "Monofásico" },
+  { codigo: "T", descripcion: "Trifásico" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -410,6 +417,7 @@ export default function EquiposPage() {
         tipo_telegestion: s.tipo_telegestion ?? "",
         propiedad: s.propiedad ?? "",
         propiedad_icp: s.propiedad_icp ?? "",
+        codigo_fases: s.codigo_fases ?? "",
         modo_control_potencia: s.modo_control_potencia ?? "",
         fecha_verificacion: s.fecha_verificacion ?? "",
         fecha_caducidad_verificacion: s.fecha_caducidad_verificacion ?? "",
@@ -610,6 +618,7 @@ export default function EquiposPage() {
       tipo_telegestion: txt(form.tipo_telegestion),
       propiedad: txt(form.propiedad),
       propiedad_icp: txt(form.propiedad_icp),
+      codigo_fases: txt(form.codigo_fases),
       modo_control_potencia: txt(form.modo_control_potencia),
       fecha_verificacion: txt(form.fecha_verificacion),
       fecha_caducidad_verificacion: txt(form.fecha_caducidad_verificacion),
@@ -781,6 +790,7 @@ export default function EquiposPage() {
           <SelectField disabled={ver} label="Propiedad del contador" value={form.propiedad} onChange={(v) => set("propiedad", v)} options={cat.propiedad_aparato} />
           <SelectField disabled={ver} label="Propiedad del ICP" value={form.propiedad_icp} onChange={(v) => set("propiedad_icp", v)} options={cat.propiedad_aparato} />
           <SelectField disabled={ver} label="Modo control potencia" value={form.modo_control_potencia} onChange={(v) => set("modo_control_potencia", v)} options={MODO_CP_OPCIONES} />
+          <SelectField disabled={ver} label="Código de fases" value={form.codigo_fases} onChange={(v) => set("codigo_fases", v)} options={FASES_OPCIONES} />
         </SectionCard>
 
         <SectionCard title="Verificación metrológica">

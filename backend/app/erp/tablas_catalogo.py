@@ -130,4 +130,14 @@ REGISTRO_TABLAS = [
         "normativa": "CNMC tabla 111 (formato SIPS - codigoTelegestion)",
         "fuente": ("tabla", "ErpCnmcTelegestion"),
     },
+    {
+        "clave": "codigo_fases",
+        "nombre": "Código de fases",
+        "modulo": "Modulo 2 - Equipos de medida",
+        "seccion": "Equipo",
+        "usado_por": ["Equipos de medida"],
+        "origen": "normativa",
+        "normativa": "CNMC tabla 111 (formato SIPS - codigoFasesEquipoMedida)",
+        "fuente": ("enum", "CODIGO_FASES_LABEL"),
+    },
 ]

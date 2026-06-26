@@ -564,6 +564,7 @@ class ErpEquipoMedida(TimestampMixin, Base):
     tipo_telegestion = Column(String(2), nullable=True)   # CNMC Tabla 111
     propiedad        = Column(String(2), nullable=True)   # CNMC Tabla 32 (propiedad del contador)
     propiedad_icp    = Column(String(2), nullable=True)   # CNMC Tabla 32 (propiedad del ICP)
+    codigo_fases     = Column(String(1), nullable=True)   # SIPS Tabla 111: M=monofásico, T=trifásico
     modo_control_potencia = Column(String(20), nullable=True)  # ICP / maximetro
 
     # E-7d: campos extra del equipo (giro, alquiler, precinto)
